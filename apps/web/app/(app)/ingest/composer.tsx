@@ -46,18 +46,24 @@ function parseTextarea(raw: string): { urls: string[]; notes: string } {
 
 function IconUpload() {
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
-        d="M10 13V4M10 4L6.5 7.5M10 4L13.5 7.5"
+        d="M12 15V4M12 4L8 8M12 4L16 8"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1.25"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M3 14v1.5A1.5 1.5 0 0 0 4.5 17h11A1.5 1.5 0 0 0 17 15.5V14"
+        d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1.25"
         strokeLinecap="round"
       />
     </svg>
@@ -66,7 +72,13 @@ function IconUpload() {
 
 function IconX({ size = 12 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 12 12" fill="none" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M2 2L10 10M10 2L2 10"
         stroke="currentColor"
@@ -87,7 +99,14 @@ function Spinner() {
       aria-hidden="true"
       className="animate-spin"
     >
-      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeOpacity="0.25" strokeWidth="1.5" />
+      <circle
+        cx="7"
+        cy="7"
+        r="5.5"
+        stroke="currentColor"
+        strokeOpacity="0.25"
+        strokeWidth="1.5"
+      />
       <path
         d="M7 1.5A5.5 5.5 0 0 1 12.5 7"
         stroke="currentColor"
@@ -101,24 +120,22 @@ function Spinner() {
 function Pill({ pill }: { pill: StatusPill }) {
   const tone =
     pill.kind === "queued"
-      ? "border-[color:var(--color-status-completed)]/30 bg-[color:var(--color-status-completed)]/12 text-[var(--status-completed)]"
+      ? "border-[var(--color-sage)] text-[var(--color-sage)]"
       : pill.kind === "error"
-        ? "border-[color:var(--color-status-failed)]/30 bg-[color:var(--color-status-failed)]/12 text-[var(--status-failed)]"
-        : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--fg-muted)]";
+        ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+        : "border-[var(--color-rule-strong)] text-[var(--fg-muted)]";
 
-  const dot =
-    pill.kind === "queued"
-      ? "bg-[var(--status-completed)]"
-      : pill.kind === "error"
-        ? "bg-[var(--status-failed)]"
-        : "bg-[var(--fg-subtle)]";
+  const glyph =
+    pill.kind === "queued" ? "●" : pill.kind === "error" ? "✕" : "○";
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-[6px] border px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.1em] ${tone}`}
+      className={`flex items-center gap-3 border-y border-l-2 ${tone} bg-[var(--color-paper-raised)]/60 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.16em]`}
     >
-      <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
-      {pill.label}
+      <span aria-hidden="true" className="text-[13px] leading-none">
+        {glyph}
+      </span>
+      <span className="truncate">{pill.label}</span>
     </div>
   );
 }
@@ -139,16 +156,20 @@ function Thumbnail({
   disabled: boolean;
 }) {
   return (
-    <div className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-[6px] border border-[var(--border)] bg-[var(--surface-2)]">
+    <div className="group relative h-16 w-16 shrink-0 overflow-hidden border border-[var(--color-rule-strong)] bg-[var(--color-paper-sunken)]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={item.preview} alt={item.file.name} className="h-full w-full object-cover" />
+      <img
+        src={item.preview}
+        alt={item.file.name}
+        className="h-full w-full object-cover"
+      />
       {!disabled ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/55 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-ink)]/60 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"
             onClick={onRemove}
             aria-label={`Remove ${item.file.name}`}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--status-failed)] text-white hover:opacity-90"
+            className="flex h-6 w-6 items-center justify-center bg-[var(--color-accent)] text-[var(--color-paper)] hover:opacity-90"
           >
             <IconX size={10} />
           </button>
@@ -212,7 +233,9 @@ export function Composer() {
   };
 
   const addPill = (kind: PillKind, label: string) => {
-    setPills((prev) => [{ id: crypto.randomUUID(), kind, label }, ...prev].slice(0, 12));
+    setPills((prev) =>
+      [{ id: crypto.randomUUID(), kind, label }, ...prev].slice(0, 12)
+    );
   };
 
   const handleSubmit = () => {
@@ -236,16 +259,27 @@ export function Composer() {
             body: JSON.stringify({ urls, notes, force }),
           })
             .then(async (res) => {
-              const data = (await res.json().catch(() => ({}))) as IngestResponse;
+              const data = (await res
+                .json()
+                .catch(() => ({}))) as IngestResponse;
               if (!res.ok) {
-                addPill("error", `error · ${data.error ?? data.reason ?? String(res.status)}`);
+                addPill(
+                  "error",
+                  `error · ${data.error ?? data.reason ?? String(res.status)}`
+                );
                 return;
               }
               const short = data.id ? id8(data.id) : id8(batchId);
-              addPill(data.deduped ? "deduped" : "queued", `${data.deduped ? "deduped" : "queued"} · ${short}`);
+              addPill(
+                data.deduped ? "deduped" : "queued",
+                `${data.deduped ? "deduped" : "queued"} · ${short}`
+              );
             })
             .catch((err: unknown) => {
-              addPill("error", `error · ${err instanceof Error ? err.message : "network"}`);
+              addPill(
+                "error",
+                `error · ${err instanceof Error ? err.message : "network"}`
+              );
             })
         );
       }
@@ -267,7 +301,9 @@ export function Composer() {
               body: fd,
             })
               .then(async (res) => {
-                const data = (await res.json().catch(() => ({}))) as IngestResponse;
+                const data = (await res
+                  .json()
+                  .catch(() => ({}))) as IngestResponse;
                 if (!res.ok) {
                   addPill(
                     "error",
@@ -304,7 +340,7 @@ export function Composer() {
   const charCount = text.length;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
       {pills.length > 0 ? (
         <div className="flex flex-col gap-1.5" role="log" aria-live="polite">
           {pills.map((pill) => (
@@ -313,29 +349,34 @@ export function Composer() {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-1">
+      <div className="paper-card">
+        <div className="flex items-center justify-between border-b border-[var(--color-rule)] bg-[var(--color-paper-sunken)]/50 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+          <span>Manuscript</span>
+          <span className="nums-lining tabular-nums">
+            {charCount.toString().padStart(4, "0")} characters
+          </span>
+        </div>
         <textarea
-          rows={5}
+          rows={6}
           value={text}
-          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setText(e.target.value)}
+          onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+            setText(e.target.value)
+          }
           placeholder="Paste URLs (one per line) or free-form notes…"
           disabled={isPending}
           aria-label="Content input"
-          className="w-full resize-y rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-[14.5px] leading-relaxed text-[var(--fg)] outline-none transition-colors placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)] focus:ring-2 focus:ring-[color:var(--color-accent-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="block w-full resize-y bg-transparent px-4 py-3 font-body text-[17px] leading-[1.6] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
         />
-        <div className="flex items-center justify-between px-0.5">
-          <p className="text-[11px] text-[var(--fg-subtle)]">
-            Lines starting with{" "}
-            <code className="font-mono text-[var(--fg-muted)]">http</code> are parsed as URLs;
-            everything else becomes notes.
-          </p>
-          <span className="font-mono text-[11px] tabular-nums text-[var(--fg-subtle)]">
-            {charCount}
-          </span>
-        </div>
+        <p className="border-t border-[var(--color-rule)] px-4 py-2 text-[12px] italic text-[var(--fg-subtle)]">
+          Lines beginning with{" "}
+          <code className="font-mono not-italic text-[var(--fg-muted)]">
+            http
+          </code>{" "}
+          are filed as URLs; everything else becomes a note.
+        </p>
       </div>
 
-      <label className="flex w-fit cursor-pointer items-center gap-2 select-none">
+      <label className="flex w-fit cursor-pointer items-center gap-3 select-none">
         <span className="relative inline-flex items-center">
           <input
             type="checkbox"
@@ -346,18 +387,24 @@ export function Composer() {
           />
           <span
             aria-hidden="true"
-            className={`flex h-4 w-4 items-center justify-center rounded-[4px] border transition-colors ${
+            className={`flex h-[18px] w-[18px] items-center justify-center border transition-colors ${
               force
-                ? "border-[var(--accent)] bg-[var(--accent)]"
-                : "border-[var(--border-strong)] bg-[var(--surface)]"
+                ? "border-[var(--color-accent)] bg-[var(--color-accent)]"
+                : "border-[var(--color-rule-strong)] bg-transparent"
             } ${isPending ? "opacity-50" : ""}`}
           >
             {force ? (
-              <svg width="9" height="7" viewBox="0 0 9 7" fill="none" aria-hidden="true">
+              <svg
+                width="11"
+                height="9"
+                viewBox="0 0 11 9"
+                fill="none"
+                aria-hidden="true"
+              >
                 <path
-                  d="M1 3.5L3.5 6L8 1"
-                  stroke="white"
-                  strokeWidth="1.5"
+                  d="M1 4.5L4 7.5L10 1"
+                  stroke="var(--color-paper)"
+                  strokeWidth="1.6"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -365,10 +412,12 @@ export function Composer() {
             ) : null}
           </span>
         </span>
-        <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">
-          force
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
+          Force
         </span>
-        <span className="text-[12px] text-[var(--fg-subtle)]">bypass dedup</span>
+        <span className="font-display text-[14px] italic text-[var(--fg-subtle)]">
+          bypass dedup
+        </span>
       </label>
 
       <div>
@@ -387,19 +436,19 @@ export function Composer() {
                 fileInputRef.current?.click();
               }
             }}
-            className={`flex h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed transition-colors ${
+            className={`flex h-28 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed transition-colors ${
               isDragging
-                ? "border-[var(--accent)] bg-[color:var(--color-accent-soft)]"
-                : "border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-2)]"
+                ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]"
+                : "border-[var(--color-rule-strong)] bg-[var(--color-paper-raised)]/40 hover:bg-[var(--color-paper-raised)]"
             } ${isPending ? "pointer-events-none opacity-50" : ""}`}
           >
-            <span className="text-[var(--fg-subtle)]">
+            <span className="text-[var(--fg-muted)]">
               <IconUpload />
             </span>
-            <p className="text-[12px] text-[var(--fg-subtle)]">
-              Drop images here or{" "}
-              <span className="text-[var(--fg-muted)] underline underline-offset-2">
-                click to browse
+            <p className="font-display text-[15px] italic text-[var(--fg-muted)]">
+              Drop plates here, or{" "}
+              <span className="text-[var(--color-accent)] underline underline-offset-4">
+                browse
               </span>
             </p>
           </div>
@@ -408,10 +457,10 @@ export function Composer() {
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
-            className={`rounded-[8px] border border-dashed p-2 transition-colors ${
+            className={`border border-dashed p-3 transition-colors ${
               isDragging
-                ? "border-[var(--accent)] bg-[color:var(--color-accent-soft)]"
-                : "border-[var(--border-strong)] bg-[var(--surface)]"
+                ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]"
+                : "border-[var(--color-rule-strong)] bg-[var(--color-paper-raised)]/40"
             }`}
           >
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
@@ -428,20 +477,27 @@ export function Composer() {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isPending}
                 aria-label="Add more images"
-                className="flex h-16 w-16 items-center justify-center rounded-[6px] border border-dashed border-[var(--border-strong)] text-[var(--fg-subtle)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--fg-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-16 w-16 items-center justify-center border border-dashed border-[var(--color-rule-strong)] text-[var(--fg-subtle)] transition-colors hover:bg-[var(--color-paper-raised)] hover:text-[var(--fg-muted)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
                   <path
                     d="M8 2v12M2 8h12"
                     stroke="currentColor"
-                    strokeWidth="1.5"
+                    strokeWidth="1.25"
                     strokeLinecap="round"
                   />
                 </svg>
               </button>
             </div>
-            <p className="mt-2 px-1 font-mono text-[11px] tabular-nums text-[var(--fg-subtle)]">
-              {files.length} image{files.length !== 1 ? "s" : ""} selected
+            <p className="mt-3 px-1 font-mono text-[10px] uppercase tracking-[0.2em] tabular-nums text-[var(--fg-subtle)]">
+              {files.length.toString().padStart(2, "0")} plate
+              {files.length !== 1 ? "s" : ""} attached
             </p>
           </div>
         )}
@@ -467,17 +523,29 @@ export function Composer() {
         onClick={handleSubmit}
         disabled={!canSubmit}
         aria-disabled={!canSubmit}
-        className={`h-10 w-full rounded-[8px] bg-[var(--accent)] text-[14px] font-medium text-white transition-opacity focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent-ring)] focus:ring-offset-1 focus:ring-offset-[var(--bg)] ${
-          canSubmit ? "cursor-pointer hover:opacity-90 active:opacity-80" : "cursor-not-allowed opacity-40"
+        className={`group relative h-12 w-full border bg-[var(--color-ink)] text-[var(--color-paper)] transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-ring)] focus:ring-offset-2 focus:ring-offset-[var(--bg)] ${
+          canSubmit
+            ? "border-[var(--color-ink)] cursor-pointer hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)] active:translate-y-px"
+            : "border-[var(--color-rule-strong)] bg-[var(--color-paper-sunken)] text-[var(--fg-subtle)] cursor-not-allowed"
         }`}
       >
         {isPending ? (
-          <span className="flex items-center justify-center gap-2">
+          <span className="flex items-center justify-center gap-3 font-mono text-[11px] uppercase tracking-[0.3em]">
             <Spinner />
-            Ingesting…
+            Ingesting
           </span>
         ) : (
-          "Ingest"
+          <span className="flex items-center justify-center gap-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.32em]">
+              Send to press
+            </span>
+            <span
+              aria-hidden="true"
+              className="font-display italic text-[18px] leading-none"
+            >
+              →
+            </span>
+          </span>
         )}
       </button>
     </div>

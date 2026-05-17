@@ -40,8 +40,17 @@ export default function ResetPasswordPage() {
 
   return (
     <div className={styles.card}>
-      <h1 className={styles.title}>Set a new password</h1>
-      <p className={styles.subtitle}>Choose a strong password you don&apos;t use elsewhere.</p>
+      <span className={styles.mark} aria-hidden="true">
+        Sirius.
+      </span>
+      <p className={styles.eyebrow}>Members &middot; New key</p>
+      <h1 className={styles.title}>
+        Set a new <em>password.</em>
+      </h1>
+      <p className={styles.subtitle}>
+        Choose something strong you don&apos;t use elsewhere.
+      </p>
+      <div className={styles.rule} />
 
       <form className={styles.form} onSubmit={handleSubmit}>
         {error ? <div className={styles.error}>{error}</div> : null}
@@ -56,6 +65,7 @@ export default function ResetPasswordPage() {
             className={styles.input}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 8 characters"
             required
             minLength={8}
             autoComplete="new-password"
@@ -68,7 +78,7 @@ export default function ResetPasswordPage() {
       </form>
 
       <div className={styles.footer}>
-        <Link href="/sign-in">Back to sign in</Link>
+        <Link href="/sign-in">← Back to entry</Link>
       </div>
     </div>
   );

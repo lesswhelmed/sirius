@@ -1,35 +1,42 @@
 import Link from "next/link";
 import { listPosts, PostStatus, PostType } from "@repo/db";
 import { Filters } from "./filters";
+import { DateDisplay } from "../../../lib/date-display";
 
 const TYPES: PostType[] = ["CONCRETE", "BLOG", "FINDING", "SIGHT"];
 const STATUSES: PostStatus[] = ["PUBLISHED", "DRAFT", "ARCHIVED"];
 
-function pickEnum<T extends string>(value: string | null, valid: T[]): T | undefined {
+function pickEnum<T extends string>(
+  value: string | null,
+  valid: T[]
+): T | undefined {
   if (!value) return undefined;
   return (valid as string[]).includes(value) ? (value as T) : undefined;
 }
 
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
+const TYPE_LABEL: Record<PostType, string> = {
+  CONCRETE: "Concrete",
+  BLOG: "Dispatch",
+  FINDING: "Finding",
+  SIGHT: "Sight",
+};
 
 const TYPE_TONE: Record<PostType, string> = {
-  CONCRETE: "text-[var(--fg)] border-[var(--border-strong)]",
-  BLOG: "text-[var(--accent)] border-[color:var(--color-accent-soft)]",
-  FINDING: "text-[var(--status-completed)] border-[var(--border-strong)]",
-  SIGHT: "text-[var(--status-failed)] border-[var(--border-strong)]",
+  CONCRETE: "text-[var(--color-ink)]",
+  BLOG: "text-[var(--color-accent)]",
+  FINDING: "text-[var(--color-sage)]",
+  SIGHT: "text-[var(--color-mark)]",
 };
 
 const STATUS_TONE: Record<PostStatus, string> = {
-  PUBLISHED: "bg-[color:var(--color-accent-soft)] text-[var(--accent)]",
-  DRAFT: "bg-[var(--surface-2)] text-[var(--fg-muted)]",
-  ARCHIVED: "bg-[var(--surface-2)] text-[var(--fg-subtle)]",
+  PUBLISHED: "text-[var(--color-accent)]",
+  DRAFT: "text-[var(--fg-muted)]",
+  ARCHIVED: "text-[var(--fg-subtle)] line-through decoration-1",
 };
+
+function pad(n: number): string {
+  return n.toString().padStart(3, "0");
+}
 
 export default async function LibraryPage({
   searchParams,
@@ -48,15 +55,30 @@ export default async function LibraryPage({
 
   return (
     <section>
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
-            Library
+      <div className="grid grid-cols-1 gap-x-8 gap-y-6 md:grid-cols-[1fr_auto] md:items-end">
+        <header>
+          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--fg-subtle)]">
+            Section II — Catalogue
           </p>
-          <h1 className="mt-1 text-[28px] font-medium leading-tight">
-            Your work · {items.length}
+          <h1 className="mt-1 font-display italic text-[56px] leading-[0.92] tracking-[-0.01em] text-balance">
+            The Library<span className="text-[var(--color-accent)]">,</span>
           </h1>
+          <p className="mt-3 max-w-md font-display italic text-[18px] leading-snug text-[var(--fg-muted)]">
+            Everything captured and made into a post — sorted, filed, kept.
+          </p>
+        </header>
+
+        <div className="flex items-baseline gap-3 md:flex-col md:items-end md:gap-1">
+          <span className="font-display italic text-[44px] leading-none text-[var(--color-accent)] nums-oldstyle">
+            {items.length}
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+            entries on file
+          </span>
         </div>
+      </div>
+
+      <div className="rule-emphatic-t mt-8 pt-5">
         <Filters
           types={TYPES}
           statuses={STATUSES}
@@ -64,71 +86,70 @@ export default async function LibraryPage({
           activeStatus={status}
           q={qParam ?? ""}
         />
-      </header>
+      </div>
 
       {items.length === 0 ? (
-        <div className="surface-raised rounded-[var(--radius-card)] px-6 py-12 text-center text-[14px] text-[var(--fg-muted)]">
-          Nothing here yet. Submit something on{" "}
-          <Link
-            href="/ingest"
-            className="text-[var(--accent)] underline-offset-4 hover:underline"
-          >
-            Ingest
-          </Link>
-          .
+        <div className="mt-10 border-y border-[var(--color-rule)] py-20 text-center">
+          <p className="font-display italic text-[28px] leading-tight text-[var(--fg-muted)]">
+            The shelves are bare.
+          </p>
+          <p className="mt-3 text-[15px] text-[var(--fg-subtle)]">
+            Submit something on{" "}
+            <Link
+              href="/ingest"
+              className="text-[var(--color-accent)] underline underline-offset-4"
+            >
+              Ingest
+            </Link>{" "}
+            to fill them.
+          </p>
         </div>
       ) : (
-        <div className="surface-raised overflow-hidden rounded-[var(--radius-card)]">
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="hairline-b text-left font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--fg-subtle)]">
-                <th className="px-4 py-3 font-normal">Date</th>
-                <th className="px-4 py-3 font-normal">Type</th>
-                <th className="px-4 py-3 font-normal">Title</th>
-                <th className="px-4 py-3 font-normal">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((post) => (
-                <tr
-                  key={post.id}
-                  className="hairline-b last:border-b-0 transition-colors hover:bg-[var(--surface-2)]"
-                >
-                  <td className="px-4 py-3 align-top">
-                    <span className="font-mono text-[12px] text-[var(--fg-muted)]">
-                      {formatDate(post.createdAt)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <span
-                      className={`inline-flex items-center rounded-[var(--radius-chip)] border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] ${TYPE_TONE[post.type]}`}
-                    >
-                      {post.type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <Link
-                      href={`/posts/${post.slug}`}
-                      className="block text-[14px] text-[var(--fg)] hover:text-[var(--accent)]"
-                    >
-                      {post.title}
-                      <span className="mt-0.5 block font-mono text-[11px] text-[var(--fg-subtle)]">
-                        {post.slug}
-                      </span>
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <span
-                      className={`inline-flex items-center rounded-[var(--radius-chip)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] ${STATUS_TONE[post.status]}`}
-                    >
-                      {post.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ol className="mt-8 rule-emphatic-b">
+          <li className="grid grid-cols-[3.5rem_8rem_1fr_6.5rem_6rem] items-baseline gap-4 border-t border-[var(--color-rule-emphatic)] border-b border-[var(--color-rule)] py-2 font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+            <span>No.</span>
+            <span>Kind</span>
+            <span>Title</span>
+            <span className="text-right">Filed</span>
+            <span className="text-right">Status</span>
+          </li>
+          {items.map((post, idx) => (
+            <li
+              key={post.id}
+              className="group grid grid-cols-[3.5rem_8rem_1fr_6.5rem_6rem] items-baseline gap-4 border-b border-[var(--color-rule)] py-4 transition-colors hover:bg-[var(--color-paper-raised)]/60"
+            >
+              <span className="font-mono text-[12px] tabular-nums text-[var(--fg-subtle)] group-hover:text-[var(--color-accent)]">
+                {pad(idx + 1)}
+              </span>
+              <span
+                className={`font-display italic text-[17px] leading-tight ${TYPE_TONE[post.type]}`}
+              >
+                {TYPE_LABEL[post.type]}
+              </span>
+              <Link
+                href={`/posts/${post.slug}`}
+                className="flex items-baseline gap-3 min-w-0"
+              >
+                <span className="font-display text-[20px] leading-tight tracking-[-0.005em] text-[var(--fg)] transition-colors group-hover:text-[var(--color-accent)]">
+                  {post.title}
+                </span>
+                <span className="hidden flex-1 translate-y-[-3px] leader-dots-line h-[6px] min-w-[2rem] md:block" />
+                <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)] md:inline">
+                  {post.slug}
+                </span>
+              </Link>
+              <DateDisplay
+                value={post.createdAt}
+                className="text-right font-mono text-[12px] tabular-nums text-[var(--fg-muted)]"
+              />
+              <span
+                className={`text-right font-mono text-[10px] uppercase tracking-[0.18em] ${STATUS_TONE[post.status]}`}
+              >
+                {post.status.toLowerCase()}
+              </span>
+            </li>
+          ))}
+        </ol>
       )}
     </section>
   );

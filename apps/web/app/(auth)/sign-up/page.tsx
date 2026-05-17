@@ -34,10 +34,17 @@ export default function SignUpPage() {
 
   return (
     <div className={styles.card}>
-      <h1 className={styles.title}>Create an account</h1>
+      <span className={styles.mark} aria-hidden="true">
+        Sirius.
+      </span>
+      <p className={styles.eyebrow}>Members &middot; New file</p>
+      <h1 className={styles.title}>
+        Open an <em>account.</em>
+      </h1>
       <p className={styles.subtitle}>
-        We&apos;ll email you a verification link.
+        We&apos;ll send a verification letter to confirm it&apos;s really you.
       </p>
+      <div className={styles.rule} />
 
       <form className={styles.form} onSubmit={handleSubmit}>
         {error ? <div className={styles.error}>{error}</div> : null}
@@ -52,6 +59,7 @@ export default function SignUpPage() {
             className={styles.input}
             value={name}
             onChange={(e) => setName(e.target.value)}
+            placeholder="As you&apos;d like it printed"
             required
             autoComplete="name"
           />
@@ -67,6 +75,7 @@ export default function SignUpPage() {
             className={styles.input}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@somewhere.world"
             required
             autoComplete="email"
           />
@@ -82,6 +91,7 @@ export default function SignUpPage() {
             className={styles.input}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 8 characters"
             required
             minLength={8}
             autoComplete="new-password"
@@ -89,12 +99,15 @@ export default function SignUpPage() {
         </div>
 
         <button type="submit" className={styles.button} disabled={loading}>
-          {loading ? "Creating account…" : "Create account"}
+          {loading ? "Filing…" : "Create account"}
         </button>
       </form>
 
       <div className={styles.footer}>
-        Already have an account? <Link href="/sign-in">Sign in</Link>
+        Already on the register?{" "}
+        <Link href="/sign-in">
+          <span style={{ marginLeft: 4 }}>Sign in →</span>
+        </Link>
       </div>
     </div>
   );

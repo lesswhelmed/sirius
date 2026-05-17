@@ -2,14 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { findPostBySlug } from "@repo/db";
 
-function formatDate(date: Date | null | undefined): string {
-  if (!date) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }).format(date);
-}
+import { DateDisplay } from "../../../../lib/date-display";
+
+const TYPE_LABEL: Record<string, string> = {
+  CONCRETE: "Concrete",
+  BLOG: "Dispatch",
+  FINDING: "Finding",
+  SIGHT: "Sight",
+};
 
 export default async function PostDetailPage({
   params,
@@ -23,40 +23,55 @@ export default async function PostDetailPage({
   }
 
   return (
-    <article className="mx-auto max-w-[820px]">
+    <article className="mx-auto max-w-[920px]">
       <Link
         href="/library"
-        className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)] hover:text-[var(--fg)]"
+        className="inline-flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] transition-colors hover:text-[var(--color-accent)]"
       >
-        ← Library
+        <span aria-hidden="true">←</span>
+        Return to Library
       </Link>
 
-      <div className="mt-6 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
-        <span className="text-[var(--accent)]">{post.type}</span>
-        <span>·</span>
-        <span>{post.status}</span>
-        <span>·</span>
-        <span>{formatDate(post.originalDate ?? post.createdAt)}</span>
-      </div>
+      <header className="mt-8">
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-y border-[var(--color-rule-emphatic)] py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)]">
+          <span className="text-[var(--color-accent)]">
+            {TYPE_LABEL[post.type] ?? post.type}
+          </span>
+          <span aria-hidden="true" className="text-[var(--fg-faint)]">
+            ·
+          </span>
+          <span>{post.status}</span>
+          <span aria-hidden="true" className="text-[var(--fg-faint)]">
+            ·
+          </span>
+          <DateDisplay
+            value={post.originalDate ?? post.createdAt}
+            variant="date-long"
+          />
+        </div>
 
-      <h1 className="mt-3 text-[36px] font-medium leading-tight tracking-[-0.01em]">
-        {post.title}
-      </h1>
+        <h1 className="mt-6 font-display text-[56px] leading-[0.95] tracking-[-0.015em] text-balance md:text-[72px]">
+          {post.title}
+        </h1>
 
-      {post.excerpt ? (
-        <p className="mt-4 text-[18px] leading-relaxed text-[var(--fg-muted)]">
-          {post.excerpt}
-        </p>
-      ) : null}
+        {post.excerpt ? (
+          <p className="mt-6 max-w-[44ch] font-display italic text-[22px] leading-[1.35] text-[var(--fg-muted)] text-pretty">
+            {post.excerpt}
+          </p>
+        ) : null}
+      </header>
 
-      <div className="mt-10 grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_220px]">
-        <div className="prose max-w-none text-[15.5px] leading-[1.7] text-[var(--fg)]">
-          <pre className="whitespace-pre-wrap break-words font-sans">
+      <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="text-[18px] leading-[1.7] text-[var(--fg)]">
+          <pre className="drop-cap whitespace-pre-wrap break-words font-body text-[18px] leading-[1.7]">
             {post.content}
           </pre>
         </div>
 
-        <aside className="space-y-6">
+        <aside className="space-y-7 lg:border-l lg:border-[var(--color-rule)] lg:pl-8">
+          <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--fg-subtle)]">
+            Colophon
+          </div>
           <Meta label="Slug" value={post.slug} mono />
           <Meta label="Source" value={post.sourceType} mono />
           <Meta label="Provider" value={post.providerId} mono />
@@ -68,7 +83,7 @@ export default async function PostDetailPage({
                   href={post.originalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="break-all text-[var(--accent)] underline-offset-4 hover:underline"
+                  className="break-all italic text-[var(--color-accent)] underline underline-offset-4 hover:text-[var(--color-accent-deep)]"
                 >
                   {post.originalUrl}
                 </a>
@@ -79,13 +94,18 @@ export default async function PostDetailPage({
             <Meta
               label="Tags"
               value={
-                <div className="flex flex-wrap gap-1.5">
-                  {post.tags.map((t) => (
-                    <span
-                      key={t.id}
-                      className="rounded-[var(--radius-chip)] border border-[var(--border)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--fg-muted)]"
-                    >
+                <div className="flex flex-wrap gap-x-2 gap-y-1">
+                  {post.tags.map((t, i) => (
+                    <span key={t.id} className="font-display italic text-[15px]">
                       {t.name}
+                      {i < post.tags.length - 1 ? (
+                        <span
+                          aria-hidden="true"
+                          className="ml-2 text-[var(--fg-subtle)]"
+                        >
+                          ,
+                        </span>
+                      ) : null}
                     </span>
                   ))}
                 </div>
@@ -96,13 +116,18 @@ export default async function PostDetailPage({
             <Meta
               label="Categories"
               value={
-                <div className="flex flex-wrap gap-1.5">
-                  {post.categories.map((c) => (
-                    <span
-                      key={c.id}
-                      className="rounded-[var(--radius-chip)] bg-[var(--surface-2)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--fg-muted)]"
-                    >
+                <div className="flex flex-wrap gap-x-2 gap-y-1">
+                  {post.categories.map((c, i) => (
+                    <span key={c.id} className="font-display italic text-[15px]">
                       {c.displayName}
+                      {i < post.categories.length - 1 ? (
+                        <span
+                          aria-hidden="true"
+                          className="ml-2 text-[var(--fg-subtle)]"
+                        >
+                          ,
+                        </span>
+                      ) : null}
                     </span>
                   ))}
                 </div>
@@ -110,6 +135,12 @@ export default async function PostDetailPage({
             />
           ) : null}
         </aside>
+      </div>
+
+      <div className="mt-20 rule-emphatic-t pt-6 text-center font-mono text-[11px] uppercase tracking-[0.3em] text-[var(--fg-subtle)]">
+        <span aria-hidden="true" className="text-[var(--color-accent)]">
+          ⁂
+        </span>
       </div>
     </article>
   );
@@ -126,11 +157,11 @@ function Meta({
 }) {
   return (
     <div>
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--fg-subtle)]">
+      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
         {label}
       </p>
       <div
-        className={`mt-1 text-[13px] text-[var(--fg)] ${mono ? "font-mono break-all" : ""}`}
+        className={`mt-1.5 text-[14px] text-[var(--fg)] ${mono ? "font-mono break-all text-[12.5px]" : ""}`}
       >
         {value}
       </div>

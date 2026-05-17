@@ -18,7 +18,7 @@ export function SignOutLink() {
           router.refresh();
         })
       }
-      className="rounded-[6px] px-2 py-1 font-mono text-[12px] uppercase tracking-[0.12em] text-[var(--fg-muted)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--fg)] disabled:opacity-50"
+      className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] transition-colors hover:text-[var(--color-accent)] disabled:opacity-50"
     >
       {pending ? "…" : "Sign out"}
     </button>

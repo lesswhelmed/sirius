@@ -36,18 +36,27 @@ export default function VerifyEmailPage() {
 
   return (
     <div className={styles.card}>
-      <h1 className={styles.title}>Check your email</h1>
+      <span className={styles.mark} aria-hidden="true">
+        Sirius.
+      </span>
+      <p className={styles.eyebrow}>Members &middot; In transit</p>
+      <h1 className={styles.title}>
+        Check your <em>post.</em>
+      </h1>
       <p className={styles.subtitle}>
         {email
-          ? `We sent a verification link to ${email}.`
-          : "We sent you a verification link."}{" "}
-        Click it to finish signing up.
+          ? `We dispatched a verification letter to ${email}.`
+          : "We sent you a verification letter."}{" "}
+        Open it to complete the registry.
       </p>
+      <div className={styles.rule} />
 
       <div className={styles.form}>
         {error ? <div className={styles.error}>{error}</div> : null}
         {sent ? (
-          <div className={styles.success}>Verification email resent.</div>
+          <div className={styles.success}>
+            Letter re-dispatched. Mind the inbox.
+          </div>
         ) : null}
 
         <button
@@ -56,12 +65,12 @@ export default function VerifyEmailPage() {
           onClick={handleResend}
           disabled={loading}
         >
-          {loading ? "Resending…" : "Resend verification email"}
+          {loading ? "Resending…" : "Resend letter"}
         </button>
       </div>
 
       <div className={styles.footer}>
-        <Link href="/sign-in">Back to sign in</Link>
+        <Link href="/sign-in">← Back to entry</Link>
       </div>
     </div>
   );

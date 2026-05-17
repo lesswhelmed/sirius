@@ -16,6 +16,8 @@ export async function sendEmail({
   subject,
   html,
 }: SendEmailParams): Promise<void> {
+  const isProduction = process.env.NODE_ENV === "production";
+
   if (!resend) {
     console.warn(
       `[email] RESEND_API_KEY not set — logging instead of sending to ${to}`,
@@ -25,7 +27,17 @@ export async function sendEmail({
   }
 
   const { error } = await resend.emails.send({ from, to, subject, html });
-  if (error) {
+  if (!error) return;
+
+  if (isProduction) {
     throw new Error(`Resend error: ${error.message}`);
   }
+
+  // In dev, Resend's testing mode rejects sends to unverified recipients.
+  // Log the payload so the verification/reset URL embedded in `html` stays
+  // recoverable instead of vanishing inside Better Auth's background task.
+  console.warn(
+    `[email] Resend rejected send to ${to} (dev): ${error.message} — falling back to log`,
+  );
+  console.log({ to, subject, html });
 }

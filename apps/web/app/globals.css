@@ -14,3 +14,13 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+/* Newsreader optical sizing — let the variable axis breathe at display sizes */
+:root {
+  font-optical-sizing: auto;
+}
+
+/* Smooth focus ring for keyboard navigation only */
+:where(button, a, input, textarea, select):focus {
+  outline: none;
+}

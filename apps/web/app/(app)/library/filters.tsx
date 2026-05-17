@@ -12,7 +12,13 @@ interface Props {
   q: string;
 }
 
-export function Filters({ types, statuses, activeType, activeStatus, q }: Props) {
+export function Filters({
+  types,
+  statuses,
+  activeType,
+  activeStatus,
+  q,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -39,49 +45,37 @@ export function Filters({ types, statuses, activeType, activeStatus, q }: Props)
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2" aria-busy={pending}>
-      <div className="flex items-center gap-1">
-        {types.map((t) => {
-          const active = activeType === t;
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => toggle("type", t)}
-              className={`rounded-[var(--radius-chip)] border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors ${
-                active
-                  ? "border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)] text-[var(--accent)]"
-                  : "border-[var(--border)] text-[var(--fg-muted)] hover:border-[var(--border-strong)] hover:text-[var(--fg)]"
-              }`}
-            >
-              {t}
-            </button>
-          );
-        })}
-      </div>
-      <span className="text-[var(--fg-subtle)]">·</span>
-      <div className="flex items-center gap-1">
-        {statuses.map((s) => {
-          const active = activeStatus === s;
-          return (
-            <button
-              key={s}
-              type="button"
-              onClick={() => toggle("status", s)}
-              className={`rounded-[var(--radius-chip)] border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors ${
-                active
-                  ? "border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)] text-[var(--accent)]"
-                  : "border-[var(--border)] text-[var(--fg-muted)] hover:border-[var(--border-strong)] hover:text-[var(--fg)]"
-              }`}
-            >
-              {s}
-            </button>
-          );
-        })}
-      </div>
+    <div
+      className="flex flex-wrap items-baseline gap-x-6 gap-y-3 font-mono text-[10px] uppercase tracking-[0.18em]"
+      aria-busy={pending}
+    >
+      <span className="text-[var(--fg-subtle)]">Filter by</span>
+
+      <FilterGroup label="kind">
+        {types.map((t) => (
+          <FilterChip
+            key={t}
+            active={activeType === t}
+            onClick={() => toggle("type", t)}
+            label={t}
+          />
+        ))}
+      </FilterGroup>
+
+      <FilterGroup label="state">
+        {statuses.map((s) => (
+          <FilterChip
+            key={s}
+            active={activeStatus === s}
+            onClick={() => toggle("status", s)}
+            label={s}
+          />
+        ))}
+      </FilterGroup>
+
       <form
         action={pathname}
-        className="ml-2 flex items-center"
+        className="flex items-baseline gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           const next = new URLSearchParams(params.toString());
@@ -94,14 +88,64 @@ export function Filters({ types, statuses, activeType, activeStatus, q }: Props)
           push(next);
         }}
       >
+        <span className="text-[var(--fg-subtle)]">Search</span>
         <input
           type="text"
           name="q"
           defaultValue={q}
-          placeholder="Search title…"
-          className="h-8 w-44 rounded-[var(--radius-input)] border border-[var(--border)] bg-[var(--surface)] px-3 font-mono text-[12px] text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent-ring)]"
+          placeholder="title…"
+          className="w-48 border-b border-[var(--color-rule-strong)] bg-transparent px-1 pb-1 font-body text-[15px] italic tracking-normal text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:border-[var(--color-accent)] focus:outline-none"
         />
       </form>
     </div>
+  );
+}
+
+function FilterGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-[var(--fg-subtle)]">{label}</span>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative pb-0.5 transition-colors ${
+        active
+          ? "text-[var(--color-accent)]"
+          : "text-[var(--fg-muted)] hover:text-[var(--fg)]"
+      }`}
+    >
+      {label}
+      <span
+        aria-hidden="true"
+        className={`absolute inset-x-0 bottom-0 h-px transition-colors ${
+          active
+            ? "bg-[var(--color-accent)]"
+            : "bg-transparent"
+        }`}
+      />
+    </button>
   );
 }

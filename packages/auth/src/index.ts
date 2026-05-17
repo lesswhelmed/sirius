@@ -32,6 +32,9 @@ export const auth = betterAuth({
     requireEmailVerification: true,
     minPasswordLength: 8,
     sendResetPassword: async ({ user, url }) => {
+      if (!isProduction) {
+        console.log(`[auth] reset-password URL for ${user.email}: ${url}`);
+      }
       await sendEmail({
         to: user.email,
         subject: "Reset your password",
@@ -46,6 +49,9 @@ export const auth = betterAuth({
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
+      if (!isProduction) {
+        console.log(`[auth] verify-email URL for ${user.email}: ${url}`);
+      }
       await sendEmail({
         to: user.email,
         subject: "Verify your email",

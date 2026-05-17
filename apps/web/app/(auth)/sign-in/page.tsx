@@ -34,8 +34,17 @@ export default function SignInPage() {
 
   return (
     <div className={styles.card}>
-      <h1 className={styles.title}>Welcome back</h1>
-      <p className={styles.subtitle}>Sign in to continue.</p>
+      <span className={styles.mark} aria-hidden="true">
+        Sirius.
+      </span>
+      <p className={styles.eyebrow}>Members &middot; Entry</p>
+      <h1 className={styles.title}>
+        Welcome <em>back.</em>
+      </h1>
+      <p className={styles.subtitle}>
+        Sign in to continue your work in the field journal.
+      </p>
+      <div className={styles.rule} />
 
       <form className={styles.form} onSubmit={handleSubmit}>
         {error ? <div className={styles.error}>{error}</div> : null}
@@ -50,6 +59,7 @@ export default function SignInPage() {
             className={styles.input}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@somewhere.world"
             required
             autoComplete="email"
           />
@@ -65,6 +75,7 @@ export default function SignInPage() {
             className={styles.input}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
             required
             autoComplete="current-password"
           />
@@ -77,8 +88,11 @@ export default function SignInPage() {
 
       <div className={styles.footer}>
         <Link href="/forgot-password">Forgot password?</Link>
-        <div style={{ marginTop: 8 }}>
-          New here? <Link href="/sign-up">Create an account</Link>
+        <div>
+          New here?{" "}
+          <Link href="/sign-up">
+            <span style={{ marginLeft: 4 }}>Create an account →</span>
+          </Link>
         </div>
       </div>
     </div>

@@ -30,10 +30,17 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className={styles.card}>
-      <h1 className={styles.title}>Forgot password</h1>
+      <span className={styles.mark} aria-hidden="true">
+        Sirius.
+      </span>
+      <p className={styles.eyebrow}>Members &middot; Lost key</p>
+      <h1 className={styles.title}>
+        Forgot the <em>password?</em>
+      </h1>
       <p className={styles.subtitle}>
-        Enter your email and we&apos;ll send you a reset link.
+        Enter the email on file and we&apos;ll send a reset link.
       </p>
+      <div className={styles.rule} />
 
       <form className={styles.form} onSubmit={handleSubmit}>
         {error ? <div className={styles.error}>{error}</div> : null}
@@ -53,6 +60,7 @@ export default function ForgotPasswordPage() {
             className={styles.input}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@somewhere.world"
             required
             autoComplete="email"
           />
@@ -64,7 +72,7 @@ export default function ForgotPasswordPage() {
       </form>
 
       <div className={styles.footer}>
-        <Link href="/sign-in">Back to sign in</Link>
+        <Link href="/sign-in">← Back to entry</Link>
       </div>
     </div>
   );

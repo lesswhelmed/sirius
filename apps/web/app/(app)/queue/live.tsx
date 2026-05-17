@@ -3,10 +3,8 @@
 import type { IngestSubmission } from "@repo/db";
 import { useEffect, useMemo, useState } from "react";
 
-function toDate(value: Date | string | null | undefined): Date {
-  if (!value) return new Date(0);
-  return value instanceof Date ? value : new Date(value);
-}
+import { DateDisplay } from "../../../lib/date-display";
+import { relativeAge } from "../../../lib/datetime";
 
 function rowKey(item: IngestSubmission): string {
   return `${item.id}::${item.status}::${String(item.updatedAt)}`;
@@ -24,17 +22,6 @@ function arraysDiffer(
     if (rowKey(ai) !== rowKey(bi)) return true;
   }
   return false;
-}
-
-function relativeAge(value: Date | string): string {
-  const ms = Date.now() - toDate(value).getTime();
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
 }
 
 type PayloadUrl = { urls?: string[] };
@@ -75,89 +62,133 @@ const STATUS_ORDER: Status[] = [
   "skipped",
 ];
 
-const DOT_CLASS: Record<Status, string> = {
-  pending: "bg-[var(--status-pending)]",
-  processing: "bg-[var(--status-processing)] animate-pulse",
-  completed: "bg-[var(--status-completed)]",
-  failed: "bg-[var(--status-failed)]",
-  skipped: "bg-[var(--status-skipped)]",
+const STATUS_GLYPH: Record<Status, string> = {
+  pending: "○",
+  processing: "◐",
+  completed: "●",
+  failed: "✕",
+  skipped: "—",
 };
 
-const TEXT_CLASS: Record<Status, string> = {
+const STATUS_LABEL: Record<Status, string> = {
+  pending: "Pending",
+  processing: "Setting",
+  completed: "Filed",
+  failed: "Spiked",
+  skipped: "Skipped",
+};
+
+const STATUS_TONE: Record<Status, string> = {
   pending: "text-[var(--fg-muted)]",
-  processing: "text-[var(--accent)]",
-  completed: "text-[var(--status-completed)]",
-  failed: "text-[var(--status-failed)]",
+  processing: "text-[var(--color-accent)]",
+  completed: "text-[var(--color-sage)]",
+  failed: "text-[var(--color-accent-deep)]",
   skipped: "text-[var(--fg-subtle)]",
 };
 
-function StatusDot({ status }: { status: string }) {
-  const cls = DOT_CLASS[status as Status] ?? "bg-[var(--fg-muted)]";
+function StatusGlyph({ status }: { status: Status }) {
   return (
     <span
-      className={`inline-block h-2 w-2 shrink-0 rounded-full ${cls}`}
       aria-hidden="true"
-    />
-  );
-}
-
-function StatusChip({ status, count }: { status: Status; count: number }) {
-  return (
-    <span className="flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.1em]">
-      <span
-        className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${DOT_CLASS[status]}`}
-        aria-hidden="true"
-      />
-      <span className={TEXT_CLASS[status]}>{status}</span>
-      <span className="tabular-nums text-[var(--fg)]">{count}</span>
+      className={`inline-block w-4 text-center font-mono text-[14px] leading-none ${STATUS_TONE[status]} ${
+        status === "processing" ? "animate-pulse" : ""
+      }`}
+    >
+      {STATUS_GLYPH[status]}
     </span>
   );
 }
 
-function Row({ item }: { item: IngestSubmission }) {
+function StatusCounter({ status, count }: { status: Status; count: number }) {
+  return (
+    <div className="flex items-baseline gap-2 border-l border-[var(--color-rule)] pl-4 first:border-l-0 first:pl-0">
+      <span
+        className={`font-display italic text-[32px] leading-none nums-oldstyle ${STATUS_TONE[status]}`}
+      >
+        {count}
+      </span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
+        {STATUS_LABEL[status]}
+      </span>
+    </div>
+  );
+}
+
+function Row({
+  item,
+  now,
+  idx,
+}: {
+  item: IngestSubmission;
+  now: number | null;
+  idx: number;
+}) {
   const status = item.status as Status;
   const label = primaryLabel(item);
   const isFailed = status === "failed";
 
+  const ageTooltip = now !== null ? relativeAge(item.createdAt, now) : undefined;
+  const rowTitle =
+    isFailed && item.errorMessage ? item.errorMessage : undefined;
+
   return (
     <div
       className={[
-        "grid grid-cols-[auto_64px_88px_1fr_64px] items-center gap-3 px-4 py-2.5",
-        "hairline-b transition-colors duration-100 hover:bg-[var(--surface-2)]",
-        isFailed ? "line-through opacity-60" : "",
+        "grid grid-cols-[2rem_1.5rem_5rem_5rem_1fr_5rem] items-baseline gap-3 border-b border-[var(--color-rule)] px-1 py-2.5",
+        "transition-colors duration-100 hover:bg-[var(--color-paper-raised)]/60",
+        isFailed ? "opacity-70" : "",
       ]
         .filter(Boolean)
         .join(" ")}
-      title={isFailed && item.errorMessage ? item.errorMessage : undefined}
+      title={rowTitle}
     >
-      <StatusDot status={item.status} />
-      <span className="truncate font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--fg-muted)]">
+      <span className="font-mono text-[10px] tabular-nums text-[var(--fg-subtle)]">
+        {idx.toString().padStart(3, "0")}
+      </span>
+      <StatusGlyph status={status} />
+      <span
+        className={`font-mono text-[10px] uppercase tracking-[0.18em] ${STATUS_TONE[status]}`}
+      >
+        {STATUS_LABEL[status]}
+      </span>
+      <span className="truncate font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
         {item.kind}
       </span>
-      <span className="truncate font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--fg-subtle)]">
-        {item.id.slice(0, 8)}
-      </span>
-      <span className="min-w-0 truncate text-[14px] text-[var(--fg)]">
+      <span
+        className={`min-w-0 truncate font-display text-[18px] leading-snug ${
+          isFailed
+            ? "italic line-through text-[var(--fg-muted)]"
+            : "text-[var(--fg)]"
+        }`}
+      >
         {label}
       </span>
-      <span className="text-right font-mono text-[11px] uppercase tracking-[0.1em] tabular-nums text-[var(--fg-muted)]">
-        {relativeAge(item.createdAt)}
-      </span>
+      <DateDisplay
+        value={item.createdAt}
+        variant="time"
+        title={ageTooltip}
+        className="text-right font-mono text-[11px] tabular-nums text-[var(--fg-muted)]"
+      />
     </div>
   );
 }
 
 function EmptyState() {
   return (
-    <div className="flex items-center justify-center py-16 text-center text-[13px] text-[var(--fg-muted)]">
-      No submissions yet. Capture something on{" "}
-      <a
-        href="/ingest"
-        className="ml-1 text-[var(--accent)] underline-offset-2 hover:underline"
-      >
-        Ingest
-      </a>
-      .
+    <div className="border-y border-[var(--color-rule)] py-20 text-center">
+      <p className="font-display italic text-[28px] leading-tight text-[var(--fg-muted)]">
+        Quiet on the wire.
+      </p>
+      <p className="mt-3 text-[15px] text-[var(--fg-subtle)]">
+        Capture something on{" "}
+        <a
+          href="/ingest"
+          className="text-[var(--color-accent)] underline underline-offset-4"
+        >
+          Ingest
+        </a>{" "}
+        and watch it move.
+      </p>
     </div>
   );
 }
@@ -168,7 +199,7 @@ export function Live({
   initialItems: IngestSubmission[];
 }) {
   const [items, setItems] = useState<IngestSubmission[]>(initialItems);
-  const [, setTick] = useState(0);
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,7 +230,8 @@ export function Live({
   }, []);
 
   useEffect(() => {
-    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -213,30 +245,30 @@ export function Live({
   const activeChips = STATUS_ORDER.filter((s) => (counts[s] ?? 0) > 0);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-6">
       {activeChips.length > 0 ? (
         <div
-          className="flex flex-wrap items-center gap-2"
+          className="flex flex-wrap items-baseline gap-5"
           role="status"
           aria-live="polite"
         >
           {activeChips.map((s) => (
-            <StatusChip key={s} status={s} count={counts[s] ?? 0} />
+            <StatusCounter key={s} status={s} count={counts[s] ?? 0} />
           ))}
         </div>
       ) : null}
 
       <div
-        className="surface-raised overflow-hidden rounded-[8px]"
+        className="border-t-2 border-[var(--color-rule-emphatic)]"
         role="list"
         aria-label="Ingest submission queue"
       >
         {items.length === 0 ? (
           <EmptyState />
         ) : (
-          items.map((item) => (
+          items.map((item, idx) => (
             <div key={item.id} role="listitem">
-              <Row item={item} />
+              <Row item={item} now={now} idx={idx + 1} />
             </div>
           ))
         )}
