@@ -1,6 +1,25 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "INGEST_TOKEN",
+    "INGEST_STAGING_DIR",
+    "INGEST_POLL_INTERVAL_MS",
+    "SIGHT_IMAGE_DIR",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENAI_API_KEY",
+    "AI_MODEL",
+    "AI_TEMPERATURE",
+    "EMBEDDING_MODEL",
+    "YOUTUBE_DATA_API_KEY",
+    "YOUTUBE_AI_MODEL",
+    "YOUTUBE_CHUNK_SECONDS",
+    "YOUTUBE_CHUNK_OVERLAP_SECONDS",
+    "YOUTUBE_CHUNK_PARALLEL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -14,6 +33,27 @@
       "dependsOn": ["^check-types"]
     },
     "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "setup": {
+      "cache": false
+    },
+    "db:generate": {
+      "cache": false,
+      "outputs": ["generated/**"]
+    },
+    "db:migrate:dev": {
+      "cache": false,
+      "persistent": false
+    },
+    "db:migrate:deploy": {
+      "cache": false
+    },
+    "db:push": {
+      "cache": false
+    },
+    "db:studio": {
       "cache": false,
       "persistent": true
     }

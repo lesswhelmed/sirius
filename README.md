@@ -18,6 +18,7 @@ This Turborepo includes the following packages/apps:
 
 - `docs`: a [Next.js](https://nextjs.org/) app
 - `web`: another [Next.js](https://nextjs.org/) app
+- `mobile`: an [Expo](https://expo.dev/) (React Native) app, runnable in Expo Go on iOS and Android
 - `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
 - `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
 - `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
@@ -103,6 +104,18 @@ npx turbo dev --filter=web
 bun exec turbo dev --filter=web
 bun exec turbo dev --filter=web
 ```
+
+### Mobile (Expo)
+
+The `mobile` app is an Expo Go-compatible React Native project. From the repo root:
+
+```sh
+bun --cwd apps/mobile start    # start Metro / Expo dev server (scan QR with Expo Go)
+bun --cwd apps/mobile ios      # open in iOS Simulator
+bun --cwd apps/mobile android  # open in Android emulator
+```
+
+iOS requires Xcode + an iOS Simulator; Android requires Android Studio with an emulator (or a connected device with USB debugging). Expo Go must be installed on any physical device used to scan the QR code.
 
 ### Remote Caching
 

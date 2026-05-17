@@ -1,0 +1,245 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Post {
+  id            String     @id @default(cuid())
+  slug          String     @unique
+  title         String
+  content       String
+  excerpt       String?
+  type          PostType
+  status        PostStatus @default(DRAFT)
+  filePath      String
+  fileHash      String
+  findingsCount Int?
+  originalDate  DateTime?
+  originalUrl   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  lastEdited    DateTime   @updatedAt
+  published     Boolean    @default(false)
+
+  // Provider provenance — tracks where this post came from
+  sourceType     String    @default("mdx") // "mdx" | "json" | "api" | "ingest"
+  providerId     String    @default("filesystem") // provider identifier
+  sourceRecordId String? // external/provider-specific record id
+  sourceHash     String? // hash of the source record for change detection
+  syncStatus     String    @default("synced") // "synced" | "pending" | "error" | "tombstone"
+  lastSyncedAt   DateTime?
+
+  tags            Tag[]           @relation("PostToTag")
+  categories      Category[]      @relation("PostToCategory")
+  hlexiconEntries HlexiconEntry[] @relation("PostToHlexicon")
+
+  // prevent cross-provider slug collisions
+  @@unique([providerId, slug])
+  @@index([slug])
+  @@index([type])
+  @@index([status])
+  @@index([published])
+  @@index([providerId])
+  @@index([syncStatus])
+}
+
+enum PostType {
+  CONCRETE
+  BLOG
+  FINDING
+  SIGHT
+}
+
+enum PostStatus {
+  PUBLISHED
+  DRAFT
+  ARCHIVED
+}
+
+model Tag {
+  id    String @id @default(cuid())
+  name  String @unique
+  slug  String @unique
+  posts Post[] @relation("PostToTag")
+
+  @@index([slug])
+}
+
+model Category {
+  id          String @id @default(cuid())
+  name        String @unique // Keep as kebab-case to match embeddings
+  displayName String // Human-readable name
+  slug        String @unique
+  posts       Post[] @relation("PostToCategory")
+
+  @@index([slug])
+  @@index([name])
+}
+
+model HlexiconEntry {
+  id         String   @id @default(cuid())
+  term       String   @unique
+  definition String
+  posts      Post[]   @relation("PostToHlexicon")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([term])
+}
+
+model CategoryEmbedding {
+  id             String   @id @default(cuid())
+  path           String   @unique
+  name           String
+  fullPath       String
+  parentPath     String?
+  depth          Int
+  fileCount      Int
+  description    String
+  embedding      Float[]
+  embeddingHash  String
+  modelVersion   String
+  dimensionality Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([path])
+  @@index([parentPath])
+  @@index([depth])
+  @@index([embeddingHash])
+}
+
+model IngestSubmission {
+  id             String    @id @default(cuid())
+  kind           String // "url" | "image" | "note"
+  payload        Json // raw normalized request payload
+  contentHash    String    @unique // dedup key; force=true salts the hash
+  batchId        String? // groups image rows that should become one SIGHT post
+  imageIndex     Int?
+  totalCount     Int?
+  stagedFilePath String? // absolute path to staged binary on the host
+  status         String    @default("pending") // "pending" | "processing" | "completed" | "failed" | "skipped"
+  attempts       Int       @default(0)
+  errorMessage   String?
+  resultPostSlug String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  startedAt      DateTime?
+  completedAt    DateTime?
+
+  @@index([status])
+  @@index([batchId])
+  @@index([kind])
+}
+
+model TagEmbedding {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  description    String
+  embedding      Float[]
+  embeddingHash  String
+  modelVersion   String
+  dimensionality Int
+  postCount      Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([name])
+  @@index([embeddingHash])
+}
+
+// ─── Better Auth ────────────────────────────────────────────────────────────
+// Schema for better-auth + admin plugin. Field names match Better Auth
+// conventions; do not rename without updating the auth config.
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // admin plugin
+  role       String?
+  banned     Boolean?
+  banReason  String?
+  banExpires DateTime?
+
+  sessions Session[]
+  accounts Account[]
+
+  @@index([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // admin plugin
+  impersonatedBy String?
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([providerId, accountId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model RateLimit {
+  id          String @id
+  key         String
+  count       Int
+  lastRequest BigInt
+
+  @@unique([key])
+  @@map("rateLimit")
+}

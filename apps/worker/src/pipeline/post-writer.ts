@@ -1,0 +1,242 @@
+// Persists a Gemini-drafted post directly into the database. Replaces the
+// copt-dev mdx-writer.ts: instead of writing an MDX file to a git workspace +
+// opening a PR, we (a) copy any image batch into apps/web/public/sight/<batch>
+// so Next.js can serve them, (b) rewrite IMAGE_N placeholders to served URLs,
+// (c) upsert Tag / Category rows for the draft, and (d) upsert the Post row
+// itself in a single transaction.
+
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import {
+  PostStatus,
+  PostType,
+  prisma,
+  type Prisma,
+} from "@repo/db";
+import { escapeMdxProse } from "../lib/mdx-escape";
+import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
+
+export type WriteResult = {
+  postId: string;
+  slug: string;
+  imagePaths: string[];
+};
+
+// Default lands MDX-served image batches in apps/web/public/sight/<batchId>/
+// when the worker is run from apps/worker/. Operators can override via
+// SIGHT_IMAGE_DIR (must be an absolute path so PM2 / Docker / systemd can
+// target a different docroot without changing cwd assumptions).
+function resolveSightDir(): string {
+  const override = process.env.SIGHT_IMAGE_DIR?.trim();
+  if (override) {
+    return override;
+  }
+  return resolve(process.cwd(), "..", "web", "public", "sight");
+}
+
+function ensureDir(dir: string): void {
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+function rewriteImagePlaceholders(
+  body: string,
+  imageUrlPaths: string[]
+): string {
+  return body.replace(/IMAGE_(\d+)/g, (match, idx) => {
+    const i = Number.parseInt(idx, 10) - 1;
+    return imageUrlPaths[i] ?? match;
+  });
+}
+
+function copyImages(
+  batchId: string,
+  images: StagedImage[]
+): { absolute: string[]; urls: string[] } {
+  const sightRoot = resolveSightDir();
+  const absDir = join(sightRoot, batchId);
+  ensureDir(absDir);
+  const absolute: string[] = [];
+  const urls: string[] = [];
+  for (const img of images) {
+    const filename = `${img.index + 1}.${img.extension}`;
+    const dest = join(absDir, filename);
+    ensureDir(dirname(dest));
+    copyFileSync(img.stagedFilePath, dest);
+    absolute.push(dest);
+    urls.push(`/sight/${batchId}/${filename}`);
+  }
+  return { absolute, urls };
+}
+
+function slugifyTaxonomy(input: string): string {
+  return (
+    input
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, "")
+      .replace(/[\s_]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || `tag-${Date.now()}`
+  );
+}
+
+function titleCase(input: string): string {
+  return input
+    .replace(/[-_]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function dedupeByName<T extends string>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of items) {
+    const key = item.trim().toLowerCase();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(item.trim() as T);
+  }
+  return out;
+}
+
+function getOriginalUrl(input: PipelineInput): string | null {
+  if (input.kind === "url" && input.urls.length > 0) {
+    return input.urls[0] ?? null;
+  }
+  return null;
+}
+
+function getSourceRecordId(input: PipelineInput): string {
+  if (input.kind === "image") {
+    return `batch:${input.batchId}`;
+  }
+  return input.submission.id;
+}
+
+function getSourceHash(input: PipelineInput): string | null {
+  if (input.kind === "image") {
+    const first = input.submissions[0];
+    return first?.contentHash ?? null;
+  }
+  return input.submission.contentHash;
+}
+
+function originalDateFromFrontmatter(
+  frontmatter: Record<string, unknown>
+): Date {
+  const raw = frontmatter.date;
+  if (typeof raw === "string") {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return new Date();
+}
+
+export async function writePost(
+  parsed: GeminiOutput,
+  input: PipelineInput
+): Promise<WriteResult> {
+  let body = parsed.body;
+  let imagePaths: string[] = [];
+
+  if (input.kind === "image") {
+    const { absolute, urls } = copyImages(input.batchId, input.images);
+    body = rewriteImagePlaceholders(body, urls);
+    imagePaths = absolute;
+  }
+
+  body = escapeMdxProse(body);
+
+  const tagNames = dedupeByName(
+    Array.isArray(parsed.frontmatter.tags)
+      ? (parsed.frontmatter.tags as string[])
+      : []
+  );
+  const categoryNames = dedupeByName(
+    Array.isArray(parsed.frontmatter.categories)
+      ? (parsed.frontmatter.categories as string[])
+      : []
+  );
+
+  const tagConnects: Prisma.TagCreateOrConnectWithoutPostsInput[] = tagNames.map(
+    (name) => {
+      const slug = slugifyTaxonomy(name);
+      return {
+        where: { name },
+        create: { name, slug },
+      };
+    }
+  );
+
+  const categoryConnects: Prisma.CategoryCreateOrConnectWithoutPostsInput[] =
+    categoryNames.map((name) => {
+      const slug = slugifyTaxonomy(name);
+      return {
+        where: { name },
+        create: { name, displayName: titleCase(name), slug },
+      };
+    });
+
+  const filePath = `db://ingest/${getSourceRecordId(input)}`;
+  const fileHash = createHash("sha256").update(body).digest("hex");
+  const originalUrl = getOriginalUrl(input);
+  const sourceHash = getSourceHash(input);
+  const originalDate = originalDateFromFrontmatter(parsed.frontmatter);
+
+  const excerpt =
+    typeof parsed.frontmatter.excerpt === "string"
+      ? (parsed.frontmatter.excerpt as string)
+      : null;
+
+  const post = await prisma.post.upsert({
+    where: { slug: parsed.slug },
+    create: {
+      slug: parsed.slug,
+      title: parsed.title,
+      content: body,
+      excerpt,
+      type: parsed.type as PostType,
+      status: PostStatus.DRAFT,
+      filePath,
+      fileHash,
+      originalDate,
+      originalUrl,
+      published: false,
+      sourceType: "ingest",
+      providerId: "ingest",
+      sourceRecordId: getSourceRecordId(input),
+      sourceHash,
+      syncStatus: "synced",
+      lastSyncedAt: new Date(),
+      tags: { connectOrCreate: tagConnects },
+      categories: { connectOrCreate: categoryConnects },
+    },
+    update: {
+      title: parsed.title,
+      content: body,
+      excerpt,
+      fileHash,
+      filePath,
+      originalUrl,
+      sourceHash,
+      lastSyncedAt: new Date(),
+      tags: { connectOrCreate: tagConnects },
+      categories: { connectOrCreate: categoryConnects },
+    },
+  });
+
+  return {
+    postId: post.id,
+    slug: post.slug,
+    imagePaths,
+  };
+}
