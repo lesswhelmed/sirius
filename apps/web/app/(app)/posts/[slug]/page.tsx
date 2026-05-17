@@ -50,7 +50,7 @@ export default async function PostDetailPage({
           />
         </div>
 
-        <h1 className="mt-6 font-display text-[56px] leading-[0.95] tracking-[-0.015em] text-balance md:text-[72px]">
+        <h1 className="mt-6 font-display text-[44px] leading-[0.98] tracking-[-0.015em] text-balance sm:text-[56px] lg:text-[64px]">
           {post.title}
         </h1>
 
@@ -62,10 +62,8 @@ export default async function PostDetailPage({
       </header>
 
       <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_220px]">
-        <div className="text-[18px] leading-[1.7] text-[var(--fg)]">
-          <pre className="drop-cap whitespace-pre-wrap break-words font-body text-[18px] leading-[1.7]">
-            {post.content}
-          </pre>
+        <div className="drop-cap whitespace-pre-wrap break-words font-body text-[18px] leading-[1.7] text-[var(--fg)]">
+          {post.content}
         </div>
 
         <aside className="space-y-7 lg:border-l lg:border-[var(--color-rule)] lg:pl-8">

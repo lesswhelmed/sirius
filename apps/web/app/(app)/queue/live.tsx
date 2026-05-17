@@ -134,28 +134,31 @@ function Row({
   return (
     <div
       className={[
-        "grid grid-cols-[2rem_1.5rem_5rem_5rem_1fr_5rem] items-baseline gap-3 border-b border-[var(--color-rule)] px-1 py-2.5",
-        "transition-colors duration-100 hover:bg-[var(--color-paper-raised)]/60",
+        "border-b border-[var(--color-rule)] px-1 py-2.5",
+        "transition-colors duration-100 hover:bg-[var(--color-paper-raised)]/50",
+        "md:grid md:grid-cols-[2rem_1.5rem_5rem_5rem_1fr_5rem] md:items-baseline md:gap-3",
         isFailed ? "opacity-70" : "",
       ]
         .filter(Boolean)
         .join(" ")}
       title={rowTitle}
     >
-      <span className="font-mono text-[10px] tabular-nums text-[var(--fg-subtle)]">
-        {idx.toString().padStart(3, "0")}
-      </span>
-      <StatusGlyph status={status} />
+      <div className="flex items-baseline gap-2 md:contents">
+        <span className="font-mono text-[10px] tabular-nums text-[var(--fg-subtle)]">
+          {idx.toString().padStart(3, "0")}
+        </span>
+        <StatusGlyph status={status} />
+        <span
+          className={`font-mono text-[10px] uppercase tracking-[0.18em] ${STATUS_TONE[status]}`}
+        >
+          {STATUS_LABEL[status]}
+        </span>
+        <span className="truncate font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+          {item.kind}
+        </span>
+      </div>
       <span
-        className={`font-mono text-[10px] uppercase tracking-[0.18em] ${STATUS_TONE[status]}`}
-      >
-        {STATUS_LABEL[status]}
-      </span>
-      <span className="truncate font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
-        {item.kind}
-      </span>
-      <span
-        className={`min-w-0 truncate font-display text-[18px] leading-snug ${
+        className={`mt-1 block min-w-0 truncate font-display text-[16px] leading-snug md:mt-0 md:text-[18px] ${
           isFailed
             ? "italic line-through text-[var(--fg-muted)]"
             : "text-[var(--fg)]"
@@ -167,7 +170,7 @@ function Row({
         value={item.createdAt}
         variant="time"
         title={ageTooltip}
-        className="text-right font-mono text-[11px] tabular-nums text-[var(--fg-muted)]"
+        className="mt-1 block font-mono text-[11px] tabular-nums text-[var(--fg-muted)] md:mt-0 md:text-right"
       />
     </div>
   );

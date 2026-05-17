@@ -349,8 +349,8 @@ export function Composer() {
         </div>
       ) : null}
 
-      <div className="paper-card">
-        <div className="flex items-center justify-between border-b border-[var(--color-rule)] bg-[var(--color-paper-sunken)]/50 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+      <div className="surface-raised">
+        <div className="flex items-center justify-between border-b border-[var(--color-rule)] px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
           <span>Manuscript</span>
           <span className="nums-lining tabular-nums">
             {charCount.toString().padStart(4, "0")} characters
@@ -365,9 +365,9 @@ export function Composer() {
           placeholder="Paste URLs (one per line) or free-form notes…"
           disabled={isPending}
           aria-label="Content input"
-          className="block w-full resize-y bg-transparent px-4 py-3 font-body text-[17px] leading-[1.6] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="block w-full resize-y bg-transparent px-3.5 py-3 font-body text-[17px] leading-[1.6] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
         />
-        <p className="border-t border-[var(--color-rule)] px-4 py-2 text-[12px] italic text-[var(--fg-subtle)]">
+        <p className="border-t border-[var(--color-rule)] px-3.5 py-2 text-[12px] italic text-[var(--fg-subtle)]">
           Lines beginning with{" "}
           <code className="font-mono not-italic text-[var(--fg-muted)]">
             http

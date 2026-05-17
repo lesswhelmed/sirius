@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
-import { Instrument_Serif, Newsreader } from "next/font/google";
+import { Instrument_Serif, Newsreader, JetBrains_Mono } from "next/font/google";
 import "./tailwind.css";
-import "./globals.css";
 
 const instrumentSerif = Instrument_Serif({
   weight: "400",
@@ -20,8 +18,9 @@ const newsreader = Newsreader({
   display: "swap",
 });
 
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
+const jetbrainsMono = JetBrains_Mono({
+  weight: ["400", "500"],
+  subsets: ["latin"],
   variable: "--font-geist-mono",
   display: "swap",
 });
@@ -39,7 +38,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${instrumentSerif.variable} ${newsreader.variable} ${geistMono.variable}`}
+        className={`${instrumentSerif.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
       >
         {children}
       </body>

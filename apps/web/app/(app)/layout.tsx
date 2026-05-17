@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "../../lib/session";
 import { SignOutLink } from "./_chrome/sign-out-link";
+import { PrimaryNav } from "./_chrome/nav";
 import { formatDateLong } from "../../lib/datetime";
 
 const NAV = [
@@ -8,9 +9,6 @@ const NAV = [
   { href: "/library", label: "Library", folio: "II" },
   { href: "/queue", label: "Queue", folio: "III" },
 ] as const;
-
-// Consistent horizontal gutter across masthead, nav, main, footer.
-const GUTTER = "px-8 sm:px-12 md:px-16 lg:px-20 xl:px-24";
 
 export default async function AppLayout({
   children,
@@ -21,91 +19,58 @@ export default async function AppLayout({
   const today = formatDateLong(new Date());
 
   return (
-    <div className="min-h-screen text-[var(--fg)]">
-      <header>
-        <div
-          className={`mx-auto max-w-6xl ${GUTTER} pt-10 sm:pt-14 lg:pt-20`}
-        >
-          <div className="hairline-b flex items-center justify-between gap-4 pb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)]">
+    <div className="min-h-screen w-full text-[var(--fg)]">
+      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 lg:px-12">
+        <header className="pt-6 sm:pt-8">
+          <div className="hairline-b flex items-center justify-between gap-4 pb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
             <span className="nums-lining">Vol. I · No. 01</span>
-            <span className="hidden text-center sm:block">
-              A Field Journal
-            </span>
+            <span className="hidden sm:block">A Field Journal</span>
             <span className="truncate text-right nums-lining">{today}</span>
           </div>
 
-          <div className="flex flex-col items-center gap-3 pt-6 pb-5 text-center sm:flex-row sm:items-end sm:justify-between sm:text-left">
+          <div className="flex items-end justify-between gap-6 pt-5 pb-5">
             <Link
               href="/ingest"
               aria-label="Sirius — return home"
-              className="font-display leading-[0.85] tracking-[-0.02em] text-[var(--color-ink)]"
+              className="block font-display leading-none tracking-[-0.02em] text-[var(--color-ink)]"
             >
-              <span className="block italic text-[64px] sm:text-[88px] lg:text-[112px]">
-                Sirius
-                <span className="text-[var(--color-accent)]">.</span>
+              <span className="block italic text-[40px] sm:text-[48px] lg:text-[56px]">
+                Sirius<span className="text-[var(--color-accent)]">.</span>
               </span>
             </Link>
-            <div className="hidden max-w-xs flex-col items-end gap-1 pb-2 sm:flex">
-              <p className="font-display italic text-[17px] leading-snug text-[var(--fg-muted)]">
-                &ldquo;Notes, sights, findings, and concrete things —
-                collected, polished, published.&rdquo;
-              </p>
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-                — the editor
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <nav className={`mx-auto max-w-6xl ${GUTTER} rule-emphatic-t`}>
-          <ul className="flex items-stretch">
-            {NAV.map((item, idx) => (
-              <li
-                key={item.href}
-                className={`flex-1 ${idx > 0 ? "border-l border-[var(--color-rule)]" : ""}`}
-              >
-                <Link
-                  href={item.href}
-                  className="group flex items-baseline justify-between gap-3 px-4 py-4 transition-colors hover:bg-[var(--color-paper-raised)]"
-                >
-                  <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)] transition-colors group-hover:text-[var(--color-accent)]">
-                    {item.folio}
-                  </span>
-                  <span className="font-display italic text-[22px] leading-none text-[var(--fg)] transition-colors group-hover:text-[var(--color-accent)]">
-                    {item.label}
-                  </span>
-                </Link>
-              </li>
-            ))}
-            <li className="flex items-center gap-3 border-l border-[var(--color-rule)] px-4">
-              <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)] md:inline">
+            <div className="hidden items-baseline gap-3 pb-1 sm:flex">
+              <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
                 {session.user.email}
               </span>
+              <span
+                aria-hidden="true"
+                className="text-[var(--color-rule-strong)]"
+              >
+                |
+              </span>
               <SignOutLink />
-            </li>
-          </ul>
-        </nav>
+            </div>
+          </div>
 
-        <div className={`mx-auto max-w-6xl ${GUTTER}`}>
-          <div className="rule-emphatic-t" />
-        </div>
-      </header>
+          <PrimaryNav items={NAV} />
 
-      <main
-        className={`mx-auto max-w-6xl ${GUTTER} py-16 sm:py-20 lg:py-24`}
-      >
-        {children}
-      </main>
+          <div className="flex items-center justify-end pt-2 sm:hidden">
+            <SignOutLink />
+          </div>
+        </header>
 
-      <footer className={`mx-auto max-w-6xl ${GUTTER} pb-16`}>
-        <div className="rule-emphatic-t flex flex-wrap items-center justify-between gap-2 pt-4 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-          <span className="nums-lining">End of dispatch</span>
-          <span aria-hidden="true" className="text-[var(--color-accent)]">
-            ⁂
-          </span>
-          <span className="nums-lining">Sirius · {today}</span>
-        </div>
-      </footer>
+        <main className="py-12 sm:py-16 lg:py-20">{children}</main>
+
+        <footer>
+          <div className="hairline-t flex flex-wrap items-center justify-between gap-2 pt-4 pb-10 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+            <span className="nums-lining">End of dispatch</span>
+            <span aria-hidden="true" className="text-[var(--color-accent)]">
+              ⁂
+            </span>
+            <span className="nums-lining">Sirius · {today}</span>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
