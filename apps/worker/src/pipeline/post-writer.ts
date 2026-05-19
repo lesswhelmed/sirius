@@ -113,11 +113,41 @@ function getOriginalUrl(input: PipelineInput): string | null {
   return null;
 }
 
-function getSourceRecordId(input: PipelineInput): string {
+function getSourceRecordId(
+  input: PipelineInput,
+  frontmatter: Record<string, unknown>
+): string {
+  const override = frontmatter.source_record_id;
+  if (typeof override === "string" && override.length > 0) {
+    return override;
+  }
   if (input.kind === "image") {
     return `batch:${input.batchId}`;
   }
   return input.submission.id;
+}
+
+function getProviderId(frontmatter: Record<string, unknown>): string {
+  const override = frontmatter.provider_id;
+  if (typeof override === "string" && override.length > 0) {
+    return override;
+  }
+  return "ingest";
+}
+
+function getImageUrl(frontmatter: Record<string, unknown>): string | null {
+  const value = frontmatter.image_url;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function getContentDigest(
+  frontmatter: Record<string, unknown>
+): Prisma.InputJsonValue | null {
+  const value = frontmatter.content_digest;
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return value as Prisma.InputJsonValue;
 }
 
 function getSourceHash(input: PipelineInput): string | null {
@@ -186,11 +216,15 @@ export async function writePost(
       };
     });
 
-  const filePath = `db://ingest/${getSourceRecordId(input)}`;
+  const providerId = getProviderId(parsed.frontmatter);
+  const sourceRecordId = getSourceRecordId(input, parsed.frontmatter);
+  const filePath = `db://ingest/${sourceRecordId}`;
   const fileHash = createHash("sha256").update(body).digest("hex");
   const originalUrl = getOriginalUrl(input);
   const sourceHash = getSourceHash(input);
   const originalDate = originalDateFromFrontmatter(parsed.frontmatter);
+  const imageUrl = getImageUrl(parsed.frontmatter);
+  const contentDigest = getContentDigest(parsed.frontmatter);
 
   const excerpt =
     typeof parsed.frontmatter.excerpt === "string"
@@ -210,10 +244,12 @@ export async function writePost(
       fileHash,
       originalDate,
       originalUrl,
+      imageUrl,
+      ...(contentDigest !== null ? { contentDigest } : {}),
       published: false,
       sourceType: "ingest",
-      providerId: "ingest",
-      sourceRecordId: getSourceRecordId(input),
+      providerId,
+      sourceRecordId,
       sourceHash,
       syncStatus: "synced",
       lastSyncedAt: new Date(),
@@ -227,6 +263,8 @@ export async function writePost(
       fileHash,
       filePath,
       originalUrl,
+      imageUrl,
+      ...(contentDigest !== null ? { contentDigest } : {}),
       sourceHash,
       lastSyncedAt: new Date(),
       tags: { connectOrCreate: tagConnects },

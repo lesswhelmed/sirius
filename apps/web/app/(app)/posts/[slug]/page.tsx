@@ -1,14 +1,31 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Streamdown } from "streamdown";
 import { findPostBySlug } from "@repo/db";
 
 import { DateDisplay } from "../../../../lib/date-display";
+
+const MARKDOWN_CLASS_NAME = [
+  "drop-cap break-words font-body text-[18px] leading-[1.7] text-[var(--fg)]",
+  "[&_p]:my-5 [&_p:first-child]:mt-0",
+  "[&_a]:text-[var(--color-accent)] [&_a]:underline [&_a]:underline-offset-4 [&_a:hover]:text-[var(--color-accent-deep)]",
+  "[&_h1]:mt-10 [&_h1]:font-display [&_h1]:text-[38px] [&_h1]:leading-none [&_h1]:tracking-[-0.01em]",
+  "[&_h2]:mt-9 [&_h2]:font-display [&_h2]:text-[30px] [&_h2]:leading-tight",
+  "[&_h3]:mt-8 [&_h3]:font-display [&_h3]:text-[24px] [&_h3]:leading-tight",
+  "[&_ul]:my-5 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-5 [&_ol]:list-decimal [&_ol]:pl-6",
+  "[&_li]:my-1.5 [&_blockquote]:my-7 [&_blockquote]:border-l [&_blockquote]:border-[var(--color-accent)] [&_blockquote]:pl-5 [&_blockquote]:italic [&_blockquote]:text-[var(--fg-muted)]",
+  "[&_code]:font-mono [&_code]:text-[0.86em] [&_code]:text-[var(--color-accent-deep)]",
+  "[&_pre]:my-7 [&_pre]:overflow-x-auto [&_pre]:border [&_pre]:border-[var(--color-rule)] [&_pre]:bg-[var(--color-paper-raised)] [&_pre]:p-4",
+  "[&_img]:my-8 [&_img]:block [&_img]:w-full [&_img]:rounded-sm [&_img]:border [&_img]:border-[var(--color-rule)]",
+  "[&_hr]:my-10 [&_hr]:border-[var(--color-rule-emphatic)] [&_table]:my-7 [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-[var(--color-rule)] [&_td]:border [&_td]:border-[var(--color-rule)] [&_th]:p-2 [&_td]:p-2",
+].join(" ");
 
 const TYPE_LABEL: Record<string, string> = {
   CONCRETE: "Concrete",
   BLOG: "Dispatch",
   FINDING: "Finding",
   SIGHT: "Sight",
+  SOCIAL: "Social",
 };
 
 export default async function PostDetailPage({
@@ -62,9 +79,9 @@ export default async function PostDetailPage({
       </header>
 
       <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_220px]">
-        <div className="drop-cap whitespace-pre-wrap break-words font-body text-[18px] leading-[1.7] text-[var(--fg)]">
+        <Streamdown className={MARKDOWN_CLASS_NAME} mode="static">
           {post.content}
-        </div>
+        </Streamdown>
 
         <aside className="space-y-7 lg:border-l lg:border-[var(--color-rule)] lg:pl-8">
           <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--fg-subtle)]">
@@ -84,6 +101,21 @@ export default async function PostDetailPage({
                   className="break-all italic text-[var(--color-accent)] underline underline-offset-4 hover:text-[var(--color-accent-deep)]"
                 >
                   {post.originalUrl}
+                </a>
+              }
+            />
+          ) : null}
+          {post.imageUrl ? (
+            <Meta
+              label="Image"
+              value={
+                <a
+                  href={post.imageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="break-all italic text-[var(--color-accent)] underline underline-offset-4 hover:text-[var(--color-accent-deep)]"
+                >
+                  View source image →
                 </a>
               }
             />

@@ -3,7 +3,7 @@ import { listPosts, PostStatus, PostType } from "@repo/db";
 import { Filters } from "./filters";
 import { DateDisplay } from "../../../lib/date-display";
 
-const TYPES: PostType[] = ["CONCRETE", "BLOG", "FINDING", "SIGHT"];
+const TYPES: PostType[] = ["CONCRETE", "BLOG", "FINDING", "SIGHT", "SOCIAL"];
 const STATUSES: PostStatus[] = ["PUBLISHED", "DRAFT", "ARCHIVED"];
 
 function pickEnum<T extends string>(
@@ -19,6 +19,7 @@ const TYPE_LABEL: Record<PostType, string> = {
   BLOG: "Dispatch",
   FINDING: "Finding",
   SIGHT: "Sight",
+  SOCIAL: "Social",
 };
 
 const TYPE_TONE: Record<PostType, string> = {
@@ -26,6 +27,7 @@ const TYPE_TONE: Record<PostType, string> = {
   BLOG: "text-[var(--color-accent)]",
   FINDING: "text-[var(--color-sage)]",
   SIGHT: "text-[var(--color-mark)]",
+  SOCIAL: "text-[var(--color-accent)]",
 };
 
 const STATUS_TONE: Record<PostStatus, string> = {

@@ -15,7 +15,9 @@ import type { PostType } from "@repo/db";
 import { generateText, Output, stepCountIs } from "ai";
 import { z } from "zod";
 import { getAIConfig } from "../lib/ai-config";
+import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseYouTubeUrl } from "../lib/youtube-url";
+import { runInstagramGemini } from "./instagram/runner";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 import { runYouTubeGemini } from "./youtube/runner";
 
@@ -190,6 +192,25 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
   const prompt = buildPrompt(input);
 
   if (input.kind === "url") {
+    const instagramUrls = input.urls.filter((u) => parseInstagramUrl(u));
+    const nonInstagramUrls = input.urls.filter((u) => !parseInstagramUrl(u));
+    // Single-URL Instagram ingest: take the dedicated path. Mixed batches
+    // fall through to YouTube/url_context so we don't lose the others.
+    if (instagramUrls.length === 1 && nonInstagramUrls.length === 0) {
+      try {
+        const result = await runInstagramGemini({
+          url: instagramUrls[0]!,
+          notes: input.notes,
+        });
+        if (result) {
+          return result.output;
+        }
+      } catch (error) {
+        console.warn(
+          `[instagram] dedicated path failed, falling back to url_context: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
     const youtubeUrls = input.urls.filter((u) => parseYouTubeUrl(u));
     const nonYoutubeUrls = input.urls.filter((u) => !parseYouTubeUrl(u));
     // Single-URL YouTube ingest: take the dedicated path. Mixed batches stay

@@ -23,6 +23,8 @@ model Post {
   findingsCount Int?
   originalDate  DateTime?
   originalUrl   String?
+  imageUrl      String?
+  contentDigest Json?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
   lastEdited    DateTime   @updatedAt
@@ -55,6 +57,7 @@ enum PostType {
   BLOG
   FINDING
   SIGHT
+  SOCIAL
 }
 
 enum PostStatus {

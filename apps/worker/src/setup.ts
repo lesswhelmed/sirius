@@ -135,6 +135,15 @@ async function main(): Promise<void> {
     fix: "add DATABASE_URL=postgresql://... to .env",
   });
 
+  // APIFY_TOKEN is only required when an Instagram URL is actually ingested,
+  // so leave it non-fatal here — surface a yellow advisory instead.
+  const apifyToken = env.APIFY_TOKEN || env.APIFY_API_TOKEN;
+  console.log(
+    apifyToken
+      ? `${green("✓")} ${bold("APIFY_TOKEN")} ${dim("— set (Instagram ingest enabled)")}`
+      : `${yellow("·")} ${bold("APIFY_TOKEN")} ${dim("— not set; Instagram ingest will fail at runtime until configured (see .env.example)")}`
+  );
+
   let tokenGenerated = false;
   if (
     !env.INGEST_TOKEN ||
