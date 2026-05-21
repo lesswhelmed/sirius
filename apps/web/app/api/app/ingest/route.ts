@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     return jsonError(400, "invalid JSON body");
   }
 
-  const result = await submitUrlIngest(raw, log);
+  const result = await submitUrlIngest(raw, log, session.user.id);
   if (!result.ok) {
     return jsonError(result.status, result.error, result.extra);
   }

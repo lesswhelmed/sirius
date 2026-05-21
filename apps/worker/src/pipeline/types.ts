@@ -18,11 +18,13 @@ export type PipelineInput =
       urls: string[];
       notes: string;
       force: boolean;
+      submittedById: string | null;
     }
   | {
       kind: "note";
       submission: IngestSubmission;
       notes: string;
+      submittedById: string | null;
     }
   | {
       kind: "image";
@@ -30,6 +32,7 @@ export type PipelineInput =
       batchId: string;
       notes: string;
       images: StagedImage[];
+      submittedById: string | null;
     };
 
 export type GeminiOutput = {

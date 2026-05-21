@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     return jsonError(400, parsed.error, { contentType });
   }
 
-  const result = await submitImageIngest(parsed, log);
+  const result = await submitImageIngest(parsed, log, session.user.id);
   if (!result.ok) {
     return jsonError(result.status, result.error, result.extra);
   }

@@ -42,11 +42,11 @@ export default async function PostDetailPage({
   return (
     <article className="mx-auto max-w-[920px]">
       <Link
-        href="/library"
+        href="/catalog"
         className="inline-flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] transition-colors hover:text-[var(--color-accent)]"
       >
         <span aria-hidden="true">←</span>
-        Return to Library
+        Return to Catalog
       </Link>
 
       <header className="mt-8">

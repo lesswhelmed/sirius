@@ -55,7 +55,8 @@ function toBody(
 
 export async function submitUrlIngest(
   raw: unknown,
-  log: Logger
+  log: Logger,
+  submittedById: string | null = null
 ): Promise<SubmitResult> {
   const parsed = urlIngestSchema.safeParse(raw);
   if (!parsed.success) {
@@ -78,12 +79,14 @@ export async function submitUrlIngest(
     urlCount: urls.length,
     notesLength: notes.length,
     force,
+    submittedById,
   });
 
   const result = await createSubmission({
     kind,
     payload: { urls, notes, force },
     contentHash,
+    submittedById,
   });
 
   log("info", result.status === "created" ? "accepted" : "deduped", {
@@ -166,7 +169,8 @@ export async function parseRawImage(
 
 export async function submitImageIngest(
   payload: ParsedImagePayload,
-  log: Logger
+  log: Logger,
+  submittedById: string | null = null
 ): Promise<SubmitResult> {
   const submissionId = randomUUID();
   const ext = extensionForContentType(payload.contentType);
@@ -179,6 +183,7 @@ export async function submitImageIngest(
     totalCount: payload.metadata.totalCount,
     contentType: payload.contentType,
     bytes: payload.bytes.byteLength,
+    submittedById,
   });
 
   const result = await createSubmission({
@@ -193,6 +198,7 @@ export async function submitImageIngest(
     imageIndex: payload.metadata.imageIndex,
     totalCount: payload.metadata.totalCount,
     stagedFilePath,
+    submittedById,
   });
 
   log("info", result.status === "created" ? "accepted" : "deduped", {

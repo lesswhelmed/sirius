@@ -1,3 +1,4 @@
+import { expo } from "@better-auth/expo";
 import { prisma } from "@repo/db";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -61,7 +62,7 @@ export const auth = betterAuth({
       });
     },
   },
-  plugins: [admin(), nextCookies()],
+  plugins: [admin(), expo(), nextCookies()],
 });
 
 export type Session = typeof auth.$Infer.Session;

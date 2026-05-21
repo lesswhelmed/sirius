@@ -23,6 +23,8 @@ export type IngestSubmission = Prisma.IngestSubmissionGetPayload<
 
 export * from "./ingest";
 export * from "./posts";
+export * from "./users";
+export * from "./inquiries";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

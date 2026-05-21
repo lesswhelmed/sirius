@@ -54,6 +54,7 @@ function buildInput(rows: IngestSubmission[]): PipelineInput {
   if (!first) {
     throw new Error("no rows to process");
   }
+  const submittedById = first.submittedById ?? null;
   if (first.kind === "image") {
     if (!first.batchId) {
       throw new Error(`image row ${first.id} missing batchId`);
@@ -79,6 +80,7 @@ function buildInput(rows: IngestSubmission[]): PipelineInput {
       batchId: first.batchId,
       notes,
       images,
+      submittedById,
     };
   }
   const payload = readPayload(first);
@@ -90,9 +92,16 @@ function buildInput(rows: IngestSubmission[]): PipelineInput {
         )
       : [];
     const force = payload.force === true;
-    return { kind: "url", submission: first, urls, notes, force };
+    return {
+      kind: "url",
+      submission: first,
+      urls,
+      notes,
+      force,
+      submittedById,
+    };
   }
-  return { kind: "note", submission: first, notes };
+  return { kind: "note", submission: first, notes, submittedById };
 }
 
 async function processBatch(rows: IngestSubmission[]): Promise<void> {

@@ -1,13 +1,17 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getUserHandle } from "@repo/db";
 import { requireSession } from "../../lib/session";
 import { SignOutLink } from "./_chrome/sign-out-link";
 import { PrimaryNav } from "./_chrome/nav";
 import { formatDateLong } from "../../lib/datetime";
 
 const NAV = [
-  { href: "/ingest", label: "Ingest", folio: "I" },
-  { href: "/library", label: "Library", folio: "II" },
-  { href: "/queue", label: "Queue", folio: "III" },
+  { href: "/catalog", label: "Catalog", folio: "I" },
+  { href: "/inbox", label: "Inbox", folio: "II" },
+  { href: "/ingest", label: "Ingest", folio: "III" },
+  { href: "/library", label: "Library", folio: "IV" },
+  { href: "/queue", label: "Queue", folio: "V" },
 ] as const;
 
 export default async function AppLayout({
@@ -16,6 +20,12 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await requireSession("/ingest");
+  // /setup-handle lives outside this (app) route group, so this gate only
+  // fires for routes that should require a handle to be set.
+  const handle = await getUserHandle(session.user.id);
+  if (!handle) {
+    redirect("/setup-handle");
+  }
   const today = formatDateLong(new Date());
 
   return (

@@ -8,6 +8,9 @@
       ],
       "@/assets/*": [
         "./assets/*"
+      ],
+      "@repo/db": [
+        "../../packages/db/src/index.ts"
       ]
     }
   },

@@ -38,9 +38,14 @@ model Post {
   syncStatus     String    @default("synced") // "synced" | "pending" | "error" | "tombstone"
   lastSyncedAt   DateTime?
 
+  // Broker attribution: the user who ingested this listing.
+  submittedById String?
+  submittedBy   User?   @relation("UserPosts", fields: [submittedById], references: [id], onDelete: SetNull)
+
   tags            Tag[]           @relation("PostToTag")
   categories      Category[]      @relation("PostToCategory")
   hlexiconEntries HlexiconEntry[] @relation("PostToHlexicon")
+  inquiries       Inquiry[]
 
   // prevent cross-provider slug collisions
   @@unique([providerId, slug])
@@ -50,6 +55,8 @@ model Post {
   @@index([published])
   @@index([providerId])
   @@index([syncStatus])
+  @@index([submittedById])
+  @@index([submittedById, status, createdAt])
 }
 
 enum PostType {
@@ -137,9 +144,35 @@ model IngestSubmission {
   startedAt      DateTime?
   completedAt    DateTime?
 
+  // Broker attribution: which user kicked off this ingest. Worker copies onto Post.
+  submittedById String?
+  submittedBy   User?   @relation("UserSubmissions", fields: [submittedById], references: [id], onDelete: SetNull)
+
   @@index([status])
   @@index([batchId])
   @@index([kind])
+  @@index([submittedById])
+}
+
+model Inquiry {
+  id          String   @id @default(cuid())
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  sellerId    String
+  seller      User     @relation("SellerInquiries", fields: [sellerId], references: [id], onDelete: Cascade)
+  fromUserId  String?
+  fromUser    User?    @relation("InquirerInquiries", fields: [fromUserId], references: [id], onDelete: SetNull)
+  fromEmail   String
+  fromName    String?
+  message     String
+  status      String   @default("open") // open | closed
+  emailSentAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sellerId, status, createdAt])
+  @@index([postId])
+  @@index([fromUserId])
 }
 
 model TagEmbedding {
@@ -177,10 +210,20 @@ model User {
   banReason  String?
   banExpires DateTime?
 
-  sessions Session[]
-  accounts Account[]
+  // Broker storefront
+  handle   String? @unique
+  bio      String?
+  location String?
+
+  sessions    Session[]
+  accounts    Account[]
+  posts       Post[]             @relation("UserPosts")
+  submissions IngestSubmission[] @relation("UserSubmissions")
+  inquiriesReceived Inquiry[]    @relation("SellerInquiries")
+  inquiriesSent     Inquiry[]    @relation("InquirerInquiries")
 
   @@index([email])
+  @@index([handle])
   @@map("user")
 }
 

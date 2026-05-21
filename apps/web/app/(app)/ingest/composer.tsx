@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -10,7 +11,7 @@ import {
   type DragEvent,
 } from "react";
 
-type PillKind = "queued" | "deduped" | "error";
+type PillKind = "queued" | "deduped" | "error" | "invalid";
 
 interface StatusPill {
   id: string;
@@ -26,22 +27,74 @@ interface IngestResponse {
   deduped?: boolean;
 }
 
+const INSTAGRAM_URL_REGEX =
+  /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|tv)\/[A-Za-z0-9_-]+\/?/i;
+const MAX_URLS_PER_BATCH = 200;
+
+type ParsedUrl =
+  | { kind: "instagram"; raw: string }
+  | { kind: "other"; raw: string }
+  | { kind: "invalid"; raw: string; reason: string };
+
 function id8(uuid: string): string {
   return uuid.replace(/-/g, "").slice(0, 8);
 }
 
-function parseTextarea(raw: string): { urls: string[]; notes: string } {
+function classifyUrl(raw: string): ParsedUrl {
+  if (INSTAGRAM_URL_REGEX.test(raw)) {
+    return { kind: "instagram", raw };
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return { kind: "other", raw };
+  }
+  return { kind: "invalid", raw, reason: "not a URL" };
+}
+
+interface ParsedTextarea {
+  urls: string[];
+  notes: string;
+  preview: ParsedUrl[];
+  deduped: string[];
+  overflow: string[];
+}
+
+function parseTextarea(raw: string): ParsedTextarea {
   const lines = raw.split(/\r?\n/);
   const urls: string[] = [];
   const noteLines: string[] = [];
+  const preview: ParsedUrl[] = [];
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  const overflow: string[] = [];
   for (const line of lines) {
-    if (/^https?:\/\//i.test(line.trim())) {
-      urls.push(line.trim());
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      noteLines.push(line);
+      continue;
+    }
+    if (/^https?:\/\//i.test(trimmed)) {
+      if (seen.has(trimmed)) {
+        deduped.push(trimmed);
+        continue;
+      }
+      seen.add(trimmed);
+      if (urls.length >= MAX_URLS_PER_BATCH) {
+        overflow.push(trimmed);
+        continue;
+      }
+      urls.push(trimmed);
+      preview.push(classifyUrl(trimmed));
     } else {
       noteLines.push(line);
     }
   }
-  return { urls, notes: noteLines.join("\n").trim() };
+  return {
+    urls,
+    notes: noteLines.join("\n").trim(),
+    preview,
+    deduped,
+    overflow,
+  };
 }
 
 function IconUpload() {
@@ -123,10 +176,18 @@ function Pill({ pill }: { pill: StatusPill }) {
       ? "border-[var(--color-sage)] text-[var(--color-sage)]"
       : pill.kind === "error"
         ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-        : "border-[var(--color-rule-strong)] text-[var(--fg-muted)]";
+        : pill.kind === "invalid"
+          ? "border-[var(--color-accent)] text-[var(--fg-muted)]"
+          : "border-[var(--color-rule-strong)] text-[var(--fg-muted)]";
 
   const glyph =
-    pill.kind === "queued" ? "●" : pill.kind === "error" ? "✕" : "○";
+    pill.kind === "queued"
+      ? "●"
+      : pill.kind === "error"
+        ? "✕"
+        : pill.kind === "invalid"
+          ? "!"
+          : "○";
 
   return (
     <div
@@ -189,6 +250,10 @@ export function Composer() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const parsed = useMemo(() => parseTextarea(text), [text]);
+  const igCount = parsed.preview.filter((p) => p.kind === "instagram").length;
+  const otherUrlCount = parsed.preview.filter((p) => p.kind === "other").length;
+
   useEffect(() => {
     return () => {
       for (const f of files) URL.revokeObjectURL(f.preview);
@@ -244,44 +309,86 @@ export function Composer() {
     if (!hasText && !hasImages) return;
 
     const batchId = crypto.randomUUID();
-    const { urls, notes } = parseTextarea(text);
+    const { urls, notes, deduped, overflow } = parsed;
+    if (deduped.length > 0) {
+      addPill("deduped", `${deduped.length} duplicate URL${deduped.length === 1 ? "" : "s"} skipped`);
+    }
+    if (overflow.length > 0) {
+      addPill(
+        "invalid",
+        `${overflow.length} URL${overflow.length === 1 ? "" : "s"} over the ${MAX_URLS_PER_BATCH} cap`,
+      );
+    }
     const captured = [...files];
+
+    // Each URL becomes its own submission so the worker's dedicated IG / YT
+    // paths fire per-URL. A single submission with N urls gets routed to the
+    // generic url_context summarizer and collapses everything into one post.
+    const submitOneUrl = async (url: string, idx: number, total: number) => {
+      const label = total > 1 ? `${idx + 1}/${total}` : "";
+      try {
+        const res = await fetch("/api/app/ingest", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urls: [url], notes, force }),
+        });
+        const data = (await res.json().catch(() => ({}))) as IngestResponse;
+        if (!res.ok) {
+          addPill(
+            "error",
+            `${label ? `${label} · ` : ""}error · ${data.error ?? data.reason ?? String(res.status)}`,
+          );
+          return;
+        }
+        const short = data.id ? id8(data.id) : id8(batchId);
+        const status = data.deduped ? "deduped" : "queued";
+        addPill(status, `${label ? `${label} · ` : ""}${status} · ${short}`);
+      } catch (err) {
+        addPill(
+          "error",
+          `${label ? `${label} · ` : ""}error · ${err instanceof Error ? err.message : "network"}`,
+        );
+      }
+    };
+
+    const submitNoteOnly = async () => {
+      try {
+        const res = await fetch("/api/app/ingest", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urls: [], notes, force }),
+        });
+        const data = (await res.json().catch(() => ({}))) as IngestResponse;
+        if (!res.ok) {
+          addPill(
+            "error",
+            `error · ${data.error ?? data.reason ?? String(res.status)}`,
+          );
+          return;
+        }
+        const short = data.id ? id8(data.id) : id8(batchId);
+        const status = data.deduped ? "deduped" : "queued";
+        addPill(status, `note · ${status} · ${short}`);
+      } catch (err) {
+        addPill(
+          "error",
+          `error · ${err instanceof Error ? err.message : "network"}`,
+        );
+      }
+    };
 
     startTransition(async () => {
       const requests: Promise<void>[] = [];
 
-      if (hasText) {
-        requests.push(
-          fetch("/api/app/ingest", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ urls, notes, force }),
-          })
-            .then(async (res) => {
-              const data = (await res
-                .json()
-                .catch(() => ({}))) as IngestResponse;
-              if (!res.ok) {
-                addPill(
-                  "error",
-                  `error · ${data.error ?? data.reason ?? String(res.status)}`
-                );
-                return;
-              }
-              const short = data.id ? id8(data.id) : id8(batchId);
-              addPill(
-                data.deduped ? "deduped" : "queued",
-                `${data.deduped ? "deduped" : "queued"} · ${short}`
-              );
-            })
-            .catch((err: unknown) => {
-              addPill(
-                "error",
-                `error · ${err instanceof Error ? err.message : "network"}`
-              );
-            })
-        );
+      if (urls.length > 0) {
+        for (let i = 0; i < urls.length; i++) {
+          requests.push(submitOneUrl(urls[i]!, i, urls.length));
+        }
+      } else if (hasText && notes.trim().length > 0) {
+        // Notes only — no URLs.
+        requests.push(submitNoteOnly());
       }
 
       if (hasImages) {
@@ -352,8 +459,15 @@ export function Composer() {
       <div className="surface-raised">
         <div className="flex items-center justify-between border-b border-[var(--color-rule)] px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
           <span>Manuscript</span>
-          <span className="nums-lining tabular-nums">
-            {charCount.toString().padStart(4, "0")} characters
+          <span className="flex items-baseline gap-3">
+            {parsed.preview.length > 0 ? (
+              <span className="tabular-nums text-[var(--color-accent)]">
+                {igCount} IG · {otherUrlCount} other
+              </span>
+            ) : null}
+            <span className="nums-lining tabular-nums">
+              {charCount.toString().padStart(4, "0")} characters
+            </span>
           </span>
         </div>
         <textarea
@@ -372,9 +486,53 @@ export function Composer() {
           <code className="font-mono not-italic text-[var(--fg-muted)]">
             http
           </code>{" "}
-          are filed as URLs; everything else becomes a note.
+          are filed as URLs; everything else becomes a note. Instagram URLs are
+          highlighted for the broker. Cap is {MAX_URLS_PER_BATCH}/batch.
         </p>
       </div>
+
+      {parsed.preview.length > 0 ? (
+        <details
+          open
+          className="surface-raised"
+        >
+          <summary className="cursor-pointer border-b border-[var(--color-rule)] px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+            Preview ({parsed.preview.length} URL
+            {parsed.preview.length === 1 ? "" : "s"}
+            {parsed.deduped.length > 0
+              ? ` · ${parsed.deduped.length} dup`
+              : ""}
+            {parsed.overflow.length > 0
+              ? ` · ${parsed.overflow.length} over cap`
+              : ""}
+            )
+          </summary>
+          <ol className="max-h-64 overflow-y-auto">
+            {parsed.preview.map((entry, idx) => (
+              <li
+                key={`${entry.raw}-${idx}`}
+                className="flex items-baseline gap-3 border-b border-[var(--color-rule)] px-3.5 py-1.5 font-mono text-[11px] last:border-b-0"
+              >
+                <span className="w-8 shrink-0 tabular-nums text-[var(--fg-subtle)]">
+                  {(idx + 1).toString().padStart(3, "0")}
+                </span>
+                <span
+                  className={`shrink-0 font-bold uppercase tracking-[0.16em] ${
+                    entry.kind === "instagram"
+                      ? "text-[var(--color-accent)]"
+                      : "text-[var(--fg-muted)]"
+                  }`}
+                >
+                  {entry.kind === "instagram" ? "IG" : "URL"}
+                </span>
+                <span className="truncate text-[var(--fg-muted)]">
+                  {entry.raw}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
 
       <label className="flex w-fit cursor-pointer items-center gap-3 select-none">
         <span className="relative inline-flex items-center">
