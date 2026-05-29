@@ -1,10 +1,9 @@
 import Link from "next/link";
-import Image from "next/image";
-import { listCatalogPosts, type PostWithSubmitter } from "@repo/db";
+import { type PostWithSubmitter } from "@repo/db";
 import { DateDisplay } from "../../../lib/date-display";
+import { getCachedCatalog } from "../../../lib/cached";
+import { PostImage } from "../../_chrome/post-image";
 import { CatalogSearch } from "./search";
-
-export const dynamic = "force-dynamic";
 
 export default async function CatalogPage({
   searchParams,
@@ -13,7 +12,7 @@ export default async function CatalogPage({
 }) {
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q.trim() : "";
-  const { items } = await listCatalogPosts({ q: q || undefined, limit: 120 });
+  const { items } = await getCachedCatalog(q || undefined, 120);
   const listings = items as PostWithSubmitter[];
 
   return (
@@ -69,20 +68,12 @@ export default async function CatalogPage({
             <li key={post.id}>
               <Link href={`/listing/${post.slug}`} className="group block">
                 <div className="relative aspect-[4/5] w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)]">
-                  {post.imageUrl ? (
-                    <Image
-                      src={post.imageUrl}
-                      alt={post.title}
-                      fill
-                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                      className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                      unoptimized={post.imageUrl.startsWith("/sight/")}
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
-                      No plate
-                    </div>
-                  )}
+                  <PostImage
+                    src={post.imageUrl}
+                    alt={post.title}
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                  />
                 </div>
                 <div className="mt-3">
                   <h2 className="font-display text-[20px] leading-tight tracking-[-0.005em] text-[var(--fg)] transition-colors group-hover:text-[var(--color-accent)]">

@@ -1,24 +1,11 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getUserHandle } from "@repo/db";
 
 import { requireSession } from "../../lib/session";
 import { SetupHandleForm } from "./form";
 
-export const dynamic = "force-dynamic";
-
-export default async function SetupHandlePage() {
-  const session = await requireSession("/setup-handle");
-  const existing = await getUserHandle(session.user.id);
-  if (existing) {
-    redirect("/ingest");
-  }
-
-  const suggested = session.user.email
-    .split("@")[0]
-    ?.toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .slice(0, 30) ?? "";
-
+export default function SetupHandlePage() {
   return (
     <section className="mx-auto max-w-xl">
       <header className="mb-8 sm:mb-10">
@@ -35,7 +22,26 @@ export default async function SetupHandlePage() {
           Lowercase letters, digits, and hyphens; 3–30 characters.
         </p>
       </header>
-      <SetupHandleForm suggested={suggested} />
+      <Suspense fallback={null}>
+        <SetupHandleGate />
+      </Suspense>
     </section>
   );
+}
+
+async function SetupHandleGate() {
+  const session = await requireSession("/setup-handle");
+  const existing = await getUserHandle(session.user.id);
+  if (existing) {
+    redirect("/ingest");
+  }
+
+  const suggested =
+    session.user.email
+      .split("@")[0]
+      ?.toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .slice(0, 30) ?? "";
+
+  return <SetupHandleForm suggested={suggested} />;
 }

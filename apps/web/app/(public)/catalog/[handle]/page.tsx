@@ -1,10 +1,8 @@
 import Link from "next/link";
-import Image from "next/image";
 import { notFound } from "next/navigation";
-import { listUserStorefront } from "@repo/db";
 import { DateDisplay } from "../../../../lib/date-display";
-
-export const dynamic = "force-dynamic";
+import { getCachedStorefront } from "../../../../lib/cached";
+import { PostImage } from "../../../_chrome/post-image";
 
 export default async function StorefrontPage({
   params,
@@ -12,7 +10,7 @@ export default async function StorefrontPage({
   params: Promise<{ handle: string }>;
 }) {
   const { handle } = await params;
-  const result = await listUserStorefront(handle, { limit: 120 });
+  const result = await getCachedStorefront(handle, 120);
   if (!result) {
     notFound();
   }
@@ -64,20 +62,12 @@ export default async function StorefrontPage({
             <li key={post.id}>
               <Link href={`/listing/${post.slug}`} className="group block">
                 <div className="relative aspect-[4/5] w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)]">
-                  {post.imageUrl ? (
-                    <Image
-                      src={post.imageUrl}
-                      alt={post.title}
-                      fill
-                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                      className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                      unoptimized={post.imageUrl.startsWith("/sight/")}
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
-                      No plate
-                    </div>
-                  )}
+                  <PostImage
+                    src={post.imageUrl}
+                    alt={post.title}
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                  />
                 </div>
                 <div className="mt-3">
                   <h2 className="font-display text-[20px] leading-tight tracking-[-0.005em] text-[var(--fg)] transition-colors group-hover:text-[var(--color-accent)]">

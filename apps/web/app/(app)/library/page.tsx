@@ -1,10 +1,14 @@
 import Link from "next/link";
-import { listPosts, PostStatus, PostType } from "@repo/db";
+import { PostStatus, PostType } from "@repo/db";
 import { Filters } from "./filters";
+import { Pagination } from "./pagination";
 import { DateDisplay } from "../../../lib/date-display";
+import { getCachedLibraryPage } from "../../../lib/cached";
 
 const TYPES: PostType[] = ["CONCRETE", "BLOG", "FINDING", "SIGHT", "SOCIAL"];
 const STATUSES: PostStatus[] = ["PUBLISHED", "DRAFT", "ARCHIVED"];
+
+const PAGE_SIZE = 25;
 
 function pickEnum<T extends string>(
   value: string | null,
@@ -49,11 +53,21 @@ export default async function LibraryPage({
   const typeParam = typeof params.type === "string" ? params.type : null;
   const statusParam = typeof params.status === "string" ? params.status : null;
   const qParam = typeof params.q === "string" ? params.q : undefined;
+  const pageParam =
+    typeof params.page === "string" ? Number.parseInt(params.page, 10) : 1;
 
   const type = pickEnum<PostType>(typeParam, TYPES);
   const status = pickEnum<PostStatus>(statusParam, STATUSES);
 
-  const { items } = await listPosts({ type, status, q: qParam, limit: 100 });
+  const { items, total, page, totalPages } = await getCachedLibraryPage({
+    type,
+    status,
+    q: qParam,
+    page: Number.isFinite(pageParam) ? pageParam : 1,
+    pageSize: PAGE_SIZE,
+  });
+
+  const startIndex = (page - 1) * PAGE_SIZE;
 
   return (
     <section>
@@ -72,7 +86,7 @@ export default async function LibraryPage({
 
         <div className="flex items-baseline gap-2">
           <span className="font-display italic text-[36px] leading-none text-[var(--color-accent)] nums-oldstyle">
-            {items.length}
+            {total}
           </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
             on file
@@ -126,7 +140,7 @@ export default async function LibraryPage({
               >
                 <div className="flex items-baseline gap-3 md:contents">
                   <span className="font-mono text-[11px] tabular-nums text-[var(--fg-subtle)] group-hover:text-[var(--color-accent)]">
-                    {pad(idx + 1)}
+                    {pad(startIndex + idx + 1)}
                   </span>
                   <span
                     className={`font-display italic text-[15px] leading-tight ${TYPE_TONE[post.type]} md:text-[17px]`}
@@ -159,6 +173,12 @@ export default async function LibraryPage({
           ))}
         </ol>
       )}
+
+      {totalPages > 1 ? (
+        <div className="rule-emphatic-t mt-6 pt-4">
+          <Pagination page={page} totalPages={totalPages} />
+        </div>
+      ) : null}
     </section>
   );
 }

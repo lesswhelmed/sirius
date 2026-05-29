@@ -1,11 +1,12 @@
 import Link from "next/link";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Streamdown } from "streamdown";
-import { findPostBySlug, PostStatus } from "@repo/db";
+import { PostStatus } from "@repo/db";
 
 import { DateDisplay } from "../../../../lib/date-display";
+import { getCachedPost } from "../../../../lib/cached";
 import { getSessionOrNull } from "../../../../lib/session";
+import { PostImage } from "../../../_chrome/post-image";
 import { InquiryForm } from "./inquiry-form";
 
 const MARKDOWN_CLASS_NAME = [
@@ -23,15 +24,13 @@ const MARKDOWN_CLASS_NAME = [
   "[&_hr]:my-10 [&_hr]:border-[var(--color-rule-emphatic)] [&_table]:my-7 [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-[var(--color-rule)] [&_td]:border [&_td]:border-[var(--color-rule)] [&_th]:p-2 [&_td]:p-2",
 ].join(" ");
 
-export const dynamic = "force-dynamic";
-
 export default async function ListingPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const post = await findPostBySlug(slug);
+  const post = await getCachedPost(slug);
   if (!post || post.status !== PostStatus.PUBLISHED) {
     notFound();
   }
@@ -95,13 +94,10 @@ export default async function ListingPage({
         <div>
           {post.imageUrl ? (
             <div className="relative mb-8 aspect-[4/5] w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)]">
-              <Image
+              <PostImage
                 src={post.imageUrl}
                 alt={post.title}
-                fill
                 sizes="(max-width: 1024px) 100vw, 65vw"
-                className="object-cover"
-                unoptimized={post.imageUrl.startsWith("/sight/")}
                 priority
               />
             </div>
@@ -118,8 +114,8 @@ export default async function ListingPage({
                 Your listing
               </p>
               <p className="mt-2 font-display italic text-[15px] text-[var(--fg-muted)]">
-                You're viewing your own listing — inquiries from buyers will land
-                in your{" "}
+                You&rsquo;re viewing your own listing — inquiries from buyers
+                will land in your{" "}
                 <Link
                   href="/inbox"
                   className="text-[var(--color-accent)] underline underline-offset-4"

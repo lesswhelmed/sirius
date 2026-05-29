@@ -5,7 +5,12 @@
 // (c) upsert Tag / Category rows for the draft, and (d) upsert the Post row
 // itself in a single transaction.
 
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
@@ -15,6 +20,7 @@ import {
   type Prisma,
 } from "@repo/db";
 import { escapeMdxProse } from "../lib/mdx-escape";
+import { revalidatePost } from "../lib/revalidate";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 
 export type WriteResult = {
@@ -38,6 +44,82 @@ function resolveSightDir(): string {
 function ensureDir(dir: string): void {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
+  }
+}
+
+// Cover images for URL/social ingests (e.g. Instagram) live in
+// apps/web/public/social/ so they're served from our own origin. This is
+// essential for Instagram: its CDN URLs are signed and expire within days,
+// so we must download the bytes once at ingestion rather than hot-link them.
+function resolveSocialDir(): string {
+  const override = process.env.SOCIAL_IMAGE_DIR?.trim();
+  if (override) {
+    return override;
+  }
+  return resolve(process.cwd(), "..", "web", "public", "social");
+}
+
+function extFromContentType(contentType: string | null): string | null {
+  if (!contentType) return null;
+  const type = contentType.split(";")[0]?.trim().toLowerCase();
+  switch (type) {
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    case "image/avif":
+      return "avif";
+    default:
+      return null;
+  }
+}
+
+function extFromUrl(url: string): string | null {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    const m = pathname.match(/\.(jpe?g|png|webp|gif|avif)$/);
+    return m ? m[1]!.replace("jpeg", "jpg") : null;
+  } catch {
+    return null;
+  }
+}
+
+// Downloads a remote cover image to public/social and returns its served path.
+// Falls back to the original URL on any failure so a post still has *something*
+// rather than failing the whole write. Local paths and nulls pass through.
+async function localizeCoverImage(
+  url: string | null,
+  slug: string
+): Promise<string | null> {
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return url;
+  }
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(
+        `[post-writer] cover fetch ${res.status} for ${slug}; keeping remote URL`
+      );
+      return url;
+    }
+    const ext =
+      extFromContentType(res.headers.get("content-type")) ??
+      extFromUrl(url) ??
+      "jpg";
+    const dir = resolveSocialDir();
+    ensureDir(dir);
+    const filename = `${slug}.${ext}`;
+    const dest = join(dir, filename);
+    writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+    return `/social/${filename}`;
+  } catch (err) {
+    console.warn(`[post-writer] cover download failed for ${slug}:`, err);
+    return url;
   }
 }
 
@@ -223,7 +305,12 @@ export async function writePost(
   const originalUrl = getOriginalUrl(input);
   const sourceHash = getSourceHash(input);
   const originalDate = originalDateFromFrontmatter(parsed.frontmatter);
-  const imageUrl = getImageUrl(parsed.frontmatter);
+  // Download remote cover images once (Instagram CDN links expire), serving
+  // them from public/social. Local /sight/ paths and nulls pass through.
+  const imageUrl = await localizeCoverImage(
+    getImageUrl(parsed.frontmatter),
+    parsed.slug
+  );
   const contentDigest = getContentDigest(parsed.frontmatter);
 
   const excerpt =
@@ -275,6 +362,9 @@ export async function writePost(
       categories: { connectOrCreate: categoryConnects },
     },
   });
+
+  // Best-effort: refresh the web app's cached body + lists for this post.
+  await revalidatePost(post.slug);
 
   return {
     postId: post.id,

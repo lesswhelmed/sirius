@@ -41,6 +41,8 @@ export function Filters({
     } else {
       next.set(key, value);
     }
+    // Any filter change invalidates the current page offset.
+    next.delete("page");
     push(next);
   };
 
@@ -85,6 +87,8 @@ export function Filters({
           } else {
             next.delete("q");
           }
+          // New search resets pagination to the first page.
+          next.delete("page");
           push(next);
         }}
       >

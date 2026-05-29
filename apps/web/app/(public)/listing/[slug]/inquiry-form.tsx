@@ -69,7 +69,7 @@ export function InquiryForm({
           Note delivered
         </p>
         <p className="mt-2 font-display italic text-[18px] leading-snug text-[var(--fg)]">
-          {sellerName} has been notified. They'll write back to {email}.
+          {sellerName} has been notified. They&rsquo;ll write back to {email}.
         </p>
       </div>
     );
@@ -88,7 +88,7 @@ export function InquiryForm({
         <span className="text-[var(--color-accent)]">.</span>
       </h3>
       <p className="mt-2 font-display italic text-[14px] text-[var(--fg-muted)]">
-        Re: <span className="not-italic">"{postTitle}"</span>
+        Re: <span className="not-italic">&ldquo;{postTitle}&rdquo;</span>
       </p>
 
       <div className="mt-5 flex flex-col gap-3">

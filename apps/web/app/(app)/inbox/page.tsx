@@ -4,8 +4,6 @@ import { listInquiriesForSeller } from "@repo/db";
 import { requireSession } from "../../../lib/session";
 import { DateDisplay } from "../../../lib/date-display";
 
-export const dynamic = "force-dynamic";
-
 export default async function InboxPage() {
   const session = await requireSession("/inbox");
   const { items } = await listInquiriesForSeller(session.user.id, { limit: 100 });

@@ -25,6 +25,8 @@ export * from "./ingest";
 export * from "./posts";
 export * from "./users";
 export * from "./inquiries";
+export * from "./saved";
+export * from "./analytics";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

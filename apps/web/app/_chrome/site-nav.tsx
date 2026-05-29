@@ -3,27 +3,42 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-interface PublicNavProps {
-  signedIn: boolean;
+export interface NavItem {
+  href: string;
+  label: string;
+  folio: string;
 }
 
-export function PublicNav({ signedIn }: PublicNavProps) {
-  const pathname = usePathname();
-  const items: Array<{ href: string; label: string; folio: string }> = signedIn
-    ? [
-        { href: "/ingest", label: "Ingest", folio: "I" },
-        { href: "/catalog", label: "Catalog", folio: "II" },
-        { href: "/queue", label: "Queue", folio: "III" },
-        { href: "/inbox", label: "Inbox", folio: "IV" },
-      ]
-    : [{ href: "/catalog", label: "Catalog", folio: "I" }];
+// Single source of truth for primary navigation. Signed-in users see the same
+// bar everywhere — (app) routes and (public) catalog/listing alike — so the
+// chrome never changes shape mid-session. Signed-out visitors get the minimal
+// public bar.
+export const SIGNED_IN_NAV: readonly NavItem[] = [
+  { href: "/catalog", label: "Catalog", folio: "I" },
+  { href: "/inbox", label: "Inbox", folio: "II" },
+  { href: "/ingest", label: "Ingest", folio: "III" },
+  { href: "/library", label: "Library", folio: "IV" },
+  { href: "/queue", label: "Queue", folio: "V" },
+];
 
+export const SIGNED_OUT_NAV: readonly NavItem[] = [
+  { href: "/catalog", label: "Catalog", folio: "I" },
+];
+
+function NavList({
+  items,
+  pathname,
+}: {
+  items: readonly NavItem[];
+  pathname: string | null;
+}) {
   return (
     <nav aria-label="Primary">
       <ul className="hairline-t hairline-b flex items-stretch">
         {items.map((item, idx) => {
           const active =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+            pathname != null &&
+            (pathname === item.href || pathname.startsWith(`${item.href}/`));
           return (
             <li
               key={item.href}
@@ -67,4 +82,14 @@ export function PublicNav({ signedIn }: PublicNavProps) {
       </ul>
     </nav>
   );
+}
+
+export function SiteNav({ items }: { items: readonly NavItem[] }) {
+  const pathname = usePathname();
+  return <NavList items={items} pathname={pathname} />;
+}
+
+// Prerendered shell variant — no usePathname (dynamic), so no active state.
+export function SiteNavFallback({ items }: { items: readonly NavItem[] }) {
+  return <NavList items={items} pathname={null} />;
 }

@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Streamdown } from "streamdown";
-import { findPostBySlug } from "@repo/db";
+import { getPostViewStats, isPostSaved } from "@repo/db";
 
 import { DateDisplay } from "../../../../lib/date-display";
+import { getCachedPost } from "../../../../lib/cached";
+import { getSessionOrNull } from "../../../../lib/session";
+import { PostImage } from "../../../_chrome/post-image";
+import { ColophonTabs } from "./colophon-tabs";
+import { ViewBeacon } from "./view-beacon";
 
 const MARKDOWN_CLASS_NAME = [
   "drop-cap break-words font-body text-[18px] leading-[1.7] text-[var(--fg)]",
@@ -34,13 +39,21 @@ export default async function PostDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const post = await findPostBySlug(slug);
+  const post = await getCachedPost(slug);
   if (!post) {
     notFound();
   }
 
+  const session = await getSessionOrNull();
+  const userId = session?.user.id ?? null;
+  const [initialSaved, stats] = await Promise.all([
+    userId ? isPostSaved(userId, post.id) : Promise.resolve(false),
+    getPostViewStats(post.id),
+  ]);
+
   return (
     <article className="mx-auto max-w-[920px]">
+      <ViewBeacon slug={post.slug} />
       <Link
         href="/catalog"
         className="inline-flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] transition-colors hover:text-[var(--color-accent)]"
@@ -78,93 +91,48 @@ export default async function PostDetailPage({
         ) : null}
       </header>
 
-      <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_220px]">
-        <Streamdown className={MARKDOWN_CLASS_NAME} mode="static">
-          {post.content}
-        </Streamdown>
-
-        <aside className="space-y-7 lg:border-l lg:border-[var(--color-rule)] lg:pl-8">
-          <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--fg-subtle)]">
-            Colophon
-          </div>
-          <Meta label="Slug" value={post.slug} mono />
-          <Meta label="Source" value={post.sourceType} mono />
-          <Meta label="Provider" value={post.providerId} mono />
-          {post.originalUrl ? (
-            <Meta
-              label="Original"
-              value={
-                <a
-                  href={post.originalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="break-all italic text-[var(--color-accent)] underline underline-offset-4 hover:text-[var(--color-accent-deep)]"
-                >
-                  {post.originalUrl}
-                </a>
-              }
-            />
-          ) : null}
+      <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div>
           {post.imageUrl ? (
-            <Meta
-              label="Image"
-              value={
-                <a
-                  href={post.imageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="break-all italic text-[var(--color-accent)] underline underline-offset-4 hover:text-[var(--color-accent-deep)]"
-                >
-                  View source image →
-                </a>
-              }
-            />
+            <div className="relative mb-8 aspect-[16/10] w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)]">
+              <PostImage
+                src={post.imageUrl}
+                alt={post.title}
+                sizes="(max-width: 1024px) 100vw, 65vw"
+                priority
+              />
+            </div>
           ) : null}
-          {post.tags.length > 0 ? (
-            <Meta
-              label="Tags"
-              value={
-                <div className="flex flex-wrap gap-x-2 gap-y-1">
-                  {post.tags.map((t, i) => (
-                    <span key={t.id} className="font-display italic text-[15px]">
-                      {t.name}
-                      {i < post.tags.length - 1 ? (
-                        <span
-                          aria-hidden="true"
-                          className="ml-2 text-[var(--fg-subtle)]"
-                        >
-                          ,
-                        </span>
-                      ) : null}
-                    </span>
-                  ))}
-                </div>
-              }
-            />
-          ) : null}
-          {post.categories.length > 0 ? (
-            <Meta
-              label="Categories"
-              value={
-                <div className="flex flex-wrap gap-x-2 gap-y-1">
-                  {post.categories.map((c, i) => (
-                    <span key={c.id} className="font-display italic text-[15px]">
-                      {c.displayName}
-                      {i < post.categories.length - 1 ? (
-                        <span
-                          aria-hidden="true"
-                          className="ml-2 text-[var(--fg-subtle)]"
-                        >
-                          ,
-                        </span>
-                      ) : null}
-                    </span>
-                  ))}
-                </div>
-              }
-            />
-          ) : null}
-        </aside>
+          <Streamdown className={MARKDOWN_CLASS_NAME} mode="static">
+            {post.content}
+          </Streamdown>
+        </div>
+
+        <ColophonTabs
+          post={{
+            slug: post.slug,
+            sourceType: post.sourceType,
+            providerId: post.providerId,
+            sourceRecordId: post.sourceRecordId,
+            sourceHash: post.sourceHash,
+            syncStatus: post.syncStatus,
+            originalUrl: post.originalUrl,
+            imageUrl: post.imageUrl,
+            createdAt: post.createdAt,
+            updatedAt: post.updatedAt,
+            lastEdited: post.lastEdited,
+            lastSyncedAt: post.lastSyncedAt,
+            originalDate: post.originalDate,
+            tags: post.tags.map((t) => ({ id: t.id, name: t.name })),
+            categories: post.categories.map((c) => ({
+              id: c.id,
+              displayName: c.displayName,
+            })),
+          }}
+          stats={stats}
+          initialSaved={initialSaved}
+          canSave={userId != null}
+        />
       </div>
 
       <div className="mt-20 rule-emphatic-t pt-6 text-center font-mono text-[11px] uppercase tracking-[0.3em] text-[var(--fg-subtle)]">
@@ -173,28 +141,5 @@ export default async function PostDetailPage({
         </span>
       </div>
     </article>
-  );
-}
-
-function Meta({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <div>
-      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-        {label}
-      </p>
-      <div
-        className={`mt-1.5 text-[14px] text-[var(--fg)] ${mono ? "font-mono break-all text-[12.5px]" : ""}`}
-      >
-        {value}
-      </div>
-    </div>
   );
 }
