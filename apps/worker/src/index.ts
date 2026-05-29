@@ -6,6 +6,7 @@ import {
   claimNextNonImage,
   claimReadyImageBatch,
   findPostBySourceRecordId,
+  heartbeatProcessing,
   type IngestSubmission,
   markCompleted,
   markFailed,
@@ -187,18 +188,28 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
     const input = buildInput(rows);
     const stageLogger = (stage: string, extra?: Record<string, unknown>) =>
       log("info", `stage:${stage}`, { ids, ...(extra ?? {}) });
-    const result = await processIngest(input, stageLogger);
-    await markCompleted(ids, {
-      resultPostSlug: result.postSlug,
-    });
-    for (const row of rows) {
-      removeStagedFile(row.stagedFilePath);
+    // Keep the lease fresh while a long job runs so the reclaimer doesn't treat
+    // a still-running job as crashed. Cleared in `finally`.
+    const heartbeatEvery = Math.max(5_000, Math.floor(leaseMs() / 3));
+    const heartbeat = setInterval(() => {
+      void heartbeatProcessing(ids).catch(() => {});
+    }, heartbeatEvery);
+    try {
+      const result = await processIngest(input, stageLogger);
+      await markCompleted(ids, {
+        resultPostSlug: result.postSlug,
+      });
+      for (const row of rows) {
+        removeStagedFile(row.stagedFilePath);
+      }
+      log("info", "completed", {
+        ids,
+        postSlug: result.postSlug,
+        postId: result.postId,
+      });
+    } finally {
+      clearInterval(heartbeat);
     }
-    log("info", "completed", {
-      ids,
-      postSlug: result.postSlug,
-      postId: result.postId,
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log("error", "failed", { ids, error: message });

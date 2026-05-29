@@ -18,6 +18,7 @@ const UNIQUE_VIOLATION = "P2002";
 export interface CreateSubmissionInput {
   batchId?: string | null;
   contentHash: string;
+  force?: boolean;
   imageIndex?: number | null;
   kind: IngestKind;
   payload: Prisma.InputJsonValue;
@@ -44,6 +45,7 @@ export async function createSubmission(
         totalCount: input.totalCount ?? null,
         stagedFilePath: input.stagedFilePath ?? null,
         submittedById: input.submittedById ?? null,
+        force: input.force ?? false,
       },
     });
     return { status: "created", submission };
@@ -174,6 +176,20 @@ export async function markFailed(
       errorMessage: truncated,
       completedAt: new Date(),
     },
+  });
+}
+
+// Extends the lease on in-flight rows by bumping startedAt — called
+// periodically by the worker during a long job so reclaimStaleProcessing won't
+// mistake a still-running job for a crashed one. Scoped to status:"processing"
+// so it can't revive a row that was already completed/failed.
+export async function heartbeatProcessing(ids: string[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  await prisma.ingestSubmission.updateMany({
+    where: { id: { in: ids }, status: "processing" },
+    data: { startedAt: new Date() },
   });
 }
 

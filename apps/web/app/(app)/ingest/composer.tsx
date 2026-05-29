@@ -574,7 +574,7 @@ export function Composer() {
           Force
         </span>
         <span className="font-display text-[14px] italic text-[var(--fg-subtle)]">
-          bypass dedup
+          bypass dedup · regenerate
         </span>
       </label>
 

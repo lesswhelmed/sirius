@@ -87,6 +87,9 @@ export async function submitUrlIngest(
     payload: { urls, notes, force },
     contentHash,
     submittedById,
+    // Also persist on the row so a reclaimed/retried job regenerates instead of
+    // reusing an existing post (worker idempotency guard reads this column).
+    force,
   });
 
   log("info", result.status === "created" ? "accepted" : "deduped", {
