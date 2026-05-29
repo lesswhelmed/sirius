@@ -5,15 +5,19 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   claimNextNonImage,
   claimReadyImageBatch,
+  findPostBySourceRecordId,
   type IngestSubmission,
   markCompleted,
   markFailed,
+  reclaimStaleProcessing,
 } from "@repo/db";
 import { removeStagedFile } from "./lib/staging";
 import { processIngest } from "./pipeline/pipeline";
 import type { PipelineInput, StagedImage } from "./pipeline/types";
 
 const DEFAULT_POLL_MS = 5000;
+const DEFAULT_LEASE_MS = 600_000; // 10 min before a stuck "processing" row is reclaimed
+const DEFAULT_MAX_ATTEMPTS = 3; // dead-letter after this many processing attempts
 
 let shuttingDown = false;
 
@@ -33,6 +37,57 @@ function pollInterval(): number {
   }
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_POLL_MS;
+}
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function leaseMs(): number {
+  return envInt("INGEST_LEASE_MS", DEFAULT_LEASE_MS);
+}
+
+function maxAttempts(): number {
+  return envInt("INGEST_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS);
+}
+
+// Stable identity for a claim, matching the non-frontmatter branch of
+// getSourceRecordId in post-writer.ts: image batches key on the batchId, single
+// url/note rows key on their own id.
+function sourceRecordIdFor(rows: IngestSubmission[]): string {
+  const first = rows[0];
+  if (!first) {
+    return "";
+  }
+  if (first.kind === "image" && first.batchId) {
+    return `batch:${first.batchId}`;
+  }
+  return first.id;
+}
+
+// Resurrect rows stranded in "processing" by a hard-killed worker. Best-effort:
+// a DB hiccup here must not crash the daemon.
+async function runReclaim(): Promise<void> {
+  try {
+    const result = await reclaimStaleProcessing({
+      leaseMs: leaseMs(),
+      maxAttempts: maxAttempts(),
+    });
+    if (result.requeued > 0 || result.deadLettered > 0) {
+      log("info", "reclaim", {
+        requeued: result.requeued,
+        deadLettered: result.deadLettered,
+      });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log("error", "reclaim error", { error: message });
+  }
 }
 
 type PayloadShape = {
@@ -110,6 +165,25 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
   const batchId = rows[0]?.batchId ?? null;
   log("info", "processing", { ids, kind, batchId });
   try {
+    // Idempotency: if this submission already produced a post (e.g. a prior
+    // attempt crashed after writePost but before markCompleted), reuse it
+    // instead of re-running Gemini — unless the row is flagged to force a
+    // regenerate.
+    const force = rows.some((r) => r.force);
+    if (!force) {
+      const sourceRecordId = sourceRecordIdFor(rows);
+      const existing = sourceRecordId
+        ? await findPostBySourceRecordId(sourceRecordId)
+        : null;
+      if (existing) {
+        await markCompleted(ids, { resultPostSlug: existing.slug });
+        for (const row of rows) {
+          removeStagedFile(row.stagedFilePath);
+        }
+        log("info", "idempotent-skip", { ids, slug: existing.slug });
+        return;
+      }
+    }
     const input = buildInput(rows);
     const stageLogger = (stage: string, extra?: Record<string, unknown>) =>
       log("info", `stage:${stage}`, { ids, ...(extra ?? {}) });
@@ -148,7 +222,11 @@ async function tick(): Promise<boolean> {
 
 async function main(): Promise<void> {
   const interval = pollInterval();
-  log("info", "started", { pollIntervalMs: interval });
+  log("info", "started", {
+    pollIntervalMs: interval,
+    leaseMs: leaseMs(),
+    maxAttempts: maxAttempts(),
+  });
   process.on("SIGINT", () => {
     log("info", "SIGINT received; exiting after current tick");
     shuttingDown = true;
@@ -158,9 +236,13 @@ async function main(): Promise<void> {
     shuttingDown = true;
   });
 
+  // Recover anything a previously-killed worker left stuck in "processing".
+  await runReclaim();
+
   while (!shuttingDown) {
     let didWork = false;
     try {
+      await runReclaim();
       didWork = await tick();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

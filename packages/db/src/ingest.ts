@@ -177,6 +177,53 @@ export async function markFailed(
   });
 }
 
+export interface ReclaimOptions {
+  leaseMs: number;
+  maxAttempts: number;
+}
+
+export interface ReclaimResult {
+  requeued: number;
+  deadLettered: number;
+}
+
+// Recovers rows stranded in "processing" by a worker that was hard-killed
+// (SIGKILL, crash, `bun --watch` restart) before marking them completed/failed.
+// A row is "stale" once its claim (startedAt) is older than the lease. Stale
+// rows that have burned through maxAttempts are dead-lettered to "failed"; the
+// rest go back to "pending" to be re-claimed (idempotently re-processed).
+export async function reclaimStaleProcessing(
+  opts: ReclaimOptions
+): Promise<ReclaimResult> {
+  const cutoff = new Date(Date.now() - opts.leaseMs);
+
+  // Dead-letter first so exhausted rows aren't requeued in the same pass.
+  const deadLettered = await prisma.ingestSubmission.updateMany({
+    where: {
+      status: "processing",
+      startedAt: { lt: cutoff },
+      attempts: { gte: opts.maxAttempts },
+    },
+    data: {
+      status: "failed",
+      errorMessage: "reclaimed: exceeded max attempts",
+      completedAt: new Date(),
+    },
+  });
+
+  const requeued = await prisma.ingestSubmission.updateMany({
+    where: {
+      status: "processing",
+      startedAt: { lt: cutoff },
+      attempts: { lt: opts.maxAttempts },
+    },
+    // Leave attempts/startedAt as-is; the next claim re-increments attempts.
+    data: { status: "pending" },
+  });
+
+  return { requeued: requeued.count, deadLettered: deadLettered.count };
+}
+
 const MAX_PAGE = 200;
 const DEFAULT_PAGE = 50;
 

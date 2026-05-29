@@ -139,6 +139,7 @@ model IngestSubmission {
   stagedFilePath String? // absolute path to staged binary on the host
   status         String    @default("pending") // "pending" | "processing" | "completed" | "failed" | "skipped"
   attempts       Int       @default(0)
+  force          Boolean   @default(false) // bypass idempotent reprocessing skip; regenerate
   errorMessage   String?
   resultPostSlug String?
   createdAt      DateTime  @default(now())

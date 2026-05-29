@@ -163,6 +163,18 @@ export async function findPostAttributionBySlug(
   });
 }
 
+// Idempotency probe for the ingest worker: has a post already been written for
+// this submission's stable source record id? Lets a reclaimed/retried job skip
+// re-running the pipeline instead of duplicating the post.
+export async function findPostBySourceRecordId(
+  sourceRecordId: string
+): Promise<{ id: string; slug: string } | null> {
+  return prisma.post.findFirst({
+    where: { sourceRecordId },
+    select: { id: true, slug: true },
+  });
+}
+
 export type PostWithRelations = Post & {
   tags: Tag[];
   categories: Category[];
