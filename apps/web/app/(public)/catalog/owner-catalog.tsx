@@ -142,12 +142,13 @@ export async function OwnerCatalog({
           </p>
         </div>
       ) : (
-        <ul className="mt-8 grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="mt-8 border-t border-[var(--color-rule-emphatic)]">
           {items.map((post) => (
-            <li key={post.id} className="flex">
-              <div className="w-full">
-                <CatalogCard post={post} />
-              </div>
+            <li
+              key={post.id}
+              className="border-b border-[var(--color-rule)] transition-colors hover:bg-[var(--color-paper-raised)]/40"
+            >
+              <CatalogCard post={post} />
             </li>
           ))}
         </ul>
