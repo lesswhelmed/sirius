@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { PostStatus, PostType } from "@repo/db";
+import { type PostSort, PostStatus, PostType } from "@repo/db";
 import { getCachedOwnerCatalog } from "../../../lib/cached";
 import { CatalogCard } from "./catalog-card";
-import { OwnerFilters } from "./owner-filters";
+import { OwnerFilters, type SortOption } from "./owner-filters";
 import { Pagination } from "./pagination";
 
 const TYPES: PostType[] = ["CONCRETE", "BLOG", "FINDING", "SIGHT", "SOCIAL"];
@@ -15,6 +15,14 @@ const TYPE_LABEL: Record<PostType, string> = {
   SIGHT: "Sight",
   SOCIAL: "Social",
 };
+
+// Order matters: the first entry is the default and is dropped from the URL.
+const SORTS: SortOption[] = [
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+  { value: "title", label: "Title" },
+];
+const DEFAULT_SORT: PostSort = "newest";
 
 const PAGE_SIZE = 24;
 
@@ -46,6 +54,8 @@ export async function OwnerCatalog({
     typeof searchParams.status === "string" ? searchParams.status : null;
   const qParam =
     typeof searchParams.q === "string" ? searchParams.q : undefined;
+  const sortParam =
+    typeof searchParams.sort === "string" ? searchParams.sort : null;
   const pageParam =
     typeof searchParams.page === "string"
       ? Number.parseInt(searchParams.page, 10)
@@ -53,12 +63,18 @@ export async function OwnerCatalog({
 
   const type = pickEnum<PostType>(typeParam, TYPES);
   const status = pickEnum<PostStatus>(statusParam, STATUSES);
+  const sort =
+    pickEnum<PostSort>(
+      sortParam,
+      SORTS.map((s) => s.value)
+    ) ?? DEFAULT_SORT;
 
   const { items, total, page, totalPages } = await getCachedOwnerCatalog({
     submittedById: userId,
     type,
     status,
     q: qParam,
+    sort,
     page: Number.isFinite(pageParam) ? pageParam : 1,
     pageSize: PAGE_SIZE,
   });
@@ -105,8 +121,11 @@ export async function OwnerCatalog({
           types={TYPES}
           statuses={STATUSES}
           typeLabels={TYPE_LABEL}
+          sorts={SORTS}
+          defaultSort={DEFAULT_SORT}
           activeType={type}
           activeStatus={status}
+          activeSort={sort}
           q={qParam ?? ""}
         />
       </div>

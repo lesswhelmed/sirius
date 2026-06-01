@@ -2,14 +2,22 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useTransition } from "react";
-import type { PostStatus, PostType } from "@repo/db";
+import type { PostSort, PostStatus, PostType } from "@repo/db";
+
+export interface SortOption {
+  value: PostSort;
+  label: string;
+}
 
 interface Props {
   types: readonly PostType[];
   statuses: readonly PostStatus[];
   typeLabels: Record<PostType, string>;
+  sorts: readonly SortOption[];
+  defaultSort: PostSort;
   activeType?: PostType;
   activeStatus?: PostStatus;
+  activeSort: PostSort;
   q: string;
 }
 
@@ -17,8 +25,11 @@ export function OwnerFilters({
   types,
   statuses,
   typeLabels,
+  sorts,
+  defaultSort,
   activeType,
   activeStatus,
+  activeSort,
   q,
 }: Props) {
   const router = useRouter();
@@ -48,6 +59,18 @@ export function OwnerFilters({
     push(next);
   };
 
+  const selectSort = (value: PostSort) => {
+    const next = new URLSearchParams(params.toString());
+    // Keep the default out of the URL; changing sort re-pages from the top.
+    if (value === defaultSort) {
+      next.delete("sort");
+    } else {
+      next.set("sort", value);
+    }
+    next.delete("page");
+    push(next);
+  };
+
   return (
     <div
       className="flex flex-wrap items-baseline gap-x-6 gap-y-3 font-mono text-[10px] uppercase tracking-[0.18em]"
@@ -73,6 +96,17 @@ export function OwnerFilters({
             active={activeStatus === s}
             onClick={() => toggle("status", s)}
             label={s.toLowerCase()}
+          />
+        ))}
+      </FilterGroup>
+
+      <FilterGroup label="sort">
+        {sorts.map((s) => (
+          <FilterChip
+            key={s.value}
+            active={activeSort === s.value}
+            onClick={() => selectSort(s.value)}
+            label={s.label}
           />
         ))}
       </FilterGroup>

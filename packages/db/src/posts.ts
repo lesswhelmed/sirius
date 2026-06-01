@@ -98,11 +98,22 @@ export async function listPosts(
   };
 }
 
-// Numbered (offset) pagination for the Library ledger. Distinct from the
+// Numbered (offset) pagination for the catalog ledger. Distinct from the
 // cursor-based listPosts so each contract stays unambiguous.
+export type PostSort = "newest" | "oldest" | "title";
+
+// Each sort carries an id tiebreaker so offset paging is deterministic (no row
+// can straddle a page boundary when two rows share a sort key).
+const POST_ORDER_BY: Record<PostSort, Prisma.PostOrderByWithRelationInput[]> = {
+  newest: [{ createdAt: "desc" }, { id: "desc" }],
+  oldest: [{ createdAt: "asc" }, { id: "asc" }],
+  title: [{ title: "asc" }, { id: "asc" }],
+};
+
 export interface ListPostsPageOptions extends PostFilters {
   page?: number; // 1-based; clamped to >= 1
   pageSize?: number; // default 50, max 200
+  sort?: PostSort; // default "newest"
   includeSubmitter?: boolean;
 }
 
@@ -126,10 +137,11 @@ export async function listPostsPage(
   const total = await prisma.post.count({ where });
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(requestedPage, totalPages);
+  const orderBy = POST_ORDER_BY[opts.sort ?? "newest"];
 
   const items = await prisma.post.findMany({
     where,
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    orderBy,
     skip: (page - 1) * pageSize,
     take: pageSize,
     ...(opts.includeSubmitter
