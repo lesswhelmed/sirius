@@ -2,16 +2,11 @@ import type { Category, Post, Tag } from "@repo/db";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { Stack, useLocalSearchParams } from "expo-router";
-import React from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { apiGet } from "@/lib/api";
+import { KindLabel, Screen, Title } from "@/components/sirius";
+import { PostTypeTone, Sirius } from "@/constants/theme";
+import { apiGet, resolveMediaUrl } from "@/lib/api";
 
 type PostDetail = Post & { tags: Tag[]; categories: Category[] };
 
@@ -33,36 +28,45 @@ export default function PostDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-      </View>
+      <Screen style={styles.centered}>
+        <ActivityIndicator color={Sirius.color.accent} />
+      </Screen>
     );
   }
   if (isError || !data) {
     return (
-      <View style={styles.centered}>
+      <Screen style={styles.centeredPad}>
         <Text style={styles.errorTitle}>Couldn’t load post</Text>
         <Text style={styles.errorBody}>
           {(error as Error | undefined)?.message ?? "Not found."}
         </Text>
-      </View>
+      </Screen>
     );
   }
 
+  const tone = PostTypeTone[data.type] ?? Sirius.color.inkMuted;
+  const heroUri = resolveMediaUrl(data.imageUrl);
+
   return (
-    <>
-      <Stack.Screen options={{ title: TYPE_LABEL[data.type] ?? "Post" }} />
+    <Screen>
+      <Stack.Screen
+        options={{
+          title: TYPE_LABEL[data.type] ?? "Post",
+          headerStyle: { backgroundColor: Sirius.color.paper },
+          headerTintColor: Sirius.color.ink,
+        }}
+      />
       <ScrollView contentContainerStyle={styles.container}>
-        {data.imageUrl ? (
+        {heroUri ? (
           <Image
-            source={{ uri: data.imageUrl }}
+            source={{ uri: heroUri }}
             style={styles.hero}
             contentFit="cover"
             transition={150}
           />
         ) : null}
-        <Text style={styles.kind}>{TYPE_LABEL[data.type] ?? data.type}</Text>
-        <Text style={styles.title}>{data.title}</Text>
+        <KindLabel tone={tone}>{TYPE_LABEL[data.type] ?? data.type}</KindLabel>
+        <Title accent=".">{data.title}</Title>
         {data.tags.length > 0 ? (
           <View style={styles.tagsRow}>
             {data.tags.map((tag) => (
@@ -72,55 +76,68 @@ export default function PostDetailScreen() {
             ))}
           </View>
         ) : null}
-        {data.excerpt ? (
-          <Text style={styles.excerpt}>{data.excerpt}</Text>
-        ) : null}
-        {data.content ? (
-          <Text style={styles.body}>{data.content}</Text>
-        ) : null}
+        {data.excerpt ? <Text style={styles.excerpt}>{data.excerpt}</Text> : null}
+        {data.content ? <Text style={styles.body}>{data.content}</Text> : null}
       </ScrollView>
-    </>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
-  container: { padding: 24, gap: 12 },
+  centered: { alignItems: "center", justifyContent: "center" },
+  centeredPad: {
+    justifyContent: "center",
+    paddingHorizontal: Sirius.space.xl,
+    gap: Sirius.space.sm,
+  },
+  container: { padding: Sirius.space.xl, gap: Sirius.space.md },
   hero: {
     width: "100%",
     aspectRatio: 1,
-    borderRadius: 12,
-    backgroundColor: "#E6E8EC",
-    marginBottom: 8,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperSunken,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    marginBottom: Sirius.space.sm,
   },
-  kind: {
-    fontSize: 11,
-    color: "#60646C",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+  tagsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Sirius.space.sm,
+    marginTop: Sirius.space.xs,
   },
-  title: { fontSize: 26, fontWeight: "600", lineHeight: 32 },
-  tagsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
   tag: {
-    backgroundColor: "#F0F0F3",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
+    backgroundColor: Sirius.color.accentSoft,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    paddingHorizontal: Sirius.space.md,
+    paddingVertical: Sirius.space.xs,
+    borderRadius: Sirius.radius.none,
   },
-  tagText: { fontSize: 12, color: "#3C424D" },
+  tagText: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 12,
+    color: Sirius.color.accent,
+  },
   excerpt: {
-    fontSize: 17,
-    lineHeight: 24,
-    color: "#3C424D",
+    fontFamily: Sirius.font.serif,
+    fontSize: 19,
+    lineHeight: 27,
+    color: Sirius.color.inkMuted,
     fontStyle: "italic",
-    marginTop: 4,
+    marginTop: Sirius.space.xs,
   },
   body: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#1B1F26",
-    marginTop: 8,
+    fontFamily: Sirius.font.serif,
+    fontSize: 17,
+    lineHeight: 27,
+    color: Sirius.color.ink,
+    marginTop: Sirius.space.sm,
   },
-  errorTitle: { fontSize: 18, fontWeight: "600", marginBottom: 6 },
-  errorBody: { color: "#60646C" },
+  errorTitle: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 22,
+    color: Sirius.color.ink,
+  },
+  errorBody: { color: Sirius.color.inkMuted },
 });

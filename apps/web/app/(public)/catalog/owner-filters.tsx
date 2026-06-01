@@ -7,14 +7,16 @@ import type { PostStatus, PostType } from "@repo/db";
 interface Props {
   types: readonly PostType[];
   statuses: readonly PostStatus[];
+  typeLabels: Record<PostType, string>;
   activeType?: PostType;
   activeStatus?: PostStatus;
   q: string;
 }
 
-export function Filters({
+export function OwnerFilters({
   types,
   statuses,
+  typeLabels,
   activeType,
   activeStatus,
   q,
@@ -28,7 +30,7 @@ export function Filters({
     (next: URLSearchParams) => {
       start(() => {
         const qs = next.toString();
-        router.replace(qs ? `${pathname}?${qs}` : pathname);
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
       });
     },
     [pathname, router]
@@ -59,7 +61,7 @@ export function Filters({
             key={t}
             active={activeType === t}
             onClick={() => toggle("type", t)}
-            label={t}
+            label={typeLabels[t]}
           />
         ))}
       </FilterGroup>
@@ -70,7 +72,7 @@ export function Filters({
             key={s}
             active={activeStatus === s}
             onClick={() => toggle("status", s)}
-            label={s}
+            label={s.toLowerCase()}
           />
         ))}
       </FilterGroup>
@@ -97,8 +99,8 @@ export function Filters({
           type="text"
           name="q"
           defaultValue={q}
-          placeholder="title…"
-          className="w-48 border-b border-[var(--color-rule-strong)] bg-transparent px-1 pb-1 font-body text-[15px] italic tracking-normal text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:border-[var(--color-accent)] focus:outline-none"
+          placeholder="title, excerpt, tag…"
+          className="w-52 border-b border-[var(--color-rule-strong)] bg-transparent px-1 pb-1 font-body text-[15px] italic tracking-normal text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:border-[var(--color-accent)] focus:outline-none"
         />
       </form>
     </div>
@@ -135,6 +137,7 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`relative pb-0.5 transition-colors ${
         active
           ? "text-[var(--color-accent)]"
@@ -145,9 +148,7 @@ function FilterChip({
       <span
         aria-hidden="true"
         className={`absolute inset-x-0 bottom-0 h-px transition-colors ${
-          active
-            ? "bg-[var(--color-accent)]"
-            : "bg-transparent"
+          active ? "bg-[var(--color-accent)]" : "bg-transparent"
         }`}
       />
     </button>

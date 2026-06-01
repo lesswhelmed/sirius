@@ -25,7 +25,10 @@ export async function getCachedPost(
   return findPostBySlug(slug);
 }
 
-export async function getCachedLibraryPage(
+// The signed-in owner catalog. `opts` (including submittedById) becomes the
+// cache key, so each user's view is cached independently; the "posts" tag lets
+// the worker invalidate every catalog when it writes a new post.
+export async function getCachedOwnerCatalog(
   opts: ListPostsPageOptions
 ): Promise<PageNumberResult<Post>> {
   "use cache";

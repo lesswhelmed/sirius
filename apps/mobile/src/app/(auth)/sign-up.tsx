@@ -1,17 +1,22 @@
-import { Link, router } from "expo-router";
-import React, { useState } from "react";
+import { router } from "expo-router";
+import { useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
+import {
+  Field,
+  PageHeader,
+  PrimaryButton,
+  Screen,
+  TextLink,
+} from "@/components/sirius";
+import { Sirius } from "@/constants/theme";
 import { signUp } from "@/lib/auth-client";
 
 export default function SignUpScreen() {
@@ -48,62 +53,60 @@ export default function SignUpScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.flex}
-    >
-      <View style={styles.container}>
-        <Text style={styles.title}>Create account</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Name (optional)"
-          autoComplete="name"
-          value={name}
-          onChangeText={setName}
-          editable={!busy}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-          editable={!busy}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password (8+ characters)"
-          secureTextEntry
-          autoComplete="new-password"
-          value={password}
-          onChangeText={setPassword}
-          editable={!busy}
-        />
-        <Pressable
-          accessibilityRole="button"
-          onPress={handleSubmit}
-          disabled={busy}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            (busy || pressed) && styles.primaryButtonPressed,
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryButtonText}>Sign up</Text>
-          )}
-        </Pressable>
-        <View style={styles.footer}>
-          <Text style={styles.muted}>Already have an account?</Text>
-          <Link href="/(auth)/sign-in" style={styles.link}>
-            Sign in
-          </Link>
+    <Screen>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.flex}
+      >
+        <View style={styles.container}>
+          <PageHeader
+            eyebrow="Sirius — The Broker"
+            title="Create account"
+            titleAccent="."
+            subtitle="Start a catalog and bring your collection on file."
+          />
+
+          <View style={styles.form}>
+            <Field
+              label="Name (optional)"
+              placeholder="Your name"
+              autoComplete="name"
+              value={name}
+              onChangeText={setName}
+              editable={!busy}
+            />
+            <Field
+              label="Email"
+              placeholder="you@example.com"
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+              editable={!busy}
+            />
+            <Field
+              label="Password"
+              placeholder="At least 8 characters"
+              secureTextEntry
+              autoComplete="new-password"
+              value={password}
+              onChangeText={setPassword}
+              editable={!busy}
+            />
+            <PrimaryButton label="Sign up" onPress={handleSubmit} busy={busy} />
+          </View>
+
+          <View style={styles.footer}>
+            <Text style={styles.muted}>Already have an account?</Text>
+            <TextLink
+              label="Sign in"
+              onPress={() => router.push("/(auth)/sign-in")}
+            />
+          </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
 
@@ -111,34 +114,21 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: Sirius.space.xl,
     paddingTop: 96,
-    gap: 16,
+    gap: Sirius.space.xl,
   },
-  title: { fontSize: 28, fontWeight: "600", marginBottom: 8 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#D0D5DC",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 16,
-  },
-  primaryButton: {
-    backgroundColor: "#208AEF",
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  primaryButtonPressed: { opacity: 0.85 },
-  primaryButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  form: { gap: Sirius.space.lg },
   footer: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 6,
-    marginTop: 12,
+    alignItems: "center",
+    gap: Sirius.space.sm,
+    marginTop: Sirius.space.xs,
   },
-  muted: { color: "#60646C" },
-  link: { color: "#208AEF", fontWeight: "500" },
+  muted: {
+    color: Sirius.color.inkMuted,
+    fontFamily: Sirius.font.serif,
+    fontSize: 16,
+  },
 });

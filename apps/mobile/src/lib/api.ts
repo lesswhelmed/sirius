@@ -44,6 +44,19 @@ function toUrl(path: string): string {
   return path.startsWith("http") ? path : `${authBaseURL}${path}`;
 }
 
+// Cover images are stored as server-relative paths (e.g. `/sight/<batch>/x.jpg`
+// or `/social/...`). The browser resolves those against its origin, but a
+// native client has no origin, so we must prefix the API host. Remote URLs
+// (Instagram CDN, etc.) and absolute URLs pass through unchanged.
+export function resolveMediaUrl(
+  src: string | null | undefined
+): string | undefined {
+  if (!src) return undefined;
+  if (src.startsWith("http://") || src.startsWith("https://")) return src;
+  if (src.startsWith("/")) return `${authBaseURL}${src}`;
+  return src;
+}
+
 export async function apiGet<T>(
   path: string,
   init?: RequestInit

@@ -2,7 +2,7 @@ import type { Post } from "@repo/db";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import React, { useCallback } from "react";
+import { useCallback } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -13,7 +13,14 @@ import {
   View,
 } from "react-native";
 
-import { apiGet } from "@/lib/api";
+import {
+  KindLabel,
+  PageHeader,
+  PrimaryButton,
+  Screen,
+} from "@/components/sirius";
+import { PostTypeTone, Sirius } from "@/constants/theme";
+import { apiGet, resolveMediaUrl } from "@/lib/api";
 
 type PostsPage = { items: Post[]; nextCursor: string | null };
 
@@ -50,122 +57,176 @@ export default function LibraryScreen() {
   const items = data?.pages.flatMap((p) => p.items) ?? [];
 
   const renderItem = useCallback(
-    ({ item }: { item: Post }) => (
-      <Pressable
-        onPress={() => router.push(`/post/${item.slug}`)}
-        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-      >
-        {item.imageUrl ? (
-          <Image
-            source={{ uri: item.imageUrl }}
-            style={styles.thumb}
-            contentFit="cover"
-            transition={120}
-          />
-        ) : (
-          <View style={[styles.thumb, styles.thumbPlaceholder]}>
-            <Text style={styles.thumbPlaceholderText}>
-              {TYPE_LABEL[item.type]?.[0] ?? "·"}
+    ({ item }: { item: Post }) => {
+      const tone = PostTypeTone[item.type] ?? Sirius.color.inkMuted;
+      const imageUri = resolveMediaUrl(item.imageUrl);
+      return (
+        <Pressable
+          onPress={() => router.push(`/post/${item.slug}`)}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.title} — ${TYPE_LABEL[item.type] ?? item.type}`}
+          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+        >
+          {imageUri ? (
+            <Image
+              source={{ uri: imageUri }}
+              style={styles.thumb}
+              contentFit="cover"
+              transition={120}
+            />
+          ) : (
+            <View style={[styles.thumb, styles.thumbPlaceholder]}>
+              <Text style={[styles.thumbPlaceholderText, { color: tone }]}>
+                {TYPE_LABEL[item.type]?.[0] ?? "·"}
+              </Text>
+            </View>
+          )}
+          <View style={styles.rowText}>
+            <KindLabel tone={tone}>
+              {TYPE_LABEL[item.type] ?? item.type}
+            </KindLabel>
+            <Text style={styles.rowTitle} numberOfLines={2}>
+              {item.title}
             </Text>
           </View>
-        )}
-        <View style={styles.rowText}>
-          <Text style={styles.rowKind}>{TYPE_LABEL[item.type] ?? item.type}</Text>
-          <Text style={styles.rowTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-        </View>
-      </Pressable>
-    ),
+        </Pressable>
+      );
+    },
     []
   );
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-      </View>
+      <Screen style={styles.centered}>
+        <ActivityIndicator color={Sirius.color.accent} />
+      </Screen>
     );
   }
 
   if (isError) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.errorTitle}>Couldn’t load library</Text>
+      <Screen style={styles.centeredPad}>
+        <Text style={styles.errorTitle}>Couldn’t load the catalog</Text>
         <Text style={styles.errorBody}>{(error as Error).message}</Text>
-        <Pressable onPress={() => refetch()} style={styles.retry}>
-          <Text style={styles.retryText}>Retry</Text>
-        </Pressable>
-      </View>
+        <PrimaryButton label="Retry" onPress={() => refetch()} />
+      </Screen>
     );
   }
 
   return (
-    <FlatList
-      data={items}
-      keyExtractor={(p) => p.id}
-      renderItem={renderItem}
-      contentContainerStyle={styles.list}
-      ItemSeparatorComponent={() => <View style={styles.sep} />}
-      onEndReached={() => {
-        if (hasNextPage && !isFetchingNextPage) fetchNextPage();
-      }}
-      onEndReachedThreshold={0.5}
-      refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-      }
-      ListHeaderComponent={
-        <Text style={styles.header}>The Catalog</Text>
-      }
-      ListEmptyComponent={
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>The shelves are bare.</Text>
-          <Text style={styles.emptyBody}>
-            Submit something on Capture to fill them.
-          </Text>
-        </View>
-      }
-      ListFooterComponent={
-        isFetchingNextPage ? (
-          <View style={styles.footerLoader}>
-            <ActivityIndicator />
+    <Screen>
+      <FlatList
+        data={items}
+        keyExtractor={(p) => p.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.list}
+        ItemSeparatorComponent={Separator}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        }}
+        onEndReachedThreshold={0.5}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor={Sirius.color.accent}
+          />
+        }
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <PageHeader
+              eyebrow="Section II — Catalogue"
+              title="The Catalog"
+              titleAccent="."
+              subtitle="Everything captured and made into a post."
+            />
           </View>
-        ) : null
-      }
-    />
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyGlyph}>∅</Text>
+            <Text style={styles.emptyTitle}>The shelves are bare.</Text>
+            <Text style={styles.emptyBody}>
+              Submit something on Capture to fill them.
+            </Text>
+          </View>
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator color={Sirius.color.accent} />
+            </View>
+          ) : null
+        }
+      />
+    </Screen>
   );
 }
 
+function Separator() {
+  return <View style={styles.sep} />;
+}
+
 const styles = StyleSheet.create({
-  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
-  list: { paddingHorizontal: 20, paddingTop: 64, paddingBottom: 120 },
-  header: { fontSize: 28, fontWeight: "600", marginBottom: 16 },
-  row: { flexDirection: "row", gap: 14, paddingVertical: 10 },
+  centered: { alignItems: "center", justifyContent: "center" },
+  centeredPad: {
+    justifyContent: "center",
+    paddingHorizontal: Sirius.space.xl,
+    gap: Sirius.space.lg,
+  },
+  list: {
+    paddingHorizontal: Sirius.space.xl,
+    paddingTop: 64,
+    paddingBottom: 120,
+  },
+  header: { marginBottom: Sirius.space.lg },
+  row: {
+    flexDirection: "row",
+    gap: Sirius.space.lg,
+    paddingVertical: Sirius.space.md,
+  },
   pressed: { opacity: 0.6 },
-  thumb: { width: 56, height: 56, borderRadius: 8, backgroundColor: "#E6E8EC" },
+  thumb: {
+    width: 60,
+    height: 60,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperSunken,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+  },
   thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
-  thumbPlaceholderText: { color: "#60646C", fontSize: 22, fontWeight: "600" },
-  rowText: { flex: 1, justifyContent: "center" },
-  rowKind: {
-    fontSize: 11,
-    color: "#60646C",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginBottom: 2,
+  thumbPlaceholderText: { fontFamily: Sirius.font.serif, fontSize: 24 },
+  rowText: { flex: 1, justifyContent: "center", gap: Sirius.space.xs },
+  rowTitle: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 20,
+    lineHeight: 24,
+    color: Sirius.color.ink,
   },
-  rowTitle: { fontSize: 16, fontWeight: "500", lineHeight: 21 },
-  sep: { height: StyleSheet.hairlineWidth, backgroundColor: "#D0D5DC" },
-  empty: { padding: 40, alignItems: "center", gap: 8 },
-  emptyTitle: { fontSize: 18, fontWeight: "600" },
-  emptyBody: { color: "#60646C" },
-  errorTitle: { fontSize: 18, fontWeight: "600", marginBottom: 6 },
-  errorBody: { color: "#60646C", marginBottom: 12, textAlign: "center" },
-  retry: {
-    backgroundColor: "#208AEF",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 8,
+  sep: { height: 1, backgroundColor: Sirius.color.rule },
+  empty: { padding: 40, alignItems: "center", gap: Sirius.space.sm },
+  emptyGlyph: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 56,
+    color: Sirius.color.ruleStrong,
+    marginBottom: Sirius.space.sm,
   },
-  retryText: { color: "#fff", fontWeight: "600" },
-  footerLoader: { paddingVertical: 16 },
+  emptyTitle: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 22,
+    color: Sirius.color.inkMuted,
+  },
+  emptyBody: {
+    fontSize: 15,
+    color: Sirius.color.inkSubtle,
+    textAlign: "center",
+  },
+  errorTitle: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 22,
+    color: Sirius.color.ink,
+    textAlign: "center",
+  },
+  errorBody: { color: Sirius.color.inkMuted, textAlign: "center" },
+  footerLoader: { paddingVertical: Sirius.space.lg },
 });

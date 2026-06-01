@@ -1,34 +1,30 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import * as Crypto from "expo-crypto";
-import React, { useState } from "react";
+import { useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
-import { ApiError, apiPostForm, apiPostJson } from "@/lib/api";
+import {
+  Eyebrow,
+  Field,
+  PrimaryButton,
+  Screen,
+  Title,
+  TextLink,
+} from "@/components/sirius";
+import { Sirius } from "@/constants/theme";
 import { signOut } from "@/lib/auth-client";
-
-type SubmitOk = {
-  id: string;
-  kind: string;
-  status: string;
-  deduped: boolean;
-  batchId?: string | null;
-  imageIndex?: number | null;
-  totalCount?: number | null;
-};
+import { type Material, submitMaterials } from "@/lib/materials";
 
 const INSTAGRAM_URL_REGEX =
   /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|tv)\/[A-Za-z0-9_-]+\/?/i;
@@ -108,59 +104,31 @@ export default function ComposerScreen() {
       Alert.alert("Heads up", parts.join("\n"));
     }
 
-    setBusy(true);
-    const errors: string[] = [];
-    try {
-      if (urls.length > 0) {
-        // Fan out: each URL becomes its own submission so the worker's
-        // dedicated IG / YouTube paths fire per-URL. One submission with N
-        // URLs collapses into a single FINDING post.
-        for (let i = 0; i < urls.length; i++) {
-          const u = urls[i]!;
-          try {
-            await apiPostJson<SubmitOk>("/api/app/ingest", {
-              urls: [u],
-              notes: trimmedNotes,
-              force: false,
-            });
-          } catch (err) {
-            errors.push(formatError(err, `URL ${i + 1}/${urls.length}`));
-          }
-        }
-      } else if (trimmedNotes.length > 0) {
-        try {
-          await apiPostJson<SubmitOk>("/api/app/ingest", {
-            urls: [],
-            notes: trimmedNotes,
-            force: false,
-          });
-        } catch (err) {
-          errors.push(formatError(err, "Note submit"));
-        }
-      }
+    // Fan out: each URL becomes its own submission so the worker's dedicated
+    // IG / YouTube paths fire per-URL. A standalone note is only created when
+    // there are no URLs (it would otherwise ride along as URL annotation).
+    const materials: Material[] = [];
+    for (const u of urls) {
+      materials.push({ kind: "url", url: u, notes: trimmedNotes });
+    }
+    if (urls.length === 0 && trimmedNotes.length > 0) {
+      materials.push({ kind: "note", text: trimmedNotes });
+    }
+    for (const [i, asset] of images.entries()) {
+      materials.push({
+        kind: "image",
+        uri: asset.uri,
+        name: asset.fileName ?? `img-${i}.jpg`,
+        type: asset.mimeType ?? "image/jpeg",
+        notes: trimmedNotes,
+      });
+    }
 
-      if (hasImages) {
-        const batchId = Crypto.randomUUID();
-        for (let i = 0; i < images.length; i++) {
-          const asset = images[i];
-          const form = new FormData();
-          // RN FormData accepts { uri, name, type } as a "file" part.
-          form.append("image", {
-            uri: asset.uri,
-            name: asset.fileName ?? `img-${i}.jpg`,
-            type: asset.mimeType ?? "image/jpeg",
-          } as unknown as Blob);
-          form.append("batchId", batchId);
-          form.append("imageIndex", String(i));
-          form.append("totalCount", String(images.length));
-          form.append("notes", trimmedNotes);
-          try {
-            await apiPostForm<SubmitOk>("/api/app/ingest-images", form);
-          } catch (err) {
-            errors.push(formatError(err, `image ${i + 1}`));
-          }
-        }
-      }
+    setBusy(true);
+    let errors: string[] = [];
+    try {
+      const result = await submitMaterials(materials, { force: false });
+      errors = result.errors;
     } finally {
       setBusy(false);
     }
@@ -184,158 +152,165 @@ export default function ComposerScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.flex}
-    >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <Text style={styles.title}>Capture</Text>
-          <Pressable onPress={handleSignOut} hitSlop={12}>
-            <Text style={styles.link}>Sign out</Text>
-          </Pressable>
-        </View>
-
-        <Text style={styles.label}>URLs (one per line)</Text>
-        <TextInput
-          style={[styles.input, styles.multiline]}
-          placeholder={"https://example.com/post\nhttps://instagram.com/p/..."}
-          multiline
-          autoCapitalize="none"
-          autoCorrect={false}
-          value={urlsInput}
-          onChangeText={setUrlsInput}
-          editable={!busy}
-        />
-
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          style={[styles.input, styles.multiline]}
-          placeholder="Anything to remember about these…"
-          multiline
-          value={notes}
-          onChangeText={setNotes}
-          editable={!busy}
-        />
-
-        <View style={styles.imagesRow}>
-          {images.map((img, idx) => (
-            <Pressable
-              key={`${img.uri}-${idx}`}
-              onPress={() => removeImage(idx)}
-              style={styles.thumbWrap}
-              accessibilityLabel="Remove image"
-            >
-              <Image source={{ uri: img.uri }} style={styles.thumb} />
-              <View style={styles.thumbBadge}>
-                <Text style={styles.thumbBadgeText}>×</Text>
-              </View>
-            </Pressable>
-          ))}
-          <Pressable
-            onPress={pickImages}
-            disabled={busy}
-            style={({ pressed }) => [
-              styles.pickButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.pickButtonText}>+ Add image</Text>
-          </Pressable>
-        </View>
-
-        <Pressable
-          onPress={submit}
-          disabled={busy}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            (busy || pressed) && styles.primaryButtonPressed,
-          ]}
+    <Screen>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.flex}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
         >
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryButtonText}>Submit</Text>
-          )}
-        </Pressable>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  );
-}
+          <View style={styles.header}>
+            <View style={styles.headerMain}>
+              <Eyebrow>Section III — Ingest</Eyebrow>
+              <Title accent=".">Capture</Title>
+            </View>
+            <TextLink
+              label="Sign out"
+              tone={Sirius.color.inkMuted}
+              onPress={handleSignOut}
+            />
+          </View>
 
-function formatError(err: unknown, label: string): string {
-  if (err instanceof ApiError) return `${label}: ${err.message} (${err.status})`;
-  if (err instanceof Error) return `${label}: ${err.message}`;
-  return `${label}: unknown error`;
+          <Field
+            label="URLs (one per line)"
+            style={styles.multiline}
+            placeholder={"https://example.com/post\nhttps://instagram.com/p/..."}
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={urlsInput}
+            onChangeText={setUrlsInput}
+            editable={!busy}
+          />
+
+          <Field
+            label="Notes"
+            style={styles.multiline}
+            placeholder="Anything to remember about these…"
+            multiline
+            value={notes}
+            onChangeText={setNotes}
+            editable={!busy}
+          />
+
+          <View style={styles.imagesSection}>
+            <Eyebrow>Images</Eyebrow>
+            <View style={styles.imagesRow}>
+              {images.map((img, idx) => (
+                <Pressable
+                  key={img.assetId ?? img.uri}
+                  onPress={() => removeImage(idx)}
+                  style={styles.thumbWrap}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove image ${idx + 1}`}
+                >
+                  <Image
+                    source={{ uri: img.uri }}
+                    style={styles.thumb}
+                    contentFit="cover"
+                    transition={120}
+                  />
+                  <View style={styles.thumbBadge}>
+                    <Text style={styles.thumbBadgeText}>×</Text>
+                  </View>
+                </Pressable>
+              ))}
+              <Pressable
+                onPress={pickImages}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel="Add image"
+                style={({ pressed }) => [
+                  styles.pickButton,
+                  pressed && styles.pressed,
+                  busy && styles.disabled,
+                ]}
+              >
+                <Text style={styles.pickButtonText}>+ Add image</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <PrimaryButton
+            label="Submit"
+            onPress={submit}
+            busy={busy}
+            style={styles.submit}
+          />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
+  );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   container: {
-    padding: 24,
+    padding: Sirius.space.xl,
     paddingTop: 64,
-    gap: 14,
+    gap: Sirius.space.lg,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: 4,
+    alignItems: "flex-end",
+    marginBottom: Sirius.space.xs,
   },
-  title: { fontSize: 28, fontWeight: "600" },
-  link: { color: "#208AEF", fontWeight: "500" },
-  label: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#60646C",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginTop: 6,
+  headerMain: { gap: Sirius.space.xs },
+  multiline: { minHeight: 96, textAlignVertical: "top", paddingTop: 12 },
+  imagesSection: { gap: Sirius.space.sm },
+  imagesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Sirius.space.md,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#D0D5DC",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  multiline: { minHeight: 88, textAlignVertical: "top" },
-  imagesRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 },
   thumbWrap: { position: "relative" },
-  thumb: { width: 72, height: 72, borderRadius: 8, backgroundColor: "#E6E8EC" },
+  thumb: {
+    width: 76,
+    height: 76,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperSunken,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+  },
   thumbBadge: {
     position: "absolute",
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#000",
+    top: -8,
+    right: -8,
+    width: 24,
+    height: 24,
+    borderRadius: Sirius.radius.pill,
+    backgroundColor: Sirius.color.ink,
     alignItems: "center",
     justifyContent: "center",
   },
-  thumbBadgeText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  thumbBadgeText: {
+    color: Sirius.color.paper,
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
   pickButton: {
-    height: 72,
-    minWidth: 96,
+    height: 76,
+    minWidth: 104,
     paddingHorizontal: 14,
-    borderRadius: 8,
+    borderRadius: Sirius.radius.none,
     borderWidth: 1,
-    borderColor: "#208AEF",
+    borderColor: Sirius.color.accent,
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
   },
-  pickButtonText: { color: "#208AEF", fontWeight: "500" },
-  pressed: { opacity: 0.7 },
-  primaryButton: {
-    backgroundColor: "#208AEF",
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 12,
+  pickButtonText: {
+    color: Sirius.color.accent,
+    fontWeight: "600",
+    fontFamily: Sirius.font.mono,
+    fontSize: 12,
+    letterSpacing: 0.6,
   },
-  primaryButtonPressed: { opacity: 0.85 },
-  primaryButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  pressed: { backgroundColor: Sirius.color.accentSoft },
+  disabled: { opacity: 0.45 },
+  submit: { marginTop: Sirius.space.sm },
 });

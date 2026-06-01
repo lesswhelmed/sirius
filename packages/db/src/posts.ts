@@ -48,7 +48,14 @@ function buildPostWhere(opts: PostFilters): Prisma.PostWhereInput {
     where.published = opts.published;
   }
   if (opts.q && opts.q.trim().length > 0) {
-    where.title = { contains: opts.q.trim(), mode: "insensitive" };
+    const q = opts.q.trim();
+    // Search across the fields a browsing owner would expect: the title, the
+    // excerpt, and tag names. OR-combined so any single match surfaces the row.
+    where.OR = [
+      { title: { contains: q, mode: "insensitive" } },
+      { excerpt: { contains: q, mode: "insensitive" } },
+      { tags: { some: { name: { contains: q, mode: "insensitive" } } } },
+    ];
   }
   if (opts.submittedById) {
     where.submittedById = opts.submittedById;

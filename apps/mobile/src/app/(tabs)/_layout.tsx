@@ -1,20 +1,24 @@
 import { Redirect } from "expo-router";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
-import React from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 
-import { Colors } from "@/constants/theme";
+import { Sirius } from "@/constants/theme";
 import { useSession } from "@/lib/auth-client";
 
 export default function TabsLayout() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === "dark" ? "dark" : "light"];
   const { data: session, isPending } = useSession();
 
   if (isPending) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator />
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: Sirius.color.paper,
+        }}
+      >
+        <ActivityIndicator color={Sirius.color.accent} />
       </View>
     );
   }
@@ -24,9 +28,17 @@ export default function TabsLayout() {
 
   return (
     <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}
+      backgroundColor={Sirius.color.paper}
+      tintColor={Sirius.color.accent}
+      iconColor={{
+        default: Sirius.color.inkSubtle,
+        selected: Sirius.color.accent,
+      }}
+      indicatorColor={Sirius.color.accentSoft}
+      labelStyle={{
+        default: { color: Sirius.color.inkMuted },
+        selected: { color: Sirius.color.accent },
+      }}
     >
       <NativeTabs.Trigger name="composer">
         <NativeTabs.Trigger.Label>Capture</NativeTabs.Trigger.Label>

@@ -24,7 +24,7 @@ export function Pagination({ page, totalPages }: Props) {
       }
       start(() => {
         const qs = next.toString();
-        router.replace(qs ? `${pathname}?${qs}` : pathname);
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
       });
     },
     [params, pathname, router]
@@ -48,8 +48,7 @@ export function Pagination({ page, totalPages }: Props) {
       />
 
       <span className="nums-lining">
-        Page{" "}
-        <span className="text-[var(--color-accent)]">{page}</span> of{" "}
+        Page <span className="text-[var(--color-accent)]">{page}</span> of{" "}
         {totalPages}
       </span>
 
@@ -88,13 +87,9 @@ function PageStep({
           : "text-[var(--fg-muted)] hover:text-[var(--color-accent)]"
       }`}
     >
-      {side === "left" ? (
-        <span aria-hidden="true">{glyph}</span>
-      ) : null}
+      {side === "left" ? <span aria-hidden="true">{glyph}</span> : null}
       {label}
-      {side === "right" ? (
-        <span aria-hidden="true">{glyph}</span>
-      ) : null}
+      {side === "right" ? <span aria-hidden="true">{glyph}</span> : null}
     </button>
   );
 }
