@@ -8,7 +8,13 @@ import type { SFSymbol } from "sf-symbols-typescript";
 
 import type { Material } from "@/lib/materials";
 
-export type CaptureKindKey = "link" | "note" | "photos";
+export type CaptureKindKey =
+  | "link"
+  | "note"
+  | "photos"
+  | "video"
+  | "document"
+  | "audio";
 
 export type CaptureKind = {
   key: CaptureKindKey;
@@ -49,6 +55,30 @@ export const CAPTURE_KINDS: CaptureKind[] = [
     input: "picker",
     hint: "Pick photos from your library and add them to the tray",
   },
+  {
+    key: "video",
+    label: "Video",
+    symbol: "video",
+    glyph: "▶",
+    input: "picker",
+    hint: "Pick a video from your library and add it to the tray",
+  },
+  {
+    key: "document",
+    label: "Document",
+    symbol: "doc.text",
+    glyph: "📄",
+    input: "picker",
+    hint: "Pick a PDF or Word document and add it to the tray",
+  },
+  {
+    key: "audio",
+    label: "Audio",
+    symbol: "waveform",
+    glyph: "🎙",
+    input: "picker",
+    hint: "Record a voice memo or pick an audio file and add it to the tray",
+  },
 ];
 
 // Short mono tag shown on each staged tray row.
@@ -56,6 +86,9 @@ const TRAY_TAGS: Record<Material["kind"], string> = {
   url: "URL",
   note: "NOTE",
   image: "PHOTO",
+  video: "VIDEO",
+  audio: "AUDIO",
+  document: "DOC",
   unsupported: "SKIP",
 };
 

@@ -1,9 +1,15 @@
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  AudioModule,
+  RecordingPresets,
+  useAudioRecorder,
+} from "expo-audio";
 import * as Crypto from "expo-crypto";
+import * as DocumentPicker from "expo-document-picker";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -11,6 +17,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -26,6 +33,7 @@ import {
   TrayRow,
 } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
+import { apiGet } from "@/lib/api";
 import { signOut } from "@/lib/auth-client";
 import {
   CAPTURE_KINDS,
@@ -76,6 +84,23 @@ export default function ComposerScreen() {
   const [activeKey, setActiveKey] = useState<CaptureKindKey | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  // Focus picker: file a capture under a Project (mirrors the web composer).
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
+  // Audio capture sheet: record a voice memo or pick an audio file.
+  const [audioSheetOpen, setAudioSheetOpen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  // Load active projects once for the Focus picker; if none/forbidden, the
+  // picker simply never renders.
+  useEffect(() => {
+    apiGet<{ items: { id: string; title: string }[] }>(
+      "/api/app/projects?status=active&limit=50"
+    )
+      .then((page) => setProjects(page.items))
+      .catch(() => {});
+  }, []);
 
   const trayCountLabel = useMemo(() => {
     if (tray.length === 0) return "Tray empty";
@@ -120,12 +145,127 @@ export default function ComposerScreen() {
     );
   }
 
+  async function pickVideo() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        "Permission needed",
+        "Allow photo library access in Settings to attach a video."
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["videos"],
+      allowsMultipleSelection: false,
+      quality: 1,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0]!;
+    addToTray([
+      {
+        kind: "video",
+        uri: asset.uri,
+        name: asset.fileName ?? "video.mp4",
+        type: asset.mimeType ?? "video/mp4",
+      },
+    ]);
+  }
+
+  async function pickDocument() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0]!;
+    addToTray([
+      {
+        kind: "document",
+        uri: asset.uri,
+        name: asset.name,
+        type: asset.mimeType ?? "application/pdf",
+      },
+    ]);
+  }
+
+  async function startRecording() {
+    const status = await AudioModule.requestRecordingPermissionsAsync();
+    if (!status.granted) {
+      Alert.alert(
+        "Microphone permission needed",
+        "Allow microphone access in Settings to record voice memos."
+      );
+      return;
+    }
+    await audioRecorder.prepareToRecordAsync();
+    audioRecorder.record();
+    setIsRecording(true);
+  }
+
+  async function stopRecording() {
+    await audioRecorder.stop();
+    setIsRecording(false);
+    const uri = audioRecorder.uri;
+    if (!uri) return;
+    addToTray([
+      {
+        kind: "audio",
+        uri,
+        name: `voice-memo-${Date.now()}.m4a`,
+        type: "audio/x-m4a",
+      },
+    ]);
+    setAudioSheetOpen(false);
+  }
+
+  async function pickAudioFile() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: [
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/aac",
+      ],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0]!;
+    addToTray([
+      {
+        kind: "audio",
+        uri: asset.uri,
+        name: asset.name,
+        type: asset.mimeType ?? "audio/mpeg",
+      },
+    ]);
+    setAudioSheetOpen(false);
+  }
+
   function onCardPress(kind: CaptureKind) {
     if (busy) return;
-    if (kind.input === "picker") {
+    if (kind.key === "photos") {
       void pickImages();
       return;
     }
+    if (kind.key === "video") {
+      void pickVideo();
+      return;
+    }
+    if (kind.key === "document") {
+      void pickDocument();
+      return;
+    }
+    if (kind.key === "audio") {
+      setAudioSheetOpen(true);
+      return;
+    }
+    // form kinds (link, note)
     setDraft("");
     setActiveKey(kind.key);
   }
@@ -164,7 +304,7 @@ export default function ComposerScreen() {
     try {
       const result = await submitMaterials(
         tray.map((entry) => entry.material),
-        { force: false }
+        { force: false, projectId: projectId ?? undefined }
       );
       errors = result.errors;
     } finally {
@@ -177,6 +317,7 @@ export default function ComposerScreen() {
     }
 
     setTray([]);
+    setProjectId(null);
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
     router.push("/(tabs)/queue");
@@ -235,6 +376,39 @@ export default function ComposerScreen() {
             ))}
           </View>
 
+          {projects.length > 0 ? (
+            <View style={styles.focusPicker}>
+              <Eyebrow>Focus</Eyebrow>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.focusScroll}
+              >
+                {[{ id: null, title: "None" }, ...projects].map((p) => (
+                  <TouchableOpacity
+                    key={p.id ?? "__none__"}
+                    style={[
+                      styles.focusChip,
+                      projectId === p.id && styles.focusChipActive,
+                    ]}
+                    onPress={() => setProjectId(p.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Focus: ${p.title}`}
+                  >
+                    <Text
+                      style={[
+                        styles.focusChipText,
+                        projectId === p.id && styles.focusChipTextActive,
+                      ]}
+                    >
+                      {p.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
           <View style={styles.trayHeader}>
             <Eyebrow>In tray</Eyebrow>
             <Eyebrow
@@ -247,7 +421,7 @@ export default function ComposerScreen() {
 
           {tray.length === 0 ? (
             <Text style={styles.emptyTray}>
-              Nothing staged yet. Add a link, note, or photos above.
+              Nothing staged yet. Pick something above to begin.
             </Text>
           ) : (
             <View style={styles.trayList}>
@@ -305,6 +479,25 @@ export default function ComposerScreen() {
           </>
         ) : null}
       </Sheet>
+
+      <Sheet
+        visible={audioSheetOpen}
+        title="Audio"
+        onClose={() => {
+          if (!isRecording) setAudioSheetOpen(false);
+        }}
+      >
+        <PrimaryButton
+          label={isRecording ? "Stop recording" : "Record voice memo"}
+          onPress={isRecording ? stopRecording : startRecording}
+        />
+        <PrimaryButton
+          label="Pick audio file"
+          onPress={pickAudioFile}
+          disabled={isRecording}
+          style={styles.sheetSecondaryButton}
+        />
+      </Sheet>
     </Screen>
   );
 }
@@ -355,5 +548,27 @@ const styles = StyleSheet.create({
     borderColor: Sirius.color.rule,
   },
   sheetInput: { minHeight: 120, textAlignVertical: "top", paddingTop: 12 },
+  sheetSecondaryButton: { marginTop: Sirius.space.sm },
   submit: { marginTop: Sirius.space.sm },
+  focusPicker: { gap: Sirius.space.sm },
+  focusScroll: { flexDirection: "row" },
+  focusChip: {
+    paddingHorizontal: Sirius.space.md,
+    paddingVertical: Sirius.space.xs,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    marginRight: Sirius.space.sm,
+  },
+  focusChipActive: {
+    borderColor: Sirius.color.accent,
+    backgroundColor: Sirius.color.accent,
+  },
+  focusChipText: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 13,
+    color: Sirius.color.inkMuted,
+  },
+  focusChipTextActive: {
+    color: Sirius.color.paper,
+  },
 });

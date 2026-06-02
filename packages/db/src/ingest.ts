@@ -5,7 +5,13 @@
 import { Prisma } from "../generated/prisma";
 import { prisma, type IngestSubmission } from "./index";
 
-export type IngestKind = "url" | "image" | "note";
+export type IngestKind =
+  | "url"
+  | "image"
+  | "note"
+  | "video"
+  | "audio"
+  | "document";
 export type IngestStatus =
   | "pending"
   | "processing"
@@ -75,7 +81,10 @@ export function findById(id: string): Promise<IngestSubmission | null> {
 
 export async function claimNextNonImage(): Promise<IngestSubmission | null> {
   const pending = await prisma.ingestSubmission.findFirst({
-    where: { status: "pending", kind: { in: ["url", "note"] } },
+    where: {
+      status: "pending",
+      kind: { in: ["url", "note", "video", "audio", "document"] },
+    },
     orderBy: { createdAt: "asc" },
   });
   if (!pending) {

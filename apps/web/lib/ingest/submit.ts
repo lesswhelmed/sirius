@@ -8,8 +8,11 @@ import { createSubmission, getProject, type IngestSubmission } from "@repo/db";
 import { contentHashForBytes, contentHashForUrls } from "./hash";
 import {
   extensionForContentType,
+  extensionForFileMime,
+  fileMetadataSchema,
   imageMetadataSchema,
   urlIngestSchema,
+  type FileIngestMetadata,
 } from "./schema";
 import { stageBytes } from "./staging";
 
@@ -247,6 +250,130 @@ export async function submitImageIngest(
     batchId: result.submission.batchId,
     imageIndex: result.submission.imageIndex,
     totalCount: result.submission.totalCount,
+    status: result.submission.status,
+  });
+
+  return {
+    ok: true,
+    status: result.status === "created" ? 202 : 200,
+    body: toBody(result.submission, result.status === "deduped"),
+  };
+}
+
+// ── Generic single-file ingest (video/audio/document) ────────────────────────
+// Mirrors the image path but for the reference-only file kinds. Each file is a
+// single submission (no batching), staged to disk, and claimed by the worker as
+// a non-image row. The bytes are never served — the worker feeds them to Gemini
+// and deletes the staged file after processing.
+
+export interface ParsedFilePayload {
+  bytes: Uint8Array;
+  contentType: string;
+  metadata: FileIngestMetadata;
+  fileName: string;
+}
+
+export async function parseMultipartFile(
+  request: Request
+): Promise<ParsedFilePayload | { error: string }> {
+  const form = await request.formData();
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return { error: "missing file field" };
+  }
+  const metaParsed = fileMetadataSchema.safeParse({
+    kind: form.get("kind"),
+    notes: form.get("notes") ?? "",
+    projectId: form.get("projectId") ?? "",
+  });
+  if (!metaParsed.success) {
+    return { error: `metadata validation failed: ${metaParsed.error.message}` };
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.byteLength === 0) {
+    return { error: "empty file body" };
+  }
+  return {
+    bytes,
+    contentType: file.type || "application/octet-stream",
+    metadata: metaParsed.data,
+    fileName: file.name,
+  };
+}
+
+export async function parseRawFile(
+  request: Request
+): Promise<ParsedFilePayload | { error: string }> {
+  const url = new URL(request.url);
+  const get = (key: string) =>
+    request.headers.get(`x-${key.toLowerCase()}`) ??
+    url.searchParams.get(key) ??
+    "";
+  const metaParsed = fileMetadataSchema.safeParse({
+    kind: get("kind"),
+    notes: get("notes"),
+    projectId: get("projectId"),
+  });
+  if (!metaParsed.success) {
+    return { error: `metadata validation failed: ${metaParsed.error.message}` };
+  }
+  const buf = await request.arrayBuffer();
+  if (buf.byteLength === 0) {
+    return { error: "empty file body" };
+  }
+  return {
+    bytes: new Uint8Array(buf),
+    contentType:
+      request.headers.get("content-type") ?? "application/octet-stream",
+    metadata: metaParsed.data,
+    fileName: get("filename") || `upload.${get("kind") || "bin"}`,
+  };
+}
+
+export async function submitFileIngest(
+  payload: ParsedFilePayload,
+  log: Logger,
+  submittedById: string | null = null,
+  projectId: string | null = null
+): Promise<SubmitResult> {
+  const submissionId = randomUUID();
+  const ext = extensionForFileMime(payload.contentType);
+  const stagedFilePath = await stageBytes(submissionId, payload.bytes, ext);
+  const contentHash = contentHashForBytes(payload.bytes);
+
+  // seam(intake): validate projectId ownership before persisting. Drop to null
+  // if there's no submitter, no projectId, or the project isn't owned by them.
+  const validatedProjectId = await validateProjectOwnership(
+    submittedById,
+    projectId
+  );
+
+  log("info", "received", {
+    kind: payload.metadata.kind,
+    contentType: payload.contentType,
+    bytes: payload.bytes.byteLength,
+    fileName: payload.fileName,
+    submittedById,
+    projectId: validatedProjectId,
+  });
+
+  const result = await createSubmission({
+    kind: payload.metadata.kind,
+    payload: {
+      notes: payload.metadata.notes,
+      contentType: payload.contentType,
+      extension: ext,
+      fileName: payload.fileName,
+    },
+    contentHash,
+    stagedFilePath,
+    submittedById,
+    projectId: validatedProjectId,
+  });
+
+  log("info", result.status === "created" ? "accepted" : "deduped", {
+    id: result.submission.id,
+    kind: payload.metadata.kind,
     status: result.submission.status,
   });
 

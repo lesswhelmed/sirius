@@ -8,7 +8,7 @@
 // The worker forces the post type after the model returns so a model
 // regression can't drift it.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { PostType } from "@repo/db";
@@ -110,12 +110,32 @@ function buildPrompt(input: PipelineInput): string {
     if (input.notes.trim()) {
       lines.push("", `Author's notes (verbatim): ${input.notes.trim()}`);
     }
-  } else {
+  } else if (input.kind === "note") {
     lines.push(
       "Compose a short BLOG entry from the author's notes:",
       "",
       input.notes.trim()
     );
+  } else {
+    // video | audio | document — reference-only: describe/summarize the
+    // attached file's content as text. No media is embedded in the post.
+    const kindLabels: Record<string, string> = {
+      video: "VIDEO",
+      audio: "AUDIO RECORDING",
+      document: "DOCUMENT",
+    };
+    const postTypes: Record<string, string> = {
+      video: "SIGHT post (describe what you see/hear, the subject, the mood)",
+      audio: "BLOG entry (transcribe key points, first-person observations)",
+      document: "FINDING post (summarize the content, key claims, relevance)",
+    };
+    lines.push(
+      `A ${kindLabels[input.kind] ?? input.kind} file is attached. Write a ${postTypes[input.kind] ?? "post"}.`,
+      "Be concrete, first-person, observational. No filler. 80-300 words."
+    );
+    if (input.notes.trim()) {
+      lines.push("", `Author's notes (verbatim): ${input.notes.trim()}`);
+    }
   }
   return lines.join("\n");
 }
@@ -289,6 +309,42 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
       output: Output.object({ schema: PostDraftSchema }),
     });
     return toGeminiOutput(output, "SIGHT");
+  }
+
+  if (
+    input.kind === "video" ||
+    input.kind === "audio" ||
+    input.kind === "document"
+  ) {
+    if (!existsSync(input.stagedFilePath)) {
+      throw new Error(`staged file not found: ${input.stagedFilePath}`);
+    }
+    const fileData = readFileSync(input.stagedFilePath);
+    const forcedTypes: Record<string, PostType> = {
+      video: "SIGHT",
+      audio: "BLOG",
+      document: "FINDING",
+    };
+    const forcedType = forcedTypes[input.kind] as PostType;
+    // Gemini natively reads pdf/audio/video via a `file` content part. The
+    // mediaType must be a `${string}/${string}` template literal type.
+    const filePart = {
+      type: "file" as const,
+      data: fileData,
+      mediaType: input.mimeType as `${string}/${string}`,
+    };
+    const { output } = await generateText({
+      model,
+      temperature: config.temperature,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: prompt }, filePart],
+        },
+      ],
+      output: Output.object({ schema: PostDraftSchema }),
+    });
+    return toGeminiOutput(output, forcedType);
   }
 
   const { output } = await generateText({

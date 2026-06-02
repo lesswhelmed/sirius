@@ -25,20 +25,51 @@ export type ImageInput = {
 export function submitUrl(
   url: string,
   notes = "",
-  force = false
+  force = false,
+  projectId?: string
 ): Promise<SubmitOk> {
   return apiPostJson<SubmitOk>("/api/app/ingest", {
     urls: [url],
     notes,
     force,
+    ...(projectId ? { projectId } : {}),
   });
 }
 
-export function submitNote(notes: string, force = false): Promise<SubmitOk> {
+export function submitNote(
+  notes: string,
+  force = false,
+  projectId?: string
+): Promise<SubmitOk> {
   return apiPostJson<SubmitOk>("/api/app/ingest", {
     urls: [],
     notes,
     force,
+    ...(projectId ? { projectId } : {}),
+  });
+}
+
+// Submits a single non-image file (video/audio/document) as one submission.
+// Mirrors submitImageBatch's per-file upload but targets the generic
+// file-ingest endpoint; the worker forces the PostType per kind.
+export type FileKind = "video" | "audio" | "document";
+
+export async function submitFile(
+  fileUri: string,
+  kind: FileKind,
+  mimeType: string,
+  fileName: string,
+  notes = "",
+  projectId?: string
+): Promise<SubmitOk> {
+  return uploadFile<SubmitOk>("/api/app/ingest-file", fileUri, {
+    fieldName: "file",
+    mimeType,
+    parameters: {
+      kind,
+      notes,
+      ...(projectId ? { projectId } : {}),
+    },
   });
 }
 
@@ -49,7 +80,8 @@ export function submitNote(notes: string, force = false): Promise<SubmitOk> {
 export async function submitImageBatch(
   images: ImageInput[],
   notes: string,
-  onError?: (label: string, err: unknown) => void
+  onError?: (label: string, err: unknown) => void,
+  projectId?: string
 ): Promise<{ submitted: number }> {
   if (images.length === 0) {
     return { submitted: 0 };
@@ -67,6 +99,7 @@ export async function submitImageBatch(
           imageIndex: String(i),
           totalCount: String(images.length),
           notes,
+          ...(projectId ? { projectId } : {}),
         },
       });
       submitted++;

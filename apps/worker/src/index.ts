@@ -95,6 +95,8 @@ type PayloadShape = {
   urls?: unknown;
   notes?: unknown;
   force?: unknown;
+  contentType?: unknown;
+  extension?: unknown;
 };
 
 function readPayload(submission: IngestSubmission): PayloadShape {
@@ -160,13 +162,43 @@ function buildInput(rows: IngestSubmission[]): PipelineInput {
       projectId,
     };
   }
-  return {
-    kind: "note",
-    submission: first,
-    notes,
-    submittedById,
-    projectId,
-  };
+  if (first.kind === "note") {
+    return {
+      kind: "note",
+      submission: first,
+      notes,
+      submittedById,
+      projectId,
+    };
+  }
+  // New single-file kinds: video, audio, document. Reference-only — each is one
+  // submission carrying a stagedFilePath that the worker hands to Gemini.
+  if (
+    first.kind === "video" ||
+    first.kind === "audio" ||
+    first.kind === "document"
+  ) {
+    if (!first.stagedFilePath) {
+      throw new Error(`${first.kind} row ${first.id} missing stagedFilePath`);
+    }
+    const mimeType =
+      typeof payload.contentType === "string"
+        ? payload.contentType
+        : "application/octet-stream";
+    const extension =
+      typeof payload.extension === "string" ? payload.extension : "bin";
+    return {
+      kind: first.kind,
+      submission: first,
+      stagedFilePath: first.stagedFilePath,
+      mimeType,
+      extension,
+      notes,
+      submittedById,
+      projectId,
+    };
+  }
+  throw new Error(`unknown kind: ${first.kind}`);
 }
 
 async function processBatch(rows: IngestSubmission[]): Promise<void> {

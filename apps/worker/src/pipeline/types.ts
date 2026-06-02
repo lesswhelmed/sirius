@@ -2,7 +2,13 @@
 // hands to every pipeline stage; each stage narrows on `kind`.
 import type { IngestSubmission, PostType } from "@repo/db";
 
-export type IngestKind = "url" | "image" | "note";
+export type IngestKind =
+  | "url"
+  | "image"
+  | "note"
+  | "video"
+  | "audio"
+  | "document";
 
 export type StagedImage = {
   submissionId: string;
@@ -34,6 +40,19 @@ export type PipelineInput =
       batchId: string;
       notes: string;
       images: StagedImage[];
+      submittedById: string | null;
+      projectId: string | null;
+    }
+  | {
+      // Single-file reference-only kinds. The worker feeds the staged file to
+      // Gemini for understanding but does NOT store or serve the bytes — the
+      // generated Post body is text-only (summary/transcript). No media copy.
+      kind: "video" | "audio" | "document";
+      submission: IngestSubmission;
+      stagedFilePath: string;
+      mimeType: string;
+      extension: string;
+      notes: string;
       submittedById: string | null;
       projectId: string | null;
     };

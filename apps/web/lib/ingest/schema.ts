@@ -57,3 +57,57 @@ export function extensionForContentType(contentType: string): string {
   const lower = contentType.toLowerCase().split(";")[0]?.trim() ?? "";
   return TYPE_TO_EXT[lower] ?? "bin";
 }
+
+// ── File-ingest extensions ───────────────────────────────────────────────────
+// Mirrors the image path above, but for the reference-only file kinds
+// (video/audio/document). The worker feeds these to Gemini for understanding
+// and never serves the bytes, so we only need a sensible on-disk extension.
+
+const FILE_TYPE_TO_EXT: Record<string, string> = {
+  // video
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/x-m4v": "m4v",
+  // audio
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/aac": "aac",
+  // document
+  "application/pdf": "pdf",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    "docx",
+};
+
+export const ALLOWED_FILE_KINDS = ["video", "audio", "document"] as const;
+export type FileKind = (typeof ALLOWED_FILE_KINDS)[number];
+
+export function kindForMime(mime: string): FileKind | null {
+  const lower = mime.toLowerCase().split(";")[0]?.trim() ?? "";
+  if (lower.startsWith("video/")) return "video";
+  if (lower.startsWith("audio/")) return "audio";
+  if (
+    lower === "application/pdf" ||
+    lower === "application/msword" ||
+    lower ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  )
+    return "document";
+  return null;
+}
+
+export function extensionForFileMime(contentType: string): string {
+  const lower = contentType.toLowerCase().split(";")[0]?.trim() ?? "";
+  return FILE_TYPE_TO_EXT[lower] ?? "bin";
+}
+
+export const fileMetadataSchema = z.object({
+  kind: z.enum(ALLOWED_FILE_KINDS),
+  notes: z.string().optional().default(""),
+  projectId: z.string().optional().default(""),
+});
+
+export type FileIngestMetadata = z.infer<typeof fileMetadataSchema>;

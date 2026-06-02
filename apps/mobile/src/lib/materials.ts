@@ -8,6 +8,7 @@ import type { ShareIntent } from "expo-share-intent";
 
 import {
   formatError,
+  submitFile,
   submitImageBatch,
   submitNote,
   submitUrl,
@@ -18,6 +19,29 @@ export type UrlMaterial = { kind: "url"; url: string; notes?: string };
 export type NoteMaterial = { kind: "note"; text: string };
 export type ImageMaterial = {
   kind: "image";
+  uri: string;
+  name: string;
+  type: string;
+  notes?: string;
+};
+// Reference-only file kinds: the worker feeds the bytes to Gemini for
+// understanding but never stores/serves them. Each is one submission.
+export type VideoMaterial = {
+  kind: "video";
+  uri: string;
+  name: string;
+  type: string;
+  notes?: string;
+};
+export type AudioMaterial = {
+  kind: "audio";
+  uri: string;
+  name: string;
+  type: string;
+  notes?: string;
+};
+export type DocumentMaterial = {
+  kind: "document";
   uri: string;
   name: string;
   type: string;
@@ -35,6 +59,9 @@ export type Material =
   | UrlMaterial
   | NoteMaterial
   | ImageMaterial
+  | VideoMaterial
+  | AudioMaterial
+  | DocumentMaterial
   | UnsupportedMaterial;
 
 const URL_IN_TEXT_REGEX = /https?:\/\/[^\s]+/i;
@@ -138,6 +165,12 @@ export function describeMaterial(material: Material): string {
       return material.text;
     case "image":
       return material.name;
+    case "video":
+      return material.name;
+    case "audio":
+      return material.name;
+    case "document":
+      return material.name;
     case "unsupported":
       return material.reason;
   }
@@ -145,6 +178,7 @@ export function describeMaterial(material: Material): string {
 
 export type SubmitContext = {
   force: boolean;
+  projectId?: string;
   onError?: (label: string, err: unknown) => void;
 };
 
@@ -171,7 +205,7 @@ const urlHandler: MaterialHandler<"url"> = {
     let submitted = 0;
     for (const [i, m] of materials.entries()) {
       try {
-        await submitUrl(m.url, m.notes ?? "", ctx.force);
+        await submitUrl(m.url, m.notes ?? "", ctx.force, ctx.projectId);
         submitted++;
       } catch (err) {
         const label = `URL ${i + 1}/${materials.length}`;
@@ -190,7 +224,7 @@ const noteHandler: MaterialHandler<"note"> = {
     let submitted = 0;
     for (const [i, m] of materials.entries()) {
       try {
-        await submitNote(m.text, ctx.force);
+        await submitNote(m.text, ctx.force, ctx.projectId);
         submitted++;
       } catch (err) {
         const label = materials.length > 1 ? `Note ${i + 1}` : "Note";
@@ -218,8 +252,90 @@ const imageHandler: MaterialHandler<"image"> = {
       (label, err) => {
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
-      }
+      },
+      ctx.projectId
     );
+    return { submitted, errors };
+  },
+};
+
+// Generic single-file handlers (video/audio/document). Each material is one
+// submission posted to the file-ingest endpoint; the worker forces the
+// PostType per kind (video→SIGHT, audio→BLOG, document→FINDING).
+const videoHandler: MaterialHandler<"video"> = {
+  kind: "video",
+  async submit(materials, ctx) {
+    const errors: string[] = [];
+    let submitted = 0;
+    for (const [i, m] of materials.entries()) {
+      try {
+        await submitFile(
+          m.uri,
+          "video",
+          m.type,
+          m.name,
+          m.notes ?? "",
+          ctx.projectId
+        );
+        submitted++;
+      } catch (err) {
+        const label = `Video ${i + 1}/${materials.length}`;
+        ctx.onError?.(label, err);
+        errors.push(formatError(err, label));
+      }
+    }
+    return { submitted, errors };
+  },
+};
+
+const audioHandler: MaterialHandler<"audio"> = {
+  kind: "audio",
+  async submit(materials, ctx) {
+    const errors: string[] = [];
+    let submitted = 0;
+    for (const [i, m] of materials.entries()) {
+      try {
+        await submitFile(
+          m.uri,
+          "audio",
+          m.type,
+          m.name,
+          m.notes ?? "",
+          ctx.projectId
+        );
+        submitted++;
+      } catch (err) {
+        const label = `Audio ${i + 1}/${materials.length}`;
+        ctx.onError?.(label, err);
+        errors.push(formatError(err, label));
+      }
+    }
+    return { submitted, errors };
+  },
+};
+
+const documentHandler: MaterialHandler<"document"> = {
+  kind: "document",
+  async submit(materials, ctx) {
+    const errors: string[] = [];
+    let submitted = 0;
+    for (const [i, m] of materials.entries()) {
+      try {
+        await submitFile(
+          m.uri,
+          "document",
+          m.type,
+          m.name,
+          m.notes ?? "",
+          ctx.projectId
+        );
+        submitted++;
+      } catch (err) {
+        const label = `Document ${i + 1}/${materials.length}`;
+        ctx.onError?.(label, err);
+        errors.push(formatError(err, label));
+      }
+    }
     return { submitted, errors };
   },
 };
@@ -228,6 +344,9 @@ const HANDLERS = {
   url: urlHandler,
   note: noteHandler,
   image: imageHandler,
+  video: videoHandler,
+  audio: audioHandler,
+  document: documentHandler,
 } satisfies { [K in Exclude<Material["kind"], "unsupported">]: MaterialHandler<K> };
 
 function groupByKind(materials: Material[]) {
@@ -235,6 +354,11 @@ function groupByKind(materials: Material[]) {
     url: materials.filter((m): m is UrlMaterial => m.kind === "url"),
     note: materials.filter((m): m is NoteMaterial => m.kind === "note"),
     image: materials.filter((m): m is ImageMaterial => m.kind === "image"),
+    video: materials.filter((m): m is VideoMaterial => m.kind === "video"),
+    audio: materials.filter((m): m is AudioMaterial => m.kind === "audio"),
+    document: materials.filter(
+      (m): m is DocumentMaterial => m.kind === "document"
+    ),
     unsupported: materials.filter(
       (m): m is UnsupportedMaterial => m.kind === "unsupported"
     ),
@@ -260,6 +384,18 @@ export async function submitMaterials(
   const imageResult = await HANDLERS.image.submit(grouped.image, ctx);
   submitted += imageResult.submitted;
   errors.push(...imageResult.errors);
+
+  const videoResult = await HANDLERS.video.submit(grouped.video, ctx);
+  submitted += videoResult.submitted;
+  errors.push(...videoResult.errors);
+
+  const audioResult = await HANDLERS.audio.submit(grouped.audio, ctx);
+  submitted += audioResult.submitted;
+  errors.push(...audioResult.errors);
+
+  const documentResult = await HANDLERS.document.submit(grouped.document, ctx);
+  submitted += documentResult.submitted;
+  errors.push(...documentResult.errors);
 
   return { submitted, errors, skipped: grouped.unsupported };
 }
