@@ -150,11 +150,17 @@ worker never call each other directly, they only share the DB and the `@repo/db`
   `/api/catalog/*` = public read; `/api/auth/*` = better-auth.
 
 ## Deployment
-`deploy.sh` (idempotent) runs on the host: `git pull --ff-only` → `bun install --frozen-lockfile`
-→ `db:generate` → `db:migrate:deploy` → `build` → `pm2 startOrReload ecosystem.config.cjs`.
+`bun run deploy` (`scripts/deploy-remote.sh`, reads `.env.production`) pushes `main`, runs
+`deploy.sh` on the server over SSH, and verifies the public URL returns 200. `deploy.sh`
+(idempotent) runs on the host: `git pull --ff-only` → `bun install --frozen-lockfile` →
+`db:generate` → `db:migrate:deploy` → build into `apps/web/.next-builds/<id>` with
+`.next-builds/current` symlinked (web `next.config.js` reads `distDir` from `BUILD_DIR`) →
+`pm2 startOrReload ecosystem.config.cjs` → `pm2 save` → prune to 3 builds → `pm2 status`.
 PM2 (`ecosystem.config.cjs`) runs two fork-mode processes: **sirius-web** (`apps/web`, `bun run
-start`, port 3000) and **sirius-worker** (`apps/worker`, `bun run start`). Both load the
-repo-root `.env`. The worker has no HTTP surface — it's purely the queue consumer.
+start`, port 3003) and **sirius-worker** (`apps/worker`, `bun run start`). Both load the
+repo-root `.env`. The worker has no HTTP surface — it's purely the queue consumer. Full
+server setup (Postgres, Caddy, env mirror) is in `DEPLOY.md`; `bun run env:production`
+generates the local `.env.production` mirror (never overwrites an existing one).
 
 ## Environment
 Copy `.env.example` to `.env` at the repo root (all apps read the root `.env`). Required for the

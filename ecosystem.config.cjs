@@ -23,7 +23,11 @@ module.exports = {
       cwd: path.join(ROOT, "apps", "web"),
       env: {
         NODE_ENV: "production",
-        PORT: 3000,
+        // Shared server: copt-dev owns 3000, botanical-bros 6940; sirius = 3003.
+        PORT: 3003,
+        // `next start` resolves distDir from BUILD_DIR (see apps/web/next.config.js),
+        // so it serves the build symlinked at .next-builds/current.
+        BUILD_DIR: ".next-builds/current",
       },
       instances: 1,
       exec_mode: "fork",

@@ -118,10 +118,14 @@ automatically).
 
 ## Deployment
 
-`deploy.sh` runs on the host (idempotent): `git pull --ff-only` → `bun install
---frozen-lockfile` → `db:generate` → `db:migrate:deploy` → `build` → `pm2 startOrReload`.
-PM2 (`ecosystem.config.cjs`) runs two fork-mode processes — **sirius-web** (port 3000) and
-**sirius-worker** (no HTTP surface) — both loading the repo-root `.env`.
+Run `bun run deploy` locally to push, run `deploy.sh` on the server over SSH, and
+verify the public URL. `deploy.sh` (idempotent) runs on the host: `git pull --ff-only`
+→ `bun install --frozen-lockfile` → `db:generate` → `db:migrate:deploy` → build into
+`apps/web/.next-builds/<id>` (symlinked `current`) → `pm2 startOrReload` → `pm2 save` →
+prune to 3 builds. PM2 (`ecosystem.config.cjs`) runs two fork-mode processes —
+**sirius-web** (port 3003) and **sirius-worker** (no HTTP surface) — both loading the
+repo-root `.env`. See [`DEPLOY.md`](./DEPLOY.md) for full server setup (Postgres, Caddy,
+`.env.production` via `bun run env:production`).
 
 ## Environment
 

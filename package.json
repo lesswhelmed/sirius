@@ -13,7 +13,9 @@
     "db:push": "turbo run db:push --filter=@repo/db",
     "db:studio": "turbo run db:studio --filter=@repo/db",
     "worker:dev": "turbo run dev --filter=worker",
-    "worker:setup": "turbo run setup --filter=worker"
+    "worker:setup": "turbo run setup --filter=worker",
+    "env:production": "bun run scripts/create-production-env.ts",
+    "deploy": "bash scripts/deploy-remote.sh"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",

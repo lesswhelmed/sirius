@@ -3,6 +3,7 @@
   "ui": "tui",
   "globalEnv": [
     "NODE_ENV",
+    "BUILD_DIR",
     "DATABASE_URL",
     "BETTER_AUTH_URL",
     "INGEST_TOKEN",
