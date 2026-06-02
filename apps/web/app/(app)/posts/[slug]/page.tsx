@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Streamdown } from "streamdown";
-import { getPostViewStats, isPostSaved } from "@repo/db";
+import { getPostViewStats, isPostSaved, listProjects } from "@repo/db";
 
 import { DateDisplay } from "../../../../lib/date-display";
 import { getCachedPost } from "../../../../lib/cached";
@@ -46,10 +46,17 @@ export default async function PostDetailPage({
 
   const session = await getSessionOrNull();
   const userId = session?.user.id ?? null;
-  const [initialSaved, stats] = await Promise.all([
+  // Only the user who ingested the post may file it under a Project.
+  const canAssign = userId != null && post.submittedById === userId;
+  const [initialSaved, stats, projectPage] = await Promise.all([
     userId ? isPostSaved(userId, post.id) : Promise.resolve(false),
     getPostViewStats(post.id),
+    canAssign
+      ? listProjects(userId, { status: "active" })
+      : Promise.resolve(null),
   ]);
+  const projectOptions =
+    projectPage?.items.map((p) => ({ id: p.id, title: p.title })) ?? [];
 
   return (
     <article className="mx-auto max-w-[920px]">
@@ -123,6 +130,7 @@ export default async function PostDetailPage({
             lastEdited: post.lastEdited,
             lastSyncedAt: post.lastSyncedAt,
             originalDate: post.originalDate,
+            projectId: post.projectId,
             tags: post.tags.map((t) => ({ id: t.id, name: t.name })),
             categories: post.categories.map((c) => ({
               id: c.id,
@@ -132,6 +140,8 @@ export default async function PostDetailPage({
           stats={stats}
           initialSaved={initialSaved}
           canSave={userId != null}
+          projects={projectOptions}
+          canAssign={canAssign}
         />
       </div>
 

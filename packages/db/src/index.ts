@@ -20,12 +20,15 @@ export type HlexiconEntry = Prisma.HlexiconEntryGetPayload<
 export type IngestSubmission = Prisma.IngestSubmissionGetPayload<
   Record<string, never>
 >;
+export type Aspiration = Prisma.AspirationGetPayload<Record<string, never>>;
+export type Project = Prisma.ProjectGetPayload<Record<string, never>>;
 
 export * from "./ingest";
 export * from "./posts";
 export * from "./users";
 export * from "./saved";
 export * from "./analytics";
+export * from "./projects";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

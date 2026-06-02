@@ -5,6 +5,10 @@ import { DateDisplay } from "../../../../lib/date-display";
 import type { DateInput } from "../../../../lib/datetime";
 import { ShareButton } from "./share-button";
 import { SaveButton } from "./save-button";
+import {
+  AssignToProject,
+  type ProjectOption,
+} from "../../_components/assign-to-project";
 
 type TabKey = "details" | "history" | "analytics";
 
@@ -37,6 +41,7 @@ export interface ColophonPost {
   lastEdited: DateInput;
   lastSyncedAt: DateInput;
   originalDate: DateInput;
+  projectId: string | null;
   tags: ColophonTag[];
   categories: ColophonCategory[];
 }
@@ -52,11 +57,15 @@ export function ColophonTabs({
   stats = null,
   initialSaved = false,
   canSave = false,
+  projects = [],
+  canAssign = false,
 }: {
   post: ColophonPost;
   stats?: ColophonStats | null;
   initialSaved?: boolean;
   canSave?: boolean;
+  projects?: ProjectOption[];
+  canAssign?: boolean;
 }) {
   const [tab, setTab] = useState<TabKey>("details");
 
@@ -111,6 +120,12 @@ export function ColophonTabs({
             slug={post.slug}
             initialSaved={initialSaved}
             canSave={canSave}
+          />
+          <AssignToProject
+            slug={post.slug}
+            currentProjectId={post.projectId}
+            projects={projects}
+            canAssign={canAssign}
           />
           <ShareButton slug={post.slug} />
           <a

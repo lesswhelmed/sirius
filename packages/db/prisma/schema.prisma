@@ -42,6 +42,11 @@ model Post {
   submittedById String?
   submittedBy   User?   @relation("UserPosts", fields: [submittedById], references: [id], onDelete: SetNull)
 
+  // Organization: the Project (Focus Area) this post is filed under. A post
+  // belongs to at most one Project; SetNull so content outlives its container.
+  projectId String?
+  project   Project? @relation("ProjectPosts", fields: [projectId], references: [id], onDelete: SetNull)
+
   tags            Tag[]           @relation("PostToTag")
   categories      Category[]      @relation("PostToCategory")
   hlexiconEntries HlexiconEntry[] @relation("PostToHlexicon")
@@ -58,6 +63,7 @@ model Post {
   @@index([syncStatus])
   @@index([submittedById])
   @@index([submittedById, status, createdAt])
+  @@index([projectId])
 }
 
 enum PostType {
@@ -150,10 +156,16 @@ model IngestSubmission {
   submittedById String?
   submittedBy   User?   @relation("UserSubmissions", fields: [submittedById], references: [id], onDelete: SetNull)
 
+  // Seam (intake): submit-time Project assignment. Worker copies onto Post,
+  // mirroring submittedById. Not wired into the composer yet.
+  projectId String?
+  project   Project? @relation("ProjectSubmissions", fields: [projectId], references: [id], onDelete: SetNull)
+
   @@index([status])
   @@index([batchId])
   @@index([kind])
   @@index([submittedById])
+  @@index([projectId])
 }
 
 model SavedPost {
@@ -225,10 +237,57 @@ model User {
   posts       Post[]             @relation("UserPosts")
   submissions IngestSubmission[] @relation("UserSubmissions")
   saves             SavedPost[]  @relation("UserSaves")
+  aspirations Aspiration[]       @relation("UserAspirations")
+  projects    Project[]          @relation("UserProjects")
 
   @@index([email])
   @@index([handle])
   @@map("user")
+}
+
+// ─── Organization (lesswhelmed Aspiration Core) ─────────────────────────────
+// Aspiration = a high-level user goal. Project = a concrete Focus Area under an
+// Aspiration (or standalone). Posts/submissions are filed under one Project.
+
+model Aspiration {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  sortOrder   Int?
+  metadata    Json? // seam: later intake-question config / automation rules
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation("UserAspirations", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  projects Project[] @relation("AspirationProjects")
+
+  @@index([ownerId, createdAt])
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("active") // "active" | "archived" (mirrors IngestSubmission status style)
+  sortOrder   Int?
+  metadata    Json? // seam: later intake-question config / automation rules
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation("UserProjects", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Standalone-capable: a Project may have no Aspiration.
+  aspirationId String?
+  aspiration   Aspiration? @relation("AspirationProjects", fields: [aspirationId], references: [id], onDelete: SetNull)
+
+  posts       Post[]             @relation("ProjectPosts")
+  submissions IngestSubmission[] @relation("ProjectSubmissions")
+
+  @@index([ownerId, status, createdAt])
+  @@index([aspirationId])
 }
 
 model Session {
