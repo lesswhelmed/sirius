@@ -14,24 +14,21 @@ export async function recordPostView(
 export interface PostViewStats {
   totalViews: number;
   uniqueViewers: number;
-  inquiries: number;
 }
 
 export async function getPostViewStats(
   postId: string
 ): Promise<PostViewStats> {
-  const [totalViews, distinctViewers, inquiries] = await Promise.all([
+  const [totalViews, distinctViewers] = await Promise.all([
     prisma.postView.count({ where: { postId } }),
     prisma.postView.groupBy({
       by: ["viewerId"],
       where: { postId, viewerId: { not: null } },
     }),
-    prisma.inquiry.count({ where: { postId } }),
   ]);
 
   return {
     totalViews,
     uniqueViewers: distinctViewers.length,
-    inquiries,
   };
 }

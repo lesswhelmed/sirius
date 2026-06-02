@@ -21,7 +21,6 @@ export interface ColophonCategory {
 export interface ColophonStats {
   totalViews: number;
   uniqueViewers: number;
-  inquiries: number;
 }
 
 export interface ColophonPost {
@@ -290,10 +289,7 @@ function AnalyticsTab({ stats }: { stats: ColophonStats | null }) {
         value={stats ? stats.totalViews : null}
         accent
       />
-      <div className="grid grid-cols-2 gap-6">
-        <Figure label="Unique" value={stats ? stats.uniqueViewers : null} />
-        <Figure label="Inquiries" value={stats ? stats.inquiries : null} />
-      </div>
+      <Figure label="Unique" value={stats ? stats.uniqueViewers : null} />
       {stats === null ? (
         <p className="font-display italic text-[14px] text-[var(--fg-subtle)]">
           Recording…

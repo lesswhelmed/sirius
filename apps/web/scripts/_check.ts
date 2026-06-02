@@ -11,7 +11,6 @@ const counts = {
   postsWithSubmitter: await prisma.post.count({
     where: { submittedById: { not: null } },
   }),
-  inquiries: await prisma.inquiry.count(),
   tags: await prisma.tag.count(),
   categories: await prisma.category.count(),
 };

@@ -55,7 +55,7 @@ export default function SignInScreen() {
             eyebrow="Sirius — The Broker"
             title="Sign in"
             titleAccent="."
-            subtitle="Return to your catalog, queue, and inbox."
+            subtitle="Return to your catalog and queue."
           />
 
           <View style={styles.form}>

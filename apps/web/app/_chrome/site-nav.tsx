@@ -15,9 +15,8 @@ export interface NavItem {
 // public bar.
 export const SIGNED_IN_NAV: readonly NavItem[] = [
   { href: "/catalog", label: "Catalog", folio: "I" },
-  { href: "/inbox", label: "Inbox", folio: "II" },
-  { href: "/ingest", label: "Ingest", folio: "III" },
-  { href: "/queue", label: "Queue", folio: "IV" },
+  { href: "/ingest", label: "Ingest", folio: "II" },
+  { href: "/queue", label: "Queue", folio: "III" },
 ];
 
 export const SIGNED_OUT_NAV: readonly NavItem[] = [

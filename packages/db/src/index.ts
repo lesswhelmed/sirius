@@ -24,7 +24,6 @@ export type IngestSubmission = Prisma.IngestSubmissionGetPayload<
 export * from "./ingest";
 export * from "./posts";
 export * from "./users";
-export * from "./inquiries";
 export * from "./saved";
 export * from "./analytics";
 

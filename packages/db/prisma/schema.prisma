@@ -45,7 +45,6 @@ model Post {
   tags            Tag[]           @relation("PostToTag")
   categories      Category[]      @relation("PostToCategory")
   hlexiconEntries HlexiconEntry[] @relation("PostToHlexicon")
-  inquiries       Inquiry[]
   savedBy         SavedPost[]     @relation("PostSaves")
   views           PostView[]      @relation("PostViews")
 
@@ -157,27 +156,6 @@ model IngestSubmission {
   @@index([submittedById])
 }
 
-model Inquiry {
-  id          String   @id @default(cuid())
-  postId      String
-  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  sellerId    String
-  seller      User     @relation("SellerInquiries", fields: [sellerId], references: [id], onDelete: Cascade)
-  fromUserId  String?
-  fromUser    User?    @relation("InquirerInquiries", fields: [fromUserId], references: [id], onDelete: SetNull)
-  fromEmail   String
-  fromName    String?
-  message     String
-  status      String   @default("open") // open | closed
-  emailSentAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([sellerId, status, createdAt])
-  @@index([postId])
-  @@index([fromUserId])
-}
-
 model SavedPost {
   id        String   @id @default(cuid())
   userId    String
@@ -246,8 +224,6 @@ model User {
   accounts    Account[]
   posts       Post[]             @relation("UserPosts")
   submissions IngestSubmission[] @relation("UserSubmissions")
-  inquiriesReceived Inquiry[]    @relation("SellerInquiries")
-  inquiriesSent     Inquiry[]    @relation("InquirerInquiries")
   saves             SavedPost[]  @relation("UserSaves")
 
   @@index([email])

@@ -5,9 +5,7 @@ import { PostStatus } from "@repo/db";
 
 import { DateDisplay } from "../../../../lib/date-display";
 import { getCachedPost } from "../../../../lib/cached";
-import { getSessionOrNull } from "../../../../lib/session";
 import { PostImage } from "../../../_chrome/post-image";
-import { InquiryForm } from "./inquiry-form";
 
 const MARKDOWN_CLASS_NAME = [
   "drop-cap break-words font-body text-[18px] leading-[1.7] text-[var(--fg)]",
@@ -35,14 +33,7 @@ export default async function ListingPage({
     notFound();
   }
 
-  const session = await getSessionOrNull();
-  const isViewerSeller =
-    session?.user.id != null &&
-    post.submittedBy?.id != null &&
-    session.user.id === post.submittedBy.id;
-
   const sellerHandle = post.submittedBy?.handle ?? null;
-  const sellerName = post.submittedBy?.name ?? "the seller";
 
   return (
     <article className="mx-auto max-w-[1100px]">
@@ -108,33 +99,6 @@ export default async function ListingPage({
         </div>
 
         <aside className="space-y-7 lg:border-l lg:border-[var(--color-rule)] lg:pl-8">
-          {isViewerSeller ? (
-            <div className="border border-[var(--color-rule-strong)] bg-[var(--color-paper-raised)]/60 p-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-                Your listing
-              </p>
-              <p className="mt-2 font-display italic text-[15px] text-[var(--fg-muted)]">
-                You&rsquo;re viewing your own listing — inquiries from buyers
-                will land in your{" "}
-                <Link
-                  href="/inbox"
-                  className="text-[var(--color-accent)] underline underline-offset-4"
-                >
-                  inbox
-                </Link>
-                .
-              </p>
-            </div>
-          ) : (
-            <InquiryForm
-              postId={post.id}
-              postTitle={post.title}
-              sellerName={sellerName}
-              prefillEmail={session?.user.email ?? ""}
-              prefillName={session?.user.name ?? ""}
-            />
-          )}
-
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
               Provenance
