@@ -75,24 +75,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "c14faf73-b1f9-425e-b66b-974ac26b827c",
-        "build": {
-          "experimental": {
-            "ios": {
-              "appExtensions": [
-                {
-                  "targetName": "SharetoSirius",
-                  "bundleIdentifier": "dev.copt.sirius.share-extension",
-                  "entitlements": {
-                    "com.apple.security.application-groups": [
-                      "group.dev.copt.sirius"
-                    ]
-                  }
-                }
-              ]
-            }
-          }
-        }
+        "projectId": "c14faf73-b1f9-425e-b66b-974ac26b827c"
       }
     },
     "owner": "minasaleeb"
