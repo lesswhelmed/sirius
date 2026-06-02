@@ -47,9 +47,12 @@
   "submit": {
     "production": {
       "ios": {
-        // Fill from App Store Connect once the app record exists.
-        "ascAppId": "TODO_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "TODO_APPLE_TEAM_ID"
+        // Apple Team ID for "Mina Saleeb (Individual)" (from EAS credential setup).
+        "appleTeamId": "L7U86T3YRV"
+        // ascAppId intentionally omitted until the App Store Connect record
+        // exists: the first `eas submit` creates the app and discovers the ID.
+        // Backfill it here afterward (digits only, e.g. "1234567891") so future
+        // submits resolve the target non-interactively.
       },
       "android": {
         // Google Play service-account JSON (keep out of git).
