@@ -52,3 +52,4 @@ apps/web/public/social/
 
 # Testing creds (agent-browser scripts)
 scripts/testing/.creds.local
+.mcp.json
