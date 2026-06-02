@@ -19,10 +19,10 @@
     "update:prod": "eas update --branch production"
   },
   "dependencies": {
-    "@better-auth/expo": "^1.6.11",
+    "@better-auth/expo": "^1.6.13",
     "@expo/metro-runtime": "~56.0.13",
     "@tanstack/react-query": "^5.100.11",
-    "better-auth": "^1.6.11",
+    "better-auth": "^1.6.13",
     "expo": "~56.0.8",
     "expo-audio": "~56.0.11",
     "expo-constants": "~56.0.16",

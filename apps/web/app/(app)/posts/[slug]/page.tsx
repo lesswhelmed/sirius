@@ -33,6 +33,25 @@ const TYPE_LABEL: Record<string, string> = {
   SOCIAL: "Social",
 };
 
+type SightImage = { url: string; alt: string };
+
+// Post.images is a Json column ([{ url, alt }] for SIGHT batches, else null).
+// Parse defensively — the column is untyped at the boundary.
+function parseSightImages(value: unknown): SightImage[] {
+  if (!Array.isArray(value)) return [];
+  const out: SightImage[] = [];
+  for (const item of value) {
+    if (item && typeof item === "object" && "url" in item) {
+      const url = (item as { url?: unknown }).url;
+      const alt = (item as { alt?: unknown }).alt;
+      if (typeof url === "string" && url) {
+        out.push({ url, alt: typeof alt === "string" ? alt : "" });
+      }
+    }
+  }
+  return out;
+}
+
 export default async function PostDetailPage({
   params,
 }: {
@@ -57,6 +76,7 @@ export default async function PostDetailPage({
   ]);
   const projectOptions =
     projectPage?.items.map((p) => ({ id: p.id, title: p.title })) ?? [];
+  const sightImages = parseSightImages(post.images);
 
   return (
     <article className="mx-auto max-w-[920px]">
@@ -100,7 +120,25 @@ export default async function PostDetailPage({
 
       <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_260px]">
         <div>
-          {post.imageUrl ? (
+          {sightImages.length > 0 ? (
+            // SIGHT gallery: images[0] is the hero, so render the full set here
+            // and skip the standalone cover to avoid duplicating the first photo.
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {sightImages.map((img, i) => (
+                <div
+                  key={`${img.url}-${i}`}
+                  className="relative aspect-square w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)]"
+                >
+                  <PostImage
+                    src={img.url}
+                    alt={img.alt || post.title}
+                    sizes="(max-width: 1024px) 100vw, 33vw"
+                    priority={i === 0}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : post.imageUrl ? (
             <div className="relative mb-8 aspect-[16/10] w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)]">
               <PostImage
                 src={post.imageUrl}

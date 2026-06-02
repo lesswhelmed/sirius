@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { createSubmission, getProject, type IngestSubmission } from "@repo/db";
 
 import { contentHashForBytes, contentHashForUrls } from "./hash";
+import { heicToJpeg, isHeicExtension } from "./heic";
 import {
   extensionForContentType,
   extensionForFileMime,
@@ -50,7 +51,9 @@ export type SubmitResult =
   | { ok: true; status: 200 | 202; body: SubmitResultBody }
   | {
       ok: false;
-      status: 400;
+      // 400 = bad request (validation); 422 = a HEIC/HEIF upload we accepted but
+      // could not transcode to a servable JPEG (hard reject — see submitImageIngest).
+      status: 400 | 422;
       error: string;
       extra?: Record<string, unknown>;
     };
@@ -208,9 +211,45 @@ export async function submitImageIngest(
   projectId: string | null = null
 ): Promise<SubmitResult> {
   const submissionId = randomUUID();
-  const ext = extensionForContentType(payload.contentType);
-  const stagedFilePath = await stageBytes(submissionId, payload.bytes, ext);
+
+  // Dedup hash is computed from the ORIGINAL uploaded bytes and must stay so:
+  // hashing post-conversion JPEG would (a) drift across libheif/sharp bumps and
+  // (b) re-ingest already-stored photos as "new". Conversion only affects the
+  // staged file + persisted contentType/extension, never the hash input.
   const contentHash = contentHashForBytes(payload.bytes);
+
+  // HEIC/HEIF can't be rendered by mobile (expo-image) or our catalog/library
+  // <img> cards, so transcode to JPEG at the single submit choke point (covers
+  // the bearer iOS-Shortcut path too, which has no client to convert). sharp
+  // can't decode HEIC on this stack — heicToJpeg uses heic-convert.
+  let bytes = payload.bytes;
+  let contentType = payload.contentType;
+  let ext = extensionForContentType(contentType);
+  if (isHeicExtension(ext)) {
+    try {
+      const jpeg = await heicToJpeg(payload.bytes);
+      bytes = new Uint8Array(jpeg);
+      contentType = "image/jpeg";
+      ext = "jpg";
+    } catch (err) {
+      // Hard reject: never stage an unservable .heic. The caller (iOS Shortcut /
+      // app) gets a 422 so the failure is visible rather than silently broken.
+      const message = err instanceof Error ? err.message : String(err);
+      log("error", "heic-convert-failed", {
+        batchId: payload.metadata.batchId,
+        imageIndex: payload.metadata.imageIndex,
+        contentType: payload.contentType,
+        error: message,
+      });
+      return {
+        ok: false,
+        status: 422,
+        error: "could not convert HEIC image to a servable format",
+      };
+    }
+  }
+
+  const stagedFilePath = await stageBytes(submissionId, bytes, ext);
 
   // seam(intake): validate projectId ownership before persisting. Drop to null
   // if there's no submitter, no projectId, or the project isn't owned by them.
@@ -223,8 +262,9 @@ export async function submitImageIngest(
     batchId: payload.metadata.batchId,
     imageIndex: payload.metadata.imageIndex,
     totalCount: payload.metadata.totalCount,
-    contentType: payload.contentType,
-    bytes: payload.bytes.byteLength,
+    contentType,
+    originalContentType: payload.contentType,
+    bytes: bytes.byteLength,
     submittedById,
     projectId: validatedProjectId,
   });
@@ -233,7 +273,9 @@ export async function submitImageIngest(
     kind: "image",
     payload: {
       notes: payload.metadata.notes,
-      contentType: payload.contentType,
+      // Post-conversion values: the worker reconstructs the served extension
+      // from payload.extension, so this must reflect the staged JPEG, not HEIC.
+      contentType,
       extension: ext,
     },
     contentHash,

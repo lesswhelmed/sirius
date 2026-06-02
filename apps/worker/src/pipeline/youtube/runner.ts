@@ -522,7 +522,9 @@ export async function runYouTubeGemini(
     );
   }
 
-  const draft = toGeminiOutput(output, "FINDING", evidence.parse.canonicalUrl);
+  const draft = toGeminiOutput(output, "FINDING", {
+    originalUrl: evidence.parse.canonicalUrl,
+  });
   if (analysis) {
     const appendix = renderYouTubeAppendix({
       videoId: evidence.parse.videoId,

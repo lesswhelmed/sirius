@@ -82,12 +82,13 @@ export async function submitImageBatch(
   notes: string,
   onError?: (label: string, err: unknown) => void,
   projectId?: string
-): Promise<{ submitted: number }> {
+): Promise<{ submitted: number; failedIndices: number[] }> {
   if (images.length === 0) {
-    return { submitted: 0 };
+    return { submitted: 0, failedIndices: [] };
   }
   const batchId = Crypto.randomUUID();
   let submitted = 0;
+  const failedIndices: number[] = [];
   for (let i = 0; i < images.length; i++) {
     const image = images[i]!;
     try {
@@ -104,10 +105,11 @@ export async function submitImageBatch(
       });
       submitted++;
     } catch (err) {
+      failedIndices.push(i);
       onError?.(`image ${i + 1}`, err);
     }
   }
-  return { submitted };
+  return { submitted, failedIndices };
 }
 
 export function formatError(err: unknown, label: string): string {

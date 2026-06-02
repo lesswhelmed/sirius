@@ -186,22 +186,31 @@ export type SubmitMaterialsResult = {
   submitted: number;
   errors: string[];
   skipped: UnsupportedMaterial[];
+  // The exact material objects that failed to submit, by reference, so callers
+  // can keep only the failures staged for retry and clear what succeeded.
+  failed: Material[];
 };
 
 // A handler owns submission for one material kind. It receives every material
-// of that kind at once so kinds that batch (images) can do so.
+// of that kind at once so kinds that batch (images) can do so. `failed` returns
+// the material objects (by reference) that didn't submit.
 type MaterialHandler<K extends Material["kind"]> = {
   kind: K;
   submit: (
     materials: Extract<Material, { kind: K }>[],
     ctx: SubmitContext
-  ) => Promise<{ submitted: number; errors: string[] }>;
+  ) => Promise<{
+    submitted: number;
+    errors: string[];
+    failed: Extract<Material, { kind: K }>[];
+  }>;
 };
 
 const urlHandler: MaterialHandler<"url"> = {
   kind: "url",
   async submit(materials, ctx) {
     const errors: string[] = [];
+    const failed: UrlMaterial[] = [];
     let submitted = 0;
     for (const [i, m] of materials.entries()) {
       try {
@@ -211,9 +220,10 @@ const urlHandler: MaterialHandler<"url"> = {
         const label = `URL ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
+        failed.push(m);
       }
     }
-    return { submitted, errors };
+    return { submitted, errors, failed };
   },
 };
 
@@ -221,6 +231,7 @@ const noteHandler: MaterialHandler<"note"> = {
   kind: "note",
   async submit(materials, ctx) {
     const errors: string[] = [];
+    const failed: NoteMaterial[] = [];
     let submitted = 0;
     for (const [i, m] of materials.entries()) {
       try {
@@ -230,9 +241,10 @@ const noteHandler: MaterialHandler<"note"> = {
         const label = materials.length > 1 ? `Note ${i + 1}` : "Note";
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
+        failed.push(m);
       }
     }
-    return { submitted, errors };
+    return { submitted, errors, failed };
   },
 };
 
@@ -246,7 +258,7 @@ const imageHandler: MaterialHandler<"image"> = {
       name: m.name,
       type: m.type,
     }));
-    const { submitted } = await submitImageBatch(
+    const { submitted, failedIndices } = await submitImageBatch(
       inputs,
       notes,
       (label, err) => {
@@ -255,7 +267,10 @@ const imageHandler: MaterialHandler<"image"> = {
       },
       ctx.projectId
     );
-    return { submitted, errors };
+    const failed = failedIndices
+      .map((i) => materials[i])
+      .filter((m): m is ImageMaterial => m !== undefined);
+    return { submitted, errors, failed };
   },
 };
 
@@ -266,6 +281,7 @@ const videoHandler: MaterialHandler<"video"> = {
   kind: "video",
   async submit(materials, ctx) {
     const errors: string[] = [];
+    const failed: VideoMaterial[] = [];
     let submitted = 0;
     for (const [i, m] of materials.entries()) {
       try {
@@ -282,9 +298,10 @@ const videoHandler: MaterialHandler<"video"> = {
         const label = `Video ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
+        failed.push(m);
       }
     }
-    return { submitted, errors };
+    return { submitted, errors, failed };
   },
 };
 
@@ -292,6 +309,7 @@ const audioHandler: MaterialHandler<"audio"> = {
   kind: "audio",
   async submit(materials, ctx) {
     const errors: string[] = [];
+    const failed: AudioMaterial[] = [];
     let submitted = 0;
     for (const [i, m] of materials.entries()) {
       try {
@@ -308,9 +326,10 @@ const audioHandler: MaterialHandler<"audio"> = {
         const label = `Audio ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
+        failed.push(m);
       }
     }
-    return { submitted, errors };
+    return { submitted, errors, failed };
   },
 };
 
@@ -318,6 +337,7 @@ const documentHandler: MaterialHandler<"document"> = {
   kind: "document",
   async submit(materials, ctx) {
     const errors: string[] = [];
+    const failed: DocumentMaterial[] = [];
     let submitted = 0;
     for (const [i, m] of materials.entries()) {
       try {
@@ -334,9 +354,10 @@ const documentHandler: MaterialHandler<"document"> = {
         const label = `Document ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
+        failed.push(m);
       }
     }
-    return { submitted, errors };
+    return { submitted, errors, failed };
   },
 };
 
@@ -371,31 +392,38 @@ export async function submitMaterials(
 ): Promise<SubmitMaterialsResult> {
   const grouped = groupByKind(materials);
   const errors: string[] = [];
+  const failed: Material[] = [];
   let submitted = 0;
 
   const urlResult = await HANDLERS.url.submit(grouped.url, ctx);
   submitted += urlResult.submitted;
   errors.push(...urlResult.errors);
+  failed.push(...urlResult.failed);
 
   const noteResult = await HANDLERS.note.submit(grouped.note, ctx);
   submitted += noteResult.submitted;
   errors.push(...noteResult.errors);
+  failed.push(...noteResult.failed);
 
   const imageResult = await HANDLERS.image.submit(grouped.image, ctx);
   submitted += imageResult.submitted;
   errors.push(...imageResult.errors);
+  failed.push(...imageResult.failed);
 
   const videoResult = await HANDLERS.video.submit(grouped.video, ctx);
   submitted += videoResult.submitted;
   errors.push(...videoResult.errors);
+  failed.push(...videoResult.failed);
 
   const audioResult = await HANDLERS.audio.submit(grouped.audio, ctx);
   submitted += audioResult.submitted;
   errors.push(...audioResult.errors);
+  failed.push(...audioResult.failed);
 
   const documentResult = await HANDLERS.document.submit(grouped.document, ctx);
   submitted += documentResult.submitted;
   errors.push(...documentResult.errors);
+  failed.push(...documentResult.failed);
 
-  return { submitted, errors, skipped: grouped.unsupported };
+  return { submitted, errors, skipped: grouped.unsupported, failed };
 }

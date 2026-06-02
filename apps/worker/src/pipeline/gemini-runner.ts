@@ -46,11 +46,52 @@ export const PostDraftSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "MDX body content. First-person, observational, 80-300 words. No frontmatter, no wrapping code fences. For image posts, reference the images in order with literal markdown ![alt](IMAGE_1), ![alt](IMAGE_2), … — the worker rewrites IMAGE_N to final paths."
+      "MDX body content. First-person, observational, 80-300 words. No frontmatter, no wrapping code fences. Prose only — never embed image markdown or URLs; photos are attached and rendered separately by the app."
     ),
 });
 
 export type PostDraft = z.infer<typeof PostDraftSchema>;
+
+// SIGHT posts are photo-first: the images are rendered as a gallery by the app,
+// so the body must be clean prose with NO embedded image markdown. We also ask
+// the model for a per-image caption (alt) and a one-line excerpt. Kept separate
+// from PostDraftSchema so tightening the SIGHT voice can't affect FINDING /
+// Instagram / YouTube / note / file drafts.
+export const SightDraftSchema = z.object({
+  title: z
+    .string()
+    .min(1)
+    .describe(
+      "2-5 word noun phrase naming the literal subject of the photo(s). No clickbait, no adjectives-as-hype."
+    ),
+  slug: z
+    .string()
+    .optional()
+    .describe("Lowercase kebab-case slug; the worker will normalize"),
+  tags: z.array(z.string()).min(1).max(5).describe("1-5 lowercase kebab-case tags"),
+  categories: z
+    .array(z.string())
+    .min(1)
+    .max(3)
+    .describe("1-3 lowercase kebab-case categories"),
+  body: z
+    .string()
+    .min(1)
+    .describe(
+      "60-160 words, first person, plain and concrete. Describe only what is visibly present. No intensifiers (almost, blinding, neon, aggressive), no metaphor or simile, no mood-painting. No image markdown or URLs — the photos render separately."
+    ),
+  excerpt: z
+    .string()
+    .min(1)
+    .describe("One plain declarative sentence summarizing the photo. No hype."),
+  imageAlts: z
+    .array(z.string())
+    .describe(
+      "One short, factual caption per attached image, in the same order the images were given. Plain description for alt text."
+    ),
+});
+
+export type SightDraft = z.infer<typeof SightDraftSchema>;
 
 const MIME_BY_EXT: Record<string, string> = {
   jpg: "image/jpeg",
@@ -104,8 +145,10 @@ function buildPrompt(input: PipelineInput): string {
     }
   } else if (input.kind === "image") {
     lines.push(
-      `${input.images.length} image(s) are attached, in order. Write a SIGHT post — describe what's visually present, the mood, anything notable.`,
-      "Reference each image in the body using IMAGE_1, IMAGE_2, … in order. Example: ![alt text](IMAGE_1). The worker rewrites those placeholders to served URLs."
+      `${input.images.length} photo(s) are attached, in order. Write a SIGHT post about what is actually in them.`,
+      "Title: a 2-5 word noun phrase naming the literal subject.",
+      "Body: 60-160 words, first person, plain and concrete. Describe only what is visibly present — subject, setting, light, colors as plain names. Do NOT use intensifiers (almost, blinding, neon, aggressive), metaphor, simile, or mood-painting. Do NOT write image markdown, captions, or URLs in the body; the photos are shown separately by the app.",
+      "Also return one short factual caption per photo in imageAlts, in the same order, and a one-sentence excerpt."
     );
     if (input.notes.trim()) {
       lines.push("", `Author's notes (verbatim): ${input.notes.trim()}`);
@@ -169,11 +212,11 @@ function loadImagePart(staged: StagedImage) {
 export function toGeminiOutput(
   draft: PostDraft,
   forcedType: PostType,
-  originalUrl?: string
+  opts?: { originalUrl?: string; excerpt?: string; imageAlts?: string[] }
 ): GeminiOutput {
   const title = draft.title.trim() || "Untitled Ingest";
   const slug = slugify(draft.slug?.trim() || title);
-  const trimmedUrl = originalUrl?.trim() || "";
+  const trimmedUrl = opts?.originalUrl?.trim() || "";
   const frontmatter: Record<string, unknown> = {
     title,
     type: forcedType,
@@ -186,6 +229,15 @@ export function toGeminiOutput(
   };
   if (trimmedUrl) {
     frontmatter.original_url = trimmedUrl;
+  }
+  const excerpt = opts?.excerpt?.trim();
+  if (excerpt) {
+    frontmatter.excerpt = excerpt;
+  }
+  // Per-image alt text for the SIGHT gallery; post-writer pairs these with the
+  // copied image URLs in order.
+  if (opts?.imageAlts && opts.imageAlts.length > 0) {
+    frontmatter.image_alts = opts.imageAlts;
   }
   const drafted = draft.body.trim();
   let sourceLine = "";
@@ -292,7 +344,7 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
       prompt: buildUrlStructuringPrompt(summary, input.notes),
       output: Output.object({ schema: PostDraftSchema }),
     });
-    return toGeminiOutput(output, "FINDING", input.urls[0]);
+    return toGeminiOutput(output, "FINDING", { originalUrl: input.urls[0] });
   }
 
   if (input.kind === "image") {
@@ -306,9 +358,12 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
           content: [{ type: "text", text: prompt }, ...imageParts],
         },
       ],
-      output: Output.object({ schema: PostDraftSchema }),
+      output: Output.object({ schema: SightDraftSchema }),
     });
-    return toGeminiOutput(output, "SIGHT");
+    return toGeminiOutput(output, "SIGHT", {
+      excerpt: output.excerpt,
+      imageAlts: output.imageAlts,
+    });
   }
 
   if (

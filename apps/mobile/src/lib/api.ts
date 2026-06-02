@@ -87,6 +87,40 @@ export async function apiPostJson<T>(
   return parseResponse<T>(res);
 }
 
+// Generic non-GET JSON request reusing the same header/cookie + parse path as
+// apiGet/apiPostJson. Used for PATCH/DELETE against the projects API. DELETE
+// responses may be empty — parseResponse already tolerates a null body.
+export async function apiSend<T>(
+  path: string,
+  method: "PATCH" | "DELETE" | "PUT",
+  body?: Json,
+  init?: RequestInit
+): Promise<T> {
+  const headers = buildHeaders(init?.headers);
+  if (body !== undefined) {
+    headers.set("Content-Type", "application/json");
+  }
+  const res = await fetch(toUrl(path), {
+    ...init,
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  return parseResponse<T>(res);
+}
+
+export async function apiPatch<T>(
+  path: string,
+  body: Json,
+  init?: RequestInit
+): Promise<T> {
+  return apiSend<T>(path, "PATCH", body, init);
+}
+
+export async function apiDelete<T>(path: string, init?: RequestInit): Promise<T> {
+  return apiSend<T>(path, "DELETE", undefined, init);
+}
+
 function parseUploadResult<T>(status: number, rawBody: string): T {
   const body = rawBody ? (JSON.parse(rawBody) as unknown) : null;
   if (status < 200 || status >= 300) {

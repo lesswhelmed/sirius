@@ -123,13 +123,23 @@ async function localizeCoverImage(
   }
 }
 
-function rewriteImagePlaceholders(
-  body: string,
-  imageUrlPaths: string[]
-): string {
-  return body.replace(/IMAGE_(\d+)/g, (match, idx) => {
-    const i = Number.parseInt(idx, 10) - 1;
-    return imageUrlPaths[i] ?? match;
+// Pairs copied image URLs with the model's per-image captions (frontmatter
+// image_alts), in order. Gemini gives no guarantee it returns exactly
+// urls.length alts or in order, so we guard here rather than constraining the
+// schema and never block the write on a mismatch: missing/blank alts fall back
+// to the post title.
+function pairImagesWithAlts(
+  urls: string[],
+  frontmatter: Record<string, unknown>,
+  title: string
+): { url: string; alt: string }[] {
+  const alts = Array.isArray(frontmatter.image_alts)
+    ? (frontmatter.image_alts as unknown[])
+    : [];
+  return urls.map((url, i) => {
+    const raw = alts[i];
+    const alt = typeof raw === "string" && raw.trim() ? raw.trim() : title;
+    return { url, alt };
   });
 }
 
@@ -257,16 +267,16 @@ export async function writePost(
   parsed: GeminiOutput,
   input: PipelineInput
 ): Promise<WriteResult> {
-  let body = parsed.body;
+  const body = escapeMdxProse(parsed.body);
   let imagePaths: string[] = [];
+  // SIGHT gallery: [{ url, alt }] in upload order. Empty for non-image posts.
+  let sightImages: { url: string; alt: string }[] = [];
 
   if (input.kind === "image") {
     const { absolute, urls } = copyImages(input.batchId, input.images);
-    body = rewriteImagePlaceholders(body, urls);
     imagePaths = absolute;
+    sightImages = pairImagesWithAlts(urls, parsed.frontmatter, parsed.title);
   }
-
-  body = escapeMdxProse(body);
 
   const tagNames = dedupeByName(
     Array.isArray(parsed.frontmatter.tags)
@@ -305,12 +315,13 @@ export async function writePost(
   const originalUrl = getOriginalUrl(input);
   const sourceHash = getSourceHash(input);
   const originalDate = originalDateFromFrontmatter(parsed.frontmatter);
-  // Download remote cover images once (Instagram CDN links expire), serving
-  // them from public/social. Local /sight/ paths and nulls pass through.
-  const imageUrl = await localizeCoverImage(
-    getImageUrl(parsed.frontmatter),
-    parsed.slug
-  );
+  // SIGHT batches: the hero is the first photo. Otherwise download remote cover
+  // images once (Instagram CDN links expire), serving them from public/social;
+  // local /sight/ paths and nulls pass through.
+  const imageUrl =
+    sightImages.length > 0
+      ? (sightImages[0]?.url ?? null)
+      : await localizeCoverImage(getImageUrl(parsed.frontmatter), parsed.slug);
   const contentDigest = getContentDigest(parsed.frontmatter);
 
   const excerpt =
@@ -332,6 +343,9 @@ export async function writePost(
       originalDate,
       originalUrl,
       imageUrl,
+      ...(sightImages.length > 0
+        ? { images: sightImages as unknown as Prisma.InputJsonValue }
+        : {}),
       ...(contentDigest !== null ? { contentDigest } : {}),
       published: true,
       sourceType: "ingest",
@@ -353,6 +367,9 @@ export async function writePost(
       filePath,
       originalUrl,
       imageUrl,
+      ...(sightImages.length > 0
+        ? { images: sightImages as unknown as Prisma.InputJsonValue }
+        : {}),
       ...(contentDigest !== null ? { contentDigest } : {}),
       sourceHash,
       lastSyncedAt: new Date(),

@@ -13,9 +13,9 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@better-auth/expo": "^1.6.11",
+    "@better-auth/expo": "^1.6.13",
     "@repo/db": "*",
-    "better-auth": "^1.6.11",
+    "better-auth": "^1.6.13",
     "resend": "^4.5.1"
   },
   "devDependencies": {

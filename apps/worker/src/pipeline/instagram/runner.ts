@@ -295,7 +295,7 @@ export async function runInstagramGemini(
     body,
   };
 
-  const result = toGeminiOutput(draft, "SOCIAL", evidence.url);
+  const result = toGeminiOutput(draft, "SOCIAL", { originalUrl: evidence.url });
   // Surface digest + media URL on the result so the post writer can persist
   // them as first-class columns (imageUrl, contentDigest) and provider fields.
   result.frontmatter.image_url = evidence.primaryImageUrl;

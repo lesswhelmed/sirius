@@ -67,6 +67,10 @@ export default function RootLayout() {
               name="post/[slug]"
               options={{ headerShown: true, title: "" }}
             />
+            <Stack.Screen
+              name="focus"
+              options={{ headerShown: true, title: "Focus" }}
+            />
           </Stack>
         </ThemeProvider>
       </QueryClientProvider>

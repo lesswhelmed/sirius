@@ -10,6 +10,25 @@ import { apiGet, resolveMediaUrl } from "@/lib/api";
 
 type PostDetail = Post & { tags: Tag[]; categories: Category[] };
 
+type SightImage = { url: string; alt: string };
+
+// Post.images is a Json column ([{ url, alt }] for SIGHT batches, else null).
+// Parse defensively — never trust the shape of a Json blob at the type boundary.
+function parseSightImages(value: unknown): SightImage[] {
+  if (!Array.isArray(value)) return [];
+  const out: SightImage[] = [];
+  for (const item of value) {
+    if (item && typeof item === "object" && "url" in item) {
+      const url = (item as { url?: unknown }).url;
+      const alt = (item as { alt?: unknown }).alt;
+      if (typeof url === "string" && url) {
+        out.push({ url, alt: typeof alt === "string" ? alt : "" });
+      }
+    }
+  }
+  return out;
+}
+
 const TYPE_LABEL: Record<string, string> = {
   CONCRETE: "Concrete",
   BLOG: "Dispatch",
@@ -45,7 +64,12 @@ export default function PostDetailScreen() {
   }
 
   const tone = PostTypeTone[data.type] ?? Sirius.color.inkMuted;
-  const heroUri = resolveMediaUrl(data.imageUrl);
+  const sightImages = parseSightImages(data.images);
+  // When a SIGHT gallery is present it already includes the hero (images[0]),
+  // so render the gallery and skip the standalone hero to avoid showing the
+  // first photo twice. Otherwise fall back to the single cover image.
+  const heroUri =
+    sightImages.length > 0 ? undefined : resolveMediaUrl(data.imageUrl);
 
   return (
     <Screen>
@@ -65,6 +89,16 @@ export default function PostDetailScreen() {
             transition={150}
           />
         ) : null}
+        {sightImages.map((img, i) => (
+          <Image
+            key={`${img.url}-${i}`}
+            source={{ uri: resolveMediaUrl(img.url) }}
+            style={styles.galleryImage}
+            contentFit="cover"
+            transition={150}
+            accessibilityLabel={img.alt || undefined}
+          />
+        ))}
         <KindLabel tone={tone}>{TYPE_LABEL[data.type] ?? data.type}</KindLabel>
         <Title accent=".">{data.title}</Title>
         {data.tags.length > 0 ? (
@@ -99,6 +133,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Sirius.color.rule,
     marginBottom: Sirius.space.sm,
+  },
+  galleryImage: {
+    width: "100%",
+    aspectRatio: 1,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperSunken,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
   },
   tagsRow: {
     flexDirection: "row",

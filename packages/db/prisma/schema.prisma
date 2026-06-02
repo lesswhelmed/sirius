@@ -23,7 +23,8 @@ model Post {
   findingsCount Int?
   originalDate  DateTime?
   originalUrl   String?
-  imageUrl      String?
+  imageUrl      String? // hero / cover image (for SIGHT batches: images[0].url)
+  images        Json? // SIGHT gallery: [{ url, alt }] in upload order; null for non-photo posts
   contentDigest Json?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt

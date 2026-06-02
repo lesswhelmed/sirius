@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   AudioModule,
   RecordingPresets,
+  setAudioModeAsync,
   useAudioRecorder,
 } from "expo-audio";
 import * as Crypto from "expo-crypto";
@@ -201,6 +202,9 @@ export default function ComposerScreen() {
       );
       return;
     }
+    // iOS blocks recording until the audio session opts into it; expo-audio
+    // throws RecordingDisabledException without this.
+    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
     await audioRecorder.prepareToRecordAsync();
     audioRecorder.record();
     setIsRecording(true);
@@ -208,6 +212,7 @@ export default function ComposerScreen() {
 
   async function stopRecording() {
     await audioRecorder.stop();
+    await setAudioModeAsync({ allowsRecording: false });
     setIsRecording(false);
     const uri = audioRecorder.uri;
     if (!uri) return;
@@ -301,17 +306,23 @@ export default function ComposerScreen() {
     if (busy || tray.length === 0) return;
     setBusy(true);
     let errors: string[] = [];
+    let failed: Material[] = [];
     try {
       const result = await submitMaterials(
         tray.map((entry) => entry.material),
         { force: false, projectId: projectId ?? undefined }
       );
       errors = result.errors;
+      failed = result.failed;
     } finally {
       setBusy(false);
     }
 
     if (errors.length > 0) {
+      // Keep only the materials that failed staged for retry; everything that
+      // submitted is cleared so a re-submit can't re-send already-queued items.
+      const failedSet = new Set<Material>(failed);
+      setTray((prev) => prev.filter((entry) => failedSet.has(entry.material)));
       Alert.alert("Some submissions failed", errors.join("\n\n"));
       return;
     }
@@ -348,11 +359,18 @@ export default function ComposerScreen() {
                 Capture
               </Title>
             </View>
-            <TextLink
-              label="Sign out"
-              tone={Sirius.color.inkMuted}
-              onPress={handleSignOut}
-            />
+            <View style={styles.headerLinks}>
+              <TextLink
+                label="Manage focus →"
+                tone={Sirius.color.accent}
+                onPress={() => router.push("/focus")}
+              />
+              <TextLink
+                label="Sign out"
+                tone={Sirius.color.inkMuted}
+                onPress={handleSignOut}
+              />
+            </View>
           </View>
 
           <Text style={styles.prompt}>What are you adding?</Text>
@@ -407,7 +425,19 @@ export default function ComposerScreen() {
                 ))}
               </ScrollView>
             </View>
-          ) : null}
+          ) : (
+            <View style={styles.focusEmpty}>
+              <Eyebrow>Focus</Eyebrow>
+              <Text style={styles.focusEmptyText}>
+                No focus areas yet.
+              </Text>
+              <TextLink
+                label="Create your first focus area →"
+                tone={Sirius.color.accent}
+                onPress={() => router.push("/focus")}
+              />
+            </View>
+          )}
 
           <View style={styles.trayHeader}>
             <Eyebrow>In tray</Eyebrow>
@@ -516,6 +546,14 @@ const styles = StyleSheet.create({
     marginBottom: Sirius.space.xs,
   },
   headerMain: { gap: Sirius.space.xs },
+  headerLinks: { alignItems: "flex-end", gap: Sirius.space.sm },
+  focusEmpty: { gap: Sirius.space.sm },
+  focusEmptyText: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 15,
+    fontStyle: "italic",
+    color: Sirius.color.inkMuted,
+  },
   prompt: {
     fontFamily: Sirius.font.serif,
     fontSize: 20,
