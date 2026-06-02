@@ -14,7 +14,6 @@
       "url": "https://u.expo.dev/c14faf73-b1f9-425e-b66b-974ac26b827c"
     },
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "dev.copt.sirius",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -23,10 +22,8 @@
     "android": {
       "package": "dev.copt.sirius",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#0A1F44",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -39,7 +36,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#0A1F44",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76

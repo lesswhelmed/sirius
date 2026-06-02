@@ -1,172 +1,132 @@
-# Turborepo starter
+# sirius-2-simple
 
-This Turborepo starter is maintained by the Turborepo core team.
+A content-ingest + AI publishing app. You submit URLs, images, or notes; a background
+worker drafts a blog / finding / sight post with Gemini and writes it straight to Postgres,
+where the web app serves it as a broker storefront.
 
-## Using this example
+It's a simplified migration of `copt-dev` that **deliberately dropped the git-branch +
+commit + PR publishing flow in favor of direct DB writes** — the worker writes posts to the
+database instead of opening pull requests.
 
-Run the following command:
+> The repo is a Turborepo monorepo managed with **bun**. For day-to-day agent/dev guidance,
+> see [`CLAUDE.md`](./CLAUDE.md) — it's the authoritative architecture doc.
 
-```sh
-npx create-turbo@latest
+## How it works
+
+The core is a producer/consumer queue backed by the `IngestSubmission` table. The web app
+and worker never call each other directly — they only share the database and the `@repo/db`
+helpers.
+
+```
+submit (web)  ──►  IngestSubmission row (pending)  ──►  worker claims (processing)
+                                                              │
+                                                              ▼
+                                                   Gemini pipeline drafts post
+                                                              │
+                                                              ▼
+                                            Post upserted in Postgres (completed)
+                                                              │
+                                                              ▼
+                                                    web serves the post
 ```
 
-## What's inside?
+1. **Submit (web).** All submissions funnel through `apps/web/lib/ingest/submit.ts`:
+   compute a dedup `contentHash`, stage image bytes to disk, insert a `pending` row.
+   - Bearer-token routes (`/api/ingest`, `/api/ingest-images`) — for iOS Shortcuts / scripts.
+   - Session routes (`/api/app/ingest`, `/api/app/ingest-images`) — for the web composer and mobile.
+2. **Claim (worker).** `apps/worker` polls the DB and flips `pending → processing` with an
+   optimistic lock. Image batches are claimed whole, as one SIGHT post.
+3. **Draft (worker).** The Gemini pipeline (Vercel AI SDK, schema-validated output) routes by
+   input: URLs → `url_context`, Instagram → Apify, YouTube → transcript/chunk, images → SIGHT,
+   notes → BLOG. The post **type is forced by the worker** after the model returns.
+4. **Persist (worker).** Images are copied into `apps/web/public/sight/<batchId>/`, `IMAGE_N`
+   placeholders are rewritten to served URLs, and the `Post` is upserted by slug.
 
-This Turborepo includes the following packages/apps:
+## Workspaces
 
-### Apps and Packages
+| Path | What it is |
+| --- | --- |
+| `apps/web` | Next.js 16 App Router — storefront, ingest UI, queue, auth, all HTTP APIs |
+| `apps/worker` | Long-running Bun daemon — polls the DB, runs the Gemini pipeline |
+| `apps/mobile` | Expo / React Native client (auth + composer + library/queue) |
+| `apps/docs` | Unused vestigial Turborepo starter stub — ignore |
+| `packages/db` | `@repo/db` — Prisma schema, generated client, DB access helpers |
+| `packages/auth` | `@repo/auth` — the single Better Auth instance + email |
+| `packages/ui` | `@repo/ui` — shared React components |
+| `packages/{eslint,typescript}-config` | shared configs |
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `mobile`: an [Expo](https://expo.dev/) (React Native) app, runnable in Expo Go on iOS and Android
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+Stack: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7 (pg driver adapter),
+Zod 4, Better Auth, Vercel AI SDK + Gemini.
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+## Getting started
 
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
-```
-
-Without global `turbo`, use your package manager:
+Requires [bun](https://bun.sh) `1.3.14`, Postgres, and a `GEMINI_API_KEY`.
 
 ```sh
-cd my-turborepo
-npx turbo build
-bun dlx turbo build
-bun exec turbo build
+bun install
+cp .env.example .env          # then fill in DATABASE_URL, secrets, GEMINI_API_KEY, …
+bun run db:generate           # REQUIRED — generated Prisma client is gitignored
+bun run db:migrate:dev        # create the schema
+bun run worker:setup          # generates INGEST_TOKEN, makes staging dirs (interactive)
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Run the stack:
 
 ```sh
-turbo build --filter=docs
+bun run dev                   # all apps (turbo, persistent)
+turbo dev --filter=web        # just the web app (port 3000)
+bun run worker:dev            # just the ingest worker (--watch)
 ```
 
-Without global `turbo`:
+Mobile (from repo root):
 
 ```sh
-npx turbo build --filter=docs
-bun exec turbo build --filter=docs
-bun exec turbo build --filter=docs
+bun --cwd apps/mobile start   # Metro / Expo dev server
+bun --cwd apps/mobile ios     # iOS Simulator
+bun --cwd apps/mobile android # Android emulator
 ```
 
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+## Common commands
 
 ```sh
-cd my-turborepo
-turbo dev
+bun run build                 # turbo build all
+bun run lint                  # eslint, --max-warnings 0 per app
+bun run check-types           # tsc --noEmit (web runs `next typegen` first)
+bun run format                # prettier on **/*.{ts,tsx,md}
+
+bun run db:studio             # inspect IngestSubmission / Post rows
+bun run db:migrate:deploy     # apply migrations (prod)
 ```
 
-Without global `turbo`, use your package manager:
+> **Note:** there is no test runner wired up. `scripts/testing/` exists but nothing in
+> `package.json` runs it — don't expect `bun test` to do anything meaningful.
+
+## Mobile builds (EAS)
+
+Release builds go through EAS Build (cloud); config in `apps/mobile/eas.json`. The
+`ios/` / `android/` dirs are gitignored and regenerated by `expo prebuild` — never commit
+them.
 
 ```sh
-cd my-turborepo
-npx turbo dev
-bun exec turbo dev
-bun exec turbo dev
+bun --cwd apps/mobile build:preview   # internal build
+bun --cwd apps/mobile build:prod      # store build
+bun --cwd apps/mobile update:prod     # OTA JS push
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+Production auth note: `AUTH_TRUSTED_ORIGINS` must include `siriusapp://` (dev trusts it
+automatically).
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## Deployment
 
-```sh
-turbo dev --filter=web
-```
+`deploy.sh` runs on the host (idempotent): `git pull --ff-only` → `bun install
+--frozen-lockfile` → `db:generate` → `db:migrate:deploy` → `build` → `pm2 startOrReload`.
+PM2 (`ecosystem.config.cjs`) runs two fork-mode processes — **sirius-web** (port 3000) and
+**sirius-worker** (no HTTP surface) — both loading the repo-root `.env`.
 
-Without global `turbo`:
+## Environment
 
-```sh
-npx turbo dev --filter=web
-bun exec turbo dev --filter=web
-bun exec turbo dev --filter=web
-```
-
-### Mobile (Expo)
-
-The `mobile` app is an Expo Go-compatible React Native project. From the repo root:
-
-```sh
-bun --cwd apps/mobile start    # start Metro / Expo dev server (scan QR with Expo Go)
-bun --cwd apps/mobile ios      # open in iOS Simulator
-bun --cwd apps/mobile android  # open in Android emulator
-```
-
-iOS requires Xcode + an iOS Simulator; Android requires Android Studio with an emulator (or a connected device with USB debugging). Expo Go must be installed on any physical device used to scan the QR code.
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-bun exec turbo login
-bun exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-bun exec turbo link
-bun exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+All apps read the repo-root `.env`. See `.env.example` for the full list with inline docs.
+Required for the full pipeline: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` /
+`NEXT_PUBLIC_BETTER_AUTH_URL`, `INGEST_TOKEN`, `GEMINI_API_KEY`, `RESEND_API_KEY`. Instagram
+ingest additionally needs a paid `APIFY_TOKEN`. `turbo.json`'s `globalEnv` is the
+authoritative list of vars that invalidate the build cache.
