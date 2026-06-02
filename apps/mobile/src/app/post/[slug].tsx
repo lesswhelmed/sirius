@@ -2,6 +2,7 @@ import type { Category, Post, Tag } from "@repo/db";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { Stack, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { KindLabel, Screen, Title } from "@/components/sirius";
@@ -11,6 +12,43 @@ import { apiGet, resolveMediaUrl } from "@/lib/api";
 type PostDetail = Post & { tags: Tag[]; categories: Category[] };
 
 type SightImage = { url: string; alt: string };
+
+// Strips inline markdown image syntax (![alt](url)) from prose. Legacy SIGHT
+// posts created before the gallery redesign — and any not yet backfilled — still
+// carry embedded image markdown in their body; mobile has no markdown renderer,
+// so without this the raw ![alt](…) text shows mid-paragraph.
+function stripImageMarkdown(content: string): string {
+  return content
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ +\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// A gallery photo that degrades to a labeled placeholder on load failure (a
+// deleted/moved file), mirroring the web PostImage "No plate" behavior so the
+// two clients stay consistent instead of mobile showing a blank box.
+function GalleryImage({ image }: { image: SightImage }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <View style={[styles.galleryImage, styles.galleryFallback]}>
+        <Text style={styles.galleryFallbackText}>No plate</Text>
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri: resolveMediaUrl(image.url) }}
+      style={styles.galleryImage}
+      contentFit="cover"
+      transition={150}
+      accessibilityLabel={image.alt || undefined}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 // Post.images is a Json column ([{ url, alt }] for SIGHT batches, else null).
 // Parse defensively — never trust the shape of a Json blob at the type boundary.
@@ -90,14 +128,7 @@ export default function PostDetailScreen() {
           />
         ) : null}
         {sightImages.map((img, i) => (
-          <Image
-            key={`${img.url}-${i}`}
-            source={{ uri: resolveMediaUrl(img.url) }}
-            style={styles.galleryImage}
-            contentFit="cover"
-            transition={150}
-            accessibilityLabel={img.alt || undefined}
-          />
+          <GalleryImage key={`${img.url}-${i}`} image={img} />
         ))}
         <KindLabel tone={tone}>{TYPE_LABEL[data.type] ?? data.type}</KindLabel>
         <Title accent=".">{data.title}</Title>
@@ -111,7 +142,9 @@ export default function PostDetailScreen() {
           </View>
         ) : null}
         {data.excerpt ? <Text style={styles.excerpt}>{data.excerpt}</Text> : null}
-        {data.content ? <Text style={styles.body}>{data.content}</Text> : null}
+        {data.content ? (
+          <Text style={styles.body}>{stripImageMarkdown(data.content)}</Text>
+        ) : null}
       </ScrollView>
     </Screen>
   );
@@ -141,6 +174,14 @@ const styles = StyleSheet.create({
     backgroundColor: Sirius.color.paperSunken,
     borderWidth: 1,
     borderColor: Sirius.color.rule,
+  },
+  galleryFallback: { alignItems: "center", justifyContent: "center" },
+  galleryFallbackText: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
   },
   tagsRow: {
     flexDirection: "row",

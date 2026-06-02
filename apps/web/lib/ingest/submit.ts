@@ -7,6 +7,7 @@ import { createSubmission, getProject, type IngestSubmission } from "@repo/db";
 
 import { contentHashForBytes, contentHashForUrls } from "./hash";
 import { heicToJpeg, isHeicExtension } from "./heic";
+import { sniffImageFormat } from "./image-format";
 import {
   extensionForContentType,
   extensionForFileMime,
@@ -218,13 +219,23 @@ export async function submitImageIngest(
   // staged file + persisted contentType/extension, never the hash input.
   const contentHash = contentHashForBytes(payload.bytes);
 
+  // Don't trust the client Content-Type alone: iOS Shortcuts / curl / share
+  // sheets often send application/octet-stream or image/heic-sequence, which
+  // would map to "bin" and skip HEIC conversion — staging a raw, unservable
+  // file. Sniff the actual bytes and let that win when the header is useless.
+  let bytes = payload.bytes;
+  let contentType = payload.contentType;
+  let ext = extensionForContentType(contentType);
+  const sniffed = sniffImageFormat(payload.bytes);
+  if (ext === "bin" && sniffed) {
+    ext = sniffed.ext;
+    contentType = sniffed.contentType;
+  }
+
   // HEIC/HEIF can't be rendered by mobile (expo-image) or our catalog/library
   // <img> cards, so transcode to JPEG at the single submit choke point (covers
   // the bearer iOS-Shortcut path too, which has no client to convert). sharp
   // can't decode HEIC on this stack — heicToJpeg uses heic-convert.
-  let bytes = payload.bytes;
-  let contentType = payload.contentType;
-  let ext = extensionForContentType(contentType);
   if (isHeicExtension(ext)) {
     try {
       const jpeg = await heicToJpeg(payload.bytes);
@@ -247,6 +258,24 @@ export async function submitImageIngest(
         error: "could not convert HEIC image to a servable format",
       };
     }
+  }
+
+  // After header + byte sniffing + HEIC transcode, a still-unknown extension
+  // means the bytes are not a raster format we can serve (TIFF, corrupt, a
+  // mislabeled non-image). Reject loudly instead of staging an unservable /N.bin
+  // that renders broken on every client.
+  if (ext === "bin") {
+    log("error", "unservable-image", {
+      batchId: payload.metadata.batchId,
+      imageIndex: payload.metadata.imageIndex,
+      contentType: payload.contentType,
+      bytes: payload.bytes.byteLength,
+    });
+    return {
+      ok: false,
+      status: 422,
+      error: "unsupported image format",
+    };
   }
 
   const stagedFilePath = await stageBytes(submissionId, bytes, ext);

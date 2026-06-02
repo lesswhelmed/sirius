@@ -42,22 +42,34 @@ async function ensureServablePath(servedPath: string): Promise<string | null> {
   const diskPath = join(PUBLIC_DIR, servedPath.replace(/^\//, ""));
   const ext = extOf(servedPath);
   if (!isHeicExtension(ext)) {
-    // Already a servable format; keep the path (even if the file is absent we
-    // can't do better than the reference the post already had).
-    return servedPath;
+    // Already a servable format — but only usable if the file actually exists.
+    // Treat a missing file as missing (null) consistently with the heic branch,
+    // so the caller leaves the post for a later retry instead of locking in a
+    // broken reference.
+    return existsSync(diskPath) ? servedPath : null;
   }
   if (!existsSync(diskPath)) {
     return null;
   }
   const jpgServed = servedPath.replace(/\.(heic|heif)$/i, ".jpg");
   const jpgDisk = join(PUBLIC_DIR, jpgServed.replace(/^\//, ""));
-  if (!existsSync(jpgDisk)) {
-    if (APPLY) {
-      const jpeg = await heicToJpeg(new Uint8Array(readFileSync(diskPath)));
-      writeFileSync(jpgDisk, jpeg);
-    }
+  if (existsSync(jpgDisk)) {
+    return jpgServed; // already converted by a prior run
   }
-  return jpgServed;
+  if (!APPLY) {
+    return jpgServed; // dry run: report the path we WOULD write
+  }
+  try {
+    const jpeg = await heicToJpeg(new Uint8Array(readFileSync(diskPath)));
+    writeFileSync(jpgDisk, jpeg);
+    return jpgServed;
+  } catch (err) {
+    // A single corrupt/undecodable file must not abort the whole run; treat it
+    // as missing so the post is left untouched for a later retry.
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`  [warn] heic convert failed for ${servedPath}: ${message}`);
+    return null;
+  }
 }
 
 async function main() {
@@ -91,18 +103,23 @@ async function main() {
       const servable = await ensureServablePath(path);
       if (servable == null) {
         missing = true;
-        console.warn(`  [warn] ${post.slug}: missing file for ${path}`);
+        console.warn(`  [warn] ${post.slug}: unresolved file for ${path}`);
         continue;
       }
       images.push({ url: servable, alt });
     }
 
-    if (images.length === 0) {
+    // All-or-nothing: if ANY referenced image couldn't be resolved, leave the
+    // post untouched (images stays null) so a later run retries it once the file
+    // is restored. Writing a partial gallery would (a) drop photos silently and
+    // (b) permanently lock the post out of re-processing (images != null skip).
+    if (missing || images.length !== matches.length) {
       problems++;
-      console.warn(`  [skip] ${post.slug}: no resolvable images`);
+      console.warn(
+        `  [skip] ${post.slug}: ${images.length}/${matches.length} images resolved; leaving for a later run`
+      );
       continue;
     }
-    if (missing) problems++;
 
     // Strip the image markdown out of the prose and tidy the whitespace it left.
     const cleaned = post.content
