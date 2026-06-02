@@ -3,7 +3,7 @@
 // web composer) call into here so the dedup hash, staging, and createSubmission
 // contract live in one place.
 import { randomUUID } from "node:crypto";
-import { createSubmission, type IngestSubmission } from "@repo/db";
+import { createSubmission, getProject, type IngestSubmission } from "@repo/db";
 
 import { contentHashForBytes, contentHashForUrls } from "./hash";
 import {
@@ -18,6 +18,20 @@ type Logger = (
   msg: string,
   extra?: Record<string, unknown>
 ) => void;
+
+// Validates that the submitter owns the project before we persist it onto the
+// submission. Returns null (never throws) when there's no submitter, no
+// projectId, or the project isn't owned by the submitter.
+async function validateProjectOwnership(
+  submittedById: string | null,
+  projectId: string | null
+): Promise<string | null> {
+  if (!projectId || !submittedById) {
+    return null;
+  }
+  const project = await getProject(submittedById, projectId);
+  return project ? projectId : null;
+}
 
 export type SubmitResultBody = {
   id: string;
@@ -56,7 +70,8 @@ function toBody(
 export async function submitUrlIngest(
   raw: unknown,
   log: Logger,
-  submittedById: string | null = null
+  submittedById: string | null = null,
+  projectId: string | null = null
 ): Promise<SubmitResult> {
   const parsed = urlIngestSchema.safeParse(raw);
   if (!parsed.success) {
@@ -74,12 +89,21 @@ export async function submitUrlIngest(
   const { urls, notes, force } = parsed.data;
   const kind = urls.length > 0 ? "url" : "note";
   const contentHash = contentHashForUrls(urls, notes, force);
+
+  // seam(intake): validate projectId ownership before persisting. Drop to null
+  // if there's no submitter, no projectId, or the project isn't owned by them.
+  const validatedProjectId = await validateProjectOwnership(
+    submittedById,
+    projectId
+  );
+
   log("info", "received", {
     kind,
     urlCount: urls.length,
     notesLength: notes.length,
     force,
     submittedById,
+    projectId: validatedProjectId,
   });
 
   const result = await createSubmission({
@@ -87,6 +111,7 @@ export async function submitUrlIngest(
     payload: { urls, notes, force },
     contentHash,
     submittedById,
+    projectId: validatedProjectId,
     // Also persist on the row so a reclaimed/retried job regenerates instead of
     // reusing an existing post (worker idempotency guard reads this column).
     force,
@@ -113,6 +138,7 @@ export interface ParsedImagePayload {
     imageIndex: number;
     totalCount: number;
     notes: string;
+    projectId: string;
   };
 }
 
@@ -129,6 +155,7 @@ export async function parseMultipartImage(
     imageIndex: form.get("imageIndex"),
     totalCount: form.get("totalCount"),
     notes: form.get("notes") ?? "",
+    projectId: form.get("projectId") ?? "",
   });
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
@@ -154,6 +181,7 @@ export async function parseRawImage(
     imageIndex: get("imageIndex"),
     totalCount: get("totalCount"),
     notes: get("notes"),
+    projectId: get("projectId"),
   });
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
@@ -173,12 +201,20 @@ export async function parseRawImage(
 export async function submitImageIngest(
   payload: ParsedImagePayload,
   log: Logger,
-  submittedById: string | null = null
+  submittedById: string | null = null,
+  projectId: string | null = null
 ): Promise<SubmitResult> {
   const submissionId = randomUUID();
   const ext = extensionForContentType(payload.contentType);
   const stagedFilePath = await stageBytes(submissionId, payload.bytes, ext);
   const contentHash = contentHashForBytes(payload.bytes);
+
+  // seam(intake): validate projectId ownership before persisting. Drop to null
+  // if there's no submitter, no projectId, or the project isn't owned by them.
+  const validatedProjectId = await validateProjectOwnership(
+    submittedById,
+    projectId
+  );
 
   log("info", "received", {
     batchId: payload.metadata.batchId,
@@ -187,6 +223,7 @@ export async function submitImageIngest(
     contentType: payload.contentType,
     bytes: payload.bytes.byteLength,
     submittedById,
+    projectId: validatedProjectId,
   });
 
   const result = await createSubmission({
@@ -202,6 +239,7 @@ export async function submitImageIngest(
     totalCount: payload.metadata.totalCount,
     stagedFilePath,
     submittedById,
+    projectId: validatedProjectId,
   });
 
   log("info", result.status === "created" ? "accepted" : "deduped", {

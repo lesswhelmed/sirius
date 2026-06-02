@@ -22,6 +22,7 @@ export interface CreateSubmissionInput {
   imageIndex?: number | null;
   kind: IngestKind;
   payload: Prisma.InputJsonValue;
+  projectId?: string | null;
   stagedFilePath?: string | null;
   submittedById?: string | null;
   totalCount?: number | null;
@@ -42,6 +43,7 @@ export async function createSubmission(
         contentHash: input.contentHash,
         batchId: input.batchId ?? null,
         imageIndex: input.imageIndex ?? null,
+        projectId: input.projectId ?? null,
         totalCount: input.totalCount ?? null,
         stagedFilePath: input.stagedFilePath ?? null,
         submittedById: input.submittedById ?? null,

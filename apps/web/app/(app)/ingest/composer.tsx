@@ -11,6 +11,12 @@ import {
   type DragEvent,
 } from "react";
 
+interface ProjectOption {
+  id: string;
+  title: string;
+  status: string;
+}
+
 type PillKind = "queued" | "deduped" | "error" | "invalid";
 
 interface StatusPill {
@@ -244,11 +250,28 @@ export function Composer() {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [force, setForce] = useState(false);
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [pills, setPills] = useState<StatusPill[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const res = await fetch("/api/app/projects?status=active");
+        if (res.ok) {
+          const data = (await res.json()) as { items: ProjectOption[] };
+          setProjects(data.items);
+        }
+      } catch {
+        // gracefully ignore fetch errors
+      }
+    };
+    fetchProjects();
+  }, []);
 
   const parsed = useMemo(() => parseTextarea(text), [text]);
   const igCount = parsed.preview.filter((p) => p.kind === "instagram").length;
@@ -331,7 +354,7 @@ export function Composer() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urls: [url], notes, force }),
+          body: JSON.stringify({ urls: [url], notes, force, projectId }),
         });
         const data = (await res.json().catch(() => ({}))) as IngestResponse;
         if (!res.ok) {
@@ -358,7 +381,7 @@ export function Composer() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urls: [], notes, force }),
+          body: JSON.stringify({ urls: [], notes, force, projectId }),
         });
         const data = (await res.json().catch(() => ({}))) as IngestResponse;
         if (!res.ok) {
@@ -401,6 +424,7 @@ export function Composer() {
           fd.append("imageIndex", String(i));
           fd.append("totalCount", String(captured.length));
           fd.append("notes", notes);
+          if (projectId) fd.append("projectId", projectId);
           requests.push(
             fetch("/api/app/ingest-images", {
               method: "POST",
@@ -440,6 +464,7 @@ export function Composer() {
       setFiles([]);
       setText("");
       setForce(false);
+      setProjectId(null);
     });
   };
 
@@ -532,6 +557,31 @@ export function Composer() {
             ))}
           </ol>
         </details>
+      ) : null}
+
+      {projects.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="focus-select"
+            className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]"
+          >
+            Focus
+          </label>
+          <select
+            id="focus-select"
+            value={projectId ?? ""}
+            onChange={(e) => setProjectId(e.target.value || null)}
+            disabled={isPending}
+            className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 font-body text-[15px] text-[var(--fg)] outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="">None</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </div>
       ) : null}
 
       <label className="flex w-fit cursor-pointer items-center gap-3 select-none">

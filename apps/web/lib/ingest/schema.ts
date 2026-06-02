@@ -24,6 +24,7 @@ export const urlIngestSchema = z
     urls: urlList.optional().default([]),
     notes: z.string().optional().default(""),
     force: flexibleBoolean.optional().default(false),
+    projectId: z.string().optional().default(""),
   })
   .refine(
     (data) => data.urls.length > 0 || data.notes.trim().length > 0,
@@ -37,6 +38,7 @@ export const imageMetadataSchema = z.object({
   imageIndex: z.coerce.number().int().min(0),
   totalCount: z.coerce.number().int().min(1),
   notes: z.string().optional().default(""),
+  projectId: z.string().optional().default(""),
 });
 
 export type ImageIngestMetadata = z.infer<typeof imageMetadataSchema>;

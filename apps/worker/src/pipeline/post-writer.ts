@@ -341,6 +341,7 @@ export async function writePost(
       syncStatus: "synced",
       lastSyncedAt: new Date(),
       submittedById: input.submittedById ?? null,
+      projectId: input.projectId ?? null,
       tags: { connectOrCreate: tagConnects },
       categories: { connectOrCreate: categoryConnects },
     },
@@ -358,6 +359,7 @@ export async function writePost(
       ...(input.submittedById
         ? { submittedById: input.submittedById }
         : {}),
+      ...(input.projectId ? { projectId: input.projectId } : {}),
       tags: { connectOrCreate: tagConnects },
       categories: { connectOrCreate: categoryConnects },
     },

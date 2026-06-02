@@ -33,7 +33,17 @@ export async function POST(request: Request) {
     return jsonError(400, "invalid JSON body");
   }
 
-  const result = await submitUrlIngest(raw, log, session.user.id);
+  // Only honor a string projectId; ownership is still validated in submit.ts.
+  // (Guards against a non-string value reaching the Prisma lookup.)
+  const rawProjectId =
+    raw && typeof raw === "object"
+      ? (raw as { projectId?: unknown }).projectId
+      : null;
+  const projectId =
+    typeof rawProjectId === "string" && rawProjectId.length > 0
+      ? rawProjectId
+      : null;
+  const result = await submitUrlIngest(raw, log, session.user.id, projectId);
   if (!result.ok) {
     return jsonError(result.status, result.error, result.extra);
   }

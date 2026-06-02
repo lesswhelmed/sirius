@@ -39,7 +39,15 @@ export async function POST(request: Request) {
     return jsonError(400, parsed.error, { contentType });
   }
 
-  const result = await submitImageIngest(parsed, log, session.user.id);
+  // metadata.projectId is schema-coerced to a string ("" when absent);
+  // ownership is validated in submit.ts. Normalize empty → null.
+  const projectId = parsed.metadata.projectId || null;
+  const result = await submitImageIngest(
+    parsed,
+    log,
+    session.user.id,
+    projectId
+  );
   if (!result.ok) {
     return jsonError(result.status, result.error, result.extra);
   }

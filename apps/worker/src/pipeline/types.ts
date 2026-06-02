@@ -19,12 +19,14 @@ export type PipelineInput =
       notes: string;
       force: boolean;
       submittedById: string | null;
+      projectId: string | null;
     }
   | {
       kind: "note";
       submission: IngestSubmission;
       notes: string;
       submittedById: string | null;
+      projectId: string | null;
     }
   | {
       kind: "image";
@@ -33,6 +35,7 @@ export type PipelineInput =
       notes: string;
       images: StagedImage[];
       submittedById: string | null;
+      projectId: string | null;
     };
 
 export type GeminiOutput = {
