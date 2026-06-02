@@ -1,18 +1,24 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Sirius",
+    "slug": "sirius",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "siriusapp",
     "userInterfaceStyle": "automatic",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/c14faf73-b1f9-425e-b66b-974ac26b827c"
+    },
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.anonymous.mobile"
+      "bundleIdentifier": "dev.copt.sirius"
     },
     "android": {
-      "package": "com.anonymous.mobile",
+      "package": "dev.copt.sirius",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -63,6 +69,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c14faf73-b1f9-425e-b66b-974ac26b827c"
+      }
+    },
+    "owner": "minasaleeb"
   }
 }

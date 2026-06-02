@@ -1,3 +1,5 @@
+import { FileSystemUploadType, uploadAsync } from "expo-file-system/legacy";
+
 import { authBaseURL, authClient } from "./auth-client";
 
 type Json =
@@ -85,17 +87,49 @@ export async function apiPostJson<T>(
   return parseResponse<T>(res);
 }
 
-export async function apiPostForm<T>(
+function parseUploadResult<T>(status: number, rawBody: string): T {
+  const body = rawBody ? (JSON.parse(rawBody) as unknown) : null;
+  if (status < 200 || status >= 300) {
+    const message =
+      body && typeof body === "object" && "error" in body
+        ? String((body as { error: unknown }).error)
+        : `request failed (${status})`;
+    throw new ApiError(status, body, message);
+  }
+  return body as T;
+}
+
+export type UploadFileOptions = {
+  // Multipart field name the server reads the file from (e.g. "image").
+  fieldName: string;
+  // MIME type of the file; the server uses it to pick the stored extension.
+  mimeType?: string;
+  // Extra string form fields sent alongside the file (batchId, totalCount, …).
+  parameters?: Record<string, string>;
+};
+
+// Uploads a single local file as multipart/form-data via expo-file-system's
+// uploadAsync. This replaces the fragile fetch + RN FormData path: uploadAsync
+// reliably sets the multipart boundary, streams large files (video/audio), and
+// lets us attach the session cookie + metadata explicitly. The server's
+// parseMultipartImage path reads `fieldName` + `parameters` form fields.
+export async function uploadFile<T>(
   path: string,
-  form: FormData,
-  init?: RequestInit
+  fileUri: string,
+  { fieldName, mimeType, parameters }: UploadFileOptions
 ): Promise<T> {
-  // Do NOT set Content-Type — React Native sets the multipart boundary itself.
-  const res = await fetch(toUrl(path), {
-    ...init,
-    method: "POST",
-    headers: buildHeaders(init?.headers),
-    body: form as unknown as BodyInit,
+  const headers: Record<string, string> = {};
+  const cookie = authClient.getCookie();
+  if (cookie) {
+    headers.Cookie = cookie;
+  }
+  const result = await uploadAsync(toUrl(path), fileUri, {
+    httpMethod: "POST",
+    uploadType: FileSystemUploadType.MULTIPART,
+    fieldName,
+    mimeType,
+    parameters,
+    headers,
   });
-  return parseResponse<T>(res);
+  return parseUploadResult<T>(result.status, result.body);
 }

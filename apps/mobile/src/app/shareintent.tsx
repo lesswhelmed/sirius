@@ -13,28 +13,22 @@ import {
 } from "react-native";
 
 import {
-  KindLabel,
   PageHeader,
   PrimaryButton,
   Screen,
   SecondaryButton,
   TextLink,
+  TrayRow,
 } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import { useSession } from "@/lib/auth-client";
+import { trayTag } from "@/lib/material-kinds";
 import {
   describeMaterial,
   type Material,
   materialsFromShareIntent,
   submitMaterials,
 } from "@/lib/materials";
-
-const KIND_LABELS: Record<Material["kind"], string> = {
-  url: "Link",
-  note: "Text",
-  image: "Image",
-  unsupported: "Unsupported",
-};
 
 export default function ShareIntentScreen() {
   const queryClient = useQueryClient();
@@ -127,42 +121,23 @@ export default function ShareIntentScreen() {
         />
 
         <View style={styles.list}>
-          {materials.map((material) => {
-            const unsupported = material.kind === "unsupported";
-            return (
-              <View
-                key={`${material.kind}:${describeMaterial(material)}`}
-                style={[styles.card, unsupported && styles.cardMuted]}
-              >
-                {material.kind === "image" ? (
+          {materials.map((material, i) => (
+            <TrayRow
+              key={`${material.kind}:${describeMaterial(material)}:${i}`}
+              tag={trayTag(material)}
+              description={describeMaterial(material)}
+              leading={
+                material.kind === "image" ? (
                   <Image
                     source={{ uri: material.uri }}
                     style={styles.thumb}
                     contentFit="cover"
                     transition={120}
                   />
-                ) : null}
-                <View style={styles.cardText}>
-                  <KindLabel
-                    tone={
-                      unsupported ? Sirius.color.inkSubtle : Sirius.color.accent
-                    }
-                  >
-                    {KIND_LABELS[material.kind]}
-                  </KindLabel>
-                  <Text
-                    style={[
-                      styles.cardBody,
-                      unsupported && styles.cardBodyMuted,
-                    ]}
-                    numberOfLines={3}
-                  >
-                    {describeMaterial(material)}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
+                ) : undefined
+              }
+            />
+          ))}
         </View>
 
         <PrimaryButton
@@ -201,29 +176,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 23,
   },
-  list: { gap: Sirius.space.md, marginTop: Sirius.space.xs },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Sirius.space.md,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperRaised,
-    padding: Sirius.space.md,
-  },
-  cardMuted: { borderStyle: "dashed", backgroundColor: "transparent" },
-  cardText: { flex: 1, gap: Sirius.space.xs },
-  cardBody: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: Sirius.color.ink,
-    fontFamily: Sirius.font.serif,
-  },
-  cardBodyMuted: { fontWeight: "400", color: Sirius.color.inkMuted },
+  list: { gap: Sirius.space.sm, marginTop: Sirius.space.xs },
   thumb: {
-    width: 56,
-    height: 56,
+    width: 44,
+    height: 44,
     borderRadius: Sirius.radius.none,
     backgroundColor: Sirius.color.paperSunken,
     borderWidth: 1,

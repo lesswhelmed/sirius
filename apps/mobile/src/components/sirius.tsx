@@ -2,9 +2,11 @@
 // the paper-and-ink language (see constants/theme.ts) consistent across
 // screens without pulling in a styling library. Everything is built on plain
 // react-native + StyleSheet.create per the project's RN conventions.
-import { forwardRef } from "react";
+import { SymbolView } from "expo-symbols";
+import { forwardRef, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   type PressableProps,
   type StyleProp,
@@ -17,6 +19,7 @@ import {
   type ViewProps,
   type ViewStyle,
 } from "react-native";
+import type { SFSymbol } from "sf-symbols-typescript";
 
 import { Sirius } from "@/constants/theme";
 
@@ -216,6 +219,144 @@ export function TextLink({
   );
 }
 
+// A square tappable card for the composer's capture grid: an SF-symbol icon
+// over a label, flat and ruled like the rest of the editorial chrome. `glyph`
+// is the Android/web text fallback for the symbol. `active` highlights the card
+// whose input sheet is currently open.
+export function ActionCard({
+  label,
+  symbol,
+  glyph,
+  active,
+  style,
+  accessibilityHint,
+  ...rest
+}: Omit<PressableProps, "children" | "style"> & {
+  label: string;
+  symbol: SFSymbol;
+  glyph: string;
+  active?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => [
+        styles.actionCard,
+        active && styles.actionCardActive,
+        pressed && styles.actionCardPressed,
+        style,
+      ]}
+      {...rest}
+    >
+      <SymbolView
+        name={symbol}
+        size={26}
+        weight="regular"
+        tintColor={active ? Sirius.color.accent : Sirius.color.ink}
+        fallback={
+          <Text
+            style={[
+              styles.actionGlyph,
+              active && { color: Sirius.color.accent },
+            ]}
+            accessibilityElementsHidden
+          >
+            {glyph}
+          </Text>
+        }
+      />
+      <Text style={[styles.actionLabel, active && styles.actionLabelActive]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+// A bottom modal sheet that hosts a single capture kind's input form. Tapping
+// the scrim or the OS back gesture dismisses it.
+export function Sheet({
+  visible,
+  title,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  title?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable
+        style={styles.sheetScrim}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        onPress={onClose}
+      />
+      <View style={styles.sheet}>
+        <View style={styles.sheetHandle} />
+        {title ? (
+          <Eyebrow accessibilityRole="header" style={styles.sheetTitle}>
+            {title}
+          </Eyebrow>
+        ) : null}
+        {children}
+      </View>
+    </Modal>
+  );
+}
+
+// One staged item in the composer/share tray: a mono kind tag, a one-line
+// description, an optional leading thumbnail, and a remove control.
+export function TrayRow({
+  tag,
+  description,
+  onRemove,
+  removeLabel,
+  leading,
+}: {
+  tag: string;
+  description: string;
+  onRemove?: () => void;
+  removeLabel?: string;
+  leading?: ReactNode;
+}) {
+  return (
+    <View style={styles.trayRow}>
+      {leading}
+      <View style={styles.trayText}>
+        <KindLabel tone={Sirius.color.accent}>{tag}</KindLabel>
+        <Text style={styles.trayDescription} numberOfLines={2}>
+          {description}
+        </Text>
+      </View>
+      {onRemove ? (
+        <Pressable
+          onPress={onRemove}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={removeLabel ?? "Remove item"}
+          style={({ pressed }) => [
+            styles.trayRemove,
+            pressed && styles.linkPressed,
+          ]}
+        >
+          <Text style={styles.trayRemoveText}>×</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Sirius.color.paper },
   header: {
@@ -338,4 +479,86 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   link: { fontSize: 15, fontWeight: "600" },
   linkPressed: { opacity: 0.6 },
+  actionCard: {
+    flex: 1,
+    minHeight: 104,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperRaised,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Sirius.space.sm,
+    paddingVertical: Sirius.space.lg,
+  },
+  actionCardActive: {
+    borderColor: Sirius.color.accent,
+    backgroundColor: Sirius.color.accentSoft,
+  },
+  actionCardPressed: { backgroundColor: Sirius.color.paperSunken },
+  actionGlyph: {
+    fontSize: 26,
+    lineHeight: 30,
+    color: Sirius.color.ink,
+    fontFamily: Sirius.font.serif,
+  },
+  actionLabel: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
+  },
+  actionLabelActive: { color: Sirius.color.accent },
+  sheetScrim: {
+    flex: 1,
+    backgroundColor: "rgba(28,22,18,0.4)",
+  },
+  sheet: {
+    backgroundColor: Sirius.color.paper,
+    borderTopWidth: 1,
+    borderColor: Sirius.color.ruleStrong,
+    paddingHorizontal: Sirius.space.xl,
+    paddingTop: Sirius.space.md,
+    paddingBottom: Sirius.space.xxl,
+    gap: Sirius.space.lg,
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 4,
+    borderRadius: Sirius.radius.pill,
+    backgroundColor: Sirius.color.inkFaint,
+  },
+  sheetTitle: { marginTop: Sirius.space.xs },
+  trayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.md,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperRaised,
+    paddingVertical: Sirius.space.sm,
+    paddingHorizontal: Sirius.space.md,
+  },
+  trayText: { flex: 1, gap: 3 },
+  trayDescription: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: Sirius.color.ink,
+    fontFamily: Sirius.font.serif,
+  },
+  trayRemove: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trayRemoveText: {
+    fontSize: 22,
+    lineHeight: 24,
+    color: Sirius.color.inkMuted,
+    fontWeight: "600",
+  },
 });

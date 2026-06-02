@@ -1,0 +1,64 @@
+// The composer's capture-kind registry. Each entry is one card in the "What are
+// you adding?" action grid. This is the UI-side mirror of the submission
+// HANDLERS registry in materials.ts: adding a new kind of material is a single
+// append here (+ a matching input case in composer.tsx and a submit handler in
+// materials.ts), which is what keeps the composer composable and extensible to
+// future kinds (video, audio, documents…) without reworking the screen.
+import type { SFSymbol } from "sf-symbols-typescript";
+
+import type { Material } from "@/lib/materials";
+
+export type CaptureKindKey = "link" | "note" | "photos";
+
+export type CaptureKind = {
+  key: CaptureKindKey;
+  label: string;
+  // SF Symbol rendered on iOS; `glyph` is the text fallback (Android/web).
+  symbol: SFSymbol;
+  glyph: string;
+  // How tapping the card collects content:
+  //   "form"   → open a sheet with a text field (link, note)
+  //   "picker" → launch a native picker immediately (photos)
+  input: "form" | "picker";
+  // VoiceOver/TalkBack hint describing what activating the card does.
+  hint: string;
+};
+
+export const CAPTURE_KINDS: CaptureKind[] = [
+  {
+    key: "link",
+    label: "Link",
+    symbol: "link",
+    glyph: "↗",
+    input: "form",
+    hint: "Add one or more web links to the tray",
+  },
+  {
+    key: "note",
+    label: "Note",
+    symbol: "square.and.pencil",
+    glyph: "✎",
+    input: "form",
+    hint: "Write a text note and add it to the tray",
+  },
+  {
+    key: "photos",
+    label: "Photos",
+    symbol: "photo.on.rectangle",
+    glyph: "▦",
+    input: "picker",
+    hint: "Pick photos from your library and add them to the tray",
+  },
+];
+
+// Short mono tag shown on each staged tray row.
+const TRAY_TAGS: Record<Material["kind"], string> = {
+  url: "URL",
+  note: "NOTE",
+  image: "PHOTO",
+  unsupported: "SKIP",
+};
+
+export function trayTag(material: Material): string {
+  return TRAY_TAGS[material.kind] ?? material.kind.toUpperCase();
+}

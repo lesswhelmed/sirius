@@ -32,5 +32,13 @@
   ],
   "dependencies": {
     "better-auth": "^1.6.11"
+  },
+  "overrides": {
+    "kysely": "0.28.17",
+    "expo": "56.0.8",
+    "expo-constants": "56.0.16",
+    "expo-linking": "56.0.13",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   }
 }

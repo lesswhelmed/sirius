@@ -50,6 +50,28 @@ bun --cwd apps/mobile ios       # iOS Simulator
 bun --cwd apps/mobile android   # Android emulator
 ```
 
+### Mobile builds (EAS)
+Release builds go through **EAS Build** (cloud), config in `apps/mobile/eas.json`. The
+`ios/`/`android/` dirs are gitignored — they're regenerated from `app.json` + `bun.lock`
+by `expo prebuild`; **never commit them**. The EAS project is
+`c14faf73-b1f9-425e-b66b-974ac26b827c` (`app.json` → `extra.eas.projectId`).
+
+```sh
+bun --cwd apps/mobile build:preview   # eas build --profile preview  (internal)
+bun --cwd apps/mobile build:prod      # eas build --profile production (store)
+bun --cwd apps/mobile update:prod     # eas update --branch production (OTA JS push)
+```
+
+- Three profiles/channels: `development` (dev client, localhost), `preview` (internal,
+  `lesswhelmed.com`), `production` (store, `lesswhelmed.com`). The per-profile
+  `EXPO_PUBLIC_AUTH_BASE_URL` is the only env that differs.
+- Reproducibility: `cli.appVersionSource: "remote"` (EAS owns build numbers),
+  `requireCommit: true` (clean tree only), pinned `node`/`image`.
+- OTA: `expo-updates` with `runtimeVersion.policy: "fingerprint"` — updates only reach
+  builds with a matching native fingerprint.
+- Prod auth: `AUTH_TRUSTED_ORIGINS` **must include `siriusapp://`** (dev trusts it
+  automatically — see `packages/auth/src/index.ts`).
+
 Lint note: **ESLint** does the real linting per app (flat config from `@repo/eslint-config`).
 `biome.json` only configures the CSS-modules/Tailwind parser — it is not the linter.
 Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zod 4.

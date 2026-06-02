@@ -39,6 +39,39 @@ export type Material =
 
 const URL_IN_TEXT_REGEX = /https?:\/\/[^\s]+/i;
 
+// Cap on URLs accepted from one "Add link" action, matching the server's
+// tolerance for fan-out batches.
+export const MAX_URLS_PER_BATCH = 200;
+
+// Turns a free-text blob (one URL per line, or whitespace/comma separated) into
+// deduplicated UrlMaterials. Shared by the composer's link input so URL parsing
+// lives next to the other material constructors rather than in the screen.
+export function urlMaterialsFromText(raw: string): {
+  materials: UrlMaterial[];
+  deduped: number;
+  capped: number;
+} {
+  const seen = new Set<string>();
+  const materials: UrlMaterial[] = [];
+  let deduped = 0;
+  let capped = 0;
+  for (const candidate of raw.split(/[\n\r,\s]+/)) {
+    const url = candidate.trim();
+    if (url.length === 0) continue;
+    if (seen.has(url)) {
+      deduped++;
+      continue;
+    }
+    seen.add(url);
+    if (materials.length >= MAX_URLS_PER_BATCH) {
+      capped++;
+      continue;
+    }
+    materials.push({ kind: "url", url });
+  }
+  return { materials, deduped, capped };
+}
+
 function isImageMime(mime: string | undefined | null): boolean {
   return typeof mime === "string" && mime.toLowerCase().startsWith("image/");
 }

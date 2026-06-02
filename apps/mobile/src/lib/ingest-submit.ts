@@ -4,7 +4,7 @@
 // sent as a single batch keyed by one `batchId`.
 import * as Crypto from "expo-crypto";
 
-import { ApiError, apiPostForm, apiPostJson } from "@/lib/api";
+import { ApiError, apiPostJson, uploadFile } from "@/lib/api";
 
 export type SubmitOk = {
   id: string;
@@ -58,19 +58,17 @@ export async function submitImageBatch(
   let submitted = 0;
   for (let i = 0; i < images.length; i++) {
     const image = images[i]!;
-    const form = new FormData();
-    // RN FormData accepts { uri, name, type } as a "file" part.
-    form.append("image", {
-      uri: image.uri,
-      name: image.name,
-      type: image.type,
-    } as unknown as Blob);
-    form.append("batchId", batchId);
-    form.append("imageIndex", String(i));
-    form.append("totalCount", String(images.length));
-    form.append("notes", notes);
     try {
-      await apiPostForm<SubmitOk>("/api/app/ingest-images", form);
+      await uploadFile<SubmitOk>("/api/app/ingest-images", image.uri, {
+        fieldName: "image",
+        mimeType: image.type,
+        parameters: {
+          batchId,
+          imageIndex: String(i),
+          totalCount: String(images.length),
+          notes,
+        },
+      });
       submitted++;
     } catch (err) {
       onError?.(`image ${i + 1}`, err);
