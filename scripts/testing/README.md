@@ -118,7 +118,8 @@ verification link.
 
 - `agent-browser` on `PATH` — `npm i -g agent-browser && agent-browser install`
 - `psql` on `PATH`
-- `bun dev` running from the repo root (web on `:3000` + worker)
+- `bun dev` running from the repo root (web on `:3000`, also at `https://sirius.localhost` via
+  portless — run `bun run dev:proxy` once first — plus the worker)
 - repo `.env` populated (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `GEMINI_API_KEY`)
 - `scripts/testing/.creds.local` created — copy `creds.example.sh` and fill in
 

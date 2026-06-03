@@ -16,15 +16,22 @@ const extraTrustedOrigins = (process.env.AUTH_TRUSTED_ORIGINS ?? "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-// In dev, trust the local web app, the Expo web dev server (localhost:8081), and the
-// native mobile deep-link scheme so logins aren't blocked as cross-origin. The Expo
-// auth client (apps/mobile) calls back via `siriusapp://`, which better-auth's expo()
-// plugin requires to be a trusted origin.
+// In dev, trust the local web app, the portless dev URL (https://sirius.localhost,
+// which the web app + iOS Simulator hit), the Expo web dev server (localhost:8081),
+// and the native mobile deep-link scheme so logins aren't blocked as cross-origin.
+// The Expo auth client (apps/mobile) calls back via `siriusapp://`, which better-auth's
+// expo() plugin requires to be a trusted origin. `http://localhost:3000` is kept so a
+// plain `PORTLESS=0` run (no proxy) still authenticates.
 // Never applied in production, which stays locked to AUTH_TRUSTED_ORIGINS + BETTER_AUTH_URL
 // — production deployments MUST include `siriusapp://` in AUTH_TRUSTED_ORIGINS.
 const devTrustedOrigins = isProduction
   ? []
-  : ["http://localhost:3000", "http://localhost:8081", "siriusapp://"];
+  : [
+      "http://localhost:3000",
+      "https://sirius.localhost",
+      "http://localhost:8081",
+      "siriusapp://",
+    ];
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),

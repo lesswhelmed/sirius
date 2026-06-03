@@ -73,10 +73,16 @@ bun run worker:setup          # generates INGEST_TOKEN, makes staging dirs (inte
 Run the stack:
 
 ```sh
-bun run dev                   # all apps (turbo, persistent)
-turbo dev --filter=web        # just the web app (port 3000)
+bun run dev:proxy             # one-time per boot: start portless, trust the CA in the simulator
+bun run dev                   # all apps (turbo, persistent) — web served at https://sirius.localhost
+turbo dev --filter=web        # just the web app (behind portless at https://sirius.localhost → :3000)
 bun run worker:dev            # just the ingest worker (--watch)
 ```
+
+Local dev runs the web app behind [portless](https://github.com/) at the stable URL
+`https://sirius.localhost` (the proxy forwards to `next dev` on port 3000). Run
+`bun run dev:proxy` once after a reboot before `bun run dev`. Bypass the proxy with
+`PORTLESS=0 bun --cwd apps/web run dev:app` (plain `http://localhost:3000`).
 
 Mobile (from repo root):
 

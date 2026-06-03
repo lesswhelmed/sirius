@@ -19,7 +19,8 @@ Package manager is **bun** (`bun@1.3.14`, hoisted linker). Run from repo root un
 ```sh
 bun install                     # install (use --frozen-lockfile on deploy)
 bun run build                   # turbo build all
-bun run dev                     # turbo dev all (persistent)
+bun run dev:proxy               # one-time per boot: start portless + trust CA in the iOS Simulator
+bun run dev                     # turbo dev all (persistent); web served at https://sirius.localhost
 bun run lint                    # turbo lint (eslint, --max-warnings 0 per app)
 bun run check-types             # turbo tsc --noEmit (web also runs `next typegen` first)
 bun run format                  # prettier on **/*.{ts,tsx,md}
@@ -39,6 +40,21 @@ bun run worker:dev              # run the daemon with --watch
 turbo dev --filter=web          # or --filter=worker, --filter=mobile
 turbo build --filter=web
 ```
+
+**Local dev URL (portless).** The web app's `dev` script runs through
+[portless](https://www.npmjs.com/package/portless), a reverse proxy that serves it at the
+stable HTTPS name **`https://sirius.localhost`** (forwarding to `next dev` on a pinned port
+3000). This is so the mobile app's `EXPO_PUBLIC_AUTH_BASE_URL` never goes stale when the
+machine's network changes. Config is the `"portless"` key in `apps/web/package.json`
+(`name: sirius`, `appPort: 3000`). `bun run dev:proxy` (→ `scripts/setup-dev-proxy.sh`) is a
+one-time-per-boot step that starts the proxy daemon and — crucially — runs
+`xcrun simctl keychain booted add-root-cert ~/.portless/ca.pem` so the **iOS Simulator** trusts
+portless's CA (the simulator does NOT inherit the macOS trust store). The port is pinned to 3000
+so the worker's `WEB_REVALIDATE_URL=http://localhost:3000/...` keeps working (the worker isn't a
+portless child). The new origin is whitelisted in `apps/web/next.config.js` (`allowedDevOrigins`)
+and `packages/auth/src/index.ts` (`devTrustedOrigins`). Bypass with
+`PORTLESS=0 bun --cwd apps/web run dev:app`. Physical-device dev would additionally need portless
+LAN mode (`--lan`) — not set up here.
 
 There is **no test runner wired up** (`scripts/testing/` exists but nothing in package.json
 runs it). Don't claim tests pass — there are none to run.
