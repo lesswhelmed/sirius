@@ -120,7 +120,12 @@ model CategoryEmbedding {
   parentPath     String?
   depth          Int
   fileCount      Int
+  // What belongs in this analysis category.
   description    String
+  // Why this category exists for classification (distinct from description).
+  // Embedded alongside description so reverse-lookup matches on intent, not just
+  // surface terms.
+  purpose        String   @default("")
   embedding      Float[]
   embeddingHash  String
   modelVersion   String
@@ -131,6 +136,26 @@ model CategoryEmbedding {
   @@index([path])
   @@index([parentPath])
   @@index([depth])
+  @@index([embeddingHash])
+}
+
+// One embedding per Project (Focus Area), so unscoped content can be matched to
+// an existing Project via cosine similarity. ownerId is denormalized for cheap
+// owner-scoped reverse lookups without a Project join.
+model ProjectEmbedding {
+  id             String   @id @default(cuid())
+  projectId      String   @unique
+  project        Project  @relation("ProjectEmbedding", fields: [projectId], references: [id], onDelete: Cascade)
+  ownerId        String
+  retrievalText  String
+  embedding      Float[]
+  embeddingHash  String
+  modelVersion   String
+  dimensionality Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([ownerId])
   @@index([embeddingHash])
 }
 
@@ -286,6 +311,7 @@ model Project {
 
   posts       Post[]             @relation("ProjectPosts")
   submissions IngestSubmission[] @relation("ProjectSubmissions")
+  embedding   ProjectEmbedding?  @relation("ProjectEmbedding")
 
   @@index([ownerId, status, createdAt])
   @@index([aspirationId])

@@ -22,6 +22,12 @@ export type IngestSubmission = Prisma.IngestSubmissionGetPayload<
 >;
 export type Aspiration = Prisma.AspirationGetPayload<Record<string, never>>;
 export type Project = Prisma.ProjectGetPayload<Record<string, never>>;
+export type CategoryEmbedding = Prisma.CategoryEmbeddingGetPayload<
+  Record<string, never>
+>;
+export type ProjectEmbedding = Prisma.ProjectEmbeddingGetPayload<
+  Record<string, never>
+>;
 
 export * from "./ingest";
 export * from "./posts";
@@ -29,6 +35,8 @@ export * from "./users";
 export * from "./saved";
 export * from "./analytics";
 export * from "./projects";
+export * from "./embeddings";
+export * from "./classify";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

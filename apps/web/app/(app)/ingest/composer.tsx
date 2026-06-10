@@ -570,6 +570,14 @@ export function Composer() {
         </div>
       ) : null}
 
+      {/* No focus selected: auto-org will file this under a Project for you. */}
+      {projectId === null ? (
+        <p className="font-display italic text-[14px] text-[var(--fg-muted)]">
+          No focus selected &mdash; we&rsquo;ll file this automatically once
+          it&rsquo;s processed.
+        </p>
+      ) : null}
+
       {/* URL preview list with IG/other badges (kept web extra). */}
       {urlPreview.length > 0 ? (
         <details open className="surface-raised">

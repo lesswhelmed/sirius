@@ -3,6 +3,8 @@
 // (copt-dev's git branch + commit + push + gh PR steps are intentionally
 // dropped — see the migration plan.)
 
+import { buildClassificationInput } from "./classification/adapters";
+import { assignOrg } from "./classification/assign-org";
 import { runGemini } from "./gemini-runner";
 import { writePost } from "./post-writer";
 import type { PipelineInput, PipelineResult } from "./types";
@@ -52,6 +54,30 @@ export async function processIngest(
     slug: written.slug,
     images: written.imagePaths.length,
   });
+
+  // Auto-org: file unscoped, user-attributed ingests under a Project. Runs here
+  // (after writePost, before the worker deletes staged files) so image batches
+  // can be embedded multimodally. Non-fatal by contract — a classification error
+  // must not fail an otherwise-successful ingest.
+  try {
+    const classificationInput = buildClassificationInput(input, parsed);
+    const org = await assignOrg({
+      input,
+      postId: written.postId,
+      classificationInput,
+    });
+    if (org) {
+      logger("org:assigned", {
+        projectId: org.projectId,
+        created: org.created,
+      });
+    }
+  } catch (error) {
+    logger("org:error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   return {
     postSlug: written.slug,
     postId: written.postId,

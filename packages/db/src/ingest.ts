@@ -190,6 +190,22 @@ export async function markFailed(
   });
 }
 
+// Backfill the Project assignment on submission rows after the worker's auto-org
+// stage matches/creates a Project. Mirrors the projectId the worker also writes
+// onto the Post, so the queue/submission view reflects the auto-assignment.
+export async function setSubmissionProject(
+  ids: string[],
+  projectId: string | null
+): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  await prisma.ingestSubmission.updateMany({
+    where: { id: { in: ids } },
+    data: { projectId },
+  });
+}
+
 // Extends the lease on in-flight rows by bumping startedAt — called
 // periodically by the worker during a long job so reclaimStaleProcessing won't
 // mistake a still-running job for a crashed one. Scoped to status:"processing"

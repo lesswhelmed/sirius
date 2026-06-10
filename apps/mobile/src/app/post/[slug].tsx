@@ -6,25 +6,14 @@ import { useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { KindLabel, Screen, Title } from "@/components/sirius";
+import { PostMarkdown } from "@/components/post-markdown";
 import { PostTypeTone, Sirius } from "@/constants/theme";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
+import { preparePostMarkdown } from "@/lib/post-markdown";
 
 type PostDetail = Post & { tags: Tag[]; categories: Category[] };
 
 type SightImage = { url: string; alt: string };
-
-// Strips inline markdown image syntax (![alt](url)) from prose. Legacy SIGHT
-// posts created before the gallery redesign — and any not yet backfilled — still
-// carry embedded image markdown in their body; mobile has no markdown renderer,
-// so without this the raw ![alt](…) text shows mid-paragraph.
-function stripImageMarkdown(content: string): string {
-  return content
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/ +\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
 
 // A gallery photo that degrades to a labeled placeholder on load failure (a
 // deleted/moved file), mirroring the web PostImage "No plate" behavior so the
@@ -143,7 +132,11 @@ export default function PostDetailScreen() {
         ) : null}
         {data.excerpt ? <Text style={styles.excerpt}>{data.excerpt}</Text> : null}
         {data.content ? (
-          <Text style={styles.body}>{stripImageMarkdown(data.content)}</Text>
+          <PostMarkdown
+            markdown={preparePostMarkdown(data.content, {
+              hasGallery: sightImages.length > 0,
+            })}
+          />
         ) : null}
       </ScrollView>
     </Screen>
@@ -209,13 +202,6 @@ const styles = StyleSheet.create({
     color: Sirius.color.inkMuted,
     fontStyle: "italic",
     marginTop: Sirius.space.xs,
-  },
-  body: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 17,
-    lineHeight: 27,
-    color: Sirius.color.ink,
-    marginTop: Sirius.space.sm,
   },
   errorTitle: {
     fontFamily: Sirius.font.serif,

@@ -79,7 +79,13 @@ WEB_REVALIDATE_URL=https://lesswhelmed.com/api/internal/revalidate
 GEMINI_API_KEY=<gemini_api_key>
 AI_MODEL=gemini-2.5-flash
 AI_TEMPERATURE=0.7
-EMBEDDING_MODEL=gemini-embedding-001
+EMBEDDING_MODEL=gemini-embedding-2
+EMBEDDING_DIMENSIONALITY=768
+
+# ─── Auto-org (classify unscoped ingests into Projects/Focus Areas) ─────────
+CLASSIFY_ENABLED=true
+CLASSIFY_PROJECT_MATCH_MIN=0.78
+CLASSIFY_CATEGORY_MATCH_MIN=0.58
 
 # ─── Instagram ingest (optional, paid Apify plan) ───────────────────────────
 APIFY_TOKEN=
