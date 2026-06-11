@@ -1,0 +1,4 @@
+**/node_modules/react-native-reanimated/{Products,.build,.DerivedData,.generated}/**/*
+**/node_modules/react-native-safe-area-context/{Products,.build,.DerivedData,.generated}/**/*
+**/node_modules/react-native-screens/{Products,.build,.DerivedData,.generated}/**/*
+**/node_modules/react-native-worklets/{Products,.build,.DerivedData,.generated}/**/*
