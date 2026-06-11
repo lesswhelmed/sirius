@@ -1,10 +1,13 @@
-// Auto-org stage. For an UNSCOPED session-auth ingest (no focus selected), embed
-// the content's classification signal, reverse-look-up against the user's
-// existing Projects and the global Analysis Category taxonomy, then either assign
-// the best-matching Project or auto-create an Aspiration + Project. Runs after
-// writePost (postId known) but before staged files are deleted — image parts
-// need the bytes. All failures are NON-FATAL: the post already exists, so a
-// classification error must never dead-letter an otherwise-successful ingest.
+// Auto-org stage. For EVERY user-attributed session-auth ingest, embed the
+// content's classification signal, reverse-look-up against the user's existing
+// Projects and the global Analysis Category taxonomy, and persist the vector +
+// category linkage (PostEmbedding + PostCategoryMatch) so the post appears in
+// the embedding space. Then, for UNSCOPED ingests only (no focus selected),
+// either assign the best-matching Project or auto-create an Aspiration +
+// Project. Runs after writePost (postId known) but before staged files are
+// deleted — image parts need the bytes. All failures are NON-FATAL: the post
+// already exists, so a classification error must never dead-letter an
+// otherwise-successful ingest.
 import {
   assignPostToProject,
   type CategoryMatch,
@@ -12,7 +15,9 @@ import {
   createAspiration,
   createProject,
   listProjectsNeedingEmbedding,
+  replacePostCategoryMatches,
   setSubmissionProject,
+  upsertPostEmbedding,
   upsertProjectEmbedding,
 } from "@repo/db";
 import { getClassifyConfig, getEmbeddingDimensionality, getEmbeddingModel } from "../../lib/ai-config";
@@ -103,9 +108,8 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
   const ownerId = input.submittedById;
   const config = getClassifyConfig();
 
-  // Only auto-file unscoped, user-attributed ingests. Bearer ingest (no user)
-  // and explicitly-scoped ingests are left untouched.
-  if (!config.enabled || input.projectId != null || ownerId == null) {
+  // Bearer ingest (no user) is never embedded or auto-filed.
+  if (!config.enabled || ownerId == null) {
     return null;
   }
 
@@ -126,6 +130,27 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
     projectMatchMin: config.projectMatchMin,
     categoryMatchMin: config.categoryMatchMin,
   });
+
+  // Persist the vector + category linkage for EVERY user-attributed ingest so
+  // the 3D embedding space covers scoped and unscoped content alike.
+  await upsertPostEmbedding({
+    postId,
+    ownerId,
+    retrievalText: classificationInput.prep.retrievalText,
+    embedding: contentEmbedding,
+    embeddingHash: embeddingHash(queryPrefix(classificationInput.prep.retrievalText)),
+    modelVersion,
+    dimensionality,
+  });
+  await replacePostCategoryMatches(
+    postId,
+    categories.map((c) => ({ path: c.path, score: c.score }))
+  );
+
+  // Explicitly-scoped ingests keep their user-chosen Project — no auto-org.
+  if (input.projectId != null) {
+    return null;
+  }
 
   if (bestProject) {
     const result = await assignPostToProject(ownerId, postId, bestProject.projectId);
