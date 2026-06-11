@@ -15,6 +15,7 @@
     "@danielxceron/youtube-transcript": "^1.2.6",
     "@google/genai": "^2.8.0",
     "@repo/db": "*",
+    "@repo/embedding-scene": "*",
     "ai": "^6.0.182",
     "apify-client": "^2.23.3",
     "gray-matter": "^4.0.3",

@@ -93,6 +93,23 @@ worker **never call each other directly** — they only share the database and t
 - **`Post`** — what the web app serves. Upserted by `slug`; `type` is one of
   `BLOG | FINDING | SIGHT | SOCIAL | CONCRETE`; SIGHT galleries live in the `images` JSON column.
 
+### Embedding space
+
+Posts, projects, and the category taxonomy are also embedded (Gemini embeddings) and rendered as
+an explorable 3D scene.
+
+- **What persists where:** `PostEmbedding` (per-post vector + owner), `PostCategoryMatch`
+  (post → category linkage with scores, written by the worker's classify step),
+  `ProjectEmbedding` (owner-scoped project vectors), and `CategoryEmbedding` (the global taxonomy).
+- **`packages/embedding-scene`** — `@repo/embedding-scene`: shared types, a deterministic PCA
+  projection (same rows in → same positions out, no DB and no `Date.now`), and the shared R3F
+  (React Three Fiber) scene component used by both clients.
+- **Clients:** the web app serves the scene at `/space` (session-gated, fed by
+  `/api/app/embedding-scene`); mobile has a matching **Space** screen.
+- **Scripts:** `apps/worker/scripts/backfill-post-embeddings.ts` embeds existing posts;
+  `apps/worker/scripts/smoke-scene.ts` assembles the scene for the first backfilled owner and
+  prints PASS/FAIL sanity lines (read-only — no test runner here, these are for human eyeballs).
+
 ---
 
 ## Workspaces
