@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
+    "build:mobile:ios": "bun --cwd apps/mobile ios",
     "dev": "turbo run dev",
     "dev:proxy": "bash scripts/setup-dev-proxy.sh",
     "lint": "turbo run lint",
