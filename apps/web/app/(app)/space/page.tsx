@@ -4,8 +4,6 @@ import { buildScene } from "@repo/embedding-scene/build-scene";
 import { requireSession } from "../../../lib/session";
 import { SpaceView } from "./space-view";
 
-export const dynamic = "force-dynamic";
-
 export default async function SpacePage() {
   const session = await requireSession();
   const rows = await getEmbeddingSceneRows(session.user.id);
