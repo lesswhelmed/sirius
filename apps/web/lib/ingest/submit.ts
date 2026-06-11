@@ -4,6 +4,10 @@
 // contract live in one place.
 import { randomUUID } from "node:crypto";
 import { createSubmission, getProject, type IngestSubmission } from "@repo/db";
+import {
+  SightDraftEnvelopeSchema,
+  type SightDraftEnvelope,
+} from "@repo/ingest-draft";
 
 import { contentHashForBytes, contentHashForUrls } from "./hash";
 import { heicToJpeg, isHeicExtension } from "./heic";
@@ -159,6 +163,9 @@ export interface ParsedImagePayload {
     totalCount: number;
     notes: string;
     projectId: string;
+    // JSON-encoded SightDraftEnvelope ("" when absent) — multipart fields are
+    // strings; validated in submitImageIngest.
+    draft: string;
   };
 }
 
@@ -176,6 +183,7 @@ export async function parseMultipartImage(
     totalCount: form.get("totalCount"),
     notes: form.get("notes") ?? "",
     projectId: form.get("projectId") ?? "",
+    draft: form.get("draft") ?? "",
   });
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
@@ -202,6 +210,7 @@ export async function parseRawImage(
     totalCount: get("totalCount"),
     notes: get("notes"),
     projectId: get("projectId"),
+    draft: get("draft"),
   });
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
@@ -293,6 +302,31 @@ export async function submitImageIngest(
 
   const stagedFilePath = await stageBytes(submissionId, bytes, ext);
 
+  // On-device SIGHT draft (JSON string form field). Soft-fail: an unparsable
+  // or invalid draft is dropped with a warn — the image still ingests and the
+  // worker's Gemini stage drafts it instead.
+  let draft: SightDraftEnvelope | undefined;
+  if (payload.metadata.draft) {
+    try {
+      const parsedDraft = SightDraftEnvelopeSchema.safeParse(
+        JSON.parse(payload.metadata.draft)
+      );
+      if (parsedDraft.success) {
+        draft = parsedDraft.data;
+      } else {
+        log("warn", "draft-invalid", {
+          batchId: payload.metadata.batchId,
+          issues: parsedDraft.error.issues.map((i) => ({
+            path: i.path,
+            code: i.code,
+          })),
+        });
+      }
+    } catch {
+      log("warn", "draft-unparsable", { batchId: payload.metadata.batchId });
+    }
+  }
+
   // seam(intake): validate projectId ownership before persisting. Drop to null
   // if there's no submitter, no projectId, or the project isn't owned by them.
   const validatedProjectId = await validateProjectOwnership(
@@ -307,6 +341,7 @@ export async function submitImageIngest(
     contentType,
     originalContentType: payload.contentType,
     bytes: bytes.byteLength,
+    drafted: Boolean(draft),
     submittedById,
     projectId: validatedProjectId,
   });
@@ -319,6 +354,7 @@ export async function submitImageIngest(
       // from payload.extension, so this must reflect the staged JPEG, not HEIC.
       contentType,
       extension: ext,
+      ...(draft ? { draft } : {}),
     },
     contentHash,
     batchId: payload.metadata.batchId,

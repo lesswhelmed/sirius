@@ -44,6 +44,10 @@ export const imageMetadataSchema = z.object({
   totalCount: z.coerce.number().int().min(1),
   notes: z.string().optional().default(""),
   projectId: z.string().optional().default(""),
+  // JSON-encoded SightDraftEnvelope (multipart fields are strings) from
+  // on-device drafting; parsed + validated in submitImageIngest. Sent on every
+  // row of a batch, like notes.
+  draft: z.string().optional().default(""),
 });
 
 export type ImageIngestMetadata = z.infer<typeof imageMetadataSchema>;

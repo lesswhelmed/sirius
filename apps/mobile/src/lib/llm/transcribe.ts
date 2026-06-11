@@ -1,8 +1,8 @@
 // On-device speech-to-text via Apple's SpeechAnalyzer (@react-native-ai/apple,
 // iOS 26+). Used to turn voice memos into note text so the local LLM can draft
 // the post without uploading the audio anywhere. Android and older iOS return
-// null from everything here, and the caller falls back to today's server path
-// (upload the file, Gemini reads it).
+// null/false from everything here, and the caller falls back to today's server
+// path (upload the file, Gemini reads it).
 import { readAsStringAsync } from "expo-file-system/legacy";
 import { Platform } from "react-native";
 
@@ -15,16 +15,26 @@ function deviceLanguage(): string {
   }
 }
 
-export function canTranscribeOnDevice(): boolean {
+// Lazy import: the apple package's TurboModules don't exist on Android, and
+// resolving them at app-bundle load would crash there.
+async function appleModule() {
   if (Platform.OS !== "ios") {
+    return null;
+  }
+  try {
+    return await import("@react-native-ai/apple");
+  } catch {
+    return null;
+  }
+}
+
+export async function canTranscribeOnDevice(): Promise<boolean> {
+  const mod = await appleModule();
+  if (!mod) {
     return false;
   }
   try {
-    // Lazy require: the apple package's TurboModule doesn't exist on Android,
-    // and importing it at module scope would crash there.
-    const { AppleTranscription } =
-      require("@react-native-ai/apple") as typeof import("@react-native-ai/apple");
-    return AppleTranscription.isAvailable(deviceLanguage());
+    return mod.AppleTranscription.isAvailable(deviceLanguage());
   } catch {
     return false;
   }
@@ -32,15 +42,14 @@ export function canTranscribeOnDevice(): boolean {
 
 export async function transcribeAudio(uri: string): Promise<string | null> {
   try {
-    if (!canTranscribeOnDevice()) {
+    const mod = await appleModule();
+    if (!mod || !mod.AppleTranscription.isAvailable(deviceLanguage())) {
       return null;
     }
-    const { apple } =
-      require("@react-native-ai/apple") as typeof import("@react-native-ai/apple");
     const { experimental_transcribe } = await import("ai");
     const audio = await readAsStringAsync(uri, { encoding: "base64" });
     const result = await experimental_transcribe({
-      model: apple.transcriptionModel({ language: deviceLanguage() }),
+      model: mod.apple.transcriptionModel({ language: deviceLanguage() }),
       audio,
     });
     const text = result.text.trim();

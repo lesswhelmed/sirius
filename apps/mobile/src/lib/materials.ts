@@ -367,7 +367,7 @@ const audioHandler: MaterialHandler<"audio"> = {
     const transcribeLocally =
       ctx.onDeviceCuration === true &&
       materials.length > 0 &&
-      canTranscribeOnDevice();
+      (await canTranscribeOnDevice());
     for (const [i, m] of materials.entries()) {
       const label = `Audio ${i + 1}/${materials.length}`;
       if (transcribeLocally) {
