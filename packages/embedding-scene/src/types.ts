@@ -10,6 +10,7 @@ export interface SceneNode {
   // kind-specific extras, all optional so one node shape serves all kinds
   path?: string; // category
   depth?: number; // category
+  purpose?: string; // category — why this analysis facet exists
   slug?: string; // post
   projectId?: string | null; // post
 }

@@ -10,6 +10,7 @@ export interface SceneInputRows {
     name: string;
     parentPath: string | null;
     depth: number;
+    purpose?: string;
     embedding: number[];
     dimensionality: number;
   }[];
@@ -66,6 +67,7 @@ export function buildScene(rows: SceneInputRows): EmbeddingScene {
       position: positions[i++]!,
       path: c.path,
       depth: c.depth,
+      purpose: c.purpose,
     });
   }
   for (const p of projects) {

@@ -13,6 +13,7 @@ export default async function SpacePage() {
       name: c.name,
       parentPath: c.parentPath,
       depth: c.depth,
+      purpose: c.purpose,
       embedding: c.embedding,
       dimensionality: c.dimensionality,
     })),

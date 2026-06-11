@@ -56,14 +56,37 @@ function EdgeLines({
   );
 }
 
+// Spheres are small relative to the camera distance, so each node also carries
+// a larger invisible "hit halo" that receives pointer events — without it,
+// landing a click on a 0.1-radius post is a dexterity test.
+const HIT_RADIUS_FACTOR = 3;
+const HIT_RADIUS_MIN = 0.4;
+
+// Pointer cursor on hover (web only — react-native has no document).
+function setHoverCursor(on: boolean): void {
+  if (typeof document !== "undefined") {
+    document.body.style.cursor = on ? "pointer" : "auto";
+  }
+}
+
 export interface SpaceSceneProps {
   scene: EmbeddingScene;
   selectedId: string | null;
   neighborIds: Set<string>;
   onSelect: (id: string | null) => void;
+  // Second click/tap on the already-selected category/project node. Hosts use
+  // this to drill in (open the linked-posts index). Post nodes never drill —
+  // a second click on a post deselects, as does omitting onDrill entirely.
+  onDrill?: (id: string) => void;
 }
 
-export function SpaceScene({ scene, selectedId, neighborIds, onSelect }: SpaceSceneProps) {
+export function SpaceScene({
+  scene,
+  selectedId,
+  neighborIds,
+  onSelect,
+  onDrill,
+}: SpaceSceneProps) {
   return (
     <group>
       <ambientLight intensity={0.8} />
@@ -74,24 +97,43 @@ export function SpaceScene({ scene, selectedId, neighborIds, onSelect }: SpaceSc
       {scene.nodes.map((node) => {
         const active = node.id === selectedId;
         const neighbor = neighborIds.has(node.id);
+        const radius = NODE_RADIUS[node.kind];
         return (
-          <mesh
-            key={node.id}
-            position={node.position}
-            onClick={(event: ThreeEvent<MouseEvent>) => {
-              event.stopPropagation();
-              onSelect(active ? null : node.id);
-            }}
-          >
-            <sphereGeometry args={[NODE_RADIUS[node.kind] * (active ? 1.8 : 1), 16, 16]} />
-            <meshStandardMaterial
-              color={NODE_COLOR[node.kind]}
-              emissive={active || neighbor ? NODE_COLOR[node.kind] : "#000000"}
-              emissiveIntensity={active ? 0.9 : neighbor ? 0.4 : 0}
-              transparent
-              opacity={selectedId && !active && !neighbor ? 0.25 : 1}
-            />
-          </mesh>
+          <group key={node.id} position={node.position}>
+            {/* invisible hit halo — the actual click/tap target */}
+            <mesh
+              onClick={(event: ThreeEvent<MouseEvent>) => {
+                event.stopPropagation();
+                if (active) {
+                  if (onDrill && node.kind !== "post") onDrill(node.id);
+                  else onSelect(null);
+                } else {
+                  onSelect(node.id);
+                }
+              }}
+              onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+                event.stopPropagation();
+                setHoverCursor(true);
+              }}
+              onPointerOut={() => setHoverCursor(false)}
+            >
+              <sphereGeometry
+                args={[Math.max(radius * HIT_RADIUS_FACTOR, HIT_RADIUS_MIN), 8, 8]}
+              />
+              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            </mesh>
+            {/* visible sphere */}
+            <mesh>
+              <sphereGeometry args={[radius * (active ? 1.8 : 1), 16, 16]} />
+              <meshStandardMaterial
+                color={NODE_COLOR[node.kind]}
+                emissive={active || neighbor ? NODE_COLOR[node.kind] : "#000000"}
+                emissiveIntensity={active ? 0.9 : neighbor ? 0.4 : 0}
+                transparent
+                opacity={selectedId && !active && !neighbor ? 0.25 : 1}
+              />
+            </mesh>
+          </group>
         );
       })}
     </group>

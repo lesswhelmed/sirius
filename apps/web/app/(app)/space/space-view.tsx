@@ -2,8 +2,9 @@
 
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
+import { linkedPosts } from "@repo/embedding-scene/scene-queries";
 import { SpaceScene } from "@repo/embedding-scene/react/space-scene";
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
 
@@ -33,7 +34,8 @@ function TreeBranch({
   parent: string | null;
   childrenMap: Map<string | null, SceneNode[]>;
   selectedId: string | null;
-  onSelect: (id: string | null) => void;
+  // first click selects; the parent decides what a repeat click means (drill)
+  onSelect: (id: string) => void;
 }) {
   const nodes = childrenMap.get(parent) ?? [];
   if (nodes.length === 0) return null;
@@ -43,7 +45,7 @@ function TreeBranch({
         <li key={n.id}>
           <button
             type="button"
-            onClick={() => onSelect(n.id === selectedId ? null : n.id)}
+            onClick={() => onSelect(n.id)}
             className={`block py-0.5 text-left font-display text-[15px] leading-snug transition-colors ${
               n.id === selectedId
                 ? "italic text-[var(--color-accent)]"
@@ -64,9 +66,137 @@ function TreeBranch({
   );
 }
 
+// "The Index" — the drill-in catalog slip. Second click on a selected node
+// slides this out of the observatory plate: every post linked to that node,
+// numbered like journal entries, with match scores where the link is a
+// similarity rather than a fact.
+function IndexPanel({
+  node,
+  entries,
+  onClose,
+  onFocus,
+}: {
+  node: SceneNode;
+  entries: ReturnType<typeof linkedPosts>;
+  onClose: () => void;
+  onFocus: (id: string) => void;
+}) {
+  // Only categories and projects drill into an index; posts never reach here.
+  const kicker =
+    node.kind === "category"
+      ? (node.path ?? node.label).replace(/\//g, " / ")
+      : `focus / ${node.label}`;
+  const ruleColor = node.kind === "category" ? "#8a7bff" : "#ffb84d";
+  return (
+    <aside
+      aria-label={`Posts linked to ${node.label}`}
+      className="absolute inset-y-3 right-3 flex w-[19rem] animate-[slip-in_320ms_cubic-bezier(0.22,1,0.36,1)_both] flex-col border border-[var(--color-rule)] bg-[var(--color-paper)]/[0.97] shadow-[0_2px_24px_rgba(0,0,0,0.35)]"
+      style={{ borderLeft: `3px solid ${ruleColor}` }}
+    >
+      <style>{`
+        @keyframes slip-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+        @keyframes entry-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+      `}</style>
+      <header className="border-b border-[var(--color-rule)] p-3">
+        <div className="flex items-start justify-between gap-2">
+          <p className="break-all font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+            Index — {kicker}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close index"
+            className="-mt-0.5 font-mono text-[12px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          >
+            ✕
+          </button>
+        </div>
+        <h3 className="mt-1 font-display italic text-[22px] leading-tight text-[var(--fg)]">
+          {node.label}
+        </h3>
+        {node.purpose ? (
+          <p className="mt-1.5 font-display italic text-[13px] leading-snug text-[var(--fg-muted)]">
+            {node.purpose}
+          </p>
+        ) : null}
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+          {entries.length === 1 ? "1 entry" : `${entries.length} entries`}
+        </p>
+      </header>
+      <ol className="min-h-0 flex-1 overflow-y-auto">
+        {entries.length === 0 ? (
+          <li className="p-3 font-display italic text-[14px] text-[var(--fg-muted)]">
+            Nothing filed here yet.
+          </li>
+        ) : (
+          entries.map((entry, idx) => (
+            <li
+              key={entry.node.id}
+              className="animate-[entry-in_260ms_ease-out_both] border-b border-[var(--color-rule)]/60"
+              style={{ animationDelay: `${Math.min(idx * 35, 350)}ms` }}
+            >
+              <div className="group flex items-baseline gap-2.5 p-3 transition-colors hover:bg-[var(--color-ink)]/[0.04]">
+                <span className="font-mono text-[10px] text-[var(--fg-subtle)]">
+                  {String(idx + 1).padStart(2, "0")}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => onFocus(entry.node.id)}
+                    title="Locate in space"
+                    className="block w-full truncate text-left font-display text-[15px] leading-snug text-[var(--fg)] group-hover:text-[var(--color-accent)]"
+                  >
+                    {entry.node.label}
+                  </button>
+                  <div className="mt-0.5 flex items-baseline justify-between gap-2">
+                    {entry.weight != null ? (
+                      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+                        match {entry.weight.toFixed(2)}
+                      </span>
+                    ) : (
+                      <span />
+                    )}
+                    {entry.node.slug ? (
+                      <a
+                        href={`/listing/${entry.node.slug}`}
+                        className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-accent)] underline underline-offset-2"
+                      >
+                        Open →
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </li>
+          ))
+        )}
+      </ol>
+    </aside>
+  );
+}
+
 export function SpaceView({ scene }: { scene: EmbeddingScene }) {
   const { selected, select, neighborIds } = useSceneSelection(scene);
+  const [drilledId, setDrilledId] = useState<string | null>(null);
   const childrenMap = useMemo(() => categoryChildren(scene), [scene]);
+  const drilled = useMemo(
+    () => (drilledId ? (scene.nodes.find((n) => n.id === drilledId) ?? null) : null),
+    [scene, drilledId]
+  );
+  const drilledEntries = useMemo(
+    () => (drilledId ? linkedPosts(scene, drilledId) : []),
+    [scene, drilledId]
+  );
+  // selecting a different node closes a stale index
+  const handleSelect = (id: string | null) => {
+    select(id);
+    if (id === null || (drilledId && id !== drilledId)) setDrilledId(null);
+  };
+  // first click selects; a repeat click on the same node opens The Index
+  const pick = (id: string) => {
+    if (id === selected?.id) setDrilledId(id);
+    else handleSelect(id);
+  };
   return (
     <section>
       <header>
@@ -92,40 +222,67 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
               parent={null}
               childrenMap={childrenMap}
               selectedId={selected?.id ?? null}
-              onSelect={select}
+              onSelect={pick}
             />
           </div>
         </aside>
         <div className="relative min-w-0 flex-1 border border-[var(--color-rule)] bg-[var(--color-ink)]">
           <Canvas
             camera={{ position: [0, 4, 18], fov: 50 }}
-            onPointerMissed={() => select(null)}
+            onPointerMissed={() => handleSelect(null)}
           >
             <SpaceScene
               scene={scene}
               selectedId={selected?.id ?? null}
               neighborIds={neighborIds}
-              onSelect={select}
+              onSelect={handleSelect}
+              onDrill={setDrilledId}
             />
             <OrbitControls enableDamping makeDefault />
           </Canvas>
           {selected ? (
             <div className="absolute bottom-3 left-3 max-w-sm border border-[var(--color-rule)] bg-[var(--color-paper)]/95 p-3">
-              <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-                {selected.kind}
+              <span className="break-all font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+                {selected.kind === "category"
+                  ? (selected.path ?? selected.label).replace(/\//g, " / ")
+                  : selected.kind}
               </span>
               <p className="font-display text-[17px] leading-snug text-[var(--fg)]">
                 {selected.label}
               </p>
-              {selected.slug ? (
-                <a
-                  className="mt-1 inline-block font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--color-accent)] underline underline-offset-4"
-                  href={`/listing/${selected.slug}`}
-                >
-                  Open post →
-                </a>
+              {selected.purpose ? (
+                <p className="mt-1 font-display italic text-[13px] leading-snug text-[var(--fg-muted)]">
+                  {selected.purpose}
+                </p>
               ) : null}
+              <div className="mt-1.5 flex items-baseline gap-3">
+                {selected.slug ? (
+                  <a
+                    className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--color-accent)] underline underline-offset-4"
+                    href={`/listing/${selected.slug}`}
+                  >
+                    Open post →
+                  </a>
+                ) : null}
+                {selected.kind !== "post" && drilledId !== selected.id ? (
+                  <button
+                    type="button"
+                    onClick={() => setDrilledId(selected.id)}
+                    className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)] underline underline-offset-4 hover:text-[var(--fg)]"
+                  >
+                    Click again for the index
+                  </button>
+                ) : null}
+              </div>
             </div>
+          ) : null}
+          {drilled ? (
+            <IndexPanel
+              node={drilled}
+              entries={drilledEntries}
+              onClose={() => setDrilledId(null)}
+              onFocus={handleSelect}
+            />
           ) : null}
         </div>
       </div>

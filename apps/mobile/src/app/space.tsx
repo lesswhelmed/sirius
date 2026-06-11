@@ -3,8 +3,16 @@
 import { Canvas, useThree } from "@react-three/fiber/native";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type { EmbeddingScene } from "@repo/embedding-scene/types";
+import { linkedPosts } from "@repo/embedding-scene/scene-queries";
 import { SpaceScene } from "@repo/embedding-scene/react/space-scene";
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
 
@@ -89,6 +97,19 @@ function LoadedSpace({
   onOpenPost: (slug: string) => void;
 }) {
   const { selected, select, neighborIds } = useSceneSelection(scene);
+  // Second tap on the selected node opens "The Index": every post linked to it.
+  const [drilledId, setDrilledId] = useState<string | null>(null);
+  const drilledEntries = useMemo(
+    () => (drilledId ? linkedPosts(scene, drilledId) : []),
+    [scene, drilledId]
+  );
+  const handleSelect = useCallback(
+    (id: string | null) => {
+      select(id);
+      setDrilledId((cur) => (id === null || (cur && id !== cur) ? null : cur));
+    },
+    [select]
+  );
   const openSelected = useCallback(() => {
     if (selected?.slug) onOpenPost(selected.slug);
   }, [selected, onOpenPost]);
@@ -100,17 +121,67 @@ function LoadedSpace({
           scene={scene}
           selectedId={selected?.id ?? null}
           neighborIds={neighborIds}
-          onSelect={select}
+          onSelect={handleSelect}
+          onDrill={setDrilledId}
         />
       </Canvas>
       {selected ? (
         <View style={styles.overlay}>
-          <Text style={styles.kind}>{selected.kind}</Text>
+          <Text style={styles.kind}>
+            {selected.kind === "category"
+              ? (selected.path ?? selected.label).split("/").join(" / ")
+              : selected.kind}
+          </Text>
           <Text style={styles.label}>{selected.label}</Text>
-          {selected.slug ? (
-            <Pressable onPress={openSelected}>
-              <Text style={styles.link}>open post</Text>
-            </Pressable>
+          {selected.purpose ? (
+            <Text style={styles.purpose}>{selected.purpose}</Text>
+          ) : null}
+          <View style={styles.overlayActions}>
+            {selected.slug ? (
+              <Pressable onPress={openSelected}>
+                <Text style={styles.link}>open post</Text>
+              </Pressable>
+            ) : null}
+            {selected.kind !== "post" && drilledId !== selected.id ? (
+              <Pressable onPress={() => setDrilledId(selected.id)}>
+                <Text style={styles.link}>tap again for the index</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {drilledId === selected.id ? (
+            <View style={styles.index}>
+              <Text style={styles.kind}>
+                Index · {drilledEntries.length}{" "}
+                {drilledEntries.length === 1 ? "entry" : "entries"}
+              </Text>
+              <ScrollView style={styles.indexList}>
+                {drilledEntries.length === 0 ? (
+                  <Text style={styles.muted}>Nothing filed here yet.</Text>
+                ) : (
+                  drilledEntries.map((entry, idx) => (
+                    <Pressable
+                      key={entry.node.id}
+                      style={styles.indexRow}
+                      onPress={() => {
+                        if (entry.node.slug) onOpenPost(entry.node.slug);
+                      }}
+                    >
+                      <Text style={styles.indexNum}>
+                        {String(idx + 1).padStart(2, "0")}
+                      </Text>
+                      <Text style={styles.indexLabel} numberOfLines={1}>
+                        {entry.node.label}
+                      </Text>
+                      {entry.weight != null ? (
+                        <Text style={styles.indexScore}>
+                          {entry.weight.toFixed(2)}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  ))
+                )}
+              </ScrollView>
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -134,5 +205,23 @@ const styles = StyleSheet.create({
   },
   kind: { color: "#888", fontSize: 11, textTransform: "uppercase" },
   label: { color: "#eee", fontSize: 15, fontWeight: "600" },
+  purpose: { color: "#aaa", fontSize: 13, fontStyle: "italic", marginTop: 4 },
+  overlayActions: { flexDirection: "row", gap: 16 },
   link: { color: "#9bd", marginTop: 6, textDecorationLine: "underline" },
+  index: {
+    borderTopColor: "rgba(136,136,136,0.35)",
+    borderTopWidth: 1,
+    marginTop: 10,
+    paddingTop: 8,
+  },
+  indexList: { maxHeight: 220, marginTop: 4 },
+  indexRow: {
+    alignItems: "baseline",
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 6,
+  },
+  indexNum: { color: "#777", fontSize: 10, fontVariant: ["tabular-nums"] },
+  indexLabel: { color: "#ddd", flex: 1, fontSize: 14 },
+  indexScore: { color: "#7da", fontSize: 10 },
 });
