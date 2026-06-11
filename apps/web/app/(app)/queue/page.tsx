@@ -1,8 +1,13 @@
-import { listSubmissions } from "@repo/db";
+import { listProjectTitles, listSubmissions } from "@repo/db";
+import { requireSession } from "../../../lib/session";
 import { Live } from "./live";
 
 export default async function QueuePage() {
-  const initial = await listSubmissions({ limit: 50 });
+  const session = await requireSession("/queue");
+  const [initial, projectTitles] = await Promise.all([
+    listSubmissions({ limit: 50 }),
+    listProjectTitles(session.user.id),
+  ]);
 
   return (
     <section>
@@ -32,7 +37,7 @@ export default async function QueuePage() {
       </div>
 
       <div className="hairline-t mt-7 pt-5">
-        <Live initialItems={initial.items} />
+        <Live initialItems={initial.items} projectTitles={projectTitles} />
       </div>
     </section>
   );

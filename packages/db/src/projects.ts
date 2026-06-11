@@ -229,6 +229,19 @@ export async function listProjects(
   return { items: trimmed, nextCursor: hasMore && last ? last.id : null };
 }
 
+// id → title for every project the owner has, regardless of status. Used by
+// surfaces that annotate rows with their assigned focus area (e.g. the queue's
+// "→ <project>" chip) without joining per row.
+export async function listProjectTitles(
+  ownerId: string
+): Promise<Record<string, string>> {
+  const rows = await prisma.project.findMany({
+    where: { ownerId },
+    select: { id: true, title: true },
+  });
+  return Object.fromEntries(rows.map((r) => [r.id, r.title]));
+}
+
 export type ProjectWithCounts = Project & {
   _count: { posts: number; submissions: number };
 };

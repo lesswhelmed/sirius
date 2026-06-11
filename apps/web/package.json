@@ -17,6 +17,8 @@
     "appPort": 3000
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.0",
+    "@react-three/fiber": "^9.3.0",
     "@repo/auth": "*",
     "@repo/db": "*",
     "@repo/embedding-scene": "*",
@@ -28,12 +30,14 @@
     "react-dom": "^19.2.0",
     "sharp": "0.34.5",
     "streamdown": "^2.5.0",
+    "three": "^0.182.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",
     "@repo/typescript-config": "*",
     "@types/heic-convert": "^1.2.3",
+    "@types/three": "^0.182.0",
     "@types/node": "^22.15.3",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",

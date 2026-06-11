@@ -18,6 +18,7 @@ export const SIGNED_IN_NAV: readonly NavItem[] = [
   { href: "/ingest", label: "Ingest", folio: "II" },
   { href: "/queue", label: "Queue", folio: "III" },
   { href: "/projects", label: "Focus", folio: "IV" },
+  { href: "/space", label: "Space", folio: "V" },
 ];
 
 export const SIGNED_OUT_NAV: readonly NavItem[] = [

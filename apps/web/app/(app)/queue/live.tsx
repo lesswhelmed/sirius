@@ -118,10 +118,12 @@ function Row({
   item,
   now,
   idx,
+  projectTitles,
 }: {
   item: IngestSubmission;
   now: number | null;
   idx: number;
+  projectTitles: Record<string, string>;
 }) {
   const status = item.status as Status;
   const label = primaryLabel(item);
@@ -157,14 +159,23 @@ function Row({
           {item.kind}
         </span>
       </div>
-      <span
-        className={`mt-1 block min-w-0 truncate font-display text-[16px] leading-snug md:mt-0 md:text-[18px] ${
-          isFailed
-            ? "italic line-through text-[var(--fg-muted)]"
-            : "text-[var(--fg)]"
-        }`}
-      >
-        {label}
+      <span className="mt-1 flex min-w-0 items-baseline gap-2 md:mt-0">
+        <span
+          className={`min-w-0 truncate font-display text-[16px] leading-snug md:text-[18px] ${
+            isFailed
+              ? "italic line-through text-[var(--fg-muted)]"
+              : "text-[var(--fg)]"
+          }`}
+        >
+          {label}
+        </span>
+        {status === "completed" &&
+        item.projectId &&
+        projectTitles[item.projectId] ? (
+          <span className="shrink-0 font-display italic text-[14px] text-[var(--color-sage)]">
+            → {projectTitles[item.projectId]}
+          </span>
+        ) : null}
       </span>
       <DateDisplay
         value={item.createdAt}
@@ -198,8 +209,10 @@ function EmptyState() {
 
 export function Live({
   initialItems,
+  projectTitles,
 }: {
   initialItems: IngestSubmission[];
+  projectTitles: Record<string, string>;
 }) {
   const [items, setItems] = useState<IngestSubmission[]>(initialItems);
   const [now, setNow] = useState<number | null>(null);
@@ -271,7 +284,12 @@ export function Live({
         ) : (
           items.map((item, idx) => (
             <div key={item.id} role="listitem">
-              <Row item={item} now={now} idx={idx + 1} />
+              <Row
+                item={item}
+                now={now}
+                idx={idx + 1}
+                projectTitles={projectTitles}
+              />
             </div>
           ))
         )}
