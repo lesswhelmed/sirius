@@ -1,0 +1,25 @@
+# prompt with notes and plan leveraging skills intertwined insight
+
+## example prompt for quick feedback
+
+the following forms a full prompt in one shot and uses skills to reuse reach between projects relationally distinct yet around about a core concept of a loop without anthropological limitations achieving accurate and amiss of imperfection by transposing apart pieces proceeding grounded reasoning reluctantly and leveraging screws to assemble a concurrent streamlined workflow
+
+### prompt pieces
+
+#### hard habits
+/workflow with beads /agent-mail
+/plugin-dev:skill-development (aka of this very prompt itself)
+/ralph-loop:ralph-loop figure out how to run roll and test it out, it doesnt auto progress like its supposed do and hung for me here in this session I just did: $insert details relevant eg cli code copied pasta
+/superpowers:brainstorming /superpowers:using-superpowers
+/workflow with beads /agent-mail
+IN NO WAY PIVOT, PLURALLIZE PARLLELIZATION
+build a plan and then /ralph-loop:ralph-loop ralph loop the plan with integration into the superpowers
+
+### fill in following from dynamic data surrounding project feature plan
+
+ -[  ] blackbox testing skill plugin w/e
+ -[  ] persona precedents
+ -[  ] plan mode or nah?
+ -[  ] answer questions, (system prompt detail)
+ -[  ] correct config
+ -[  ] notepad for thoughts and process as part of process providing agents instructions to leverage the notepad to dictate direction true to the path; scratchpad separation surrounding seamless separation of ai adiff from human hindrance and herein helping hurdle over hump lumps (whatever the fudge that means)
