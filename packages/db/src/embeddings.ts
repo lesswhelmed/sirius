@@ -5,6 +5,7 @@
 import {
   prisma,
   type CategoryEmbedding,
+  type PostEmbedding,
   type ProjectEmbedding,
 } from "./index";
 
@@ -77,5 +78,96 @@ export async function listProjectsNeedingEmbedding(
     where: { ownerId, status: "active", embedding: { is: null } },
     select: { id: true, title: true, description: true },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+}
+
+export interface UpsertPostEmbeddingInput {
+  postId: string;
+  ownerId: string | null;
+  retrievalText: string;
+  embedding: number[];
+  embeddingHash: string;
+  modelVersion: string;
+  dimensionality: number;
+}
+
+// Idempotent by postId; re-embeds overwrite (embeddingHash lets callers skip
+// unchanged content before calling).
+export async function upsertPostEmbedding(
+  input: UpsertPostEmbeddingInput
+): Promise<PostEmbedding> {
+  const { postId, ...rest } = input;
+  return prisma.postEmbedding.upsert({
+    where: { postId },
+    create: { postId, ...rest },
+    update: rest,
+  });
+}
+
+// Replace the post's category linkage with the latest classify result.
+export async function replacePostCategoryMatches(
+  postId: string,
+  matches: { path: string; score: number }[]
+): Promise<void> {
+  await prisma.$transaction([
+    prisma.postCategoryMatch.deleteMany({ where: { postId } }),
+    prisma.postCategoryMatch.createMany({
+      data: matches.map((m) => ({ postId, path: m.path, score: m.score })),
+    }),
+  ]);
+}
+
+// Everything the embedding-scene needs for one owner, in one read. Categories
+// are global; posts/projects are owner-scoped. Matches ride along per post.
+export interface EmbeddingSceneRows {
+  categories: CategoryEmbedding[];
+  projects: (ProjectEmbedding & { project: { title: string } })[];
+  posts: (PostEmbedding & {
+    post: { slug: string; title: string; projectId: string | null };
+    matches: { path: string; score: number }[];
+  })[];
+}
+
+export async function getEmbeddingSceneRows(
+  ownerId: string
+): Promise<EmbeddingSceneRows> {
+  const [categories, projects, postRows] = await Promise.all([
+    prisma.categoryEmbedding.findMany({ orderBy: { path: "asc" } }),
+    prisma.projectEmbedding.findMany({
+      where: { ownerId },
+      include: { project: { select: { title: true } } },
+    }),
+    prisma.postEmbedding.findMany({
+      where: { ownerId },
+      include: {
+        post: {
+          select: {
+            slug: true,
+            title: true,
+            projectId: true,
+            categoryMatches: { select: { path: true, score: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+  const posts = postRows.map(({ post, ...row }) => ({
+    ...row,
+    post: { slug: post.slug, title: post.title, projectId: post.projectId },
+    matches: post.categoryMatches,
+  }));
+  return { categories, projects, posts };
+}
+
+// Owner's posts not yet embedded — drives the backfill script.
+export async function listPostsNeedingEmbedding(limit = 50): Promise<
+  { id: string; slug: string; title: string; content: string; submittedById: string | null }[]
+> {
+  return prisma.post.findMany({
+    where: { submittedById: { not: null }, embedding: { is: null } },
+    select: { id: true, slug: true, title: true, content: true, submittedById: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: limit,
   });
 }

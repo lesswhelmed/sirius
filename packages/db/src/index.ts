@@ -28,6 +28,12 @@ export type CategoryEmbedding = Prisma.CategoryEmbeddingGetPayload<
 export type ProjectEmbedding = Prisma.ProjectEmbeddingGetPayload<
   Record<string, never>
 >;
+export type PostEmbedding = Prisma.PostEmbeddingGetPayload<
+  Record<string, never>
+>;
+export type PostCategoryMatch = Prisma.PostCategoryMatchGetPayload<
+  Record<string, never>
+>;
 
 export * from "./ingest";
 export * from "./posts";

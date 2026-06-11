@@ -48,6 +48,9 @@ model Post {
   projectId String?
   project   Project? @relation("ProjectPosts", fields: [projectId], references: [id], onDelete: SetNull)
 
+  embedding       PostEmbedding?      @relation("PostEmbedding")
+  categoryMatches PostCategoryMatch[] @relation("PostCategoryMatches")
+
   tags            Tag[]           @relation("PostToTag")
   categories      Category[]      @relation("PostToCategory")
   hlexiconEntries HlexiconEntry[] @relation("PostToHlexicon")
@@ -157,6 +160,42 @@ model ProjectEmbedding {
 
   @@index([ownerId])
   @@index([embeddingHash])
+}
+
+// One embedding per Post, persisted by the worker at classify time (or by the
+// backfill script). ownerId denormalizes Post.submittedById for cheap
+// owner-scoped scene reads; null = bearer ingest (excluded from per-user scenes).
+model PostEmbedding {
+  id             String   @id @default(cuid())
+  postId         String   @unique
+  post           Post     @relation("PostEmbedding", fields: [postId], references: [id], onDelete: Cascade)
+  ownerId        String?
+  retrievalText  String
+  embedding      Float[]
+  embeddingHash  String
+  modelVersion   String
+  dimensionality Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([embeddingHash])
+}
+
+// Linkage: which Analysis Categories a post matched at classify time (top-K above
+// threshold). path is a soft reference to CategoryEmbedding.path (taxonomy rows
+// are keyed/upserted by path). Kept as rows, not JSON, so the scene API and
+// future queries can traverse post<->category links relationally.
+model PostCategoryMatch {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation("PostCategoryMatches", fields: [postId], references: [id], onDelete: Cascade)
+  path      String
+  score     Float
+  createdAt DateTime @default(now())
+
+  @@unique([postId, path])
+  @@index([path])
 }
 
 model IngestSubmission {
