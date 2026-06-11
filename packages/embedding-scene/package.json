@@ -11,11 +11,14 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
+    "@react-three/fiber": "^9.3.0",
     "@repo/eslint-config": "*",
     "@repo/typescript-config": "*",
     "@types/node": "^22.15.3",
     "@types/react": "19.2.2",
+    "@types/three": "^0.182.0",
     "eslint": "^9.39.1",
+    "three": "^0.182.0",
     "typescript": "~6.0.3"
   },
   "peerDependencies": {
