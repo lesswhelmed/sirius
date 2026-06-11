@@ -18,6 +18,7 @@ import {
   PageHeader,
   PrimaryButton,
   Screen,
+  TextLink,
 } from "@/components/sirius";
 import { PostTypeTone, Sirius } from "@/constants/theme";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
@@ -139,6 +140,11 @@ export default function LibraryScreen() {
               title="The Catalog"
               titleAccent="."
               subtitle="Everything captured and made into a post."
+            />
+            <TextLink
+              label="Enter the space →"
+              tone={Sirius.color.accent}
+              onPress={() => router.push("/space")}
             />
           </View>
         }

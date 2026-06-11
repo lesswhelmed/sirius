@@ -71,6 +71,10 @@ export default function RootLayout() {
               name="focus"
               options={{ headerShown: true, title: "Focus" }}
             />
+            <Stack.Screen
+              name="space"
+              options={{ headerShown: true, title: "Space" }}
+            />
           </Stack>
         </ThemeProvider>
       </QueryClientProvider>
