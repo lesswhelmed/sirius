@@ -1,6 +1,7 @@
 // Request validators for the ingest endpoints. iOS Shortcuts ships scalars as
 // strings (form fields, query params), so schemas coerce strings → arrays/numbers
 // where the underlying field is typed.
+import { DraftEnvelopeSchema } from "@repo/ingest-draft";
 import { z } from "zod";
 
 const urlList = z
@@ -25,6 +26,10 @@ export const urlIngestSchema = z
     notes: z.string().optional().default(""),
     force: flexibleBoolean.optional().default(false),
     projectId: z.string().optional().default(""),
+    // Optional client-supplied draft (on-device LLM). Only honored for
+    // note-kind submissions — URLs always go through the worker's url_context
+    // fetch, so a draft there is stripped at submit time.
+    draft: DraftEnvelopeSchema.optional(),
   })
   .refine(
     (data) => data.urls.length > 0 || data.notes.trim().length > 0,

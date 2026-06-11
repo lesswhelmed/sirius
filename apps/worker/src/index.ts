@@ -97,6 +97,7 @@ type PayloadShape = {
   force?: unknown;
   contentType?: unknown;
   extension?: unknown;
+  draft?: unknown;
 };
 
 function readPayload(submission: IngestSubmission): PayloadShape {
@@ -132,12 +133,15 @@ function buildInput(rows: IngestSubmission[]): PipelineInput {
         };
       })
       .sort((a, b) => a.index - b.index);
-    const notes = (readPayload(first).notes as string | undefined) ?? "";
+    const firstPayload = readPayload(first);
+    const notes = (firstPayload.notes as string | undefined) ?? "";
     return {
       kind: "image",
       submissions: rows,
       batchId: first.batchId,
       notes,
+      // Draft rides on every image row (same as notes); rows[0] wins.
+      draft: firstPayload.draft,
       images,
       submittedById,
       projectId,
@@ -167,6 +171,7 @@ function buildInput(rows: IngestSubmission[]): PipelineInput {
       kind: "note",
       submission: first,
       notes,
+      draft: payload.draft,
       submittedById,
       projectId,
     };

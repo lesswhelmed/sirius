@@ -19,6 +19,7 @@ import {
 } from "@/components/sirius";
 import { Sirius, SubmissionStatusPip } from "@/constants/theme";
 import { apiGet } from "@/lib/api";
+import { countOutbox, flushOutbox } from "@/lib/outbox";
 
 type QueuePage = { items: IngestSubmission[]; nextCursor: string | null };
 
@@ -42,6 +43,17 @@ export default function QueueScreen() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["queue"],
     queryFn: () => apiGet<QueuePage>("/api/app/queue?limit=50"),
+    refetchInterval: 5000,
+  });
+
+  // Notes captured offline, waiting on this device. Piggybacks the queue's
+  // poll cadence and nudges a flush so the banner clears itself once online.
+  const outbox = useQuery({
+    queryKey: ["outbox-count"],
+    queryFn: async () => {
+      void flushOutbox();
+      return countOutbox();
+    },
     refetchInterval: 5000,
   });
 
@@ -96,6 +108,15 @@ export default function QueueScreen() {
               titleAccent="."
               subtitle="Submissions move pending → processing → done."
             />
+            {outbox.data ? (
+              <View style={styles.outboxBanner}>
+                <StatusPip label="queued on device" color={Sirius.color.inkSubtle} />
+                <Text style={styles.outboxText}>
+                  {outbox.data} note{outbox.data === 1 ? "" : "s"} waiting for a
+                  connection.
+                </Text>
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -133,6 +154,21 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   header: { marginBottom: Sirius.space.lg },
+  outboxBanner: {
+    alignItems: "center",
+    backgroundColor: Sirius.color.paperRaised,
+    borderRadius: 8,
+    flexDirection: "row",
+    gap: Sirius.space.sm,
+    marginTop: Sirius.space.md,
+    paddingHorizontal: Sirius.space.md,
+    paddingVertical: Sirius.space.sm,
+  },
+  outboxText: {
+    color: Sirius.color.inkMuted,
+    flex: 1,
+    fontSize: 13,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",

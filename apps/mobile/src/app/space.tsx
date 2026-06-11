@@ -1,22 +1,48 @@
 // 3D embedding space. Same SpaceScene + selection hook as web; native host
 // differs only in Canvas import, camera control (pan-to-orbit), and overlay.
 import { Canvas, useThree } from "@react-three/fiber/native";
+import type { ThreeEvent } from "@react-three/fiber";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  PanResponder,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { BackSide } from "three";
 import type { EmbeddingScene } from "@repo/embedding-scene/types";
 import { linkedPosts } from "@repo/embedding-scene/scene-queries";
 import { SpaceScene } from "@repo/embedding-scene/react/space-scene";
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
 
 import { apiGet } from "../lib/api";
+
+// Orbit by dragging empty space. Fiber/native's Canvas claims every touch
+// before any RN PanResponder on an ancestor View can (its internal responder
+// wins the capture phase), so the drag surface must live INSIDE the R3F event
+// system: an inside-out sphere around the scene catches pointer drags that
+// miss every node, while taps on node halos still win the raycast (nearer hit).
+function OrbitBackdrop({
+  onDelta,
+}: {
+  onDelta: (dx: number, dy: number) => void;
+}) {
+  const last = useRef<{ x: number; y: number } | null>(null);
+  return (
+    <mesh
+      onPointerDown={(e: ThreeEvent<PointerEvent>) => {
+        last.current = { x: e.pointer.x, y: e.pointer.y };
+      }}
+      onPointerMove={(e: ThreeEvent<PointerEvent>) => {
+        if (!last.current) return;
+        onDelta(e.pointer.x - last.current.x, e.pointer.y - last.current.y);
+        last.current = { x: e.pointer.x, y: e.pointer.y };
+      }}
+      onPointerUp={() => {
+        last.current = null;
+      }}
+    >
+      <sphereGeometry args={[60, 8, 8]} />
+      <meshBasicMaterial side={BackSide} transparent opacity={0} depthWrite={false} />
+    </mesh>
+  );
+}
 
 function OrbitRig({ yaw, pitch }: { yaw: number; pitch: number }) {
   // Camera orbits the origin at fixed radius, driven by pan gestures.
@@ -40,32 +66,12 @@ export default function SpaceScreen() {
   const router = useRouter();
   const [scene, setScene] = useState<EmbeddingScene | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [orbit, setOrbit] = useState({ yaw: 0.6, pitch: 0.35 });
 
   useEffect(() => {
     apiGet<EmbeddingScene>("/api/app/embedding-scene")
       .then(setScene)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "failed to load"));
   }, []);
-
-  // Deviation from the plan's useRef(PanResponder.create(...)).current +
-  // orbit-mirroring ref: both read/write refs during render, which the
-  // react-hooks/refs lint rule rejects. A memoized responder with a functional
-  // setOrbit update is equivalent and needs no ref at all.
-  const pan = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_e, g) =>
-          Math.abs(g.dx) + Math.abs(g.dy) > 8,
-        onPanResponderMove: (_e, g) => {
-          setOrbit(({ yaw, pitch }) => ({
-            yaw: yaw + g.vx * 0.05,
-            pitch: Math.min(1.4, Math.max(-1.4, pitch + g.vy * 0.05)),
-          }));
-        },
-      }),
-    []
-  );
 
   // Hook needs a scene; render gate first.
   if (error) {
@@ -82,20 +88,25 @@ export default function SpaceScreen() {
       </View>
     );
   }
-  return <LoadedSpace scene={scene} orbit={orbit} panHandlers={pan.panHandlers} onOpenPost={(slug) => router.push(`/post/${slug}`)} />;
+  return <LoadedSpace scene={scene} onOpenPost={(slug) => router.push(`/post/${slug}`)} />;
 }
 
 function LoadedSpace({
   scene,
-  orbit,
-  panHandlers,
   onOpenPost,
 }: {
   scene: EmbeddingScene;
-  orbit: { yaw: number; pitch: number };
-  panHandlers: object;
   onOpenPost: (slug: string) => void;
 }) {
+  const [orbit, setOrbit] = useState({ yaw: 0.6, pitch: 0.35 });
+  const onOrbitDelta = useCallback((dx: number, dy: number) => {
+    // deltas arrive in NDC units (-1..1 across the canvas); ~2.5 rad per
+    // full-width drag feels right for a thumb.
+    setOrbit(({ yaw, pitch }) => ({
+      yaw: yaw - dx * 2.5,
+      pitch: Math.min(1.4, Math.max(-1.4, pitch - dy * 2)),
+    }));
+  }, []);
   const { selected, select, neighborIds } = useSceneSelection(scene);
   // Second tap on the selected node opens "The Index": every post linked to it.
   const [drilledId, setDrilledId] = useState<string | null>(null);
@@ -114,9 +125,10 @@ function LoadedSpace({
     if (selected?.slug) onOpenPost(selected.slug);
   }, [selected, onOpenPost]);
   return (
-    <View style={styles.root} {...panHandlers}>
+    <View style={styles.root}>
       <Canvas camera={{ fov: 50 }}>
         <OrbitRig yaw={orbit.yaw} pitch={orbit.pitch} />
+        <OrbitBackdrop onDelta={onOrbitDelta} />
         <SpaceScene
           scene={scene}
           selectedId={selected?.id ?? null}

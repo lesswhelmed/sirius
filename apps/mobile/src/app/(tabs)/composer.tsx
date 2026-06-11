@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AudioModule,
   RecordingPresets,
@@ -17,6 +17,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -42,6 +43,8 @@ import {
   type CaptureKindKey,
   trayTag,
 } from "@/lib/material-kinds";
+import { isModelReady } from "@/lib/llm/engine";
+import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
 import {
   describeMaterial,
   type Material,
@@ -49,6 +52,7 @@ import {
   submitMaterials,
   urlMaterialsFromText,
 } from "@/lib/materials";
+import { flushOutbox } from "@/lib/outbox";
 
 // A material staged in the tray, with a stable id for keys + removal.
 type StagedMaterial = { uid: string; material: Material };
@@ -92,6 +96,24 @@ export default function ComposerScreen() {
   const [audioSheetOpen, setAudioSheetOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  // On-device curation: user's toggle plus whether the local model is actually
+  // on disk (the /llm screen manages downloads).
+  const llmSettings = useQuery({
+    queryKey: ["llm-settings"],
+    queryFn: getLlmSettings,
+  });
+  const llmReady = useQuery({
+    queryKey: ["llm-model-ready", llmSettings.data?.modelId],
+    queryFn: () => isModelReady(llmSettings.data!.modelId),
+    enabled: Boolean(llmSettings.data?.modelId),
+  });
+  const curationOn = llmSettings.data?.onDeviceCuration === true;
+
+  async function toggleCuration(value: boolean) {
+    await updateLlmSettings({ onDeviceCuration: value });
+    queryClient.invalidateQueries({ queryKey: ["llm-settings"] });
+  }
 
   // Load active projects once for the Focus picker; if none/forbidden, the
   // picker simply never renders.
@@ -307,16 +329,25 @@ export default function ComposerScreen() {
     setBusy(true);
     let errors: string[] = [];
     let failed: Material[] = [];
+    let queued = 0;
     try {
       const result = await submitMaterials(
         tray.map((entry) => entry.material),
-        { force: false, projectId: projectId ?? undefined }
+        {
+          force: false,
+          projectId: projectId ?? undefined,
+          onDeviceCuration: curationOn && llmReady.data === true,
+        }
       );
       errors = result.errors;
       failed = result.failed;
+      queued = result.queued;
     } finally {
       setBusy(false);
     }
+    // Anything parked offline earlier gets another chance whenever we have a
+    // working submit path open. Fire-and-forget; the queue screen reflects it.
+    void flushOutbox();
 
     if (errors.length > 0) {
       // Keep only the materials that failed staged for retry; everything that
@@ -325,6 +356,13 @@ export default function ComposerScreen() {
       setTray((prev) => prev.filter((entry) => failedSet.has(entry.material)));
       Alert.alert("Some submissions failed", errors.join("\n\n"));
       return;
+    }
+
+    if (queued > 0) {
+      Alert.alert(
+        "Saved offline",
+        `${queued} note${queued === 1 ? "" : "s"} queued on this device — they'll submit automatically when you're back online.`
+      );
     }
 
     setTray([]);
@@ -364,6 +402,11 @@ export default function ComposerScreen() {
                 label="Manage focus →"
                 tone={Sirius.color.accent}
                 onPress={() => router.push("/focus")}
+              />
+              <TextLink
+                label="On-device AI →"
+                tone={Sirius.color.accent}
+                onPress={() => router.push("/llm")}
               />
               <TextLink
                 label="Sign out"
@@ -477,6 +520,31 @@ export default function ComposerScreen() {
             </View>
           )}
 
+          <View style={styles.curationRow}>
+            <View style={styles.curationCopy}>
+              <Text style={styles.curationLabel}>Draft on device</Text>
+              <Text style={styles.curationHint}>
+                {llmReady.data
+                  ? "Notes are written privately by the local model."
+                  : "Download a local model first."}
+              </Text>
+              {!llmReady.data ? (
+                <TextLink
+                  label="Get the model →"
+                  tone={Sirius.color.accent}
+                  onPress={() => router.push("/llm")}
+                />
+              ) : null}
+            </View>
+            <Switch
+              value={curationOn}
+              onValueChange={(v) => void toggleCuration(v)}
+              disabled={!llmReady.data && !curationOn}
+              trackColor={{ true: Sirius.color.ink }}
+              accessibilityLabel="Draft on device"
+            />
+          </View>
+
           <PrimaryButton
             label={tray.length === 0 ? "Add something to submit" : "Submit"}
             onPress={submit}
@@ -587,6 +655,25 @@ const styles = StyleSheet.create({
   },
   sheetInput: { minHeight: 120, textAlignVertical: "top", paddingTop: 12 },
   sheetSecondaryButton: { marginTop: Sirius.space.sm },
+  curationRow: {
+    alignItems: "center",
+    backgroundColor: Sirius.color.paperRaised,
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: Sirius.space.md,
+    justifyContent: "space-between",
+    padding: Sirius.space.md,
+  },
+  curationCopy: { flex: 1, gap: Sirius.space.xs },
+  curationLabel: {
+    color: Sirius.color.ink,
+    fontFamily: Sirius.font.serif,
+    fontSize: 16,
+  },
+  curationHint: {
+    color: Sirius.color.inkMuted,
+    fontSize: 13,
+  },
   submit: { marginTop: Sirius.space.sm },
   focusPicker: { gap: Sirius.space.sm },
   focusScroll: { flexDirection: "row" },

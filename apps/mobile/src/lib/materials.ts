@@ -6,14 +6,23 @@
 // and register a handler below.
 import type { ShareIntent } from "expo-share-intent";
 
+import { ApiError } from "@/lib/api";
 import {
   formatError,
+  noteIngestBody,
   submitFile,
   submitImageBatch,
   submitNote,
   submitUrl,
   type ImageInput,
 } from "@/lib/ingest-submit";
+import {
+  canDraftOnDevice,
+  draftNotePost,
+  draftSightPost,
+} from "@/lib/llm/curate";
+import { canTranscribeOnDevice, transcribeAudio } from "@/lib/llm/transcribe";
+import { enqueueOutbox } from "@/lib/outbox";
 
 export type UrlMaterial = { kind: "url"; url: string; notes?: string };
 export type NoteMaterial = { kind: "note"; text: string };
@@ -179,6 +188,10 @@ export function describeMaterial(material: Material): string {
 export type SubmitContext = {
   force: boolean;
   projectId?: string;
+  // Draft notes (and transcribed audio) on-device with the local LLM before
+  // submitting, so the worker skips its Gemini stage. The handlers re-check
+  // model readiness themselves; this is the user's intent switch.
+  onDeviceCuration?: boolean;
   onError?: (label: string, err: unknown) => void;
 };
 
@@ -189,6 +202,9 @@ export type SubmitMaterialsResult = {
   // The exact material objects that failed to submit, by reference, so callers
   // can keep only the failures staged for retry and clear what succeeded.
   failed: Material[];
+  // Note-kind materials captured while offline: parked in the on-device outbox
+  // (flushed automatically later), so they're neither submitted nor failed.
+  queued: number;
 };
 
 // A handler owns submission for one material kind. It receives every material
@@ -203,6 +219,8 @@ type MaterialHandler<K extends Material["kind"]> = {
     submitted: number;
     errors: string[];
     failed: Extract<Material, { kind: K }>[];
+    // Parked in the offline outbox (note-kind only); absent means 0.
+    queued?: number;
   }>;
 };
 
@@ -233,18 +251,38 @@ const noteHandler: MaterialHandler<"note"> = {
     const errors: string[] = [];
     const failed: NoteMaterial[] = [];
     let submitted = 0;
+    let queued = 0;
+    // Resolve once per batch: model readiness doesn't change mid-submit.
+    const draftLocally =
+      ctx.onDeviceCuration === true &&
+      materials.length > 0 &&
+      (await canDraftOnDevice());
     for (const [i, m] of materials.entries()) {
+      // Drafting is fully local, so it works (and is attempted) even offline.
+      const draft = draftLocally
+        ? ((await draftNotePost(m.text)) ?? undefined)
+        : undefined;
       try {
-        await submitNote(m.text, ctx.force, ctx.projectId);
+        await submitNote(m.text, ctx.force, ctx.projectId, draft);
         submitted++;
       } catch (err) {
+        if (!(err instanceof ApiError)) {
+          // No server response — offline or unreachable. Park the exact request
+          // body in the outbox; it flushes when connectivity returns and the
+          // server's contentHash dedup keeps retries idempotent.
+          await enqueueOutbox(
+            noteIngestBody(m.text, ctx.force, ctx.projectId, draft)
+          );
+          queued++;
+          continue;
+        }
         const label = materials.length > 1 ? `Note ${i + 1}` : "Note";
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
         failed.push(m);
       }
     }
-    return { submitted, errors, failed };
+    return { submitted, errors, failed, queued };
   },
 };
 
@@ -258,6 +296,14 @@ const imageHandler: MaterialHandler<"image"> = {
       name: m.name,
       type: m.type,
     }));
+    // SIGHT drafting on device (vision model). The bytes still upload — the
+    // web app serves them — only the worker's Gemini stage is skipped.
+    const sightDraft = ctx.onDeviceCuration
+      ? await draftSightPost(
+          inputs.map((i) => i.uri),
+          notes
+        )
+      : null;
     const { submitted, failedIndices } = await submitImageBatch(
       inputs,
       notes,
@@ -265,7 +311,8 @@ const imageHandler: MaterialHandler<"image"> = {
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
       },
-      ctx.projectId
+      ctx.projectId,
+      sightDraft ? JSON.stringify(sightDraft) : undefined
     );
     const failed = failedIndices
       .map((i) => materials[i])
@@ -311,7 +358,47 @@ const audioHandler: MaterialHandler<"audio"> = {
     const errors: string[] = [];
     const failed: AudioMaterial[] = [];
     let submitted = 0;
+    let queued = 0;
+    // With curation on and Apple SpeechAnalyzer available (iOS 26+), audio is
+    // transcribed and drafted entirely on device, then submitted as a NOTE —
+    // the bytes never upload (matching the worker, which treats audio→BLOG as
+    // text-only and never serves the file). Anywhere else, or on any failure,
+    // the existing upload-to-Gemini path runs unchanged.
+    const transcribeLocally =
+      ctx.onDeviceCuration === true &&
+      materials.length > 0 &&
+      canTranscribeOnDevice();
     for (const [i, m] of materials.entries()) {
+      const label = `Audio ${i + 1}/${materials.length}`;
+      if (transcribeLocally) {
+        const transcript = await transcribeAudio(m.uri);
+        if (transcript) {
+          const userNotes = m.notes?.trim();
+          const noteText = userNotes
+            ? `${transcript}\n\nAuthor's notes: ${userNotes}`
+            : transcript;
+          const draft = (await canDraftOnDevice())
+            ? ((await draftNotePost(noteText)) ?? undefined)
+            : undefined;
+          try {
+            await submitNote(noteText, ctx.force, ctx.projectId, draft);
+            submitted++;
+            continue;
+          } catch (err) {
+            if (!(err instanceof ApiError)) {
+              // Offline: the transcript (and draft) are text — park them in
+              // the outbox like any other note. Fully offline voice memos.
+              await enqueueOutbox(
+                noteIngestBody(noteText, ctx.force, ctx.projectId, draft)
+              );
+              queued++;
+              continue;
+            }
+            // Server rejected the note — fall through to the upload path below
+            // rather than losing the capture.
+          }
+        }
+      }
       try {
         await submitFile(
           m.uri,
@@ -323,13 +410,12 @@ const audioHandler: MaterialHandler<"audio"> = {
         );
         submitted++;
       } catch (err) {
-        const label = `Audio ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
         failed.push(m);
       }
     }
-    return { submitted, errors, failed };
+    return { submitted, errors, failed, queued };
   },
 };
 
@@ -394,6 +480,7 @@ export async function submitMaterials(
   const errors: string[] = [];
   const failed: Material[] = [];
   let submitted = 0;
+  let queued = 0;
 
   const urlResult = await HANDLERS.url.submit(grouped.url, ctx);
   submitted += urlResult.submitted;
@@ -404,6 +491,7 @@ export async function submitMaterials(
   submitted += noteResult.submitted;
   errors.push(...noteResult.errors);
   failed.push(...noteResult.failed);
+  queued += noteResult.queued ?? 0;
 
   const imageResult = await HANDLERS.image.submit(grouped.image, ctx);
   submitted += imageResult.submitted;
@@ -419,11 +507,12 @@ export async function submitMaterials(
   submitted += audioResult.submitted;
   errors.push(...audioResult.errors);
   failed.push(...audioResult.failed);
+  queued += audioResult.queued ?? 0;
 
   const documentResult = await HANDLERS.document.submit(grouped.document, ctx);
   submitted += documentResult.submitted;
   errors.push(...documentResult.errors);
   failed.push(...documentResult.failed);
 
-  return { submitted, errors, skipped: grouped.unsupported, failed };
+  return { submitted, errors, skipped: grouped.unsupported, failed, queued };
 }

@@ -95,7 +95,19 @@ export async function submitUrlIngest(
 
   const { urls, notes, force } = parsed.data;
   const kind = urls.length > 0 ? "url" : "note";
+  // Dedup identity is the SOURCE content (urls + notes), never the draft: the
+  // same note submitted with and without an on-device draft is the same note,
+  // and outbox retries from mobile stay idempotent. `force` is the escape
+  // hatch for intentional regeneration.
   const contentHash = contentHashForUrls(urls, notes, force);
+
+  // A draft only makes sense for note-kind submissions; URL ingests must go
+  // through the worker's url_context fetch (the client can't see the page).
+  let draft = parsed.data.draft;
+  if (draft && kind !== "note") {
+    log("warn", "draft-ignored-for-url", { urlCount: urls.length });
+    draft = undefined;
+  }
 
   // seam(intake): validate projectId ownership before persisting. Drop to null
   // if there's no submitter, no projectId, or the project isn't owned by them.
@@ -109,13 +121,14 @@ export async function submitUrlIngest(
     urlCount: urls.length,
     notesLength: notes.length,
     force,
+    drafted: Boolean(draft),
     submittedById,
     projectId: validatedProjectId,
   });
 
   const result = await createSubmission({
     kind,
-    payload: { urls, notes, force },
+    payload: { urls, notes, force, ...(draft ? { draft } : {}) },
     contentHash,
     submittedById,
     projectId: validatedProjectId,

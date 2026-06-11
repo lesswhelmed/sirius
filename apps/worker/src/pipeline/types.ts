@@ -31,6 +31,10 @@ export type PipelineInput =
       kind: "note";
       submission: IngestSubmission;
       notes: string;
+      // Optional client-supplied draft envelope (on-device LLM), persisted in
+      // the submission payload. `unknown` on purpose: stored JSON is never
+      // trusted — draft-runner.ts re-validates with DraftEnvelopeSchema.
+      draft?: unknown;
       submittedById: string | null;
       projectId: string | null;
     }
@@ -39,6 +43,8 @@ export type PipelineInput =
       submissions: IngestSubmission[];
       batchId: string;
       notes: string;
+      // Same as note.draft, validated against SightDraftEnvelopeSchema.
+      draft?: unknown;
       images: StagedImage[];
       submittedById: string | null;
       projectId: string | null;

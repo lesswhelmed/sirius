@@ -5,6 +5,7 @@
 
 import { buildClassificationInput } from "./classification/adapters";
 import { assignOrg } from "./classification/assign-org";
+import { tryClientDraft } from "./draft-runner";
 import { runGemini } from "./gemini-runner";
 import { writePost } from "./post-writer";
 import type { PipelineInput, PipelineResult } from "./types";
@@ -40,8 +41,12 @@ export async function processIngest(
   input: PipelineInput,
   logger: StageLogger = noopLogger
 ): Promise<PipelineResult> {
-  const parsed = await timed("gemini", logger, () => runGemini(input));
-  logger("gemini:parsed", {
+  // A valid client-supplied draft (drafted on-device by the mobile app) skips
+  // the Gemini stage entirely; an absent or invalid draft falls through.
+  const drafted = tryClientDraft(input);
+  const parsed =
+    drafted ?? (await timed("gemini", logger, () => runGemini(input)));
+  logger(drafted ? "draft:client" : "gemini:parsed", {
     title: parsed.title,
     slug: parsed.slug,
     type: parsed.type,

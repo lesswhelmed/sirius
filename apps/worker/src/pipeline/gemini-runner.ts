@@ -12,8 +12,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { PostType } from "@repo/db";
+import { PostDraftSchema, SightDraftSchema } from "@repo/ingest-draft";
+import type { PostDraft } from "@repo/ingest-draft";
 import { generateText, Output, stepCountIs } from "ai";
-import { z } from "zod";
 import { getAIConfig } from "../lib/ai-config";
 import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseYouTubeUrl } from "../lib/youtube-url";
@@ -21,77 +22,11 @@ import { runInstagramGemini } from "./instagram/runner";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 import { runYouTubeGemini } from "./youtube/runner";
 
-export const PostDraftSchema = z.object({
-  title: z
-    .string()
-    .min(1)
-    .describe("Short, plainspoken title; no clickbait, no marketing copy"),
-  slug: z
-    .string()
-    .optional()
-    .describe(
-      "Lowercase kebab-case slug derived from the title; the worker will normalize"
-    ),
-  tags: z
-    .array(z.string())
-    .min(1)
-    .max(5)
-    .describe("1-5 lowercase kebab-case tags"),
-  categories: z
-    .array(z.string())
-    .min(1)
-    .max(3)
-    .describe("1-3 lowercase kebab-case categories"),
-  body: z
-    .string()
-    .min(1)
-    .describe(
-      "MDX body content. First-person, observational, 80-300 words. No frontmatter, no wrapping code fences. Prose only — never embed image markdown or URLs; photos are attached and rendered separately by the app."
-    ),
-});
-
-export type PostDraft = z.infer<typeof PostDraftSchema>;
-
-// SIGHT posts are photo-first: the images are rendered as a gallery by the app,
-// so the body must be clean prose with NO embedded image markdown. We also ask
-// the model for a per-image caption (alt) and a one-line excerpt. Kept separate
-// from PostDraftSchema so tightening the SIGHT voice can't affect FINDING /
-// Instagram / YouTube / note / file drafts.
-export const SightDraftSchema = z.object({
-  title: z
-    .string()
-    .min(1)
-    .describe(
-      "2-5 word noun phrase naming the literal subject of the photo(s). No clickbait, no adjectives-as-hype."
-    ),
-  slug: z
-    .string()
-    .optional()
-    .describe("Lowercase kebab-case slug; the worker will normalize"),
-  tags: z.array(z.string()).min(1).max(5).describe("1-5 lowercase kebab-case tags"),
-  categories: z
-    .array(z.string())
-    .min(1)
-    .max(3)
-    .describe("1-3 lowercase kebab-case categories"),
-  body: z
-    .string()
-    .min(1)
-    .describe(
-      "60-160 words, first person, plain and concrete. Describe only what is visibly present. No intensifiers (almost, blinding, neon, aggressive), no metaphor or simile, no mood-painting. No image markdown or URLs — the photos render separately."
-    ),
-  excerpt: z
-    .string()
-    .min(1)
-    .describe("One plain declarative sentence summarizing the photo. No hype."),
-  imageAlts: z
-    .array(z.string())
-    .describe(
-      "One short, factual caption per attached image, in the same order the images were given. Plain description for alt text."
-    ),
-});
-
-export type SightDraft = z.infer<typeof SightDraftSchema>;
+// Draft schemas live in @repo/ingest-draft (shared with web validation and the
+// mobile on-device drafting path). Re-exported so existing imports keep working.
+export { PostDraftSchema, SightDraftSchema };
+export type { PostDraft };
+export type { SightDraft } from "@repo/ingest-draft";
 
 const MIME_BY_EXT: Record<string, string> = {
   jpg: "image/jpeg",
