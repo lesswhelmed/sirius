@@ -13,6 +13,7 @@
     "db:migrate:deploy": "turbo run db:migrate:deploy --filter=@repo/db",
     "db:push": "turbo run db:push --filter=@repo/db",
     "db:studio": "turbo run db:studio --filter=@repo/db",
+    "mobile:dev": "turbo run dev --filter=mobile",
     "worker:dev": "turbo run dev --filter=worker",
     "worker:setup": "turbo run setup --filter=worker",
     "env:production": "bun run scripts/create-production-env.ts",
