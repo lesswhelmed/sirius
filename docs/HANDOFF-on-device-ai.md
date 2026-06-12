@@ -70,6 +70,39 @@ bench "URL draft from canned extract" card (offline generation-phase test, /llm-
 composer e2e (worker 0.72s draft:client, FINDING + Source line). Later phase (documented
 intent): cache extracts on-device so URL drafting can happen fully offline + outbox.
 
+## Physical-device runbook (added 2026-06-12)
+
+Dev is reachable from a phone via portless **LAN mode**: `https://sirius.local` (mDNS).
+`bun run dev:proxy` now starts the proxy with `--lan` (persisted) and prints the
+phone CA-trust steps. One dev URL everywhere: `apps/mobile/.env` points the dev client
+at `https://sirius.local` (resolves on Mac, simulator, and phone); origins whitelisted
+in `next.config.js` + `packages/auth`.
+
+**One-time:** `eas device:create` (register the iPhone) → from `apps/mobile`:
+`eas build --profile development-device --platform ios` (requireCommit: clean tree) →
+install from the EAS QR. AirDrop `~/.portless/ca.pem` to the phone → Settings →
+Profile Downloaded → Install → General → About → Certificate Trust Settings → full trust.
+
+**Per session:** `bun run dev:proxy` → `bun run dev` → `bun run worker:dev` → Metro from
+`apps/mobile` (`bunx expo start`) → open the dev client on the phone → scan Metro's QR →
+sign in (web at `https://sirius.local`).
+
+**Acceptance checklist (in order, using the built-in benches):**
+1. `/llm` chat streams on hardware (Phase A; model download ~2.1 GB on the phone).
+2. `/llm-test` → Run all: note fixtures + "URL draft from canned extract" pass.
+3. `/llm-test` Audio section: availability flips to **available** on iOS 26 hardware →
+   Prepare assets → Record → transcript card → Draft from transcript (Phase C isolated).
+4. Composer voice memo e2e: worker logs `draft:client`, BLOG post, **no file upload**
+   (psql: submission has `payload.draft`, no `stagedFilePath`).
+5. Outbox: airplane mode → note → "Saved offline" + queue banner → reconnect →
+   auto-flush; background the app → reopen → foreground flush; Metro shows **no**
+   "Background tasks are not supported" warn (registration OK on hardware), and an
+   opportunistic background flush may land after 15+ min (best-effort, OS-scheduled).
+6. URL split e2e: single URL → FINDING with `Source:` line, engine `+server-extract`,
+   worker <1s.
+
+Record results here; anything that fails becomes a new open item.
+
 ## Repo orientation (read first)
 
 | Path | Why |

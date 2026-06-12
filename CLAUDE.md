@@ -51,10 +51,17 @@ one-time-per-boot step that starts the proxy daemon and — crucially — runs
 `xcrun simctl keychain booted add-root-cert ~/.portless/ca.pem` so the **iOS Simulator** trusts
 portless's CA (the simulator does NOT inherit the macOS trust store). The port is pinned to 3000
 so the worker's `WEB_REVALIDATE_URL=http://localhost:3000/...` keeps working (the worker isn't a
-portless child). The new origin is whitelisted in `apps/web/next.config.js` (`allowedDevOrigins`)
-and `packages/auth/src/index.ts` (`devTrustedOrigins`). Bypass with
-`PORTLESS=0 bun --cwd apps/web run dev:app`. Physical-device dev would additionally need portless
-LAN mode (`--lan`) — not set up here.
+portless child). Dev hostnames have ONE source of truth — **`packages/auth/dev-hosts.js`**
+(`DEV_HOSTS`) — from which both `apps/web/next.config.js` (`allowedDevOrigins`) and
+`packages/auth/src/index.ts` (`devTrustedOrigins`, as `https://<host>`) derive; add a
+hostname there and both layers follow (the file's header documents the contract,
+including that `apps/mobile/.env`'s `EXPO_PUBLIC_AUTH_BASE_URL` must use one of these
+hosts). Bypass with
+`PORTLESS=0 bun --cwd apps/web run dev:app`. The proxy runs in **LAN mode** (`--lan`,
+persisted by portless): the same app is also served at **`https://sirius.local`** over mDNS
+for physical devices on the Wi-Fi — `apps/mobile/.env` points the dev client there, and a
+phone must trust the portless CA (`dev:proxy` prints the install steps). The
+physical-device test runbook lives in `docs/HANDOFF-on-device-ai.md`.
 
 There is **no test runner wired up** (`scripts/testing/` exists but nothing in package.json
 runs it). Don't claim tests pass — there are none to run.

@@ -5,6 +5,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { admin } from "better-auth/plugins/admin";
 
+import { DEV_HOSTS } from "../dev-hosts.js";
 import { sendEmail } from "./email";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -27,8 +28,13 @@ const extraTrustedOrigins = (process.env.AUTH_TRUSTED_ORIGINS ?? "")
 const devTrustedOrigins = isProduction
   ? []
   : [
+      // Portless dev hostnames come from the ONE source of truth
+      // (packages/auth/dev-hosts.js — also feeds next.config.js).
+      ...DEV_HOSTS.map((host) => `https://${host}`),
+      // Auth-only origins, not "dev hostnames": the PORTLESS=0 bypass, the
+      // Expo web dev server, and the native deep-link scheme that
+      // better-auth's expo() plugin requires.
       "http://localhost:3000",
-      "https://sirius.localhost",
       "http://localhost:8081",
       "siriusapp://",
     ];

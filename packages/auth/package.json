@@ -7,7 +7,11 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./email": "./src/email.ts"
+    "./email": "./src/email.ts",
+    "./dev-hosts": {
+      "types": "./dev-hosts.d.ts",
+      "default": "./dev-hosts.js"
+    }
   },
   "scripts": {
     "check-types": "tsc --noEmit"
