@@ -63,6 +63,31 @@ export async function countOutbox(): Promise<number> {
   return (await readOutbox()).length;
 }
 
+// Last flush outcome, for the queue banner. In-memory only: a fresh launch
+// flushes immediately anyway, so persisted history would be stale by the time
+// anyone could read it.
+export type OutboxOutcome = "sent" | "network" | "server" | null;
+
+let lastAttemptAt: number | null = null;
+let lastOutcome: OutboxOutcome = null;
+
+export type OutboxStatus = {
+  count: number;
+  headAttempts: number;
+  lastAttemptAt: number | null;
+  lastOutcome: OutboxOutcome;
+};
+
+export async function getOutboxStatus(): Promise<OutboxStatus> {
+  const items = await readOutbox();
+  return {
+    count: items.length,
+    headAttempts: items[0]?.attempts ?? 0,
+    lastAttemptAt,
+    lastOutcome,
+  };
+}
+
 let flushing: Promise<{ sent: number; remaining: number }> | null = null;
 
 // Sends queued items FIFO. A 4xx response means the item can never succeed
@@ -78,6 +103,7 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
     let sent = 0;
     while (items.length > 0) {
       const item = items[0]!;
+      lastAttemptAt = Date.now();
       try {
         await apiPostJson<SubmitOk>(
           "/api/app/ingest",
@@ -86,6 +112,7 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
           item.body as Parameters<typeof apiPostJson>[1]
         );
         sent++;
+        lastOutcome = "sent";
         items = items.slice(1);
         await writeOutbox(items);
       } catch (err) {
@@ -99,6 +126,7 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
           continue;
         }
         // Offline or server trouble: keep the item, try again on a later trigger.
+        lastOutcome = err instanceof ApiError ? "server" : "network";
         item.attempts += 1;
         await writeOutbox(items);
         break;

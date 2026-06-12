@@ -1,5 +1,5 @@
 import type { IngestSubmission } from "@repo/db";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import {
   ActivityIndicator,
@@ -16,10 +16,11 @@ import {
   PrimaryButton,
   Screen,
   StatusPip,
+  TextLink,
 } from "@/components/sirius";
 import { Sirius, SubmissionStatusPip } from "@/constants/theme";
 import { apiGet } from "@/lib/api";
-import { countOutbox, flushOutbox } from "@/lib/outbox";
+import { flushOutbox, getOutboxStatus, type OutboxStatus } from "@/lib/outbox";
 
 type QueuePage = { items: IngestSubmission[]; nextCursor: string | null };
 
@@ -48,14 +49,21 @@ export default function QueueScreen() {
 
   // Notes captured offline, waiting on this device. Piggybacks the queue's
   // poll cadence and nudges a flush so the banner clears itself once online.
+  const queryClient = useQueryClient();
   const outbox = useQuery({
-    queryKey: ["outbox-count"],
+    queryKey: ["outbox-status"],
     queryFn: async () => {
       void flushOutbox();
-      return countOutbox();
+      return getOutboxStatus();
     },
     refetchInterval: 5000,
   });
+
+  const sendNow = useCallback(async () => {
+    await flushOutbox();
+    await queryClient.invalidateQueries({ queryKey: ["outbox-status"] });
+    await queryClient.invalidateQueries({ queryKey: ["queue"] });
+  }, [queryClient]);
 
   const renderItem = useCallback(
     ({ item }: { item: IngestSubmission }) => {
@@ -108,13 +116,25 @@ export default function QueueScreen() {
               titleAccent="."
               subtitle="Submissions move pending → processing → done."
             />
-            {outbox.data ? (
+            {outbox.data && outbox.data.count > 0 ? (
               <View style={styles.outboxBanner}>
-                <StatusPip label="queued on device" color={Sirius.color.inkSubtle} />
-                <Text style={styles.outboxText}>
-                  {outbox.data} note{outbox.data === 1 ? "" : "s"} waiting for a
-                  connection.
-                </Text>
+                <View style={styles.outboxRow}>
+                  <StatusPip
+                    label="queued on device"
+                    color={Sirius.color.inkSubtle}
+                  />
+                  <Text style={styles.outboxText}>
+                    {outbox.data.count} note
+                    {outbox.data.count === 1 ? "" : "s"} waiting for a
+                    connection.
+                  </Text>
+                  <TextLink label="Send now →" onPress={() => void sendNow()} />
+                </View>
+                {outbox.data.headAttempts > 0 ? (
+                  <Text style={styles.outboxStatus}>
+                    {describeOutboxStatus(outbox.data)}
+                  </Text>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -141,6 +161,28 @@ function Separator() {
   return <View style={styles.sep} />;
 }
 
+// "3 tries · last 4:42 PM · no connection" — only shown once the head item
+// has actually failed at least once.
+function describeOutboxStatus(status: OutboxStatus): string {
+  const parts = [
+    `${status.headAttempts} ${status.headAttempts === 1 ? "try" : "tries"}`,
+  ];
+  if (status.lastAttemptAt) {
+    parts.push(
+      `last ${new Date(status.lastAttemptAt).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      })}`
+    );
+  }
+  if (status.lastOutcome === "network") {
+    parts.push("no connection");
+  } else if (status.lastOutcome === "server") {
+    parts.push("server error");
+  }
+  return parts.join(" · ");
+}
+
 const styles = StyleSheet.create({
   centered: { alignItems: "center", justifyContent: "center" },
   centeredPad: {
@@ -155,19 +197,26 @@ const styles = StyleSheet.create({
   },
   header: { marginBottom: Sirius.space.lg },
   outboxBanner: {
-    alignItems: "center",
     backgroundColor: Sirius.color.paperRaised,
     borderRadius: 8,
-    flexDirection: "row",
-    gap: Sirius.space.sm,
+    gap: Sirius.space.xs,
     marginTop: Sirius.space.md,
     paddingHorizontal: Sirius.space.md,
     paddingVertical: Sirius.space.sm,
+  },
+  outboxRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: Sirius.space.sm,
   },
   outboxText: {
     color: Sirius.color.inkMuted,
     flex: 1,
     fontSize: 13,
+  },
+  outboxStatus: {
+    color: Sirius.color.inkSubtle,
+    fontSize: 12,
   },
   row: {
     flexDirection: "row",

@@ -91,8 +91,16 @@ Metro single-instance resolveRequest (expo-gl black-screen workaround), `space.t
    worker completion, soft-fail fallback observed repeatedly). Still pending from the
    original matrix: same-note dedup check, hand-corrupted draft → Gemini fallback at the
    worker (was bun-eval-tested only).
-5. **Outbox test** — airplane mode → note → "Saved offline" + queue banner → network back →
-   auto-flush; force-quit mid-queue → flush on relaunch; 4xx item dropped.
+5. ~~Outbox~~ — HARDENED + VERIFIED on simulator (2026-06-12): flush now also fires on
+   app-foreground (AppState listener) and via a periodic background task
+   (`expo-background-task`/`expo-task-manager`, `outbox-task.ts`, 15-min floor; iOS
+   schedules opportunistically and never runs it after force-quit — foreground triggers
+   stay primary). Queue banner shows retry status + "Send now →". Verified by injecting
+   items into `Documents/outbox.json`: cold-start flush (draft envelope intact, Gemini
+   skipped), foreground flush 12s after reopen, 25 duplicate items → 1 submission
+   (contentHash dedup), banner live-decrements and clears. Still pending: background-task
+   execution needs a **physical device** (sim can't run BGTaskScheduler — registration is
+   skipped with a warn); real airplane-mode → reconnect on hardware.
 6. **Phase C (iOS 26 device)** — voice memo → BLOG with no file upload; Android falls back
    to upload path; silent audio → null → server path.
 7. **Phase D quality gate** — SmolVLM2 SIGHT drafts vs Gemini side-by-side on the same

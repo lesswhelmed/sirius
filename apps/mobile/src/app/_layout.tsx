@@ -14,10 +14,13 @@ import * as Network from "expo-network";
 import { StatusBar } from "expo-status-bar";
 import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import React, { useEffect } from "react";
-import { useColorScheme } from "react-native";
+import { AppState, useColorScheme } from "react-native";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { flushOutbox } from "@/lib/outbox";
+// Side-effect import: defines the background outbox-flush task at global
+// scope so headless background launches can run it.
+import { registerOutboxTask } from "@/lib/outbox-task";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,18 +36,30 @@ const queryClient = new QueryClient({
 // the warm-start / Android path where the intent arrives via context rather
 // than a fresh deep link. The pathname guard avoids stacking a duplicate
 // /shareintent when both mechanisms fire.
-// Drains the offline note outbox: once at app start, and again whenever the
-// device regains a reachable connection. flushOutbox serializes itself, so
-// overlapping triggers are safe.
+// Drains the offline note outbox: once at app start, whenever the device
+// regains a reachable connection, and whenever the app returns to the
+// foreground (the in-app network listener doesn't fire while suspended, so
+// foregrounding is the moment queued notes from a backgrounded session can
+// finally send). Also registers the periodic background flush task.
+// flushOutbox serializes itself, so overlapping triggers are safe.
 function OutboxFlusher() {
   useEffect(() => {
     void flushOutbox();
-    const sub = Network.addNetworkStateListener((state) => {
+    void registerOutboxTask();
+    const netSub = Network.addNetworkStateListener((state) => {
       if (state.isInternetReachable) {
         void flushOutbox();
       }
     });
-    return () => sub.remove();
+    const appSub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void flushOutbox();
+      }
+    });
+    return () => {
+      netSub.remove();
+      appSub.remove();
+    };
   }, []);
   return null;
 }
