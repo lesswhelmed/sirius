@@ -28,6 +28,26 @@ async function appleModule() {
   }
 }
 
+// Downloads the language assets SpeechAnalyzer needs (no-op if present).
+// The docs recommend pre-calling this to avoid first-transcription latency —
+// the dev bench uses it; production paths get the automatic on-first-use
+// download either way.
+export async function prepareTranscription(): Promise<boolean> {
+  const mod = await appleModule();
+  if (!mod) {
+    return false;
+  }
+  try {
+    await mod.AppleTranscription.prepare(deviceLanguage());
+    return true;
+  } catch (err) {
+    console.warn(
+      `[llm] transcription prepare failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return false;
+  }
+}
+
 export async function canTranscribeOnDevice(): Promise<boolean> {
   const mod = await appleModule();
   if (!mod) {

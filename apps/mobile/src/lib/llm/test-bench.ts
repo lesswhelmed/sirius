@@ -111,6 +111,20 @@ export function qualityChecks(draft: DraftEnvelope): DraftCheck[] {
   ];
 }
 
+// Audio bench: drafts a post from a recorded transcript through the exact
+// fixture runner, so the audio path shares the runner/checks/logging with the
+// note fixtures (mirrors materials.ts's audio composition: transcript →
+// draftNotePost).
+export function runTranscriptDraft(
+  transcript: string
+): Promise<FixtureResult> {
+  return runDraftFixture({
+    id: "audio-recording",
+    label: "Recorded audio",
+    notes: transcript,
+  });
+}
+
 // Runs one fixture through the real drafting path. A null draft means the
 // pipeline soft-failed (model missing, curation off, generation/schema error)
 // — the Metro [llm] warn right before this line says which.

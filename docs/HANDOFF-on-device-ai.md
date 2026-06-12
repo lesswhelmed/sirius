@@ -101,8 +101,13 @@ Metro single-instance resolveRequest (expo-gl black-screen workaround), `space.t
    (contentHash dedup), banner live-decrements and clears. Still pending: background-task
    execution needs a **physical device** (sim can't run BGTaskScheduler — registration is
    skipped with a warn); real airplane-mode → reconnect on hardware.
-6. **Phase C (iOS 26 device)** — voice memo → BLOG with no file upload; Android falls back
-   to upload path; silent audio → null → server path.
+6. **Phase C (iOS 26 PHYSICAL device)** — voice memo → BLOG with no file upload; Android
+   falls back to upload path; silent audio → null → server path. The dev bench
+   (`/llm-test`, Apple-only section) now tests this in isolation: record → the real
+   `transcribeAudio` → transcript card → "Draft from transcript" through the real
+   `draftNotePost` scorecard. Confirmed sim-blocked (2026-06-12): `prepare()` fails with
+   "Assets not supported for locale: en_US" — SpeechAnalyzer assets don't ship in the
+   simulator runtime, so this section only lights up on hardware.
 7. **Phase D quality gate** — SmolVLM2 SIGHT drafts vs Gemini side-by-side on the same
    batch; check `imageAlts` order. The curate.ts JSON-prompt workaround applies to the
    vision path too but is UNTESTED with SmolVLM2. If quality is poor, ship dark (hide
