@@ -24,8 +24,14 @@ export const assignSchema = z.object({
   projectId: z.string().min(1).nullable(),
 });
 
+export const projectMergeSchema = z.object({
+  fromId: z.string().min(1),
+  toId: z.string().min(1),
+});
+
 export type AspirationCreateInput = z.infer<typeof aspirationCreateSchema>;
 export type AspirationUpdateInput = z.infer<typeof aspirationUpdateSchema>;
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 export type ProjectUpdateInput = z.infer<typeof projectUpdateSchema>;
 export type AssignInput = z.infer<typeof assignSchema>;
+export type ProjectMergeInput = z.infer<typeof projectMergeSchema>;

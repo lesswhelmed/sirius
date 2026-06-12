@@ -20,6 +20,7 @@ export interface CreateAspirationInput {
   ownerId: string;
   title: string;
   description?: string | null;
+  metadata?: Prisma.InputJsonValue;
 }
 
 export async function createAspiration(
@@ -30,7 +31,20 @@ export async function createAspiration(
       ownerId: input.ownerId,
       title: input.title,
       description: input.description ?? null,
+      metadata: input.metadata,
     },
+  });
+}
+
+// Case-insensitive title lookup, oldest row wins. Lets the worker's auto-org
+// reuse an existing Aspiration instead of minting a same-named duplicate.
+export async function findAspirationByTitle(
+  ownerId: string,
+  title: string
+): Promise<Aspiration | null> {
+  return prisma.aspiration.findFirst({
+    where: { ownerId, title: { equals: title, mode: "insensitive" } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
 }
 
@@ -91,7 +105,9 @@ export async function listAspirations(
   return { items: trimmed, nextCursor: hasMore && last ? last.id : null };
 }
 
-export type AspirationWithProjects = Aspiration & { projects: Project[] };
+export type AspirationWithProjects = Aspiration & {
+  projects: (Project & { _count: { posts: number } })[];
+};
 
 export async function getAspiration(
   ownerId: string,
@@ -100,7 +116,10 @@ export async function getAspiration(
   return prisma.aspiration.findFirst({
     where: { id, ownerId },
     include: {
-      projects: { orderBy: [{ createdAt: "desc" }, { id: "desc" }] },
+      projects: {
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        include: { _count: { select: { posts: true } } },
+      },
     },
   });
 }
@@ -114,6 +133,7 @@ export interface CreateProjectInput {
   title: string;
   description?: string | null;
   aspirationId?: string | null; // validated to belong to ownerId before insert
+  metadata?: Prisma.InputJsonValue;
 }
 
 export type CreateProjectResult =
@@ -138,9 +158,28 @@ export async function createProject(
       title: input.title,
       description: input.description ?? null,
       aspirationId: input.aspirationId ?? null,
+      metadata: input.metadata,
     },
   });
   return { ok: true, project };
+}
+
+// Case-insensitive title lookup over ACTIVE projects, oldest row wins. The
+// auto-org create path checks here first: derived names repeat ("Journal",
+// "Personal"), and a title hit is the dedup signal the embedding match missed.
+// Archived projects are excluded so re-capturing a retired topic starts fresh.
+export async function findProjectByTitle(
+  ownerId: string,
+  title: string
+): Promise<Project | null> {
+  return prisma.project.findFirst({
+    where: {
+      ownerId,
+      status: "active",
+      title: { equals: title, mode: "insensitive" },
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
 }
 
 export interface UpdateProjectInput {
@@ -229,6 +268,22 @@ export async function listProjects(
   return { items: trimmed, nextCursor: hasMore && last ? last.id : null };
 }
 
+export type ProjectWithPostCount = Project & { _count: { posts: number } };
+
+// Every project the owner has (active + archived) with its filed-post count,
+// in one read — the Focus page groups these by aspiration and sorts by
+// activity, so it needs the whole set rather than a page.
+export async function listProjectsWithCounts(
+  ownerId: string
+): Promise<ProjectWithPostCount[]> {
+  return prisma.project.findMany({
+    where: { ownerId },
+    take: MAX_PAGE,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    include: { _count: { select: { posts: true } } },
+  });
+}
+
 // id → title for every project the owner has, regardless of status. Used by
 // surfaces that annotate rows with their assigned focus area (e.g. the queue's
 // "→ <project>" chip) without joining per row.
@@ -289,6 +344,42 @@ export async function assignPostToProject(
   }
   await prisma.post.update({ where: { id: postId }, data: { projectId } });
   return { ok: true };
+}
+
+export type MergeProjectsResult =
+  | { ok: true; movedPosts: number; movedSubmissions: number }
+  | { ok: false; reason: "not-found" | "same-project" };
+
+// Merge one project into another: repoint every post and submission, then
+// delete the source row (its ProjectEmbedding cascades away — the survivor
+// keeps its own vector). Both rows must belong to the owner.
+export async function mergeProjects(
+  ownerId: string,
+  fromId: string,
+  toId: string
+): Promise<MergeProjectsResult> {
+  if (fromId === toId) {
+    return { ok: false, reason: "same-project" };
+  }
+  const rows = await prisma.project.findMany({
+    where: { id: { in: [fromId, toId] }, ownerId },
+    select: { id: true },
+  });
+  if (rows.length !== 2) {
+    return { ok: false, reason: "not-found" };
+  }
+  const [posts, submissions] = await prisma.$transaction([
+    prisma.post.updateMany({
+      where: { projectId: fromId },
+      data: { projectId: toId },
+    }),
+    prisma.ingestSubmission.updateMany({
+      where: { projectId: fromId },
+      data: { projectId: toId },
+    }),
+    prisma.project.deleteMany({ where: { id: fromId, ownerId } }),
+  ]);
+  return { ok: true, movedPosts: posts.count, movedSubmissions: submissions.count };
 }
 
 export interface ListProjectPostsOptions {

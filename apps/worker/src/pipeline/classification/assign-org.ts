@@ -3,7 +3,8 @@
 // Projects and the global Analysis Category taxonomy, and persist the vector +
 // category linkage (PostEmbedding + PostCategoryMatch) so the post appears in
 // the embedding space. Then, for UNSCOPED ingests only (no focus selected),
-// either assign the best-matching Project or auto-create an Aspiration +
+// assign the best-matching Project, else reuse an existing Project/Aspiration
+// whose title matches the derived names, else auto-create an Aspiration +
 // Project. Runs after writePost (postId known) but before staged files are
 // deleted — image parts need the bytes. All failures are NON-FATAL: the post
 // already exists, so a classification error must never dead-letter an
@@ -14,6 +15,10 @@ import {
   classifyContent,
   createAspiration,
   createProject,
+  findAspirationByTitle,
+  findProjectByTitle,
+  getProject,
+  getProjectEmbedding,
   listProjectsNeedingEmbedding,
   replacePostCategoryMatches,
   setSubmissionProject,
@@ -72,6 +77,60 @@ function deriveOrgNames(
     ? `Auto-created from captured material. Related analysis: ${related}.`
     : "Auto-created from captured material.";
   return { projectTitle, aspirationTitle, description };
+}
+
+// Count-weighted mean of the project's existing vector and a newly-filed
+// post's vector, L2-normalized. Cosine is scale-invariant, but normalizing
+// keeps repeated folds from drifting in magnitude.
+function foldIntoCentroid(
+  existing: number[],
+  existingWeight: number,
+  next: number[]
+): number[] {
+  if (existing.length !== next.length) {
+    return next;
+  }
+  const total = existingWeight + 1;
+  const merged = existing.map((v, i) => (v * existingWeight + next[i]!) / total);
+  const norm = Math.sqrt(merged.reduce((sum, v) => sum + v * v, 0));
+  return norm === 0 ? next : merged.map((v) => v / norm);
+}
+
+// Fold this content into the project's embedding as a running centroid so the
+// vector tracks what's actually filed under the project instead of staying
+// pinned to its seed (one post, or just the title for manual projects). Without
+// this, the next similar capture rarely clears projectMatchMin and auto-org
+// mints yet another project. retrievalText/embeddingHash record the most recent
+// contribution — for a centroid there is no single source text.
+async function updateProjectCentroid(args: {
+  projectId: string;
+  ownerId: string;
+  contentEmbedding: number[];
+  retrievalText: string;
+  modelVersion: string;
+  dimensionality: number;
+}): Promise<void> {
+  const { projectId, ownerId, contentEmbedding } = args;
+  const [existing, project] = await Promise.all([
+    getProjectEmbedding(projectId),
+    getProject(ownerId, projectId),
+  ]);
+  // The old vector stood for every post before this one (or the seed) — weight
+  // it by the prior post count, floor 1 so a title-only seed still counts.
+  const priorWeight = Math.max(1, (project?._count.posts ?? 1) - 1);
+  const embedding =
+    existing && existing.dimensionality === args.dimensionality
+      ? foldIntoCentroid(existing.embedding, priorWeight, contentEmbedding)
+      : contentEmbedding;
+  await upsertProjectEmbedding({
+    projectId,
+    ownerId,
+    retrievalText: args.retrievalText,
+    embedding,
+    embeddingHash: embeddingHash(queryPrefix(args.retrievalText)),
+    modelVersion: args.modelVersion,
+    dimensionality: args.dimensionality,
+  });
 }
 
 // Lazy backfill: embed any active Projects this owner has that don't yet carry a
@@ -152,30 +211,60 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
     return null;
   }
 
+  const centroidArgs = {
+    ownerId,
+    contentEmbedding,
+    retrievalText: classificationInput.prep.retrievalText,
+    modelVersion,
+    dimensionality,
+  };
+
   if (bestProject) {
     const result = await assignPostToProject(ownerId, postId, bestProject.projectId);
     if (result.ok) {
       await setSubmissionProject(ids, bestProject.projectId);
+      await updateProjectCentroid({
+        projectId: bestProject.projectId,
+        ...centroidArgs,
+      });
       return { projectId: bestProject.projectId, created: false };
     }
     return null;
   }
 
-  // No match — auto-create an Aspiration (scope) + Project (focus area).
+  // No embedding match. Derived names repeat constantly ("Journal",
+  // "Lifestyle"), so reuse an existing row by title before minting anything —
+  // a title hit IS the dedup signal the embedding comparison missed.
   const { projectTitle, aspirationTitle, description } = deriveOrgNames(
     classificationInput,
     categories
   );
-  const aspiration = await createAspiration({
-    ownerId,
-    title: aspirationTitle,
-    description,
-  });
+
+  const existingProject = await findProjectByTitle(ownerId, projectTitle);
+  if (existingProject) {
+    const assigned = await assignPostToProject(ownerId, postId, existingProject.id);
+    if (!assigned.ok) {
+      return null;
+    }
+    await setSubmissionProject(ids, existingProject.id);
+    await updateProjectCentroid({ projectId: existingProject.id, ...centroidArgs });
+    return { projectId: existingProject.id, created: false };
+  }
+
+  const aspiration =
+    (await findAspirationByTitle(ownerId, aspirationTitle)) ??
+    (await createAspiration({
+      ownerId,
+      title: aspirationTitle,
+      description,
+      metadata: { autoCreated: true },
+    }));
   const created = await createProject({
     ownerId,
     title: projectTitle,
     description,
     aspirationId: aspiration.id,
+    metadata: { autoCreated: true },
   });
   if (!created.ok) {
     return null;

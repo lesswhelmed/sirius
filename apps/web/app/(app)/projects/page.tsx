@@ -1,13 +1,14 @@
 import Link from "next/link";
-import { listAspirations, listProjects } from "@repo/db";
+import { listAspirations, listProjectsWithCounts } from "@repo/db";
 
 import { requireSession } from "../../../lib/session";
+import { isAutoCreated } from "../../../lib/projects/metadata";
 import { ProjectsBoard } from "./projects-board";
 
 export default async function ProjectsPage() {
   const session = await requireSession("/projects");
-  const [projectPage, aspirationPage] = await Promise.all([
-    listProjects(session.user.id, { limit: 100 }),
+  const [projects, aspirationPage] = await Promise.all([
+    listProjectsWithCounts(session.user.id),
     listAspirations(session.user.id, { limit: 100 }),
   ]);
 
@@ -37,12 +38,14 @@ export default async function ProjectsPage() {
 
       <div className="hairline-t mt-7 pt-7">
         <ProjectsBoard
-          initialProjects={projectPage.items.map((p) => ({
+          initialProjects={projects.map((p) => ({
             id: p.id,
             title: p.title,
             description: p.description,
             status: p.status,
             aspirationId: p.aspirationId,
+            postCount: p._count.posts,
+            autoCreated: isAutoCreated(p.metadata),
           }))}
           aspirations={aspirationPage.items.map((a) => ({
             id: a.id,

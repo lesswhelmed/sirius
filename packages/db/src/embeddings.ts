@@ -62,6 +62,13 @@ export async function upsertProjectEmbedding(
   });
 }
 
+// Single project vector, for the worker's running-centroid update on assign.
+export async function getProjectEmbedding(
+  projectId: string
+): Promise<ProjectEmbedding | null> {
+  return prisma.projectEmbedding.findUnique({ where: { projectId } });
+}
+
 // Owner-scoped — never trust a client-supplied owner. Used by reverse lookup.
 export async function listProjectEmbeddings(
   ownerId: string

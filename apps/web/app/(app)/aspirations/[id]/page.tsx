@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getAspiration } from "@repo/db";
 
 import { requireSession } from "../../../../lib/session";
+import { isAutoCreated } from "../../../../lib/projects/metadata";
 import { ProjectsBoard } from "../../projects/projects-board";
 
 export default async function AspirationDetailPage({
@@ -62,6 +63,8 @@ export default async function AspirationDetailPage({
               description: p.description,
               status: p.status,
               aspirationId: p.aspirationId,
+              postCount: p._count.posts,
+              autoCreated: isAutoCreated(p.metadata),
             }))}
           />
         </div>
