@@ -21,8 +21,9 @@ import { MetaText, PrimaryButton, Screen } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import {
   downloadModelById,
-  getPreparedModel,
   isModelReady,
+  modelBusyBy,
+  withPreparedModel,
 } from "@/lib/llm/engine";
 import { formatSize, modelSpec, textModels } from "@/lib/llm/models";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
@@ -169,7 +170,9 @@ function Chat({
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState<"preparing" | "generating" | null>(null);
+  const [busy, setBusy] = useState<
+    "waiting" | "preparing" | "generating" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -183,19 +186,22 @@ function Chat({
     const history: ChatMessage[] = [...messages, { role: "user", content: text }];
     setMessages([...history, { role: "assistant", content: "" }]);
     try {
-      setBusy("preparing");
-      const model = await getPreparedModel(modelId);
-      setBusy("generating");
-      const { textStream } = streamText({
-        model,
-        messages: history,
-        temperature: 0.7,
+      // The model runs one generation at a time; if curation is mid-draft,
+      // queue behind it and say so instead of failing.
+      setBusy(modelBusyBy() === "draft" ? "waiting" : "preparing");
+      await withPreparedModel(modelId, "chat", async (model) => {
+        setBusy("generating");
+        const { textStream } = streamText({
+          model,
+          messages: history,
+          temperature: 0.7,
+        });
+        let assistant = "";
+        for await (const delta of textStream) {
+          assistant += delta;
+          setMessages([...history, { role: "assistant", content: assistant }]);
+        }
       });
-      let assistant = "";
-      for await (const delta of textStream) {
-        assistant += delta;
-        setMessages([...history, { role: "assistant", content: assistant }]);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "generation failed");
       setMessages(history);
@@ -242,7 +248,11 @@ function Chat({
                   }
                 >
                   {m.content ||
-                    (busy === "preparing" ? "Loading model…" : "…")}
+                    (busy === "waiting"
+                      ? "Waiting for the post drafter…"
+                      : busy === "preparing"
+                        ? "Loading model…"
+                        : "…")}
                 </Text>
               </View>
             ))

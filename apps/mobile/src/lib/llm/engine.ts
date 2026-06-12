@@ -91,9 +91,10 @@ let preparing: Promise<LlamaLanguageModel> | null = null;
 
 // Returns a prepared (memory-loaded) model, loading it on first use. Serialized:
 // concurrent callers wait for an in-flight prepare instead of double-initializing.
-export async function getPreparedModel(
-  id: string
-): Promise<LlamaLanguageModel> {
+// Internal — inference must go through withPreparedModel, which also serializes
+// the completion itself (one llama context can't run two generations, and a
+// different-id prepare would unload a context mid-generation).
+async function getPreparedModel(id: string): Promise<LlamaLanguageModel> {
   if (preparing) {
     await preparing.catch(() => {});
   }
@@ -118,6 +119,47 @@ export async function getPreparedModel(
   } finally {
     preparing = null;
   }
+}
+
+// Inference mutex. The native llama context runs exactly one completion at a
+// time, and nothing at the native layer guards against overlap — this queue
+// is the guard. It covers prepare + completion as one critical section, so a
+// model swap (releaseModel inside getPreparedModel) can never unload a
+// context that another caller is still generating with. Same promise-chain
+// pattern as outbox.ts's flush serialization.
+export type ModelHolder = "chat" | "draft";
+
+let inferenceChain: Promise<unknown> = Promise.resolve();
+let holder: ModelHolder | null = null;
+
+// Who currently holds the model (null = idle). Lets the chat screen show
+// "waiting for the post drafter…" instead of silently queueing.
+export function modelBusyBy(): ModelHolder | null {
+  return holder;
+}
+
+// Prepares the model (loading/swapping if needed) and runs `fn` with it,
+// serialized against every other on-device inference. Callers queue FIFO;
+// a rejection in one caller's fn never breaks the chain for the next.
+export async function withPreparedModel<T>(
+  id: string,
+  who: ModelHolder,
+  fn: (model: LlamaLanguageModel) => Promise<T>
+): Promise<T> {
+  // A prior link's rejection was already handled by its own caller.
+  const run = inferenceChain
+    .catch(() => {})
+    .then(async () => {
+      holder = who;
+      try {
+        const model = await getPreparedModel(id);
+        return await fn(model);
+      } finally {
+        holder = null;
+      }
+    });
+  inferenceChain = run.catch(() => {});
+  return run;
 }
 
 export async function releaseModel(): Promise<void> {

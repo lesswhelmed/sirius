@@ -20,7 +20,7 @@ import {
 } from "@repo/ingest-draft";
 import { generateObject } from "ai";
 
-import { getPreparedModel, isModelReady } from "./engine";
+import { isModelReady, withPreparedModel } from "./engine";
 import { VISION_MODEL_ID } from "./models";
 import { getLlmSettings } from "./settings";
 
@@ -130,19 +130,31 @@ export async function draftNotePost(
       return null;
     }
     const settings = await getLlmSettings();
-    const model = await getPreparedModel(settings.modelId);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
     try {
-      const { object } = await generateObject({
-        model,
-        schema: PostDraftSchema,
-        prompt: buildNotePrompt(notes),
-        temperature: 0.7,
-        maxOutputTokens: 1024,
-        abortSignal: controller.signal,
-        experimental_repairText: repairText,
-      });
+      // Queues behind any in-flight chat/draft generation; the timeout covers
+      // the wait too, so a draft that waited it out bails instead of burning
+      // another generation.
+      const { object } = await withPreparedModel(
+        settings.modelId,
+        "draft",
+        (model) => {
+          if (controller.signal.aborted) {
+            // Timed out while queued behind another generation.
+            throw new Error("draft timed out waiting for the model");
+          }
+          return generateObject({
+            model,
+            schema: PostDraftSchema,
+            prompt: buildNotePrompt(notes),
+            temperature: 0.7,
+            maxOutputTokens: 1024,
+            abortSignal: controller.signal,
+            experimental_repairText: repairText,
+          });
+        }
+      );
       return {
         schemaVersion: 1,
         engine: `llama.rn:${settings.modelId}`,
@@ -216,31 +228,43 @@ export async function draftSightPost(
     if (imageUris.length === 0 || !(await canDraftSightOnDevice())) {
       return null;
     }
-    const model = await getPreparedModel(VISION_MODEL_ID);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
     try {
-      const { object } = await generateObject({
-        model,
-        schema: SightDraftSchema,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: buildSightPrompt(imageUris.length, notes) },
-              ...imageUris.map((uri) => ({
-                type: "file" as const,
-                mediaType: "image/jpeg",
-                data: uri,
-              })),
+      const { object } = await withPreparedModel(
+        VISION_MODEL_ID,
+        "draft",
+        (model) => {
+          if (controller.signal.aborted) {
+            // Timed out while queued behind another generation.
+            throw new Error("draft timed out waiting for the model");
+          }
+          return generateObject({
+            model,
+            schema: SightDraftSchema,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: buildSightPrompt(imageUris.length, notes),
+                  },
+                  ...imageUris.map((uri) => ({
+                    type: "file" as const,
+                    mediaType: "image/jpeg",
+                    data: uri,
+                  })),
+                ],
+              },
             ],
-          },
-        ],
-        temperature: 0.7,
-        maxOutputTokens: 1024,
-        abortSignal: controller.signal,
-        experimental_repairText: repairText,
-      });
+            temperature: 0.7,
+            maxOutputTokens: 1024,
+            abortSignal: controller.signal,
+            experimental_repairText: repairText,
+          });
+        }
+      );
       if (object.imageAlts.length !== imageUris.length) {
         // The worker's post-writer tolerates a count mismatch (falls back to
         // the title), but a small VLM losing track of image order is a strong
