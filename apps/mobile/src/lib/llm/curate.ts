@@ -86,7 +86,7 @@ const NOTE_JSON_INSTRUCTIONS = [
   "All four fields are REQUIRED. Shape:",
   "{",
   '  "title": "short, plainspoken title; no clickbait",',
-  '  "body": "REQUIRED — the full 80-300 word post text written from the notes",',
+  '  "body": "REQUIRED — the full post text. AT LEAST 120 words; expand the notes into 2-3 paragraphs of concrete first-person detail, do not summarize them into a single short paragraph",',
   '  "tags": ["1-5 lowercase kebab-case tags"],',
   '  "categories": ["1-3 lowercase kebab-case categories"]',
   "}",

@@ -17,7 +17,9 @@ import {
   View,
 } from "react-native";
 
-import { MetaText, PrimaryButton, Screen } from "@/components/sirius";
+import { router } from "expo-router";
+
+import { MetaText, PrimaryButton, Screen, TextLink } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import {
   downloadModelById,
@@ -232,6 +234,12 @@ function Chat({
                 Running locally on this device. Nothing you type here leaves
                 the phone.
               </Text>
+              {__DEV__ ? (
+                <TextLink
+                  label="Draft test bench →"
+                  onPress={() => router.push("/llm-test")}
+                />
+              ) : null}
             </View>
           ) : (
             messages.map((m, i) => (

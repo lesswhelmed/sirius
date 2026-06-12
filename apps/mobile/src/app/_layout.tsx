@@ -116,6 +116,10 @@ export default function RootLayout() {
               name="llm"
               options={{ headerShown: true, title: "On-device AI" }}
             />
+            <Stack.Screen
+              name="llm-test"
+              options={{ headerShown: true, title: "Draft test bench" }}
+            />
           </Stack>
         </ThemeProvider>
       </QueryClientProvider>
