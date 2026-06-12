@@ -33,6 +33,8 @@ import {
   DRAFT_FIXTURES,
   runDraftFixture,
   runTranscriptDraft,
+  runUrlDraft,
+  URL_EXTRACT_FIXTURE,
   type FixtureResult,
 } from "@/lib/llm/test-bench";
 
@@ -73,6 +75,19 @@ function Bench() {
     }
   }
 
+  async function runUrl() {
+    if (runningId) {
+      return;
+    }
+    setRunningId(URL_EXTRACT_FIXTURE.id);
+    try {
+      const result = await runUrlDraft();
+      setResults((prev) => ({ ...prev, [URL_EXTRACT_FIXTURE.id]: result }));
+    } finally {
+      setRunningId(null);
+    }
+  }
+
   async function runAll() {
     if (runningId) {
       return;
@@ -86,6 +101,7 @@ function Bench() {
         setRunningId(null);
       }
     }
+    await runUrl();
     console.log("[llm-test] run-all-done");
   }
 
@@ -188,6 +204,58 @@ function Bench() {
             </Pressable>
           );
         })}
+        <Pressable
+          style={styles.card}
+          onPress={() =>
+            setExpanded(
+              expanded === URL_EXTRACT_FIXTURE.id ? null : URL_EXTRACT_FIXTURE.id
+            )
+          }
+          onLongPress={() => void runUrl()}
+        >
+          <View style={styles.cardHeader}>
+            <StatusPip
+              label={
+                runningId === URL_EXTRACT_FIXTURE.id
+                  ? "running"
+                  : results[URL_EXTRACT_FIXTURE.id]
+                    ? results[URL_EXTRACT_FIXTURE.id]!.ok
+                      ? "pass"
+                      : "fail"
+                    : "idle"
+              }
+              color={
+                runningId === URL_EXTRACT_FIXTURE.id
+                  ? Sirius.color.accent
+                  : results[URL_EXTRACT_FIXTURE.id]
+                    ? results[URL_EXTRACT_FIXTURE.id]!.ok
+                      ? "#2c7a4b"
+                      : "#a33"
+                    : Sirius.color.inkSubtle
+              }
+            />
+            <Text style={styles.cardTitle}>{URL_EXTRACT_FIXTURE.label}</Text>
+            {results[URL_EXTRACT_FIXTURE.id] ? (
+              <Text style={styles.dim}>
+                {(results[URL_EXTRACT_FIXTURE.id]!.ms / 1000).toFixed(1)}s
+              </Text>
+            ) : null}
+          </View>
+          {results[URL_EXTRACT_FIXTURE.id]?.checks.map((check) => (
+            <Text
+              key={check.name}
+              style={check.pass ? styles.checkPass : styles.checkFail}
+            >
+              {check.pass ? "✓" : "✗"} {check.name} — {check.detail}
+            </Text>
+          ))}
+          {expanded === URL_EXTRACT_FIXTURE.id &&
+          results[URL_EXTRACT_FIXTURE.id]?.draft ? (
+            <Text style={styles.raw}>
+              {JSON.stringify(results[URL_EXTRACT_FIXTURE.id]!.draft!.post, null, 2)}
+            </Text>
+          ) : null}
+        </Pressable>
         {done.length > 0 ? (
           <Text style={styles.summary}>
             {passed}/{done.length} passed · avg{" "}

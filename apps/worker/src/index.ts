@@ -162,6 +162,7 @@ function buildInput(rows: IngestSubmission[]): PipelineInput {
       urls,
       notes,
       force,
+      draft: payload.draft,
       submittedById,
       projectId,
     };

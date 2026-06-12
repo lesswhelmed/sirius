@@ -52,6 +52,24 @@ Metro single-instance resolveRequest (expo-gl black-screen workaround), `space.t
 `bun.lock`. The llama.rn `^0.11.5` bump + this effort's app changes are committed (see
 "Where we are").
 
+## Extraction/generation split (URLs, added 2026-06-12 — VERIFIED)
+
+URL ingestion is now split into phases: **extraction** (server, de-identified) and
+**generation** (on-device). `POST /api/app/extract` (session-authed for abuse control
+ONLY — no DB writes, no user/URL/content in logs; per-user 10 + global 60 per 5-min
+in-memory windows in `apps/web/lib/rate-limit.ts`) returns Gemini url_context's plain
+summary via the new shared `packages/extraction` (`extractUrlContext`, also used by the
+worker's url branch — moved verbatim, regression-verified). Mobile (`materials.ts`
+urlHandler): curation on + model ready → fetch extract → `draftUrlPost` (FINDING voice,
+engine `llama.rn:<model>+server-extract`, notes only join on-device) → submit with the
+envelope; web/worker now honor SINGLE-url drafts (`submit.ts`, `draft-runner.ts` — type
+still forced FINDING, Source:/original_url added server-side; multi-url still strips).
+Every step soft-fails to the old server-drafted path (missing endpoint, 401/429/502,
+offline). Verified: endpoint 401/400/429/200, no-draft regression (gemini path, 2s),
+bench "URL draft from canned extract" card (offline generation-phase test, /llm-test),
+composer e2e (worker 0.72s draft:client, FINDING + Source line). Later phase (documented
+intent): cache extracts on-device so URL drafting can happen fully offline + outbox.
+
 ## Repo orientation (read first)
 
 | Path | Why |

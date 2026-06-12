@@ -8,6 +8,7 @@ import type { ShareIntent } from "expo-share-intent";
 
 import { ApiError } from "@/lib/api";
 import {
+  fetchUrlExtract,
   formatError,
   noteIngestBody,
   submitFile,
@@ -20,6 +21,7 @@ import {
   canDraftOnDevice,
   draftNotePost,
   draftSightPost,
+  draftUrlPost,
 } from "@/lib/llm/curate";
 import { canTranscribeOnDevice, transcribeAudio } from "@/lib/llm/transcribe";
 import { enqueueOutbox } from "@/lib/outbox";
@@ -230,9 +232,26 @@ const urlHandler: MaterialHandler<"url"> = {
     const errors: string[] = [];
     const failed: UrlMaterial[] = [];
     let submitted = 0;
+    // Extraction/generation split: with curation on and a model ready, fetch
+    // the de-identified page summary from the server, draft the FINDING
+    // locally, and attach the envelope so the worker skips its Gemini stage.
+    // Every step soft-fails to the plain submit (server drafts) — older
+    // deploys without /api/app/extract, rate limits, Android model quirks,
+    // or a bad extract can only ever cost the old behavior, never an error.
+    const draftLocally =
+      ctx.onDeviceCuration === true &&
+      materials.length > 0 &&
+      (await canDraftOnDevice());
     for (const [i, m] of materials.entries()) {
+      let draft;
+      if (draftLocally) {
+        const summary = await fetchUrlExtract([m.url]);
+        draft = summary
+          ? ((await draftUrlPost(summary, m.notes ?? "")) ?? undefined)
+          : undefined;
+      }
       try {
-        await submitUrl(m.url, m.notes ?? "", ctx.force, ctx.projectId);
+        await submitUrl(m.url, m.notes ?? "", ctx.force, ctx.projectId, draft);
         submitted++;
       } catch (err) {
         const label = `URL ${i + 1}/${materials.length}`;

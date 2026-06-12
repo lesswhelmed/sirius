@@ -105,11 +105,13 @@ export async function submitUrlIngest(
   // hatch for intentional regeneration.
   const contentHash = contentHashForUrls(urls, notes, force);
 
-  // A draft only makes sense for note-kind submissions; URL ingests must go
-  // through the worker's url_context fetch (the client can't see the page).
+  // Drafts are honored for notes and for SINGLE-url submissions (the client
+  // drafts from /api/app/extract's summary — the extraction/generation split).
+  // Multi-url batches still go through the worker's url_context fetch, which
+  // is the only path that folds several pages into one post.
   let draft = parsed.data.draft;
-  if (draft && kind !== "note") {
-    log("warn", "draft-ignored-for-url", { urlCount: urls.length });
+  if (draft && kind === "url" && urls.length > 1) {
+    log("warn", "draft-ignored-for-multi-url", { urlCount: urls.length });
     draft = undefined;
   }
 

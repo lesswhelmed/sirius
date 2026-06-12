@@ -172,6 +172,78 @@ export async function draftNotePost(
   }
 }
 
+// FINDING voice for URL posts drafted from a server-fetched extract — adapted
+// from the worker's buildUrlStructuringPrompt so an on-device URL draft reads
+// like a Gemini one. The extract comes from /api/app/extract (de-identified);
+// the author's notes only join here, on-device.
+function buildUrlPrompt(summary: string, notes: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  const lines = [
+    "You are drafting a single FINDING post for a personal blog from a pre-fetched URL summary.",
+    `Today's date: ${today}.`,
+    "Voice: first-person, observational, concrete. 80-300 words.",
+    "No marketing copy. No 'Here is' preambles. No code fences in the body.",
+    "Summarize what's on the page, why it's worth noting, anything specific that surprised you. Cite any quoted phrases inline naturally.",
+    "",
+    "Pre-fetched URL summary:",
+    summary,
+  ];
+  if (notes.trim()) {
+    lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
+  }
+  lines.push("", NOTE_JSON_INSTRUCTIONS);
+  return lines.join("\n");
+}
+
+// Drafts a FINDING post from a server-fetched URL extract. Same soft-fail
+// contract as draftNotePost; the engine string marks the split provenance.
+export async function draftUrlPost(
+  summary: string,
+  notes: string
+): Promise<DraftEnvelope | null> {
+  try {
+    if (!(await canDraftOnDevice())) {
+      return null;
+    }
+    const settings = await getLlmSettings();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
+    try {
+      const { object } = await withPreparedModel(
+        settings.modelId,
+        "draft",
+        (model) => {
+          if (controller.signal.aborted) {
+            throw new Error("draft timed out waiting for the model");
+          }
+          return generateObject({
+            model,
+            schema: PostDraftSchema,
+            prompt: buildUrlPrompt(summary, notes),
+            temperature: 0.7,
+            maxOutputTokens: 1024,
+            abortSignal: controller.signal,
+            experimental_repairText: repairText,
+          });
+        }
+      );
+      return {
+        schemaVersion: 1,
+        engine: `llama.rn:${settings.modelId}+server-extract`,
+        draftedAt: new Date().toISOString(),
+        post: object,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    console.warn(
+      `[llm] on-device url draft failed, submitting without draft: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return null;
+  }
+}
+
 const SIGHT_JSON_INSTRUCTIONS = [
   "Respond with ONLY a JSON object — no commentary, no markdown fences.",
   "All six fields are REQUIRED. Shape:",

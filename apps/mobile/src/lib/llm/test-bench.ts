@@ -11,7 +11,7 @@
 // them without touching the UI.
 import type { DraftEnvelope } from "@repo/ingest-draft";
 
-import { draftNotePost } from "./curate";
+import { draftNotePost, draftUrlPost } from "./curate";
 
 export type DraftFixture = { id: string; label: string; notes: string };
 
@@ -109,6 +109,47 @@ export function qualityChecks(draft: DraftEnvelope): DraftCheck[] {
       detail: title,
     },
   ];
+}
+
+// URL bench: a canned extract summary (what /api/app/extract would return for
+// a typical article) so the GENERATION phase of the URL split is testable
+// offline in isolation — same draftUrlPost export the urlHandler uses.
+export const URL_EXTRACT_FIXTURE = {
+  id: "url-extract",
+  label: "URL draft from canned extract",
+  summary:
+    "The page is a long-form essay arguing that small personal websites are " +
+    "quietly coming back. The author tracks three waves: the 2000s blog era, " +
+    "the platform consolidation of the 2010s, and a current return driven by " +
+    'frustration with feeds. One striking line: "an algorithm is a landlord ' +
+    'for your attention." It closes with practical advice — buy a domain, ' +
+    "write irregularly, link to other people generously — and a list of " +
+    "webrings that have re-formed since 2024.",
+};
+
+export async function runUrlDraft(): Promise<FixtureResult> {
+  const start = Date.now();
+  const draft = await draftUrlPost(URL_EXTRACT_FIXTURE.summary, "");
+  const ms = Date.now() - start;
+  const checks = draft ? qualityChecks(draft) : [];
+  const result: FixtureResult = {
+    id: URL_EXTRACT_FIXTURE.id,
+    ok: draft !== null && checks.every((c) => c.pass),
+    ms,
+    draft,
+    checks,
+  };
+  console.log(
+    `[llm-test] ${JSON.stringify({
+      id: result.id,
+      ok: result.ok,
+      ms: result.ms,
+      draftNull: draft === null,
+      engine: draft?.engine ?? null,
+      title: draft?.post.title ?? null,
+    })}`
+  );
+  return result;
 }
 
 // Audio bench: drafts a post from a recorded transcript through the exact

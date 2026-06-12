@@ -24,6 +24,9 @@ export type PipelineInput =
       urls: string[];
       notes: string;
       force: boolean;
+      // Optional client-supplied draft envelope (single-url extraction/
+      // generation split only). Untrusted — draft-runner.ts re-validates.
+      draft?: unknown;
       submittedById: string | null;
       projectId: string | null;
     }

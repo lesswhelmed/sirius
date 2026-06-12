@@ -46,8 +46,29 @@ export function tryClientDraft(input: PipelineInput): GeminiOutput | null {
     });
   }
 
-  // url / video / audio / document never carry a usable draft: URLs require the
-  // worker's url_context fetch, and file kinds upload bytes precisely because
-  // the client did NOT process them locally.
+  // Single-url submissions may carry a draft: the client fetched the page
+  // summary from /api/app/extract and drafted locally (extraction/generation
+  // split). The web layer already strips drafts from multi-url batches; the
+  // length check here re-asserts it on the stored payload. toGeminiOutput adds
+  // the Source:/YouTubeEmbed line and original_url frontmatter exactly like
+  // the Gemini path; type is still forced to FINDING from the kind.
+  if (input.kind === "url") {
+    if (input.draft == null || input.urls.length !== 1) {
+      return null;
+    }
+    const parsed = DraftEnvelopeSchema.safeParse(input.draft);
+    if (!parsed.success) {
+      console.warn(
+        `[draft] invalid url draft envelope, falling back to Gemini: ${parsed.error.message}`
+      );
+      return null;
+    }
+    return toGeminiOutput(parsed.data.post, "FINDING", {
+      originalUrl: input.urls[0],
+    });
+  }
+
+  // video / audio / document never carry a usable draft: file kinds upload
+  // bytes precisely because the client did NOT process them locally.
   return null;
 }

@@ -27,14 +27,33 @@ export function submitUrl(
   url: string,
   notes = "",
   force = false,
-  projectId?: string
+  projectId?: string,
+  draft?: DraftEnvelope
 ): Promise<SubmitOk> {
   return apiPostJson<SubmitOk>("/api/app/ingest", {
     urls: [url],
     notes,
     force,
     ...(projectId ? { projectId } : {}),
-  });
+    // Single-url submissions may carry an on-device draft built from the
+    // /api/app/extract summary; the server only honors it for one URL.
+    ...(draft ? { draft } : {}),
+  } as Parameters<typeof apiPostJson>[1]);
+}
+
+// Fetches the de-identified URL summary from the extraction endpoint. Null on
+// ANY failure (endpoint missing on older deploys, 401/429/502, offline, …) —
+// callers fall back to the server-drafted path, never surface an error.
+export async function fetchUrlExtract(urls: string[]): Promise<string | null> {
+  try {
+    const res = await apiPostJson<{ summary: string }>("/api/app/extract", {
+      urls,
+    });
+    const summary = res.summary?.trim();
+    return summary && summary.length > 0 ? summary : null;
+  } catch {
+    return null;
+  }
 }
 
 // Builds the exact /api/app/ingest JSON body for a note. Shared between the
