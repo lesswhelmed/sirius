@@ -520,30 +520,39 @@ export default function ComposerScreen() {
             </View>
           )}
 
-          <View style={styles.curationRow}>
-            <View style={styles.curationCopy}>
-              <Text style={styles.curationLabel}>Draft on device</Text>
-              <Text style={styles.curationHint}>
-                {llmReady.data
-                  ? "Notes are written privately by the local model."
-                  : "Download a local model first."}
-              </Text>
-              {!llmReady.data ? (
+          {llmReady.data === true ? (
+            <View style={styles.curationRow}>
+              <View style={styles.curationCopy}>
+                <Text style={styles.curationLabel}>Draft on device</Text>
+                <Text style={styles.curationHint}>
+                  Notes are written privately by the local model.
+                </Text>
+              </View>
+              <Switch
+                value={curationOn}
+                onValueChange={(v) => void toggleCuration(v)}
+                trackColor={{ true: Sirius.color.ink }}
+                accessibilityLabel="Draft on device"
+              />
+            </View>
+          ) : llmReady.isSuccess ? (
+            // No model on disk: the switch is hidden until the user downloads
+            // one from the /llm screen. (Still loading → render neither, so the
+            // CTA doesn't flash on every composer mount.)
+            <View style={styles.curationRow}>
+              <View style={styles.curationCopy}>
+                <Text style={styles.curationLabel}>On-device AI</Text>
+                <Text style={styles.curationHint}>
+                  Download a model to draft privately.
+                </Text>
                 <TextLink
                   label="Get the model →"
                   tone={Sirius.color.accent}
                   onPress={() => router.push("/llm")}
                 />
-              ) : null}
+              </View>
             </View>
-            <Switch
-              value={curationOn}
-              onValueChange={(v) => void toggleCuration(v)}
-              disabled={!llmReady.data && !curationOn}
-              trackColor={{ true: Sirius.color.ink }}
-              accessibilityLabel="Draft on device"
-            />
-          </View>
+          ) : null}
 
           <PrimaryButton
             label={tray.length === 0 ? "Add something to submit" : "Submit"}
@@ -605,6 +614,8 @@ const styles = StyleSheet.create({
   container: {
     padding: Sirius.space.xl,
     paddingTop: 64,
+    // Clear the floating native tab bar, same as library/queue.
+    paddingBottom: 120,
     gap: Sirius.space.lg,
   },
   header: {

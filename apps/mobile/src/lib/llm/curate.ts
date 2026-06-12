@@ -4,19 +4,93 @@
 // Every failure path returns null — the caller submits without a draft and the
 // worker's Gemini stage picks it up, so local drafting can only ever improve
 // privacy/latency, never lose a capture.
+//
+// Drafts are generated with generateObject(schema), but the prompt ALSO spells
+// out the JSON shape and experimental_repairText extracts the object from any
+// surrounding prose/fences: llama.rn 0.11.x silently drops the json_schema
+// grammar when driven through @react-native-ai/llama@0.12 (peer range is
+// llama.rn ^0.10.1), so schema enforcement at the sampler can't be relied on.
+// Verified on-device 2026-06-11; the prompt+repair belt stays harmless once
+// the provider supports llama.rn 0.11+ and the grammar kicks in again.
 import {
   type DraftEnvelope,
   PostDraftSchema,
   type SightDraftEnvelope,
   SightDraftSchema,
 } from "@repo/ingest-draft";
-import { generateText, Output } from "ai";
+import { generateObject } from "ai";
 
 import { getPreparedModel, isModelReady } from "./engine";
 import { VISION_MODEL_ID } from "./models";
 import { getLlmSettings } from "./settings";
 
 const DRAFT_TIMEOUT_MS = 180_000;
+
+// Returns the first balanced JSON object in the text (tolerating prose
+// preambles and ``` fences), with raw control characters inside string
+// literals escaped — small local models routinely emit real newlines inside
+// the multi-paragraph "body" value, which is invalid JSON. Used as
+// generateObject's repairText so a near-miss reply still parses.
+function extractJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) {
+    return null;
+  }
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  const out: string[] = [];
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        out.push(ch);
+      } else if (ch === "\\") {
+        escaped = true;
+        out.push(ch);
+      } else if (ch === '"') {
+        inString = false;
+        out.push(ch);
+      } else if (ch === "\n") {
+        out.push("\\n");
+      } else if (ch === "\r") {
+        out.push("\\r");
+      } else if (ch === "\t") {
+        out.push("\\t");
+      } else {
+        out.push(ch);
+      }
+      continue;
+    }
+    out.push(ch);
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return out.join("");
+      }
+    }
+  }
+  return null;
+}
+
+const repairText = async ({ text }: { text: string }) =>
+  extractJsonObject(text);
+
+const NOTE_JSON_INSTRUCTIONS = [
+  "Respond with ONLY a JSON object — no commentary, no markdown fences.",
+  "All four fields are REQUIRED. Shape:",
+  "{",
+  '  "title": "short, plainspoken title; no clickbait",',
+  '  "body": "REQUIRED — the full 80-300 word post text written from the notes",',
+  '  "tags": ["1-5 lowercase kebab-case tags"],',
+  '  "categories": ["1-3 lowercase kebab-case categories"]',
+  "}",
+].join("\n");
 
 function buildNotePrompt(notes: string): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -29,6 +103,8 @@ function buildNotePrompt(notes: string): string {
     "Compose a short BLOG entry from the author's notes:",
     "",
     notes.trim(),
+    "",
+    NOTE_JSON_INSTRUCTIONS,
   ].join("\n");
 }
 
@@ -58,22 +134,20 @@ export async function draftNotePost(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
     try {
-      // Same structured-output pattern as the worker's gemini-runner.
-      const { output } = await generateText({
+      const { object } = await generateObject({
         model,
+        schema: PostDraftSchema,
         prompt: buildNotePrompt(notes),
         temperature: 0.7,
+        maxOutputTokens: 1024,
         abortSignal: controller.signal,
-        output: Output.object({ schema: PostDraftSchema }),
+        experimental_repairText: repairText,
       });
-      // Output.object already validated against the schema; parse once more so
-      // the envelope we ship is exactly what the server will accept.
-      const post = PostDraftSchema.parse(output);
       return {
         schemaVersion: 1,
         engine: `llama.rn:${settings.modelId}`,
         draftedAt: new Date().toISOString(),
-        post,
+        post: object,
       };
     } finally {
       clearTimeout(timer);
@@ -85,6 +159,19 @@ export async function draftNotePost(
     return null;
   }
 }
+
+const SIGHT_JSON_INSTRUCTIONS = [
+  "Respond with ONLY a JSON object — no commentary, no markdown fences.",
+  "All six fields are REQUIRED. Shape:",
+  "{",
+  '  "title": "2-5 word noun phrase naming the literal subject",',
+  '  "body": "REQUIRED — the full 60-160 word post text describing the photo(s)",',
+  '  "excerpt": "one plain declarative sentence summarizing the photo(s)",',
+  '  "imageAlts": ["one short factual caption per photo, in order"],',
+  '  "tags": ["1-5 lowercase kebab-case tags"],',
+  '  "categories": ["1-3 lowercase kebab-case categories"]',
+  "}",
+].join("\n");
 
 function buildSightPrompt(imageCount: number, notes: string): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -99,6 +186,7 @@ function buildSightPrompt(imageCount: number, notes: string): string {
   if (notes.trim()) {
     lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
   }
+  lines.push("", SIGHT_JSON_INSTRUCTIONS);
   return lines.join("\n");
 }
 
@@ -132,8 +220,9 @@ export async function draftSightPost(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
     try {
-      const { output } = await generateText({
+      const { object } = await generateObject({
         model,
+        schema: SightDraftSchema,
         messages: [
           {
             role: "user",
@@ -148,11 +237,11 @@ export async function draftSightPost(
           },
         ],
         temperature: 0.7,
+        maxOutputTokens: 1024,
         abortSignal: controller.signal,
-        output: Output.object({ schema: SightDraftSchema }),
+        experimental_repairText: repairText,
       });
-      const post = SightDraftSchema.parse(output);
-      if (post.imageAlts.length !== imageUris.length) {
+      if (object.imageAlts.length !== imageUris.length) {
         // The worker's post-writer tolerates a count mismatch (falls back to
         // the title), but a small VLM losing track of image order is a strong
         // signal the rest of the draft is unreliable too. Let Gemini do it.
@@ -162,7 +251,7 @@ export async function draftSightPost(
         schemaVersion: 1,
         engine: `llama.rn:${VISION_MODEL_ID}`,
         draftedAt: new Date().toISOString(),
-        post,
+        post: object,
       };
     } finally {
       clearTimeout(timer);

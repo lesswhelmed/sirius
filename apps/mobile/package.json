@@ -56,7 +56,7 @@
     "expo-system-ui": "~56.0.5",
     "expo-updates": "~56.0.17",
     "expo-web-browser": "~56.0.5",
-    "llama.rn": "^0.10.1",
+    "llama.rn": "^0.11.5",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.85.3",
