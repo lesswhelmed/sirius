@@ -67,8 +67,8 @@ echo "       enable FULL TRUST for the portless root CA."
 echo "    4. The dev stack is then at https://sirius.local from the device"
 echo "       (same Wi-Fi as this Mac; mDNS/Bonjour must not be blocked)."
 echo
-echo "==> Dev proxy ready:"
-portless get sirius 2>/dev/null || echo "    https://sirius.localhost (registers once you run \`bun run dev\`)"
-echo "    LAN: https://sirius.local (devices on this Wi-Fi)"
+echo "==> Dev proxy ready (LAN mode serves ONLY the .local name):"
+portless get sirius 2>/dev/null || echo "    https://sirius.local (registers once you run \`bun run dev\`)"
 echo
-echo "Next: start the apps with \`bun run dev\` (web at https://sirius.localhost and https://sirius.local)."
+echo "Next: start the apps with \`bun run dev\` — web at https://sirius.local"
+echo "(make sure BETTER_AUTH_URL / NEXT_PUBLIC_BETTER_AUTH_URL in .env match)."

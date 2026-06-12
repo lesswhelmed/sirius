@@ -9,10 +9,13 @@
 //   - packages/auth/src/index.ts → `devTrustedOrigins` (better-auth rejects
 //     logins from untrusted origins; derives `https://<host>` from this list)
 //
-// Contract for apps/mobile/.env: EXPO_PUBLIC_AUTH_BASE_URL must be
-// `https://<host>` for one of these hosts (currently https://sirius.local so
-// phones on the Wi-Fi resolve it via portless LAN/mDNS; the Mac and simulator
-// resolve both names).
+// Contract for env files: EXPO_PUBLIC_AUTH_BASE_URL (apps/mobile/.env) and
+// BETTER_AUTH_URL / NEXT_PUBLIC_BETTER_AUTH_URL (root .env) must be
+// `https://<host>` for one of these hosts. IMPORTANT: the portless proxy
+// serves ONE name per mode — LAN mode (`--lan`, the current default via
+// dev:proxy) serves ONLY `sirius.local` (sirius.localhost 404s); non-LAN mode
+// serves only `sirius.localhost`. Both stay whitelisted here so switching
+// modes is an env-value change, not a config hunt.
 //
 // Plain ESM JS (not TS) on purpose: next.config.js is loaded natively by Node
 // before any transpilation, so the source of truth must be runnable as-is.

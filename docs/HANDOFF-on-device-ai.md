@@ -83,9 +83,10 @@ in `next.config.js` + `packages/auth`.
 install from the EAS QR. AirDrop `~/.portless/ca.pem` to the phone → Settings →
 Profile Downloaded → Install → General → About → Certificate Trust Settings → full trust.
 
-**Per session:** `bun run dev:proxy` → `bun run dev` → `bun run worker:dev` → Metro from
-`apps/mobile` (`bunx expo start`) → open the dev client on the phone → scan Metro's QR →
-sign in (web at `https://sirius.local`).
+**Per session:** `bun run dev:proxy` → `bun run dev` (or `bun run notmobile:dev` +
+`bun --cwd apps/mobile start` — always the package scripts) → open the dev client on the
+phone → scan Metro's QR → sign in (web at `https://sirius.local`; LAN mode serves ONLY
+the `.local` name, and `BETTER_AUTH_URL`/`NEXT_PUBLIC_BETTER_AUTH_URL` must match it).
 
 **Acceptance checklist (in order, using the built-in benches):**
 1. `/llm` chat streams on hardware (Phase A; model download ~2.1 GB on the phone).

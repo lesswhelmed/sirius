@@ -20,7 +20,7 @@ Package manager is **bun** (`bun@1.3.14`, hoisted linker). Run from repo root un
 bun install                     # install (use --frozen-lockfile on deploy)
 bun run build                   # turbo build all
 bun run dev:proxy               # one-time per boot: start portless + trust CA in the iOS Simulator
-bun run dev                     # turbo dev all (persistent); web served at https://sirius.localhost
+bun run dev                     # turbo dev all (persistent); web served at https://sirius.local
 bun run lint                    # turbo lint (eslint, --max-warnings 0 per app)
 bun run check-types             # turbo tsc --noEmit (web also runs `next typegen` first)
 bun run format                  # prettier on **/*.{ts,tsx,md}
@@ -41,27 +41,27 @@ turbo dev --filter=web          # or --filter=worker, --filter=mobile
 turbo build --filter=web
 ```
 
-**Local dev URL (portless).** The web app's `dev` script runs through
+**Local dev URL (portless LAN mode).** The web app's `dev` script runs through
 [portless](https://www.npmjs.com/package/portless), a reverse proxy that serves it at the
-stable HTTPS name **`https://sirius.localhost`** (forwarding to `next dev` on a pinned port
-3000). This is so the mobile app's `EXPO_PUBLIC_AUTH_BASE_URL` never goes stale when the
-machine's network changes. Config is the `"portless"` key in `apps/web/package.json`
-(`name: sirius`, `appPort: 3000`). `bun run dev:proxy` (→ `scripts/setup-dev-proxy.sh`) is a
-one-time-per-boot step that starts the proxy daemon and — crucially — runs
-`xcrun simctl keychain booted add-root-cert ~/.portless/ca.pem` so the **iOS Simulator** trusts
-portless's CA (the simulator does NOT inherit the macOS trust store). The port is pinned to 3000
-so the worker's `WEB_REVALIDATE_URL=http://localhost:3000/...` keeps working (the worker isn't a
+stable HTTPS name **`https://sirius.local`** (mDNS/LAN mode — reachable from this Mac, the
+iOS Simulator, AND phones on the same Wi-Fi; forwards to `next dev` on pinned port 3000).
+**LAN mode serves ONLY the `.local` name** — `sirius.localhost` 404s while it's active
+(it's the non-LAN-mode name; both stay whitelisted so switching modes is just an env
+change). Config is the `"portless"` key in `apps/web/package.json` (`name: sirius`,
+`appPort: 3000`). `bun run dev:proxy` (→ `scripts/setup-dev-proxy.sh`) is a
+one-time-per-boot step that starts the proxy daemon in LAN mode (persisted) and —
+crucially — runs `xcrun simctl keychain booted add-root-cert ~/.portless/ca.pem` so the
+**iOS Simulator** trusts portless's CA (the simulator does NOT inherit the macOS trust
+store); it also prints the iPhone CA-trust steps. The port is pinned to 3000 so the
+worker's `WEB_REVALIDATE_URL=http://localhost:3000/...` keeps working (the worker isn't a
 portless child). Dev hostnames have ONE source of truth — **`packages/auth/dev-hosts.js`**
 (`DEV_HOSTS`) — from which both `apps/web/next.config.js` (`allowedDevOrigins`) and
-`packages/auth/src/index.ts` (`devTrustedOrigins`, as `https://<host>`) derive; add a
-hostname there and both layers follow (the file's header documents the contract,
-including that `apps/mobile/.env`'s `EXPO_PUBLIC_AUTH_BASE_URL` must use one of these
-hosts). Bypass with
-`PORTLESS=0 bun --cwd apps/web run dev:app`. The proxy runs in **LAN mode** (`--lan`,
-persisted by portless): the same app is also served at **`https://sirius.local`** over mDNS
-for physical devices on the Wi-Fi — `apps/mobile/.env` points the dev client there, and a
-phone must trust the portless CA (`dev:proxy` prints the install steps). The
-physical-device test runbook lives in `docs/HANDOFF-on-device-ai.md`.
+`packages/auth/src/index.ts` (`devTrustedOrigins`, as `https://<host>`) derive; the file's
+header documents the contract, including that `EXPO_PUBLIC_AUTH_BASE_URL`
+(apps/mobile/.env) and `BETTER_AUTH_URL`/`NEXT_PUBLIC_BETTER_AUTH_URL` (root .env) must
+all point at the host the current proxy mode serves (`https://sirius.local`). Bypass with
+`PORTLESS=0 bun --cwd apps/web run dev:app`. The physical-device test runbook lives in
+`docs/HANDOFF-on-device-ai.md`.
 
 There is **no test runner wired up** (`scripts/testing/` exists but nothing in package.json
 runs it). Don't claim tests pass — there are none to run.
