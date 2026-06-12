@@ -23,10 +23,6 @@ export class ApiError extends Error {
 function buildHeaders(extra?: HeadersInit): Headers {
   const headers = new Headers(extra);
   const cookie = authClient.getCookie();
-  // TODO(debug): remove — tracing simulator 401s
-  if (__DEV__) {
-    console.log("[api] cookie present:", Boolean(cookie), "len:", cookie?.length ?? 0);
-  }
   if (cookie) {
     headers.set("Cookie", cookie);
   }

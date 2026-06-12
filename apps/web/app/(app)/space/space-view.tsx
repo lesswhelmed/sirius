@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { linkedPosts } from "@repo/embedding-scene/scene-queries";
 import { SpaceScene } from "@repo/embedding-scene/react/space-scene";
@@ -176,26 +176,20 @@ function IndexPanel({
 }
 
 export function SpaceView({ scene }: { scene: EmbeddingScene }) {
-  const { selected, select, neighborIds } = useSceneSelection(scene);
-  const [drilledId, setDrilledId] = useState<string | null>(null);
+  const {
+    selected,
+    select,
+    neighborIds,
+    drilled,
+    drilledEntries,
+    drill,
+    closeDrill,
+  } = useSceneSelection(scene);
   const childrenMap = useMemo(() => categoryChildren(scene), [scene]);
-  const drilled = useMemo(
-    () => (drilledId ? (scene.nodes.find((n) => n.id === drilledId) ?? null) : null),
-    [scene, drilledId]
-  );
-  const drilledEntries = useMemo(
-    () => (drilledId ? linkedPosts(scene, drilledId) : []),
-    [scene, drilledId]
-  );
-  // selecting a different node closes a stale index
-  const handleSelect = (id: string | null) => {
-    select(id);
-    if (id === null || (drilledId && id !== drilledId)) setDrilledId(null);
-  };
   // first click selects; a repeat click on the same node opens The Index
   const pick = (id: string) => {
-    if (id === selected?.id) setDrilledId(id);
-    else handleSelect(id);
+    if (id === selected?.id) drill(id);
+    else select(id);
   };
   return (
     <section>
@@ -229,14 +223,14 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
         <div className="relative min-w-0 flex-1 border border-[var(--color-rule)] bg-[var(--color-ink)]">
           <Canvas
             camera={{ position: [0, 4, 18], fov: 50 }}
-            onPointerMissed={() => handleSelect(null)}
+            onPointerMissed={() => select(null)}
           >
             <SpaceScene
               scene={scene}
               selectedId={selected?.id ?? null}
               neighborIds={neighborIds}
-              onSelect={handleSelect}
-              onDrill={setDrilledId}
+              onSelect={select}
+              onDrill={drill}
             />
             <OrbitControls enableDamping makeDefault />
           </Canvas>
@@ -264,10 +258,10 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
                     Open post →
                   </a>
                 ) : null}
-                {selected.kind !== "post" && drilledId !== selected.id ? (
+                {selected.kind !== "post" && drilled?.id !== selected.id ? (
                   <button
                     type="button"
-                    onClick={() => setDrilledId(selected.id)}
+                    onClick={() => drill(selected.id)}
                     className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)] underline underline-offset-4 hover:text-[var(--fg)]"
                   >
                     Click again for the index
@@ -280,8 +274,8 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
             <IndexPanel
               node={drilled}
               entries={drilledEntries}
-              onClose={() => setDrilledId(null)}
-              onFocus={handleSelect}
+              onClose={closeDrill}
+              onFocus={select}
             />
           ) : null}
         </div>
