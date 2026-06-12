@@ -16,6 +16,7 @@
     "@google/genai": "^2.8.0",
     "@repo/db": "*",
     "@repo/embedding-scene": "*",
+    "@repo/extraction": "*",
     "@repo/ingest-draft": "*",
     "ai": "^6.0.182",
     "apify-client": "^2.23.3",

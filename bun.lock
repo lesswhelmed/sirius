@@ -108,6 +108,7 @@
         "@repo/auth": "*",
         "@repo/db": "*",
         "@repo/embedding-scene": "*",
+        "@repo/extraction": "*",
         "@repo/ingest-draft": "*",
         "@repo/ui": "*",
         "better-auth": "^1.6.13",
@@ -142,6 +143,7 @@
         "@google/genai": "^2.8.0",
         "@repo/db": "*",
         "@repo/embedding-scene": "*",
+        "@repo/extraction": "*",
         "@repo/ingest-draft": "*",
         "ai": "^6.0.182",
         "apify-client": "^2.23.3",
@@ -223,6 +225,21 @@
         "globals": "^16.5.0",
         "typescript": "~6.0.3",
         "typescript-eslint": "^8.50.0",
+      },
+    },
+    "packages/extraction": {
+      "name": "@repo/extraction",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/google": "^3.0.73",
+        "ai": "^6.0.182",
+      },
+      "devDependencies": {
+        "@repo/eslint-config": "*",
+        "@repo/typescript-config": "*",
+        "@types/node": "^22.15.3",
+        "eslint": "^9.39.1",
+        "typescript": "~6.0.3",
       },
     },
     "packages/ingest-draft": {
@@ -849,6 +866,8 @@
     "@repo/embedding-scene": ["@repo/embedding-scene@workspace:packages/embedding-scene"],
 
     "@repo/eslint-config": ["@repo/eslint-config@workspace:packages/eslint-config"],
+
+    "@repo/extraction": ["@repo/extraction@workspace:packages/extraction"],
 
     "@repo/ingest-draft": ["@repo/ingest-draft@workspace:packages/ingest-draft"],
 

@@ -12,9 +12,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { PostType } from "@repo/db";
+import { extractUrlContext } from "@repo/extraction";
 import { PostDraftSchema, SightDraftSchema } from "@repo/ingest-draft";
 import type { PostDraft } from "@repo/ingest-draft";
-import { generateText, Output, stepCountIs } from "ai";
+import { generateText, Output } from "ai";
 import { getAIConfig } from "../lib/ai-config";
 import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseYouTubeUrl } from "../lib/youtube-url";
@@ -66,19 +67,9 @@ function buildPrompt(input: PipelineInput): string {
     "",
   ];
 
-  if (input.kind === "url") {
-    lines.push(
-      "Use the url_context tool to fetch every URL below before drafting. Summarize what you found as a short FINDING — what's on the page, why it's worth noting, anything specific that surprised you. Cite any quoted phrases inline naturally.",
-      "",
-      "URLs:"
-    );
-    for (const url of input.urls) {
-      lines.push(`  - ${url}`);
-    }
-    if (input.notes.trim()) {
-      lines.push("", `Author's notes (verbatim): ${input.notes.trim()}`);
-    }
-  } else if (input.kind === "image") {
+  // url-kind extraction prompts live in @repo/extraction (shared with the web
+  // extract endpoint); runGemini's url branch never reaches this builder.
+  if (input.kind === "image") {
     lines.push(
       `${input.images.length} photo(s) are attached, in order. Write a SIGHT post about what is actually in them.`,
       "Title: a 2-5 word noun phrase naming the literal subject.",
@@ -196,7 +187,6 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
   const config = getAIConfig();
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
   const model = google(config.model);
-  const prompt = buildPrompt(input);
 
   if (input.kind === "url") {
     const instagramUrls = input.urls.filter((u) => parseInstagramUrl(u));
@@ -266,12 +256,14 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
         }
       }
     }
-    const { text: summary } = await generateText({
-      model,
-      tools: { url_context: google.tools.urlContext({}) },
-      stopWhen: stepCountIs(4),
+    // Step 1 (extraction) is shared with the web /api/app/extract endpoint;
+    // the worker passes notes (historical behavior), the endpoint does not.
+    const { summary } = await extractUrlContext({
+      urls: input.urls,
+      notes: input.notes,
+      apiKey: config.apiKey,
+      model: config.model,
       temperature: config.temperature,
-      prompt,
     });
     const { output } = await generateText({
       model,
@@ -281,6 +273,8 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
     });
     return toGeminiOutput(output, "FINDING", { originalUrl: input.urls[0] });
   }
+
+  const prompt = buildPrompt(input);
 
   if (input.kind === "image") {
     const imageParts = input.images.map(loadImagePart);

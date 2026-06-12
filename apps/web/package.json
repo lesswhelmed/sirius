@@ -22,6 +22,7 @@
     "@repo/auth": "*",
     "@repo/db": "*",
     "@repo/embedding-scene": "*",
+    "@repo/extraction": "*",
     "@repo/ingest-draft": "*",
     "@repo/ui": "*",
     "better-auth": "^1.6.13",
