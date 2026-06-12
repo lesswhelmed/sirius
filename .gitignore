@@ -55,3 +55,6 @@ apps/web/public/social/
 # Testing creds (agent-browser scripts)
 scripts/testing/.creds.local
 .mcp.json
+
+# Expo state (created if expo is ever run from the repo root)
+.expo/
