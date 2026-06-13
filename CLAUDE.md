@@ -19,8 +19,9 @@ Package manager is **bun** (`bun@1.3.14`, hoisted linker). Run from repo root un
 ```sh
 bun install                     # install (use --frozen-lockfile on deploy)
 bun run build                   # turbo build all
-bun run dev:proxy               # one-time per boot: start portless + trust CA in the iOS Simulator
-bun run dev                     # turbo dev all (persistent); web served at https://sirius.local
+bun run dev                     # one-shot full stack: boot iOS Simulator + trust CA + web + worker + mobile (expo run:ios opens the app); web at https://sirius.local. Wrapper: scripts/dev.sh
+bun run dev:stack               # raw `turbo dev` all (persistent), NO simulator/proxy prep — escape hatch
+bun run dev:proxy               # heavy proxy reset / macOS re-trust / one-time iPhone CA-trust runbook (scripts/setup-dev-proxy.sh)
 bun run lint                    # turbo lint (eslint, --max-warnings 0 per app)
 bun run check-types             # turbo tsc --noEmit (web also runs `next typegen` first)
 bun run format                  # prettier on **/*.{ts,tsx,md}
@@ -48,11 +49,13 @@ iOS Simulator, AND phones on the same Wi-Fi; forwards to `next dev` on pinned po
 **LAN mode serves ONLY the `.local` name** — `sirius.localhost` 404s while it's active
 (it's the non-LAN-mode name; both stay whitelisted so switching modes is just an env
 change). Config is the `"portless"` key in `apps/web/package.json` (`name: sirius`,
-`appPort: 3000`). `bun run dev:proxy` (→ `scripts/setup-dev-proxy.sh`) is a
-one-time-per-boot step that starts the proxy daemon in LAN mode (persisted) and —
-crucially — runs `xcrun simctl keychain booted add-root-cert ~/.portless/ca.pem` so the
-**iOS Simulator** trusts portless's CA (the simulator does NOT inherit the macOS trust
-store); it also prints the iPhone CA-trust steps. The port is pinned to 3000 so the
+`appPort: 3000`). The everyday path is `bun run dev` (→ `scripts/dev.sh`), which boots the
+Simulator, starts the proxy in LAN mode (only if nothing already holds :443), runs `xcrun
+simctl keychain booted add-root-cert ~/.portless/ca.pem` so the **iOS Simulator** trusts
+portless's CA (the simulator does NOT inherit the macOS trust store), then execs `turbo run
+dev`. `bun run dev:proxy` (→ `scripts/setup-dev-proxy.sh`) remains the heavier path — it
+force-restarts the proxy to switch modes, re-trusts in the macOS store, and prints the
+one-time iPhone CA-trust steps. The port is pinned to 3000 so the
 worker's `WEB_REVALIDATE_URL=http://localhost:3000/...` keeps working (the worker isn't a
 portless child). Dev hostnames have ONE source of truth — **`packages/auth/dev-hosts.js`**
 (`DEV_HOSTS`) — from which both `apps/web/next.config.js` (`allowedDevOrigins`) and

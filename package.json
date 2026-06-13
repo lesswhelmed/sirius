@@ -4,7 +4,8 @@
   "scripts": {
     "build": "turbo run build",
     "build:mobile:ios": "bun --cwd apps/mobile ios",
-    "dev": "turbo run dev",
+    "dev": "bash scripts/dev.sh",
+    "dev:stack": "turbo run dev",
     "dev:proxy": "bash scripts/setup-dev-proxy.sh",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
