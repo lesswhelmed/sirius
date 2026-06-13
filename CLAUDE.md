@@ -19,7 +19,7 @@ Package manager is **bun** (`bun@1.3.14`, hoisted linker). Run from repo root un
 ```sh
 bun install                     # install (use --frozen-lockfile on deploy)
 bun run build                   # turbo build all
-bun run dev                     # one-shot full stack: boot iOS Simulator + trust CA + web + worker + mobile (expo run:ios opens the app); web at https://sirius.local. Wrapper: scripts/dev.sh
+bun run dev                     # one-shot full stack: boot iOS Simulator + trust CA + web + worker + mobile. Mobile dev = `expo prebuild --clean && bun run verify:native-ai && expo run:ios`, so the native build (on-device-AI/llama.rn JSI bridge baked in + verified) FINISHES before Metro/the app. Fast JS-only escape hatch: `bun --cwd apps/mobile ios`. web at https://sirius.local. Wrapper: scripts/dev.sh
 bun run dev:stack               # raw `turbo dev` all (persistent), NO simulator/proxy prep — escape hatch
 bun run dev:proxy               # heavy proxy reset / macOS re-trust / one-time iPhone CA-trust runbook (scripts/setup-dev-proxy.sh)
 bun run lint                    # turbo lint (eslint, --max-warnings 0 per app)
@@ -97,6 +97,19 @@ bun --cwd apps/mobile update:prod     # eas update --branch production (OTA JS p
   builds with a matching native fingerprint.
 - Prod auth: `AUTH_TRUSTED_ORIGINS` **must include `siriusapp://`** (dev trusts it
   automatically — see `packages/auth/src/index.ts`).
+- On-device AI gate: every `build:*` script and EAS's `eas-build-post-install` hook
+  run `bun run verify:native-ai` (`scripts/verify-native-ai.mjs`) BEFORE the cloud
+  prebuild/compile — it asserts `llama.rn` is installed at the pinned `0.12.4`, ships
+  its iOS podspec + Android gradle (will autolink), and that the config plugin is in
+  `app.json`. A build missing the on-device-AI JSI bridge **fails early** instead of
+  shipping a binary that throws "JSI bindings not installed" after a model download.
+  So no unequipped artifact can reach `eas submit`.
+- llama.rn version is pinned (root `overrides` + `apps/mobile` dep) AHEAD of
+  `@react-native-ai/llama@0.12`'s advisory `^0.10.1` peer: llama.rn **0.10.x** breaks
+  under bridgeless New Arch (its iOS `install()` uses raw `[RCTBridge currentBridge]`,
+  nil in bridgeless → JSI never installs). **0.11.5+ use `self.bridge` (the New-Arch
+  interop proxy) and work.** Do NOT pin llama.rn down into 0.10.x to satisfy the peer
+  warning — it silently kills on-device AI.
 
 Lint note: **ESLint** does the real linting per app (flat config from `@repo/eslint-config`).
 `biome.json` only configures the CSS-modules/Tailwind parser — it is not the linter.

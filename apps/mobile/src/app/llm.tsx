@@ -22,6 +22,8 @@ import { router } from "expo-router";
 import { MetaText, PrimaryButton, Screen, TextLink } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import {
+  checkNativeBridge,
+  describeLlmError,
   downloadModelById,
   isModelReady,
   modelBusyBy,
@@ -48,6 +50,17 @@ export default function LlmScreen() {
     enabled: Boolean(modelId),
   });
 
+  // Probe the native llama.rn bridge before offering anything: a binary missing
+  // it can never run inference, and we'd rather say so up front than after a
+  // multi-GB download. Retry is pointless (only a native rebuild fixes it), so
+  // the query never refetches on its own.
+  const bridge = useQuery({
+    queryKey: ["llm-native-bridge"],
+    queryFn: checkNativeBridge,
+    staleTime: Infinity,
+    retry: false,
+  });
+
   const [downloadPct, setDownloadPct] = useState<number | null>(null);
   const download = useMutation({
     mutationFn: async () => {
@@ -62,10 +75,27 @@ export default function LlmScreen() {
     },
   });
 
-  if (!settings.data || !spec || ready.data === undefined) {
+  if (
+    !settings.data ||
+    !spec ||
+    ready.data === undefined ||
+    bridge.data === undefined
+  ) {
     return (
       <Screen style={styles.center}>
         <ActivityIndicator color={Sirius.color.inkMuted} />
+      </Screen>
+    );
+  }
+
+  if (!bridge.data.ok) {
+    return (
+      <Screen style={styles.container}>
+        <View style={styles.downloadCard}>
+          <MetaText style={styles.cardEyebrow}>Local model</MetaText>
+          <Text style={styles.modelName}>On-device AI unavailable</Text>
+          <Text style={styles.modelDetail}>{bridge.data.reason}</Text>
+        </View>
       </Screen>
     );
   }
@@ -205,7 +235,7 @@ function Chat({
         }
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "generation failed");
+      setError(describeLlmError(err));
       setMessages(history);
     } finally {
       setBusy(null);

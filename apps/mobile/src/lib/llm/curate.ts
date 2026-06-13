@@ -7,11 +7,12 @@
 //
 // Drafts are generated with generateObject(schema), but the prompt ALSO spells
 // out the JSON shape and experimental_repairText extracts the object from any
-// surrounding prose/fences: llama.rn 0.11.x silently drops the json_schema
-// grammar when driven through @react-native-ai/llama@0.12 (peer range is
-// llama.rn ^0.10.1), so schema enforcement at the sampler can't be relied on.
-// Verified on-device 2026-06-11; the prompt+repair belt stays harmless once
-// the provider supports llama.rn 0.11+ and the grammar kicks in again.
+// surrounding prose/fences: as of llama.rn 0.11.x (verified on-device
+// 2026-06-11) the json_schema grammar was silently dropped when driven through
+// @react-native-ai/llama@0.12, so schema enforcement at the sampler couldn't be
+// relied on. We are now on llama.rn 0.12.4 and the grammar behavior there is
+// UNVERIFIED — the prompt+repair belt is harmless either way and stays until a
+// device run confirms the sampler enforces the schema again.
 import {
   type DraftEnvelope,
   PostDraftSchema,
@@ -20,7 +21,7 @@ import {
 } from "@repo/ingest-draft";
 import { generateObject } from "ai";
 
-import { isModelReady, withPreparedModel } from "./engine";
+import { checkNativeBridge, isModelReady, withPreparedModel } from "./engine";
 import { VISION_MODEL_ID } from "./models";
 import { getLlmSettings } from "./settings";
 
@@ -114,6 +115,11 @@ export async function canDraftOnDevice(): Promise<boolean> {
   try {
     const settings = await getLlmSettings();
     if (!settings.onDeviceCuration) {
+      return false;
+    }
+    if (!(await checkNativeBridge()).ok) {
+      // Missing native bridge: drafting would throw on prepare() and the worker
+      // would draft anyway. Skip the doomed attempt.
       return false;
     }
     return await isModelReady(settings.modelId);
@@ -280,6 +286,9 @@ export async function canDraftSightOnDevice(): Promise<boolean> {
   try {
     const settings = await getLlmSettings();
     if (!settings.onDeviceCuration) {
+      return false;
+    }
+    if (!(await checkNativeBridge()).ok) {
       return false;
     }
     return await isModelReady(VISION_MODEL_ID);

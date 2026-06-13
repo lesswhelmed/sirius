@@ -11,8 +11,13 @@
 #   1. boot the iOS Simulator (a target for the CA trust + the app launch)
 #   2. ensure the portless proxy is up in LAN mode (only if nothing holds :443)
 #   3. trust the portless CA inside the booted simulator
-#   4. exec `turbo run dev` — web + worker + mobile (mobile = `expo run:ios`,
-#      which compiles the dev client, installs it, opens the app, runs Metro)
+#   4. exec `turbo run dev` — web + worker + mobile. The mobile `dev` task now
+#      runs `expo prebuild --clean && bun run verify:native-ai && expo run:ios`,
+#      so the native build (with the on-device-AI / llama.rn JSI bridge baked in
+#      and verified) FINISHES before Metro/the app comes up. Fast escape hatch
+#      for a JS-only change: `bun --cwd apps/mobile ios` (no clean prebuild).
+#      JSI bindings live in the binary, never the JS bundle, so a Metro reload
+#      alone can never install them — that's why the rebuild is the pre-step.
 #
 # The heavy path — forcing a proxy mode-switch, re-trusting in the macOS store,
 # the one-time iPhone CA-trust runbook — still lives in `bun run dev:proxy`

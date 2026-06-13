@@ -10,6 +10,14 @@ import {
   llama,
   type LlamaLanguageModel,
 } from "@react-native-ai/llama";
+// installJsi is the native-bridge installer underneath @react-native-ai/llama:
+// it attaches llama.rn's ~40 JSI bindings (global.llamaInitContext, …) into the
+// runtime. The bindings live in the compiled binary, NOT the JS bundle — so a
+// stale .app (Metro reloaded but native never rebuilt after a llama.rn bump)
+// makes RNLlama.install() return false and this throw "JSI bindings not
+// installed" only AFTER a multi-GB model download + prepare(). We call it up
+// front (it's cheap: no model load) to fail legibly and early instead.
+import { installJsi } from "llama.rn";
 import {
   deleteAsync,
   getInfoAsync,
@@ -22,6 +30,64 @@ export type DownloadState =
   | { status: "not-downloaded" }
   | { status: "downloading"; percentage: number }
   | { status: "downloaded" };
+
+// Human-facing message for a binary whose native llama.rn bridge is missing —
+// the one failure a download or reload can never fix. Matched against the raw
+// llama.rn errors ("JSI bindings not installed" / "Missing JSI bindings: …").
+export const MISSING_NATIVE_BRIDGE_MESSAGE =
+  "This build is missing the on-device AI engine. Reinstall or update the app — reloading won't fix it. (Dev: rebuild the native app, e.g. `expo run:ios`; a Metro reload keeps the old binary.)";
+
+function isMissingBridgeError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("JSI bindings") || msg.includes("Missing JSI bindings");
+}
+
+export type NativeBridgeStatus =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+let bridgeProbe: Promise<NativeBridgeStatus> | null = null;
+
+// Probes whether the native llama.rn JSI bridge is installed in THIS binary,
+// without loading any model. installJsi() is idempotent and only touches the
+// native module, so this is cheap and safe to call before offering a download.
+// Cached after the first success; a failure is not cached so a later rebuilt
+// binary (dev) re-probes cleanly.
+export async function checkNativeBridge(): Promise<NativeBridgeStatus> {
+  if (bridgeProbe) {
+    const prior = await bridgeProbe;
+    if (prior.ok) {
+      return prior;
+    }
+  }
+  bridgeProbe = (async () => {
+    try {
+      await installJsi();
+      return { ok: true } as const;
+    } catch (err) {
+      if (isMissingBridgeError(err)) {
+        return { ok: false, reason: MISSING_NATIVE_BRIDGE_MESSAGE } as const;
+      }
+      // An unexpected install failure — surface its own message rather than
+      // mislabeling it as a stale-binary problem.
+      return {
+        ok: false,
+        reason: err instanceof Error ? err.message : String(err),
+      } as const;
+    }
+  })();
+  return bridgeProbe;
+}
+
+// Translates a raw inference error into the legible stale-binary message when
+// it is one, otherwise returns the original message untouched. Used by the chat
+// screen so the cryptic "JSI bindings not installed" never reaches the user.
+export function describeLlmError(err: unknown): string {
+  if (isMissingBridgeError(err)) {
+    return MISSING_NATIVE_BRIDGE_MESSAGE;
+  }
+  return err instanceof Error ? err.message : "generation failed";
+}
 
 function specOrThrow(id: string): LocalModelSpec {
   const spec = modelSpec(id);

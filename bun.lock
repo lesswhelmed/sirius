@@ -76,7 +76,7 @@
         "expo-task-manager": "~56.0.18",
         "expo-updates": "~56.0.19",
         "expo-web-browser": "~56.0.5",
-        "llama.rn": "^0.11.5",
+        "llama.rn": "^0.12.4",
         "react": "19.2.3",
         "react-dom": "19.2.3",
         "react-native": "0.85.3",
@@ -278,13 +278,16 @@
       },
     },
   },
+  "trustedDependencies": [
+    "llama.rn",
+  ],
   "overrides": {
     "expo": "56.0.11",
     "expo-asset": "56.0.17",
     "expo-constants": "56.0.18",
     "expo-linking": "56.0.14",
     "kysely": "0.28.17",
-    "llama.rn": "0.10.1",
+    "llama.rn": "0.12.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
   },
@@ -2103,7 +2106,7 @@
 
     "lightningcss-win32-x64-msvc": ["lightningcss-win32-x64-msvc@1.32.0", "", { "os": "win32", "cpu": "x64" }, "sha512-Amq9B/SoZYdDi1kFrojnoqPLxYhQ4Wo5XiL8EVJrVsB8ARoC1PWW6VGtT0WKCemjy8aC+louJnjS7U18x3b06Q=="],
 
-    "llama.rn": ["llama.rn@0.10.1", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-l4EJ5+gOAgKYcqzG9M3ORfA9AaiXT/qYtTGkdUxs9Djy+DhjmDir5wMuLxnEjxzzOc8oIsuhlF+peI1zEn8BZw=="],
+    "llama.rn": ["llama.rn@0.12.4", "", { "peerDependencies": { "react": "*", "react-native": "*" }, "bin": { "llama-rn-download-artifacts": "install/download-native-artifacts.js" } }, "sha512-53oQKv2rzYbsSfFMONcj+KnFfAJ9S5gO9l1FyRi35Zmh8PeLUa7Zzh0FUQ6/+LwZH5SYnCulMeA94GS+ls/y7w=="],
 
     "locate-path": ["locate-path@6.0.0", "", { "dependencies": { "p-locate": "^5.0.0" } }, "sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw=="],
 
