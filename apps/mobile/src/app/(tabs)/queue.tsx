@@ -1,6 +1,6 @@
 import type { IngestSubmission } from "@repo/db";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -41,11 +41,25 @@ function describe(s: IngestSubmission): string {
 }
 
 export default function QueueScreen() {
-  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["queue"],
     queryFn: () => apiGet<QueuePage>("/api/app/queue?limit=50"),
     refetchInterval: 5000,
   });
+
+  // Manual pull-to-refresh is decoupled from React Query's background polling:
+  // wiring RefreshControl.refreshing to isRefetching made iOS auto-scroll the
+  // list to reveal the spinner on every 5s poll. Only the explicit pull drives
+  // the spinner now; the interval keeps updating silently.
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setManualRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setManualRefreshing(false);
+    }
+  }, [refetch]);
 
   // Notes captured offline, waiting on this device. Piggybacks the queue's
   // poll cadence and nudges a flush so the banner clears itself once online.
@@ -147,8 +161,8 @@ export default function QueueScreen() {
         }
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={manualRefreshing}
+            onRefresh={onRefresh}
             tintColor={Sirius.color.accent}
           />
         }

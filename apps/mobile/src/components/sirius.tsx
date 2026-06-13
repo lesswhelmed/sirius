@@ -6,7 +6,9 @@ import { SymbolView } from "expo-symbols";
 import { forwardRef, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   type PressableProps,
   type StyleProp,
@@ -296,21 +298,26 @@ export function Sheet({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <Pressable
-        style={styles.sheetScrim}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        onPress={onClose}
-      />
-      <View style={styles.sheet}>
-        <View style={styles.sheetHandle} />
-        {title ? (
-          <Eyebrow accessibilityRole="header" style={styles.sheetTitle}>
-            {title}
-          </Eyebrow>
-        ) : null}
-        {children}
-      </View>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <Pressable
+          style={styles.sheetScrim}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          onPress={onClose}
+        />
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          {title ? (
+            <Eyebrow accessibilityRole="header" style={styles.sheetTitle}>
+              {title}
+            </Eyebrow>
+          ) : null}
+          {children}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

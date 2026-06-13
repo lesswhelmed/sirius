@@ -64,6 +64,8 @@ export default function SignInScreen() {
               placeholder="you@example.com"
               autoCapitalize="none"
               autoComplete="email"
+              textContentType="username"
+              importantForAutofill="yes"
               keyboardType="email-address"
               value={email}
               onChangeText={setEmail}
@@ -74,6 +76,8 @@ export default function SignInScreen() {
               placeholder="Your password"
               secureTextEntry
               autoComplete="password"
+              textContentType="password"
+              importantForAutofill="yes"
               value={password}
               onChangeText={setPassword}
               editable={!busy}

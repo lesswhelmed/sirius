@@ -397,7 +397,7 @@ export default function ComposerScreen() {
                 Capture
               </Title>
             </View>
-            <View style={styles.headerLinks}>
+            <View style={styles.headerToolbar}>
               <TextLink
                 label="Manage focus →"
                 tone={Sirius.color.accent}
@@ -408,6 +408,8 @@ export default function ComposerScreen() {
                 tone={Sirius.color.accent}
                 onPress={() => router.push("/llm")}
               />
+            </View>
+            <View style={styles.headerSignOut}>
               <TextLink
                 label="Sign out"
                 tone={Sirius.color.inkMuted}
@@ -619,13 +621,20 @@ const styles = StyleSheet.create({
     gap: Sirius.space.lg,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
+    gap: Sirius.space.lg,
     marginBottom: Sirius.space.xs,
   },
   headerMain: { gap: Sirius.space.xs },
-  headerLinks: { alignItems: "flex-end", gap: Sirius.space.sm },
+  headerToolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: Sirius.space.xl,
+    borderBottomWidth: 1,
+    borderColor: Sirius.color.rule,
+    paddingBottom: Sirius.space.md,
+  },
+  headerSignOut: { alignItems: "flex-end" },
   focusEmpty: { gap: Sirius.space.sm },
   focusEmptyText: {
     fontFamily: Sirius.font.serif,

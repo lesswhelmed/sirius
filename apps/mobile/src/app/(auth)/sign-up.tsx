@@ -71,6 +71,7 @@ export default function SignUpScreen() {
               label="Name (optional)"
               placeholder="Your name"
               autoComplete="name"
+              textContentType="name"
               value={name}
               onChangeText={setName}
               editable={!busy}
@@ -80,6 +81,8 @@ export default function SignUpScreen() {
               placeholder="you@example.com"
               autoCapitalize="none"
               autoComplete="email"
+              textContentType="emailAddress"
+              importantForAutofill="yes"
               keyboardType="email-address"
               value={email}
               onChangeText={setEmail}
@@ -90,6 +93,8 @@ export default function SignUpScreen() {
               placeholder="At least 8 characters"
               secureTextEntry
               autoComplete="new-password"
+              textContentType="newPassword"
+              importantForAutofill="yes"
               value={password}
               onChangeText={setPassword}
               editable={!busy}

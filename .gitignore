@@ -58,3 +58,6 @@ scripts/testing/.creds.local
 
 # Expo state (created if expo is ever run from the repo root)
 .expo/
+
+# bv (beads viewer) local config and caches
+.bv/
