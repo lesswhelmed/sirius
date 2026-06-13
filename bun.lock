@@ -283,6 +283,7 @@
     "expo-constants": "56.0.16",
     "expo-linking": "56.0.13",
     "kysely": "0.28.17",
+    "llama.rn": "0.10.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
   },
@@ -2113,7 +2114,7 @@
 
     "lightningcss-win32-x64-msvc": ["lightningcss-win32-x64-msvc@1.32.0", "", { "os": "win32", "cpu": "x64" }, "sha512-Amq9B/SoZYdDi1kFrojnoqPLxYhQ4Wo5XiL8EVJrVsB8ARoC1PWW6VGtT0WKCemjy8aC+louJnjS7U18x3b06Q=="],
 
-    "llama.rn": ["llama.rn@0.11.5", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-ON4ThybtiPnNEfJHbQcBk5zkm/YyFgjpGzykgEeqOLFZMTVaZqsSQyZ6TOTyvDfKrIQzukIKKglBtCyPLbbBsw=="],
+    "llama.rn": ["llama.rn@0.10.1", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-l4EJ5+gOAgKYcqzG9M3ORfA9AaiXT/qYtTGkdUxs9Djy+DhjmDir5wMuLxnEjxzzOc8oIsuhlF+peI1zEn8BZw=="],
 
     "locate-path": ["locate-path@6.0.0", "", { "dependencies": { "p-locate": "^5.0.0" } }, "sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw=="],
 
@@ -3058,8 +3059,6 @@
     "@radix-ui/react-dialog/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
 
     "@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
-
-    "@react-native-ai/llama/llama.rn": ["llama.rn@0.10.1", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-l4EJ5+gOAgKYcqzG9M3ORfA9AaiXT/qYtTGkdUxs9Djy+DhjmDir5wMuLxnEjxzzOc8oIsuhlF+peI1zEn8BZw=="],
 
     "@react-native/codegen/hermes-parser": ["hermes-parser@0.33.3", "", { "dependencies": { "hermes-estree": "0.33.3" } }, "sha512-Yg3HgaG4CqgyowtYjX/FsnPAuZdHOqSMtnbpylbptsQ9nwwSKsy6uRWcGO5RK0EqiX12q8HvDWKgeAVajRO5DA=="],
 

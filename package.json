@@ -42,6 +42,7 @@
     "better-auth": "^1.6.13"
   },
   "overrides": {
+    "llama.rn": "0.10.1",
     "kysely": "0.28.17",
     "expo": "56.0.8",
     "expo-constants": "56.0.16",
