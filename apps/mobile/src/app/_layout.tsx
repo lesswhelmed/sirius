@@ -10,17 +10,18 @@ import {
   ThemeProvider,
   usePathname,
 } from "expo-router";
-import * as Network from "expo-network";
 import { StatusBar } from "expo-status-bar";
 import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import React, { useEffect } from "react";
-import { AppState, useColorScheme } from "react-native";
+import { StyleSheet, Text, useColorScheme } from "react-native";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { Screen } from "@/components/sirius";
+import { Sirius } from "@/constants/theme";
 import { runMigrations } from "@/lib/db/client";
-import { flushOutbox } from "@/lib/outbox";
-// Side-effect import: defines the background outbox-flush task at global
-// scope so headless background launches can run it.
+import { startSync, stopSync } from "@/lib/sync/engine";
+// Side-effect import: defines the background sync task at global scope so
+// headless background launches can run it.
 import { registerOutboxTask } from "@/lib/outbox-task";
 
 const queryClient = new QueryClient({
@@ -32,34 +33,17 @@ const queryClient = new QueryClient({
   },
 });
 
-// Routes to the share screen when the native module surfaces an intent. On iOS
-// the `+native-intent` deep-link rewrite usually gets there first; this covers
-// the warm-start / Android path where the intent arrives via context rather
-// than a fresh deep link. The pathname guard avoids stacking a duplicate
-// /shareintent when both mechanisms fire.
-// Drains the offline note outbox: once at app start, whenever the device
-// regains a reachable connection, and whenever the app returns to the
-// foreground (the in-app network listener doesn't fire while suspended, so
-// foregrounding is the moment queued notes from a backgrounded session can
-// finally send). Also registers the periodic background flush task.
-// flushOutbox serializes itself, so overlapping triggers are safe.
-function OutboxFlusher() {
+// Drives the offline-first sync engine: pulls post deltas, replays the pending
+// outbox, and holds the SSE nudge channel — on cold start, network reconnect,
+// and foreground (the engine owns those triggers). Also registers the periodic
+// background sync task. Every primitive is self-serialized, so overlapping
+// triggers are safe.
+function SyncRunner() {
   useEffect(() => {
-    void flushOutbox();
+    startSync();
     void registerOutboxTask();
-    const netSub = Network.addNetworkStateListener((state) => {
-      if (state.isInternetReachable) {
-        void flushOutbox();
-      }
-    });
-    const appSub = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        void flushOutbox();
-      }
-    });
     return () => {
-      netSub.remove();
-      appSub.remove();
+      stopSync();
     };
   }, []);
   return null;
@@ -105,7 +89,7 @@ function ShareIntentNavigator() {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const { ready } = useDbReady();
+  const { ready, error } = useDbReady();
   return (
     <ShareIntentProvider
       options={{
@@ -119,10 +103,17 @@ export default function RootLayout() {
         >
           <AnimatedSplashOverlay />
           <StatusBar style="auto" />
-          {ready ? (
+          {error ? (
+            <Screen style={styles.centeredPad}>
+              <Text style={styles.errorTitle}>
+                {"Couldn't start the database"}
+              </Text>
+              <Text style={styles.errorBody}>{error.message}</Text>
+            </Screen>
+          ) : ready ? (
             <>
               <ShareIntentNavigator />
-              <OutboxFlusher />
+              <SyncRunner />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="(auth)" />
@@ -137,7 +128,7 @@ export default function RootLayout() {
                 />
                 <Stack.Screen
                   name="tree/[...node]"
-                  options={{ headerShown: true, title: "" }}
+                  options={{ headerShown: true, title: "Index" }}
                 />
                 <Stack.Screen
                   name="focus"
@@ -163,3 +154,18 @@ export default function RootLayout() {
     </ShareIntentProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  centeredPad: {
+    justifyContent: "center",
+    paddingHorizontal: Sirius.space.xl,
+    gap: Sirius.space.lg,
+  },
+  errorTitle: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 22,
+    color: Sirius.color.ink,
+    textAlign: "center",
+  },
+  errorBody: { color: Sirius.color.inkMuted, textAlign: "center" },
+});
