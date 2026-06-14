@@ -128,23 +128,52 @@ export default function RootLayout() {
                 />
                 <Stack.Screen
                   name="post/local/[localId]"
-                  options={{ headerShown: true, title: "" }}
+                  options={{
+                    headerShown: true,
+                    title: "",
+                    // Only reachable from the Catalog tab; pin the back label
+                    // so it isn't the "(tabs)" route-name fallback.
+                    headerBackTitle: "Catalog",
+                  }}
                 />
                 <Stack.Screen
                   name="tree/[...node]"
-                  options={{ headerShown: true, title: "Index" }}
+                  options={{
+                    headerShown: true,
+                    title: "Index",
+                    // The back button label is derived from the previous
+                    // route, which is the `(tabs)` navigator — it has no
+                    // title, so iOS falls back to the literal route-group
+                    // name "(tabs)". Pin it to where the user came from.
+                    headerBackTitle: "Tree",
+                  }}
                 />
                 <Stack.Screen
                   name="focus"
-                  options={{ headerShown: true, title: "Focus" }}
+                  options={{
+                    headerShown: true,
+                    title: "Focus",
+                    // Reached only from the Capture tab.
+                    headerBackTitle: "Capture",
+                  }}
                 />
                 <Stack.Screen
                   name="space"
-                  options={{ headerShown: true, title: "Space" }}
+                  options={{
+                    headerShown: true,
+                    title: "Space",
+                    // Reached only from the Catalog tab.
+                    headerBackTitle: "Catalog",
+                  }}
                 />
                 <Stack.Screen
                   name="llm"
-                  options={{ headerShown: true, title: "On-device AI" }}
+                  options={{
+                    headerShown: true,
+                    title: "On-device AI",
+                    // Reached only from the Capture tab.
+                    headerBackTitle: "Capture",
+                  }}
                 />
                 <Stack.Screen
                   name="llm-test"

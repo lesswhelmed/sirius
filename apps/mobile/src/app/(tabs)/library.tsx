@@ -64,10 +64,12 @@ export default function LibraryScreen() {
       const imageUri = resolveMediaUrl(item.imageUrl);
       const pip = STATE_PIP[item.syncState];
       // Synced rows have a server slug; optimistic rows route to a local detail.
+      // Pass the originating tab so the detail screen's back button reads
+      // "Catalog" rather than the "(tabs)" route-name fallback.
       const onPress = () =>
         item.slug
-          ? router.push(`/post/${item.slug}`)
-          : router.push(`/post/local/${item.localId}`);
+          ? router.push(`/post/${item.slug}?from=Catalog`)
+          : router.push(`/post/local/${item.localId}?from=Catalog`);
       return (
         <Pressable
           onPress={onPress}

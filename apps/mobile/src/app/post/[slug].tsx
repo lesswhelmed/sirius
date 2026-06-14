@@ -65,7 +65,11 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function PostDetailScreen() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  // `from` is the originating tab label, passed by tab-level pushes so the back
+  // button reads e.g. "Catalog" instead of the "(tabs)" route-name fallback.
+  // Absent when pushed from another in-stack screen (the Tree index, Space) —
+  // there the default (previous screen's title) is already the right label.
+  const { slug, from } = useLocalSearchParams<{ slug: string; from?: string }>();
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["post", slug],
     queryFn: () => apiGet<PostDetail>(`/api/app/posts/${slug}`),
@@ -105,6 +109,7 @@ export default function PostDetailScreen() {
           title: TYPE_LABEL[data.type] ?? "Post",
           headerStyle: { backgroundColor: Sirius.color.paper },
           headerTintColor: Sirius.color.ink,
+          ...(from ? { headerBackTitle: from } : {}),
         }}
       />
       <ScrollView contentContainerStyle={styles.container}>

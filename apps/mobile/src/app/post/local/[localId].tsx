@@ -32,15 +32,24 @@ const STATE_BANNER: Partial<Record<SyncState, string>> = {
 };
 
 export default function LocalPostScreen() {
-  const { localId } = useLocalSearchParams<{ localId: string }>();
+  const { localId, from } = useLocalSearchParams<{
+    localId: string;
+    from?: string;
+  }>();
   const { data } = useLiveQuery(
     db.select().from(posts).where(eq(posts.localId, localId)).limit(1)
   );
   const row = data?.[0];
 
   // Once reconciled, the row owns a server slug — defer to the canonical route.
+  // Forward `from` so the back label survives the redirect (else post/[slug]
+  // falls back to the "(tabs)" route name).
   if (row?.slug && row.syncState === "synced") {
-    return <Redirect href={`/post/${row.slug}`} />;
+    return (
+      <Redirect
+        href={from ? `/post/${row.slug}?from=${from}` : `/post/${row.slug}`}
+      />
+    );
   }
 
   if (!row) {
