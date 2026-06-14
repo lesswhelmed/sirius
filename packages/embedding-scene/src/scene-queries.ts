@@ -72,3 +72,87 @@ export function projectNodes(scene: EmbeddingScene): SceneNode[] {
     .filter((n) => n.kind === "project")
     .sort((a, b) => a.label.localeCompare(b.label));
 }
+
+export interface SubtreeGroup {
+  // The category (or project) the posts in this group are attributed to.
+  node: SceneNode;
+  posts: LinkedPost[];
+}
+
+export interface SubtreeIndex {
+  // The tapped node (page head).
+  root: SceneNode;
+  // Total deduped posts across the subtree.
+  total: number;
+  // True when more than one group has posts — the page shows per-subnode
+  // sections (their headers are the provenance). False → render one flat list.
+  multiNode: boolean;
+  // Taxonomy-ordered groups; each group's posts are match-desc.
+  groups: SubtreeGroup[];
+}
+
+// Posts under `nodeId` AND its entire subtree, deduped one-per-post (attributed
+// to the highest-scoring category the post matched anywhere in the subtree) and
+// grouped by that category. A project drills to its own assignment posts as a
+// single flat group (projects have no children). Returns null when the node is
+// absent or is a post (posts don't drill).
+export function subtreeIndex(
+  scene: EmbeddingScene,
+  nodeId: string
+): SubtreeIndex | null {
+  const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+  const root = byId.get(nodeId);
+  if (!root || root.kind === "post") return null;
+
+  if (root.kind === "project") {
+    const posts = linkedPosts(scene, root.id);
+    return {
+      root,
+      total: posts.length,
+      multiNode: false,
+      groups: posts.length ? [{ node: root, posts }] : [],
+    };
+  }
+
+  // Category subtree = the node's own path + any path nested beneath it.
+  const prefix = root.path ?? root.id;
+  const subtreeCatIds = new Set(
+    scene.nodes
+      .filter(
+        (n) =>
+          n.kind === "category" &&
+          n.path != null &&
+          (n.path === prefix || n.path.startsWith(prefix + "/"))
+      )
+      .map((n) => n.id)
+  );
+
+  // Best (highest-weight) matched category per post, within the subtree.
+  const best = new Map<string, { catId: string; weight: number }>();
+  for (const e of scene.edges) {
+    if (e.kind !== "match" || !subtreeCatIds.has(e.to)) continue;
+    const weight = e.weight ?? 0;
+    const cur = best.get(e.from);
+    if (!cur || weight > cur.weight) best.set(e.from, { catId: e.to, weight });
+  }
+
+  // Group posts by their attributed category.
+  const groupPosts = new Map<string, LinkedPost[]>();
+  for (const [postId, { catId, weight }] of best) {
+    const node = byId.get(postId);
+    if (node?.kind !== "post") continue;
+    const list = groupPosts.get(catId) ?? [];
+    list.push({ node, weight });
+    groupPosts.set(catId, list);
+  }
+
+  const groups: SubtreeGroup[] = [...groupPosts.entries()]
+    .map(([catId, posts]) => ({
+      node: byId.get(catId)!,
+      posts: posts.sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0)),
+    }))
+    .sort((a, b) => (a.node.path ?? "").localeCompare(b.node.path ?? ""));
+
+  const total = groups.reduce((sum, g) => sum + g.posts.length, 0);
+  return { root, total, multiNode: groups.length > 1, groups };
+}
