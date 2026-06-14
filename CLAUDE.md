@@ -70,6 +70,7 @@ There is **no test runner wired up** (`scripts/testing/` exists but nothing in p
 runs it). Don't claim tests pass — there are none to run.
 
 Mobile (Expo, run from repo root):
+
 ```sh
 bun --cwd apps/mobile start     # Metro / Expo dev server
 bun --cwd apps/mobile ios       # iOS Simulator
@@ -77,6 +78,7 @@ bun --cwd apps/mobile android   # Android emulator
 ```
 
 ### Mobile builds (EAS)
+
 Release builds go through **EAS Build** (cloud), config in `apps/mobile/eas.json`. The
 `ios/`/`android/` dirs are gitignored — they're regenerated from `app.json` + `bun.lock`
 by `expo prebuild`; **never commit them**. The EAS project is
@@ -92,6 +94,7 @@ Root-level one-liners (delegate to the gated mobile scripts above; all use
 `bunx eas-cli`, no global install needed). EAS `requireCommit: true` → run on a
 clean, committed tree. Convention: a bare-platform name is **production**;
 preview/dev are profile-qualified.
+
 ```sh
 # production (store)
 bun run mobile:build:ios          # eas build --profile production --platform ios
@@ -108,6 +111,7 @@ bun run mobile:build:dev              # --profile development --platform all
 bun run mobile:build:dev:ios          # --profile development --platform ios
 bun run mobile:build:dev:android      # --profile development --platform android
 ```
+
 For a dev client on a **physical** device use the `development-device` profile
 directly (`bun --cwd=apps/mobile run build:dev:ios` builds the simulator dev
 client; the `development-device` profile in `eas.json` is the on-hardware one —
@@ -143,6 +147,7 @@ Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zo
 ## Architecture
 
 ### Workspaces
+
 - `apps/web` — Next.js 16 App Router. The product: broker storefront, ingest UI, queue, auth pages, and all HTTP APIs.
 - `apps/worker` — long-running Bun daemon. Polls the DB for ingest jobs, runs the Gemini pipeline. Runs via `bun run src/index.ts` (no build step).
 - `apps/mobile` — Expo / React Native client. Tabs: Capture (composer), Catalog (library),
@@ -164,6 +169,7 @@ Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zo
 - `packages/{eslint-config,typescript-config}` — shared configs.
 
 ### The ingest pipeline (the core flow)
+
 This is a producer/consumer queue backed by the `IngestSubmission` table — the web app and
 worker never call each other directly, they only share the DB and the `@repo/db` helpers.
 
@@ -183,15 +189,15 @@ worker never call each other directly, they only share the DB and the `@repo/db`
 3. **Draft (worker).** `pipeline/pipeline.ts` runs two stages: `runGemini` then `writePost`.
    `gemini-runner.ts` uses the Vercel AI SDK (`generateText` + `Output.object(zodSchema)`) so
    output is schema-validated, no manual JSON parsing. Routing:
-     - URL ingest → two-step: `url_context` tool fetches/summarizes (tools + JSON mode can't
-       coexist in one Gemini call), then a second call structures it. Forced type `FINDING`.
-     - Single Instagram URL → dedicated Apify path (`pipeline/instagram/`).
-     - Single YouTube URL → dedicated transcript/chunk path (`pipeline/youtube/`).
-       Both dedicated paths **fall back to `url_context`** on failure.
-     - Image batch → inline image parts, forced type `SIGHT`.
-     - Note → forced type `BLOG`.
-   The post **type is forced by the worker after the model returns** so a model regression
-   can't drift it.
+   - URL ingest → two-step: `url_context` tool fetches/summarizes (tools + JSON mode can't
+     coexist in one Gemini call), then a second call structures it. Forced type `FINDING`.
+   - Single Instagram URL → dedicated Apify path (`pipeline/instagram/`).
+   - Single YouTube URL → dedicated transcript/chunk path (`pipeline/youtube/`).
+     Both dedicated paths **fall back to `url_context`** on failure.
+   - Image batch → inline image parts, forced type `SIGHT`.
+   - Note → forced type `BLOG`.
+     The post **type is forced by the worker after the model returns** so a model regression
+     can't drift it.
 4. **Persist (worker).** `post-writer.ts` (replaces copt-dev's mdx-writer): copies image
    batches into `apps/web/public/sight/<batchId>/` (override with `SIGHT_IMAGE_DIR`; the
    Instagram/social path uses `SOCIAL_IMAGE_DIR` → `public/social/`), rewrites `IMAGE_N`
@@ -200,6 +206,7 @@ worker never call each other directly, they only share the DB and the `@repo/db`
    deletes the staged file.
 
 ### Serving worker-written media (`/sight`, `/social`)
+
 The worker writes post images into `public/sight/` and `public/social/` **at runtime**, but
 `next start` only serves `public/` files that existed at build time — so those URLs would 404
 in production. Two custom catch-all route handlers bridge the gap:
@@ -210,6 +217,7 @@ dirs). In production a Caddy `file_server` fronts these paths directly off disk 
 `SIGHT_IMAGE_DIR` / `SOCIAL_IMAGE_DIR` in `.env.production` in sync with the Caddy roots.
 
 ### Database (`packages/db`)
+
 - PostgreSQL via Prisma 7 **driver adapter** (`@prisma/adapter-pg`, `PrismaPg`), not the
   classic engine. Singleton client in `src/index.ts`, cached on `globalThis` outside production.
 - Generated client lands in `packages/db/generated/prisma` and is **gitignored** — you must
@@ -220,6 +228,7 @@ dirs). In production a Caddy `file_server` fronts these paths directly off disk 
   `export *` — Turbopack warns on `export *` from the generated CJS namespace.
 
 ### Auth (`packages/auth`)
+
 - One `betterAuth` instance: email+password with **required email verification**, plugins
   `admin()` + `expo()` + `nextCookies()`. Emails sent via Resend (`src/email.ts`).
 - Next.js mounts it at `/api/auth/[...all]`. Rate limiting is DB-backed and **production-only**.
@@ -228,6 +237,7 @@ dirs). In production a Caddy `file_server` fronts these paths directly off disk 
   auth config**. `User` carries extra broker-storefront fields (`handle`, `bio`, `location`).
 
 ### Web route groups (`apps/web/app`)
+
 - `(app)` — session-gated broker cockpit (ingest, queue, library, inbox, and the `/space`
   **Observatory**). `layout.tsx` calls `requireSession` and redirects to `/setup-handle` if the
   user has no `handle`.
@@ -239,6 +249,7 @@ dirs). In production a Caddy `file_server` fronts these paths directly off disk 
   (see "Serving worker-written media").
 
 ### The Observatory / Tree (`/space` + mobile Tree tab)
+
 `/space` (`apps/web/app/(app)/space/space-view.tsx`) renders the embedding space: a 3D scene
 (Three.js) + a sidebar taxonomy outline + a drill-in "Index" of posts under a selected node.
 The mobile **Tree** tab (`apps/mobile/src/app/(tabs)/tree.tsx`) is its native, canvas-free
@@ -249,6 +260,7 @@ so the two hosts can never disagree. The scene is **owner-scoped** — it only p
 signed-in user who has posts with embeddings + categorized/assigned content.
 
 ## Deployment
+
 `bun run deploy` (`scripts/deploy-remote.sh`, reads `.env.production`) pushes `main`, runs
 `deploy.sh` on the server over SSH, and verifies the public URL returns 200. `deploy.sh`
 (idempotent) runs on the host: `git pull --ff-only` → `bun install --frozen-lockfile` →
@@ -262,6 +274,7 @@ server setup (Postgres, Caddy, env mirror) is in `DEPLOY.md`; `bun run env:produ
 generates the local `.env.production` mirror (never overwrites an existing one).
 
 ## Environment
+
 Copy `.env.example` to `.env` at the repo root (all apps read the root `.env`). Required for the
 full pipeline: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` /
 `NEXT_PUBLIC_BETTER_AUTH_URL`, `INGEST_TOKEN`, `GEMINI_API_KEY`, `RESEND_API_KEY`. Instagram
@@ -281,13 +294,14 @@ This project uses [beads_rust](https://github.com/Dicklesworthstone/beads_rust) 
 
 bv is a graph-aware triage engine for Beads projects (.beads/beads.jsonl). Instead of parsing JSONL or hallucinating graph traversal, use robot flags for deterministic, dependency-aware outputs with precomputed metrics (PageRank, betweenness, critical path, cycles, HITS, eigenvector, k-core).
 
-**Scope boundary:** bv handles *what to work on* (triage, priority, planning). `br` handles creating, modifying, and closing beads.
+**Scope boundary:** bv handles _what to work on_ (triage, priority, planning). `br` handles creating, modifying, and closing beads.
 
-**CRITICAL: Use ONLY --robot-* flags. Bare bv launches an interactive TUI that blocks your session.**
+**CRITICAL: Use ONLY --robot-\* flags. Bare bv launches an interactive TUI that blocks your session.**
 
 #### The Workflow: Start With Triage
 
 **`bv --robot-triage` is your single entry point.** It returns everything you need in one call:
+
 - `quick_ref`: at-a-glance counts + top 3 picks
 - `recommendations`: ranked actionable items with scores, reasons, unblock info
 - `quick_wins`: low-effort high-impact items
@@ -307,15 +321,15 @@ Before claiming, verify current state with `br show <id> --json` or `br ready --
 
 #### Other bv Commands
 
-| Command | Returns |
-|---------|---------|
-| `--robot-plan` | Parallel execution tracks with unblocks lists |
-| `--robot-priority` | Priority misalignment detection with confidence |
-| `--robot-insights` | Full metrics: PageRank, betweenness, HITS, eigenvector, critical path, cycles, k-core |
-| `--robot-alerts` | Stale issues, blocking cascades, priority mismatches |
-| `--robot-suggest` | Hygiene: duplicates, missing deps, label suggestions, cycle breaks |
-| `--robot-diff --diff-since <ref>` | Changes since ref: new/closed/modified issues |
-| `--robot-graph [--graph-format=json\|dot\|mermaid]` | Dependency graph export |
+| Command                                             | Returns                                                                               |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `--robot-plan`                                      | Parallel execution tracks with unblocks lists                                         |
+| `--robot-priority`                                  | Priority misalignment detection with confidence                                       |
+| `--robot-insights`                                  | Full metrics: PageRank, betweenness, HITS, eigenvector, critical path, cycles, k-core |
+| `--robot-alerts`                                    | Stale issues, blocking cascades, priority mismatches                                  |
+| `--robot-suggest`                                   | Hygiene: duplicates, missing deps, label suggestions, cycle breaks                    |
+| `--robot-diff --diff-since <ref>`                   | Changes since ref: new/closed/modified issues                                         |
+| `--robot-graph [--graph-format=json\|dot\|mermaid]` | Dependency graph export                                                               |
 
 #### Scoping & Filtering
 

@@ -4,7 +4,7 @@
 
 **Goal:** Replace the mobile Tree tab's bottom-sheet drill with a pushed full-screen page that aggregates a node's posts across its whole subtree, deduped one-per-post and grouped by the leaf category they matched.
 
-**Architecture:** A new pure, host-agnostic query `subtreeIndex` in `@repo/embedding-scene` walks the tapped category's subtree (or a project), dedups each post to its highest-scoring matched category, and groups by that category. A new expo-router catch-all screen `tree/[...node].tsx` renders that index — grouped sections when >1 subnode has posts (the section headers *are* the provenance), otherwise a flat list reusing the existing entry-row style. `tree.tsx` changes from opening a `Sheet` to `router.push`-ing the new route.
+**Architecture:** A new pure, host-agnostic query `subtreeIndex` in `@repo/embedding-scene` walks the tapped category's subtree (or a project), dedups each post to its highest-scoring matched category, and groups by that category. A new expo-router catch-all screen `tree/[...node].tsx` renders that index — grouped sections when >1 subnode has posts (the section headers _are_ the provenance), otherwise a flat list reusing the existing entry-row style. `tree.tsx` changes from opening a `Sheet` to `router.push`-ing the new route.
 
 **Tech Stack:** TypeScript, React Native (Expo, expo-router), `@tanstack/react-query`, `@repo/embedding-scene` (pure scene-graph queries), bun's built-in test runner for the pure query.
 
@@ -15,11 +15,13 @@
 Commit `362c8c7` shipped the Tree tab (`apps/mobile/src/app/(tabs)/tree.tsx`): an outline of the analysis taxonomy + a "Focus areas" (projects) list, where tapping a node opens a bottom `Sheet` ("The Index") listing posts **directly** linked to that one node via `linkedPosts`. The user wants tapping a node to instead **slide into a full page** that descends into the node and **all its subnodes**, keeping the current entry style, with per-subnode grouping that only appears when more than one subnode actually has posts.
 
 Data model (verified in `packages/embedding-scene/src/build-scene.ts`):
+
 - Category `SceneNode.id === SceneNode.path` (e.g. `"analysis/artifact-type/social-post"`), `label` = the leaf segment (e.g. `"social-post"`). Taxonomy nesting is by path prefix.
 - A post carries `matches: {path, score}[]`; each becomes a `match` edge `post.id → category.path` with `weight = score`. A post can match several categories at any depth.
 - Projects link posts via `assignment` edges (no weight). Projects are flat (no children).
 
 Design decisions (confirmed with the user):
+
 - **Dedup:** one row per post, attributed to its **highest-scoring** matched category in the subtree.
 - **Provenance / grouping:** **group by subnode**; each group's header is the matched category's **leaf label**. Show grouping/provenance **only when more than one subnode has posts**; otherwise render one flat list.
 - **Sort:** groups in taxonomy (path) order; posts within a group by match score desc.
@@ -38,6 +40,7 @@ Design decisions (confirmed with the user):
 ## Task 1: `subtreeIndex` shared query
 
 **Files:**
+
 - Modify: `packages/embedding-scene/src/scene-queries.ts` (append after `projectNodes`)
 - Test: `packages/embedding-scene/src/scene-queries.test.ts` (create)
 
@@ -192,7 +195,7 @@ export interface SubtreeIndex {
 // absent or is a post (posts don't drill).
 export function subtreeIndex(
   scene: EmbeddingScene,
-  nodeId: string
+  nodeId: string,
 ): SubtreeIndex | null {
   const byId = new Map(scene.nodes.map((n) => [n.id, n]));
   const root = byId.get(nodeId);
@@ -216,9 +219,9 @@ export function subtreeIndex(
         (n) =>
           n.kind === "category" &&
           n.path != null &&
-          (n.path === prefix || n.path.startsWith(prefix + "/"))
+          (n.path === prefix || n.path.startsWith(prefix + "/")),
       )
-      .map((n) => n.id)
+      .map((n) => n.id),
   );
 
   // Best (highest-weight) matched category per post, within the subtree.
@@ -269,6 +272,7 @@ git commit -m "feat(embedding-scene): subtreeIndex — aggregate a node's subtre
 ## Task 2: The pushed subtree page
 
 **Files:**
+
 - Create: `apps/mobile/src/app/tree/[...node].tsx`
 - Modify: `apps/mobile/src/app/_layout.tsx:95-123` (register the screen)
 
@@ -299,7 +303,12 @@ import { subtreeIndex } from "@repo/embedding-scene/scene-queries";
 import type { LinkedPost } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 
-import { Eyebrow, PageHeader, PrimaryButton, Screen } from "@/components/sirius";
+import {
+  Eyebrow,
+  PageHeader,
+  PrimaryButton,
+  Screen,
+} from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import { apiGet } from "@/lib/api";
 
@@ -315,19 +324,26 @@ function subtitleFor(node: SceneNode): string {
 export default function TreeNodeScreen() {
   const params = useLocalSearchParams<{ node?: string | string[] }>();
   const nodeId = useMemo(
-    () => (Array.isArray(params.node) ? params.node.join("/") : (params.node ?? "")),
-    [params.node]
+    () =>
+      Array.isArray(params.node) ? params.node.join("/") : (params.node ?? ""),
+    [params.node],
   );
   const router = useRouter();
 
-  const { data: scene, isLoading, isError, error, refetch } = useQuery({
+  const {
+    data: scene,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => apiGet<EmbeddingScene>("/api/app/embedding-scene"),
   });
 
   const index = useMemo(
     () => (scene ? subtreeIndex(scene, nodeId) : null),
-    [scene, nodeId]
+    [scene, nodeId],
   );
 
   if (isLoading) {
@@ -354,7 +370,9 @@ export default function TreeNodeScreen() {
     return (
       <Screen style={styles.centeredPad}>
         <Text style={styles.errorTitle}>Nothing here</Text>
-        <Text style={styles.errorBody}>This node isn’t in the tree anymore.</Text>
+        <Text style={styles.errorBody}>
+          This node isn’t in the tree anymore.
+        </Text>
       </Screen>
     );
   }
@@ -509,10 +527,10 @@ const styles = StyleSheet.create({
 In `apps/mobile/src/app/_layout.tsx`, add a `Stack.Screen` next to the existing `post/[slug]` registration (inside the `<Stack screenOptions={{ headerShown: false }}>` block, after the `post/[slug]` entry at lines 103-106):
 
 ```tsx
-            <Stack.Screen
-              name="tree/[...node]"
-              options={{ headerShown: true, title: "" }}
-            />
+<Stack.Screen
+  name="tree/[...node]"
+  options={{ headerShown: true, title: "" }}
+/>
 ```
 
 - [ ] **Step 3: Typecheck the package + mobile app**
@@ -532,6 +550,7 @@ git commit -m "feat(mobile): tree subtree index page (tree/[...node])"
 ## Task 3: Rewire `tree.tsx` to navigate instead of opening the Sheet
 
 **Files:**
+
 - Modify: `apps/mobile/src/app/(tabs)/tree.tsx`
 
 - [ ] **Step 1: Replace the component body**
@@ -563,14 +582,25 @@ import {
 } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 
-import { Eyebrow, PageHeader, PrimaryButton, Screen } from "@/components/sirius";
+import {
+  Eyebrow,
+  PageHeader,
+  PrimaryButton,
+  Screen,
+} from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import { apiGet } from "@/lib/api";
 
 const QUERY_KEY = ["embedding-scene"] as const;
 
 export default function TreeScreen() {
-  const { data: scene, isLoading, isError, error, refetch } = useQuery({
+  const {
+    data: scene,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => apiGet<EmbeddingScene>("/api/app/embedding-scene"),
   });
@@ -667,13 +697,7 @@ function TreeBranch({
   );
 }
 
-function NodeRow({
-  node,
-  onPress,
-}: {
-  node: SceneNode;
-  onPress: () => void;
-}) {
+function NodeRow({ node, onPress }: { node: SceneNode; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
@@ -753,6 +777,7 @@ agent-device --session tree open dev.copt.sirius --platform ios
 agent-device --session tree find text "Tree" press
 agent-device --session tree snapshot -i
 ```
+
 Expected: the Tree outline renders (eyebrow "SECTION V — THE OBSERVATORY", "The Tree.").
 
 - [ ] **Step 2: Tap a multi-subnode branch → grouped page**
@@ -761,6 +786,7 @@ Expected: the Tree outline renders (eyebrow "SECTION V — THE OBSERVATORY", "Th
 agent-device --session tree find text "artifact-type" press
 agent-device --session tree snapshot -i
 ```
+
 Expected: a NEW page slides in (not a bottom sheet). Header title = `artifact-type`, an entry count, and **grouped sections** with subnode headers (e.g. `social-post`, `web-resource`) each followed by `NN  <title>  match 0.xx  open →` rows. Screenshot: `agent-device --session tree screenshot /tmp/tree-subtree-grouped.png`.
 
 - [ ] **Step 3: Tap a leaf node → flat page (no group headers)**
@@ -770,6 +796,7 @@ agent-device --session tree back
 agent-device --session tree find text "social-post" press
 agent-device --session tree snapshot -i
 ```
+
 Expected: a flat list of rows under the header, with **no** per-subnode section headers (single subnode → `multiNode` false).
 
 - [ ] **Step 4: `open →` navigates to the post**
@@ -778,6 +805,7 @@ Expected: a flat list of rows under the header, with **no** per-subnode section 
 agent-device --session tree find text "open →" press --first
 agent-device --session tree snapshot -i
 ```
+
 Expected: the `/post/[slug]` detail screen (post title heading, type label, tags). Then `agent-device --session tree back` returns to the index page.
 
 - [ ] **Step 5: Verify a project (focus area) drills flat**
@@ -787,6 +815,7 @@ agent-device --session tree find text "Tree" press
 # scroll to "Focus areas" and tap a project, if any exist:
 agent-device --session tree snapshot -i
 ```
+
 Expected (if the account has projects): tapping a focus-area row slides to a flat page titled with the project name, "Focus area" subtitle, no group headers, no match scores (assignment posts). If the account has no projects, note that and skip.
 
 - [ ] **Step 6: Record the result**
@@ -796,6 +825,7 @@ Confirm each expectation with concrete snapshot text (not bare screenshots). If 
 ---
 
 ## Self-Review notes
+
 - **Spec coverage:** pushed page (Task 2/3), subtree aggregation (Task 1 `subtreeIndex`), dedup-best-match (Task 1 tests 1-2), group-by-leaf-label provenance (Task 2 sections + Eyebrow), conditional grouping via `multiNode` (Task 1 test 4, Task 2 branch), taxonomy/match ordering (Task 1 test 3), projects flat (Task 1 test 5, Task 2), title = tapped node (`index.root.label`). All covered.
 - **Type consistency:** `subtreeIndex` → `SubtreeIndex { root, total, multiNode, groups }`, `SubtreeGroup { node, posts }`, `LinkedPost { node, weight? }` used identically across Tasks 1-2.
 - **Runnable tests** cover only the pure query (`bun test`); the RN screen has no runner and is verified manually in Task 4 — this matches the repo's "no test runner wired up" reality.

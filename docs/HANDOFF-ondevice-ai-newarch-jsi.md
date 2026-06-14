@@ -43,6 +43,7 @@ native against 0.12.4 and verify.** It was NOT verified end-to-end yet (see Open
 (udid `08F63C27-CC61-4938-BB98-E4DDC14F668C`).
 
 Snapshot text observed:
+
 ```
 LOCAL MODEL
 On-device AI unavailable
@@ -81,12 +82,13 @@ still had the legacy-bridge `install()`. A clean rebuild against `0.12.4` was no
 ## Working-tree inconsistencies (the actual bug to close)
 
 `git status` shows an in-progress upgrade. `git diff`:
+
 - `apps/mobile/package.json`: `"llama.rn": "^0.11.5"` → **`"^0.12.4"`**
 - root `package.json` overrides: `"llama.rn": "0.10.1"` → **`"0.12.4"`**, plus a new
-  `trustedDependencies` note: *0.12.4 fetches its native artifacts (rnllama xcframework /
+  `trustedDependencies` note: _0.12.4 fetches its native artifacts (rnllama xcframework /
   Android libs) via a postinstall (`install/download-native-artifacts.js`); bun blocks
   postinstalls by default → must stay trusted or every install (local AND EAS) ships with
-  no native llama.*
+  no native llama._
 - **`apps/mobile/scripts/verify-native-ai.mjs:27`** still hardcodes `EXPECTED_LLAMA_RN = "0.10.1"`.
   With `0.12.4` resolved, this gate now **fails** (`0.12.4 !== 0.10.1`) — or passes only against
   a stale `node_modules`. Its comment ("@react-native-ai/llama@0.12's peer range is ^0.10.1")
@@ -119,12 +121,12 @@ still had the legacy-bridge `install()`. A clean rebuild against `0.12.4` was no
    `RNLlama.mm` `getMetalAvailability` `#if TARGET_OS_SIMULATOR supportsMetal=false`; sim uses CPU,
    so device behavior/perf differs). See `docs/HANDOFF-on-device-ai.md` for the device runbook.
 8. **Update docs/memory:** the "rebuild fixes it" story in the error copy and
-   `[[llama-rn-jsi-stale-binary]]` is misleading for a *version-skew* failure — note that an
+   `[[llama-rn-jsi-stale-binary]]` is misleading for a _version-skew_ failure — note that an
    incomplete `llama.rn` major bump (binary built against old, deps on new) presents identically.
 
 ## Open questions / risks
 
-- **Unverified:** that `0.12.4`'s `install()` returns `true` under *full* bridgeless at runtime.
+- **Unverified:** that `0.12.4`'s `install()` returns `true` under _full_ bridgeless at runtime.
   It is clearly New-Arch-designed (TurboModule), but it still reads `cxxBridge.runtime`; confirm
   empirically after the clean rebuild (step 5). If it still returns `false`, escalate — that
   would be a genuine bridgeless gap needing a patch or an upstream issue.

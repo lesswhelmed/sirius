@@ -16,9 +16,10 @@
 ## The actual error (from the EAS "Configure expo-updates" phase log)
 
 > **Runtime version mismatch:**
+>
 > - Runtime version calculated on local machine: `16c30d90e2b4cef21cd57ee2b708481c9aa8c029`
 > - Runtime version calculated on EAS: `e74aa8002a8e734296457b6f10f207e0d07970c4`
-> … Differing fingerprint when using fingerprint runtime version policy.
+>   … Differing fingerprint when using fingerprint runtime version policy.
 
 So `runtimeVersion.policy: "fingerprint"` (app.json) computes a **different hash on the dev
 machine than on EAS for the same committed code**, and EAS hard-fails the build because
@@ -31,20 +32,24 @@ OTA updates published locally would be incompatible with the build.
 ## The fingerprint diff (what differs local→EAS) and WHY
 
 ### A. iOS entitlements differ — caused by the DUPLICATE `llama.rn`
+
 - local (`beforeSource`) `ios.entitlements`: `{ increased-memory-limit }`
-- EAS (`afterSource`)   `ios.entitlements`: `{ extended-virtual-addressing, increased-memory-limit }`
+- EAS (`afterSource`) `ios.entitlements`: `{ extended-virtual-addressing, increased-memory-limit }`
 
 Confirmed: **both** installed `llama.rn` copies add both entitlements
 (`llama.rn/lib/.../expo-plugin/withLlamaRN.js:30-31`). The project has TWO copies:
+
 ```
 llama.rn@0.11.5  (node_modules/llama.rn)                                    # direct dep ^0.11.5  (app.plugin.js dated Jun 11)
 llama.rn@0.10.1  (node_modules/@react-native-ai/llama/node_modules/...)     # via @react-native-ai/llama@0.12.0 (^0.10.1)  (dated Jun 10)
 ```
+
 With a duplicate, config-plugin resolution is nondeterministic across environments → the
 entitlement is added on EAS but not in the local fingerprint snapshot. Deduping to ONE
 `llama.rn` makes plugin resolution deterministic → this part of the diff disappears.
 
 ### B. Native module dir hashes differ (reanimated, safe-area-context, screens, worklets)
+
 All four under `../../node_modules`, reason `rncoreAutolinkingIos`, different content hash
 local vs EAS. This is local `node_modules` drift / pollution — the everyday `bun run dev`
 path runs `expo run:ios`, a LOCAL native build that writes artifacts into these packages;
@@ -75,18 +80,21 @@ drift.
    must reach FINISHED with no runtime-version mismatch.
 
 ### Durable concern to RAISE (do not silently change)
-Even after a clean tree, the *next* `bun run dev` (`expo run:ios`) will re-pollute the RN
+
+Even after a clean tree, the _next_ `bun run dev` (`expo run:ios`) will re-pollute the RN
 dirs, so a future `eas build` from that machine could mismatch again. Options to discuss
 with the human (design decisions — **do not change unilaterally**): always build from a
 clean `node_modules`, or reconsider `runtimeVersion.policy` (CLAUDE.md documents
 `fingerprint` as intentional). Flag it; let the human decide.
 
 ## Do NOT touch without explicit human approval
+
 - `runtimeVersion.policy: "fingerprint"` (app.json) — documented as intentional.
 - The deliberate `overrides` pins in root `package.json` (`expo@56.0.8`, `react`, etc.).
 - `app.json` entitlements / plugin list.
 
 ## Verified-good (unrelated to this failure)
+
 - lesswhelmed.com prod wiring (eas.json `production`, `.env.production`,
   `AUTH_TRUSTED_ORIGINS=siriusapp://`). Confirmed correct.
 - EAS credentials (dist cert + provisioning profiles for `dev.copt.sirius` + share

@@ -1,56 +1,61 @@
-# Welcome to your Expo app 👋
+# `apps/mobile` — Sirius (Expo / React Native)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+The mobile client for **sirius-2-simple** — a content-ingest + AI publishing app.
+Capture URLs, notes, images, or voice memos; they flow into the same ingest queue the
+web app and worker share, get drafted (on-device or by the server's Gemini stage), and
+land as posts. See the repo-root [`CLAUDE.md`](../../CLAUDE.md) for the full pipeline.
 
-## Get started
+Built with Expo (SDK 56, RN 0.85, New Architecture), `expo-router`, the better-auth Expo
+client, `@tanstack/react-query`, and on-device LLM drafting via `llama.rn`.
 
-1. Install dependencies
+## Tabs & screens
 
-   ```bash
-   npm install
-   ```
+- **Capture** (`(tabs)/composer.tsx`) — stage notes / URLs / images / audio and submit.
+- **Catalog** (`(tabs)/library.tsx`) — your published posts.
+- **Queue** (`(tabs)/queue.tsx`) — submissions moving `pending → processing → done`.
+- **Tree** (`(tabs)/tree.tsx`) — an outline of the analysis taxonomy + focus areas; tap a
+  node to drill into its index of posts. The native counterpart of web's `/space`
+  Observatory, sharing tree/drill logic from [`@repo/embedding-scene`](../../packages/embedding-scene).
+- Detail/utility routes: `post/[slug]`, `space`, `focus`, `llm` (on-device AI chat),
+  `llm-test` (dev draft bench), `shareintent`.
 
-2. Start the app
+## On-device AI
 
-   ```bash
-   npx expo start
-   ```
+Notes/URLs/images can be drafted **locally** with `llama.rn` (`src/lib/llm/*`) before
+submitting — privacy + latency, soft-failing to the server's Gemini stage on any error.
+`llama.rn` is pinned at **0.12.4** (root `overrides`); the `verify:native-ai` gate asserts
+the native module is wired before every build. Deep design notes:
+[`docs/HANDOFF-on-device-ai.md`](../../docs/HANDOFF-on-device-ai.md).
 
-In the output, you'll find options to open the app in a
+## Develop
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Run from the **repo root** (everything reads the root `.env`):
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```sh
+bun run dev                  # full stack: boots the iOS Simulator, portless proxy, web,
+                             # worker, and this app (native build + Metro). Web at
+                             # https://sirius.local (LAN mode serves ONLY the .local name).
+bun --cwd apps/mobile ios    # fast JS-only escape hatch (skips the clean prebuild)
+bun --cwd apps/mobile start  # Metro / Expo dev server only
+bun --cwd apps/mobile android
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+`ios/` and `android/` are **gitignored** — regenerated from `app.json` + `bun.lock` by
+`expo prebuild`; never commit them. The everyday `bun run dev` does a clean prebuild only
+when a native input changed, else a fast incremental run.
 
-### Other setup steps
+## Release builds (EAS)
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Cloud builds via EAS (`eas.json`). Three profiles/channels: `development` (dev client,
+localhost), `preview` (internal, `lesswhelmed.com`), `production` (store). Every `build:*`
+script runs `verify:native-ai` first. Root one-liners:
 
-## Learn more
+```sh
+bun run mobile:build:ios | :android | :all     # eas build --profile production
+bun run mobile:build:preview                   # eas build --profile preview
+bun run mobile:build:dev                        # eas build --profile development
+bun run mobile:submit:ios | :android           # eas submit  --profile production
+```
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+EAS `requireCommit: true` → build from a clean, committed tree. `runtimeVersion.policy:
+"fingerprint"` → OTA updates only reach builds with a matching native fingerprint.

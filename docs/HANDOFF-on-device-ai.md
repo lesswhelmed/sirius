@@ -12,6 +12,7 @@ completes in **<1s** (Gemini skipped) → Post content is the on-device draft ve
 every earlier failed draft fell through to Gemini with zero data loss.
 
 Three findings from the verification session (all addressed):
+
 1. **JSI error = stale binary**, as the original plan said — fixed by installing the
    fresh build (no code change).
 2. **Structured output is belt-and-suspenders, not grammar-trusting.** On
@@ -94,6 +95,7 @@ phone → scan Metro's QR → sign in (web at `https://sirius.local`; LAN mode s
 the `.local` name, and `BETTER_AUTH_URL`/`NEXT_PUBLIC_BETTER_AUTH_URL` must match it).
 
 **Acceptance checklist (in order, using the built-in benches):**
+
 1. `/llm` chat streams on hardware (Phase A; model download ~2.1 GB on the phone).
 2. `/llm-test` → Run all: note fixtures + "URL draft from canned extract" pass.
 3. `/llm-test` Audio section: availability flips to **available** on iOS 26 hardware →
@@ -111,19 +113,19 @@ Record results here; anything that fails becomes a new open item.
 
 ## Repo orientation (read first)
 
-| Path | Why |
-|---|---|
-| `packages/ingest-draft/src/index.ts` | Single source of truth: `PostDraftSchema`, `SightDraftSchema`, `DraftEnvelopeSchema` (v1). Deliberately has **no `type` field** — worker forces PostType by kind. |
-| `apps/worker/src/pipeline/draft-runner.ts` | `tryClientDraft`: defensive safeParse of the stored envelope; null → Gemini fallthrough. Only note + image kinds. |
-| `apps/worker/src/pipeline/pipeline.ts` | Branch point: logs `draft:client` (skip) vs `gemini:parsed`. |
-| `apps/mobile/src/lib/llm/engine.ts` | One prepared model at a time, n_ctx 4096, projectorPath for vision. |
-| `apps/mobile/src/lib/llm/curate.ts` | `draftNotePost` / `draftUrlPost` / `draftSightPost` — `generateText` + `Output.object(schema)` + prompt-JSON + `withDraftRepair()` (the repair belt; re-parses `err.text` on a `NoObjectGeneratedError`). Belt-and-suspenders because grammar enforcement was fail-open on llama.rn 0.11 and is unverified on the now-pinned 0.12.4. Any failure → null → server drafts. |
-| `apps/mobile/src/lib/llm/transcribe.ts` | Apple SpeechAnalyzer (iOS 26+), lazy-imported; audio bytes never upload on this path — submits as note-kind. |
-| `apps/mobile/src/lib/outbox.ts` | FIFO at `documentDirectory/outbox.json`, note-kind only; 4xx drops, network error keeps. Idempotency = server contentHash (draft excluded from hash). |
-| `apps/mobile/src/lib/materials.ts` | Where curation/transcription/outbox wire into note/audio/image handlers. |
-| `apps/web/lib/ingest/{schema,submit}.ts` | Draft accepted on note + image only; stripped+logged for URLs; image draft soft-fails (image still ingests). |
-| `apps/mobile/src/app/llm.tsx` | Chat demo screen (download → progress → streaming chat). |
-| `CLAUDE.md` (repo root) | Commands, pipeline architecture, portless dev URL, EAS profiles. |
+| Path                                       | Why                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/ingest-draft/src/index.ts`       | Single source of truth: `PostDraftSchema`, `SightDraftSchema`, `DraftEnvelopeSchema` (v1). Deliberately has **no `type` field** — worker forces PostType by kind.                                                                                                                                                                                                        |
+| `apps/worker/src/pipeline/draft-runner.ts` | `tryClientDraft`: defensive safeParse of the stored envelope; null → Gemini fallthrough. Only note + image kinds.                                                                                                                                                                                                                                                        |
+| `apps/worker/src/pipeline/pipeline.ts`     | Branch point: logs `draft:client` (skip) vs `gemini:parsed`.                                                                                                                                                                                                                                                                                                             |
+| `apps/mobile/src/lib/llm/engine.ts`        | One prepared model at a time, n_ctx 4096, projectorPath for vision.                                                                                                                                                                                                                                                                                                      |
+| `apps/mobile/src/lib/llm/curate.ts`        | `draftNotePost` / `draftUrlPost` / `draftSightPost` — `generateText` + `Output.object(schema)` + prompt-JSON + `withDraftRepair()` (the repair belt; re-parses `err.text` on a `NoObjectGeneratedError`). Belt-and-suspenders because grammar enforcement was fail-open on llama.rn 0.11 and is unverified on the now-pinned 0.12.4. Any failure → null → server drafts. |
+| `apps/mobile/src/lib/llm/transcribe.ts`    | Apple SpeechAnalyzer (iOS 26+), lazy-imported; audio bytes never upload on this path — submits as note-kind.                                                                                                                                                                                                                                                             |
+| `apps/mobile/src/lib/outbox.ts`            | FIFO at `documentDirectory/outbox.json`, note-kind only; 4xx drops, network error keeps. Idempotency = server contentHash (draft excluded from hash).                                                                                                                                                                                                                    |
+| `apps/mobile/src/lib/materials.ts`         | Where curation/transcription/outbox wire into note/audio/image handlers.                                                                                                                                                                                                                                                                                                 |
+| `apps/web/lib/ingest/{schema,submit}.ts`   | Draft accepted on note + image only; stripped+logged for URLs; image draft soft-fails (image still ingests).                                                                                                                                                                                                                                                             |
+| `apps/mobile/src/app/llm.tsx`              | Chat demo screen (download → progress → streaming chat).                                                                                                                                                                                                                                                                                                                 |
+| `CLAUDE.md` (repo root)                    | Commands, pipeline architecture, portless dev URL, EAS profiles.                                                                                                                                                                                                                                                                                                         |
 
 ## Live processes / external systems
 
