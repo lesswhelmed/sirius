@@ -102,6 +102,7 @@ export type ClassifyConfig = {
   enabled: boolean;
   projectMatchMin: number;
   categoryMatchMin: number;
+  categoryReuseMin: number;
 };
 
 // Calibrated against gemini-embedding-2 @ 768 dims (see smoke-classify):
@@ -114,6 +115,16 @@ export type ClassifyConfig = {
 //   leniency here is low-risk.
 const DEFAULT_PROJECT_MATCH_MIN = 0.78;
 const DEFAULT_CATEGORY_MATCH_MIN = 0.58;
+// Reuse threshold for the dynamic topic taxonomy (resolve-categories.ts). Unlike
+// categoryMatchMin (content queryPrefix vs facet documentText — asymmetric, so
+// scores compress to ~0.6), this compares a model-proposed category LABEL against
+// existing topic-node label embeddings — both document-side, short text — so
+// scores run high. Calibrated with scripts/smoke-categorize.ts against
+// gemini-embedding-2 @ 768 dims: true synonyms land high ("artificial
+// intelligence" vs "ai" ≈ 0.93) while related-but-distinct siblings land lower
+// ("machine learning" vs "ai" ≈ 0.84), so 0.88 sits in the gap — synonyms collapse
+// onto one node, distinct sub-topics stay as separate nested children.
+const DEFAULT_CATEGORY_REUSE_MIN = 0.88;
 
 function envFloat(name: string, fallback: number): number {
   const raw = Number(process.env[name]);
@@ -126,6 +137,7 @@ export function getClassifyConfig(): ClassifyConfig {
     enabled: process.env.CLASSIFY_ENABLED !== "false",
     projectMatchMin: envFloat("CLASSIFY_PROJECT_MATCH_MIN", DEFAULT_PROJECT_MATCH_MIN),
     categoryMatchMin: envFloat("CLASSIFY_CATEGORY_MATCH_MIN", DEFAULT_CATEGORY_MATCH_MIN),
+    categoryReuseMin: envFloat("CATEGORY_REUSE_MIN", DEFAULT_CATEGORY_REUSE_MIN),
   };
 }
 

@@ -28,7 +28,9 @@ export interface ClassifyResult {
 // cosine over equal-length vectors; 0 if either is zero-norm or lengths differ
 // (a length mismatch means the rows were embedded at a different dimensionality,
 // so they are simply not comparable — treat as no match rather than throwing).
-function cosine(a: number[], b: number[]): number {
+// Exported so the category resolver (apps/worker) can reuse the same math; it is
+// pure (no AI-SDK dep), so re-exporting it keeps packages/db dependency-free.
+export function cosine(a: number[], b: number[]): number {
   if (a.length !== b.length) {
     return 0;
   }

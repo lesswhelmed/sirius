@@ -21,6 +21,7 @@ import {
   getProjectEmbedding,
   listProjectsNeedingEmbedding,
   replacePostCategoryMatches,
+  setPostCategories,
   setSubmissionProject,
   upsertPostEmbedding,
   upsertProjectEmbedding,
@@ -29,6 +30,7 @@ import { getClassifyConfig, getEmbeddingDimensionality, getEmbeddingModel } from
 import { embedContent, embeddingHash, queryPrefix } from "../../lib/embeddings";
 import type { PipelineInput } from "../types";
 import type { ClassificationInput } from "./adapters";
+import { type ResolvedTopic, resolveCategoryPaths } from "./resolve-categories";
 
 export interface AssignOrgArgs {
   input: PipelineInput;
@@ -201,10 +203,50 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
     modelVersion,
     dimensionality,
   });
+
+  // Grow/reuse the dynamic topic taxonomy from the model's proposed category
+  // paths (embedding-deduped + nestable), so the post links to canonical topic
+  // nodes in the Tree. Strictly non-fatal: a resolver error must not lose the
+  // facet matches or dead-letter the ingest, so we fall back to facet-only links.
+  let topics: ResolvedTopic[] = [];
+  try {
+    topics = await resolveCategoryPaths(classificationInput.prep.candidateCategories, {
+      reuseMin: config.categoryReuseMin,
+    });
+  } catch (error) {
+    console.warn(
+      `[assign-org] topic resolution failed (facet-only): ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  // One PostCategoryMatch set = analysis facets + resolved topic nodes. Dedupe by
+  // path (the table is unique on [postId, path]), keeping the higher score.
+  const matchByPath = new Map<string, number>();
+  for (const c of categories) {
+    matchByPath.set(c.path, Math.max(matchByPath.get(c.path) ?? 0, c.score));
+  }
+  for (const t of topics) {
+    matchByPath.set(t.path, Math.max(matchByPath.get(t.path) ?? 0, t.score));
+  }
   await replacePostCategoryMatches(
     postId,
-    categories.map((c) => ({ path: c.path, score: c.score }))
+    [...matchByPath].map(([path, score]) => ({ path, score }))
   );
+
+  // Reconcile the flat Category table (post colophon/listing) to the canonical
+  // resolved leaf names so it dedupes too. Non-fatal.
+  if (topics.length > 0) {
+    try {
+      await setPostCategories(
+        postId,
+        topics.map((t) => t.name)
+      );
+    } catch (error) {
+      console.warn(
+        `[assign-org] flat-category reconcile failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
 
   // Explicitly-scoped ingests keep their user-chosen Project — no auto-org.
   if (input.projectId != null) {

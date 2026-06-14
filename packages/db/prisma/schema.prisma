@@ -119,6 +119,13 @@ model CategoryEmbedding {
   id             String   @id @default(cuid())
   path           String   @unique
   name           String
+  // Optional human-readable label for dynamic topic nodes (seed facets derive
+  // their label from `name`). Used as the Tree node label when present.
+  displayName    String?
+  // "seed"    = the fixed analysis-facet taxonomy (seed-analysis-categories.ts)
+  // "dynamic" = a topic node grown at ingest by the category resolver.
+  // Lets the resolver scope its reuse comparison to dynamic siblings only.
+  source         String   @default("dynamic")
   fullPath       String
   parentPath     String?
   depth          Int
@@ -140,6 +147,7 @@ model CategoryEmbedding {
   @@index([parentPath])
   @@index([depth])
   @@index([embeddingHash])
+  @@index([source])
 }
 
 // One embedding per Project (Focus Area), so unscoped content can be matched to

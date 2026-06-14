@@ -12,6 +12,9 @@ import {
 export interface UpsertCategoryEmbeddingInput {
   path: string;
   name: string;
+  displayName?: string | null;
+  // "seed" (fixed analysis facets) | "dynamic" (topic node grown at ingest).
+  source?: string;
   fullPath: string;
   parentPath: string | null;
   depth: number;
@@ -39,6 +42,18 @@ export async function upsertCategoryEmbedding(
 
 export async function listCategoryEmbeddings(): Promise<CategoryEmbedding[]> {
   return prisma.categoryEmbedding.findMany({ orderBy: { path: "asc" } });
+}
+
+// Only the dynamic topic nodes (grown at ingest), so the category resolver
+// compares model-proposed labels against other label embeddings — never against
+// the richer seed-facet vectors, which live in a different (incompatible) space.
+export async function listDynamicCategoryEmbeddings(): Promise<
+  CategoryEmbedding[]
+> {
+  return prisma.categoryEmbedding.findMany({
+    where: { source: "dynamic" },
+    orderBy: { path: "asc" },
+  });
 }
 
 export interface UpsertProjectEmbeddingInput {

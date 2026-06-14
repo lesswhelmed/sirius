@@ -261,6 +261,7 @@ async function main(): Promise<void> {
     await upsertCategoryEmbedding({
       path: node.path,
       name,
+      source: "seed",
       fullPath: node.path,
       parentPath,
       depth,

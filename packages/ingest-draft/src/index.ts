@@ -30,7 +30,9 @@ export const PostDraftSchema = z.object({
     .array(z.string())
     .min(1)
     .max(3)
-    .describe("1-3 lowercase kebab-case categories"),
+    .describe(
+      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'technology/artificial-intelligence', 'design/typography'). Reuse common broad top-level fields (technology, design, business, history, science, art, lifestyle, finance) rather than inventing near-duplicates. A single broad term with no subtopic is fine (e.g. 'cooking')."
+    ),
   body: z
     .string()
     .min(1)
@@ -62,7 +64,9 @@ export const SightDraftSchema = z.object({
     .array(z.string())
     .min(1)
     .max(3)
-    .describe("1-3 lowercase kebab-case categories"),
+    .describe(
+      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'objects/footwear', 'nature/plants'). Reuse common broad top-level fields rather than inventing near-duplicates. A single broad term with no subtopic is fine."
+    ),
   body: z
     .string()
     .min(1)

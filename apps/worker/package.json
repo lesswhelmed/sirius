@@ -8,6 +8,8 @@
     "dev": "bun run --watch src/index.ts",
     "setup": "bun run src/setup.ts",
     "backfill:covers": "bun run src/scripts/backfill-cover-images.ts",
+    "test": "bun test",
+    "smoke:categorize": "bun run scripts/smoke-categorize.ts",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },

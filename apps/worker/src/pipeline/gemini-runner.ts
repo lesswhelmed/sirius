@@ -64,6 +64,7 @@ function buildPrompt(input: PipelineInput): string {
     `Today's date: ${today}.`,
     "Voice: first-person, observational, concrete. 80-300 words.",
     "No marketing copy. No 'Here is' preambles. No code fences in the body.",
+    "Categories: 1-3 broad->narrow slash paths (e.g. 'technology/artificial-intelligence'); reuse common broad top-level fields, don't invent near-duplicates.",
     "",
   ];
 
@@ -117,6 +118,7 @@ function buildUrlStructuringPrompt(summary: string, notes: string): string {
     "Voice: first-person, observational, concrete. 80-300 words.",
     "No marketing copy. No 'Here is' preambles. No code fences in the body.",
     "Summarize what's on the page, why it's worth noting, anything specific that surprised you. Cite any quoted phrases inline naturally.",
+    "Categories: 1-3 broad->narrow slash paths (e.g. 'technology/artificial-intelligence'); reuse common broad top-level fields, don't invent near-duplicates.",
     "",
     "Pre-fetched URL summary:",
     summary,
