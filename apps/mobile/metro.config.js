@@ -33,10 +33,27 @@ if (!config.resolver.sourceExts.includes("sql")) {
 // on-device: 0.170/0.176/0.180/0.181 render, 0.182 is black). Re-test before
 // bumping.
 const threeEntry = require.resolve("three"); // → build/three.cjs
+
+// The offline-first SQLite store is native-only. On WEB, expo-sqlite's entry
+// pulls in web/worker.ts, which `import`s `./wa-sqlite/wa-sqlite.wasm` — Metro
+// can't resolve it (`.wasm` isn't in this project's resolver extensions), so the
+// web bundle fails even though iOS/Android are fine. Web here is a static,
+// non-product surface (app.json web.output: "static") with no reason to run a
+// real on-device DB, so redirect bare `expo-sqlite` to an inert web stub for the
+// web platform only. This severs BOTH paths into expo-sqlite on web (our
+// @/lib/db/client AND drizzle-orm/expo-sqlite's useLiveQuery) while leaving the
+// native bundle's import untouched. See src/lib/db/expo-sqlite-web.ts.
+const expoSqliteWebStub = path.resolve(
+  projectRoot,
+  "src/lib/db/expo-sqlite-web.ts"
+);
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === "three") {
     return { type: "sourceFile", filePath: threeEntry };
+  }
+  if (moduleName === "expo-sqlite" && platform === "web") {
+    return { type: "sourceFile", filePath: expoSqliteWebStub };
   }
   return (defaultResolveRequest ?? context.resolveRequest)(
     context,
