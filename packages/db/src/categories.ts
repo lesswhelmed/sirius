@@ -57,3 +57,16 @@ export async function setPostCategories(
     data: { categories: { set: [], connectOrCreate: connects } },
   });
 }
+
+// Prune flat Category rows that no longer label any post. A flat Category exists
+// only to label posts, and post-writer's connectOrCreate creates+links a row
+// atomically, so a 0-post row can only arise AFTER an unlink (e.g. when
+// setPostCategories' `set: []` relinks a post to canonical leaf names, orphaning
+// the row post-writer made for a synonym/path it superseded). Safe to delete.
+// Returns how many were removed.
+export async function deleteOrphanCategories(): Promise<number> {
+  const result = await prisma.category.deleteMany({
+    where: { posts: { none: {} } },
+  });
+  return result.count;
+}

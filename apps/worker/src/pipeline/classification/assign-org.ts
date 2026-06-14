@@ -15,6 +15,7 @@ import {
   classifyContent,
   createAspiration,
   createProject,
+  deleteOrphanCategories,
   findAspirationByTitle,
   findProjectByTitle,
   getProject,
@@ -241,6 +242,10 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
         postId,
         topics.map((t) => t.name)
       );
+      // The relink above (set: []) can orphan the path/synonym rows post-writer
+      // created; prune any Category left labeling zero posts so the table doesn't
+      // grow junk across ingests.
+      await deleteOrphanCategories();
     } catch (error) {
       console.warn(
         `[assign-org] flat-category reconcile failed: ${error instanceof Error ? error.message : String(error)}`

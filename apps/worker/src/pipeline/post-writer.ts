@@ -255,10 +255,16 @@ export async function writePost(
       ? (parsed.frontmatter.tags as string[])
       : []
   );
+  // Draft categories are slash-delimited paths (e.g. "lifestyle/beekeeping").
+  // The flat Category table is labeled by LEAF segment only ("beekeeping"), both
+  // so the fallback colophon reads sensibly AND so these rows match what the
+  // classification resolver later reconciles to — avoiding orphaned path-named
+  // rows. Take the leaf BEFORE dedupe so two paths sharing a leaf collapse.
   const categoryNames = dedupeByName(
-    Array.isArray(parsed.frontmatter.categories)
+    (Array.isArray(parsed.frontmatter.categories)
       ? (parsed.frontmatter.categories as string[])
       : []
+    ).map((name) => name.split("/").pop() ?? name)
   );
 
   const tagConnects: Prisma.TagCreateOrConnectWithoutPostsInput[] = tagNames.map(
