@@ -6,6 +6,8 @@ import { SymbolView } from "expo-symbols";
 import { forwardRef, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  InputAccessoryView,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -136,6 +138,40 @@ const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
 );
 
 export { Field };
+
+// Shared nativeID linking any TextInput to the one <KeyboardDoneBar/> on screen.
+export const KEYBOARD_ACCESSORY_ID = "sirius.keyboard.done";
+
+// A "Done" toolbar pinned to the top of the iOS keyboard. Multiline inputs
+// (notes, chat) have no return-key dismiss, so without this the keyboard traps
+// the user — you can't reach the submit control underneath it. Link an input
+// with `inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}` and render this alongside
+// it. InputAccessoryView rides the keyboard itself, so it works inside Modals
+// (the capture Sheet) where a KeyboardAvoidingView can't be trusted. Android
+// has a system dismiss key, so this renders nothing there.
+export function KeyboardDoneBar({ label = "Done" }: { label?: string }) {
+  if (Platform.OS !== "ios") {
+    return null;
+  }
+  return (
+    <InputAccessoryView nativeID={KEYBOARD_ACCESSORY_ID}>
+      <View style={styles.keyboardBar}>
+        <Pressable
+          onPress={() => Keyboard.dismiss()}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss keyboard"
+          style={({ pressed }) => [
+            styles.keyboardDone,
+            pressed && styles.linkPressed,
+          ]}
+        >
+          <Text style={styles.keyboardDoneText}>{label}</Text>
+        </Pressable>
+      </View>
+    </InputAccessoryView>
+  );
+}
 
 type ButtonProps = Omit<PressableProps, "children" | "style"> & {
   label: string;
@@ -486,6 +522,28 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   link: { fontSize: 15, fontWeight: "600" },
   linkPressed: { opacity: 0.6 },
+  keyboardBar: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    backgroundColor: Sirius.color.paperRaised,
+    borderTopWidth: 1,
+    borderColor: Sirius.color.ruleStrong,
+    paddingHorizontal: Sirius.space.lg,
+    paddingVertical: Sirius.space.sm,
+  },
+  keyboardDone: {
+    paddingHorizontal: Sirius.space.sm,
+    paddingVertical: Sirius.space.xs,
+  },
+  keyboardDoneText: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: Sirius.color.accent,
+  },
   actionCard: {
     flex: 1,
     minHeight: 104,

@@ -27,6 +27,8 @@ import {
   ActionCard,
   Eyebrow,
   Field,
+  KEYBOARD_ACCESSORY_ID,
+  KeyboardDoneBar,
   PrimaryButton,
   Screen,
   Sheet,
@@ -582,10 +584,12 @@ export default function ComposerScreen() {
               autoFocus
               autoCapitalize={activeKey === "link" ? "none" : "sentences"}
               autoCorrect={activeKey !== "link"}
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
               value={draft}
               onChangeText={setDraft}
             />
             <PrimaryButton label="Add to tray" onPress={confirmForm} />
+            <KeyboardDoneBar />
           </>
         ) : null}
       </Sheet>

@@ -18,8 +18,16 @@ import {
 } from "react-native";
 
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { MetaText, PrimaryButton, Screen, TextLink } from "@/components/sirius";
+import {
+  KEYBOARD_ACCESSORY_ID,
+  KeyboardDoneBar,
+  MetaText,
+  PrimaryButton,
+  Screen,
+  TextLink,
+} from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import {
   checkNativeBridge,
@@ -207,6 +215,12 @@ function Chat({
   >(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+  // This screen sits under a native nav header, so the KeyboardAvoidingView has
+  // to offset by exactly that header's height (safe-area top inset + the iOS
+  // nav bar) or the input ends up behind the keyboard. Derive it instead of
+  // hardcoding a guess so it's correct across notch / Dynamic Island devices.
+  const insets = useSafeAreaInsets();
+  const headerHeight = insets.top + 44;
 
   const send = async () => {
     const text = input.trim();
@@ -247,12 +261,14 @@ function Chat({
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 96 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
       >
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
           contentContainerStyle={styles.messages}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() =>
             scrollRef.current?.scrollToEnd({ animated: true })
           }
@@ -297,7 +313,12 @@ function Chat({
           )}
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </ScrollView>
-        <View style={styles.inputRow}>
+        <View
+          style={[
+            styles.inputRow,
+            { paddingBottom: Math.max(insets.bottom, 8) },
+          ]}
+        >
           <TextInput
             style={styles.input}
             value={input}
@@ -306,6 +327,7 @@ function Chat({
             placeholderTextColor={Sirius.color.inkSubtle}
             multiline
             editable={!busy}
+            inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
           />
           <Pressable
             style={[styles.sendBtn, busy ? styles.sendBtnDisabled : null]}
@@ -320,6 +342,7 @@ function Chat({
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      <KeyboardDoneBar />
     </Screen>
   );
 }
