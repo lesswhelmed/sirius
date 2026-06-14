@@ -13,12 +13,14 @@ import { extname } from "node:path";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { PostType } from "@repo/db";
 import { extractUrlContext } from "@repo/extraction";
+import { parseGitHubUrl } from "@repo/github-ingest";
 import { PostDraftSchema, SightDraftSchema } from "@repo/ingest-draft";
 import type { PostDraft } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig } from "../lib/ai-config";
 import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseYouTubeUrl } from "../lib/youtube-url";
+import { runGitHubGemini } from "./github/runner";
 import { runInstagramGemini } from "./instagram/runner";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 import { runYouTubeGemini } from "./youtube/runner";
@@ -191,6 +193,25 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
   const model = google(config.model);
 
   if (input.kind === "url") {
+    const githubUrls = input.urls.filter((u) => parseGitHubUrl(u));
+    const nonGithubUrls = input.urls.filter((u) => !parseGitHubUrl(u));
+    // Single-URL GitHub repo ingest: take the dedicated structure+key-files
+    // path. Mixed batches fall through so we don't lose the other URLs.
+    if (githubUrls.length === 1 && nonGithubUrls.length === 0) {
+      try {
+        const result = await runGitHubGemini({
+          url: githubUrls[0]!,
+          notes: input.notes,
+        });
+        if (result) {
+          return result.output;
+        }
+      } catch (error) {
+        console.warn(
+          `[github] dedicated path failed, falling back to url_context: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
     const instagramUrls = input.urls.filter((u) => parseInstagramUrl(u));
     const nonInstagramUrls = input.urls.filter((u) => !parseInstagramUrl(u));
     // Single-URL Instagram ingest: take the dedicated path. Mixed batches

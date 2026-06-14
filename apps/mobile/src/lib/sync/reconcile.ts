@@ -69,6 +69,8 @@ export async function reconcileUpsert(post: PostDelta): Promise<void> {
     categories: post.categories,
     imageUrl: post.imageUrl,
     images: normalizeImages(post.images),
+    providerId: post.providerId,
+    contentDigest: post.contentDigest,
     syncState: "synced" as const,
     draftEnvelopeJson: null,
     serverUpdatedAt,

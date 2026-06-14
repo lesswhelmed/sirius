@@ -36,8 +36,10 @@ import {
   Title,
   TrayRow,
 } from "@/components/sirius";
+import type { RepoPreview } from "@repo/github-ingest";
+
 import { Sirius } from "@/constants/theme";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPostJson, ApiError } from "@/lib/api";
 import { signOut } from "@/lib/auth-client";
 import {
   CAPTURE_KINDS,
@@ -98,6 +100,14 @@ export default function ComposerScreen() {
   const [audioSheetOpen, setAudioSheetOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  // Repository sheet: paste a GitHub URL, fetch the server-rendered preview
+  // card, confirm into the tray. All GitHub work is server-side.
+  const [repoSheetOpen, setRepoSheetOpen] = useState(false);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [repoNotes, setRepoNotes] = useState("");
+  const [repoPreview, setRepoPreview] = useState<RepoPreview | null>(null);
+  const [repoLoading, setRepoLoading] = useState(false);
+  const [repoError, setRepoError] = useState<string | null>(null);
 
   // On-device curation: user's toggle plus whether the local model is actually
   // on disk (the /llm screen manages downloads).
@@ -294,9 +304,59 @@ export default function ComposerScreen() {
       setAudioSheetOpen(true);
       return;
     }
+    if (kind.key === "repo") {
+      setRepoUrl("");
+      setRepoNotes("");
+      setRepoPreview(null);
+      setRepoError(null);
+      setRepoSheetOpen(true);
+      return;
+    }
     // form kinds (link, note)
     setDraft("");
     setActiveKey(kind.key);
+  }
+
+  // Fetch the confirm-preview card from the shared server endpoint. Mobile does
+  // no GitHub work itself — it just validates + presents before queueing.
+  async function runRepoPreview() {
+    const url = repoUrl.trim();
+    if (url.length === 0) {
+      setRepoError("Paste a GitHub repository URL first.");
+      return;
+    }
+    setRepoLoading(true);
+    setRepoError(null);
+    setRepoPreview(null);
+    try {
+      const { preview } = await apiPostJson<{ preview: RepoPreview }>(
+        "/api/app/github/preview",
+        { url }
+      );
+      setRepoPreview(preview);
+    } catch (err) {
+      setRepoError(
+        err instanceof ApiError ? err.message : "Network error reaching preview."
+      );
+    } finally {
+      setRepoLoading(false);
+    }
+  }
+
+  function confirmRepo() {
+    if (!repoPreview) return;
+    addToTray([
+      {
+        kind: "repo",
+        url: repoPreview.htmlUrl,
+        notes: repoNotes.trim() || undefined,
+      },
+    ]);
+    setRepoSheetOpen(false);
+    setRepoUrl("");
+    setRepoNotes("");
+    setRepoPreview(null);
+    setRepoError(null);
   }
 
   function confirmForm() {
@@ -589,6 +649,13 @@ export default function ComposerScreen() {
               onChangeText={setDraft}
             />
             <PrimaryButton label="Add to tray" onPress={confirmForm} />
+            <View style={styles.sheetCancel}>
+              <TextLink
+                label="Cancel"
+                tone={Sirius.color.inkMuted}
+                onPress={() => setActiveKey(null)}
+              />
+            </View>
             <KeyboardDoneBar />
           </>
         ) : null}
@@ -611,8 +678,128 @@ export default function ComposerScreen() {
           disabled={isRecording}
           style={styles.sheetSecondaryButton}
         />
+        <View style={styles.sheetCancel}>
+          <TextLink
+            label="Cancel"
+            tone={Sirius.color.inkMuted}
+            onPress={() => {
+              if (!isRecording) setAudioSheetOpen(false);
+            }}
+          />
+        </View>
+      </Sheet>
+
+      <Sheet
+        visible={repoSheetOpen}
+        title="Add repository"
+        onClose={() => {
+          if (!repoLoading) setRepoSheetOpen(false);
+        }}
+      >
+        <Field
+          label="GitHub repository URL"
+          placeholder="https://github.com/owner/repo"
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+          value={repoUrl}
+          onChangeText={setRepoUrl}
+          onSubmitEditing={() => void runRepoPreview()}
+        />
+        <PrimaryButton
+          label="Fetch preview"
+          onPress={() => void runRepoPreview()}
+          busy={repoLoading}
+          disabled={repoUrl.trim().length === 0}
+        />
+        {repoError ? (
+          <Text style={styles.repoError} accessibilityRole="alert">
+            {repoError}
+          </Text>
+        ) : null}
+        {repoPreview ? <RepoPreviewCard preview={repoPreview} /> : null}
+        {repoPreview ? (
+          <>
+            <Field
+              label="Notes (optional)"
+              placeholder="Why this repo caught your eye…"
+              multiline
+              autoCapitalize="sentences"
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+              style={styles.repoNotesInput}
+              value={repoNotes}
+              onChangeText={setRepoNotes}
+            />
+            <PrimaryButton
+              label="Add to tray"
+              onPress={confirmRepo}
+              style={styles.sheetSecondaryButton}
+            />
+          </>
+        ) : null}
+        <View style={styles.sheetCancel}>
+          <TextLink
+            label="Cancel"
+            tone={Sirius.color.inkMuted}
+            onPress={() => {
+              if (!repoLoading) setRepoSheetOpen(false);
+            }}
+          />
+        </View>
+        <KeyboardDoneBar />
       </Sheet>
     </Screen>
+  );
+}
+
+// The confirm-preview repo card. Renders the server-fetched RepoPreview so the
+// user sees exactly what "ingest this repo" resolves to before queueing.
+function RepoPreviewCard({ preview }: { preview: RepoPreview }) {
+  const meta = [
+    `★ ${preview.stars.toLocaleString()}`,
+    preview.primaryLanguage,
+    preview.license,
+  ].filter(Boolean) as string[];
+  return (
+    <View style={styles.repoCard}>
+      <View style={styles.repoCardHead}>
+        {preview.ownerAvatarUrl ? (
+          <Image
+            source={{ uri: preview.ownerAvatarUrl }}
+            style={styles.repoAvatar}
+            contentFit="cover"
+            transition={120}
+          />
+        ) : null}
+        <View style={styles.flex}>
+          <Text style={styles.repoName} numberOfLines={1}>
+            {preview.owner}/{preview.repo}
+          </Text>
+          {preview.description ? (
+            <Text style={styles.repoDescription} numberOfLines={2}>
+              {preview.description}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      {meta.length > 0 ? (
+        <Text style={styles.repoMeta}>{meta.join("  ·  ")}</Text>
+      ) : null}
+      {preview.readmeExcerpt ? (
+        <Text style={styles.repoReadme} numberOfLines={4}>
+          {preview.readmeExcerpt}
+        </Text>
+      ) : null}
+      {preview.keyFilePaths.length > 0 ? (
+        <Text style={styles.repoFiles} numberOfLines={3}>
+          Will read {preview.keyFilePaths.length} file
+          {preview.keyFilePaths.length === 1 ? "" : "s"}:{" "}
+          {preview.keyFilePaths.join(", ")}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -679,7 +866,59 @@ const styles = StyleSheet.create({
     borderColor: Sirius.color.rule,
   },
   sheetInput: { minHeight: 120, textAlignVertical: "top", paddingTop: 12 },
+  sheetCancel: { alignItems: "center" },
   sheetSecondaryButton: { marginTop: Sirius.space.sm },
+  repoError: {
+    color: Sirius.color.accent,
+    fontFamily: Sirius.font.mono,
+    fontSize: 12,
+  },
+  repoNotesInput: { minHeight: 64, textAlignVertical: "top", paddingTop: 12 },
+  repoCard: {
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    backgroundColor: Sirius.color.paperRaised,
+    padding: Sirius.space.md,
+    gap: Sirius.space.sm,
+  },
+  repoCardHead: { flexDirection: "row", gap: Sirius.space.md },
+  repoAvatar: {
+    width: 40,
+    height: 40,
+    backgroundColor: Sirius.color.paperSunken,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+  },
+  repoName: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 17,
+    color: Sirius.color.ink,
+  },
+  repoDescription: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 14,
+    color: Sirius.color.inkMuted,
+    marginTop: 2,
+  },
+  repoMeta: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 12,
+    color: Sirius.color.inkMuted,
+  },
+  repoReadme: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 13,
+    lineHeight: 20,
+    color: Sirius.color.inkMuted,
+    borderLeftWidth: 2,
+    borderLeftColor: Sirius.color.rule,
+    paddingLeft: Sirius.space.sm,
+  },
+  repoFiles: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    color: Sirius.color.inkSubtle,
+  },
   curationRow: {
     alignItems: "center",
     backgroundColor: Sirius.color.paperRaised,

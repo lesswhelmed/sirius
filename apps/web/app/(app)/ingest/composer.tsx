@@ -10,6 +10,8 @@ import {
   type ChangeEvent,
 } from "react";
 
+import type { RepoPreview } from "@repo/github-ingest";
+
 import {
   CAPTURE_KINDS,
   type CaptureKind,
@@ -247,6 +249,81 @@ function Sheet({
   );
 }
 
+// The confirm-preview repo card. Renders the server-fetched RepoPreview so the
+// user sees exactly what "ingest this repo" resolves to before queueing.
+function RepoCard({ preview }: { preview: RepoPreview }) {
+  return (
+    <div className="surface-raised flex flex-col gap-3 p-3.5">
+      <div className="flex items-start gap-3">
+        {preview.ownerAvatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={preview.ownerAvatarUrl}
+            alt=""
+            className="h-10 w-10 shrink-0 border border-[var(--color-rule-strong)] bg-[var(--color-paper-sunken)]"
+          />
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-display text-[18px] italic text-[var(--fg)]">
+            {preview.owner}/<span className="not-italic">{preview.repo}</span>
+          </p>
+          {preview.description ? (
+            <p className="mt-0.5 line-clamp-2 font-body text-[14px] text-[var(--fg-muted)]">
+              {preview.description}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-[var(--fg-muted)]">
+        <span aria-label={`${preview.stars} stars`}>
+          ★ {preview.stars.toLocaleString()}
+        </span>
+        {preview.primaryLanguage ? <span>{preview.primaryLanguage}</span> : null}
+        {preview.license ? <span>{preview.license}</span> : null}
+      </div>
+
+      {preview.topics.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {preview.topics.slice(0, 8).map((topic) => (
+            <span
+              key={topic}
+              className="border border-[var(--color-rule-strong)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--fg-subtle)]"
+            >
+              {topic}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {preview.readmeExcerpt ? (
+        <p className="line-clamp-4 border-l-2 border-[var(--color-rule-strong)] pl-3 font-body text-[13px] leading-[1.6] text-[var(--fg-muted)]">
+          {preview.readmeExcerpt}
+        </p>
+      ) : null}
+
+      {preview.keyFilePaths.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
+            Will read {preview.keyFilePaths.length} file
+            {preview.keyFilePaths.length === 1 ? "" : "s"}
+          </span>
+          <ul className="flex flex-col">
+            {preview.keyFilePaths.map((path) => (
+              <li
+                key={path}
+                className="truncate font-mono text-[11px] text-[var(--fg-muted)]"
+              >
+                {path}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function Composer() {
   const [tray, setTray] = useState<StagedMaterial[]>([]);
   const [activeKey, setActiveKey] = useState<Extract<
@@ -262,6 +339,14 @@ export function Composer() {
   // Audio capture sheet: record a voice memo or pick an audio file.
   const [audioSheetOpen, setAudioSheetOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  // Repository capture sheet: paste a GitHub URL, fetch a confirm-preview card
+  // from the shared server endpoint, then stage it.
+  const [repoSheetOpen, setRepoSheetOpen] = useState(false);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [repoNotes, setRepoNotes] = useState("");
+  const [repoPreview, setRepoPreview] = useState<RepoPreview | null>(null);
+  const [repoLoading, setRepoLoading] = useState(false);
+  const [repoError, setRepoError] = useState<string | null>(null);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -381,6 +466,13 @@ export function Composer() {
       case "audio":
         setAudioSheetOpen(true);
         return;
+      case "repo":
+        setRepoUrl("");
+        setRepoNotes("");
+        setRepoPreview(null);
+        setRepoError(null);
+        setRepoSheetOpen(true);
+        return;
       case "link":
       case "note":
         setDraft("");
@@ -476,6 +568,56 @@ export function Composer() {
       },
     ]);
     setAudioSheetOpen(false);
+  }
+
+  // ── Repository: fetch the confirm-preview card, then stage ─────────────────
+  async function runRepoPreview() {
+    const url = repoUrl.trim();
+    if (url.length === 0) {
+      setRepoError("Paste a GitHub repository URL first.");
+      return;
+    }
+    setRepoLoading(true);
+    setRepoError(null);
+    setRepoPreview(null);
+    try {
+      const res = await fetch("/api/app/github/preview", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        preview?: RepoPreview;
+        error?: string;
+      };
+      if (!res.ok || !data.preview) {
+        setRepoError(data.error ?? `Couldn't read that repo (${res.status}).`);
+        return;
+      }
+      setRepoPreview(data.preview);
+    } catch {
+      setRepoError("Network error reaching the preview service.");
+    } finally {
+      setRepoLoading(false);
+    }
+  }
+
+  function confirmRepo() {
+    if (!repoPreview) return;
+    addToTray([
+      {
+        kind: "repo",
+        url: repoPreview.htmlUrl,
+        notes: repoNotes.trim() || undefined,
+      },
+    ]);
+    addPill("queued", `repo · ${repoPreview.owner}/${repoPreview.repo} staged`);
+    setRepoSheetOpen(false);
+    setRepoUrl("");
+    setRepoNotes("");
+    setRepoPreview(null);
+    setRepoError(null);
   }
 
   const handleSubmit = () => {
@@ -878,6 +1020,90 @@ export function Composer() {
           >
             Pick audio file
           </button>
+        </div>
+      </Sheet>
+
+      {/* Repository sheet: paste → preview card → confirm into tray. */}
+      <Sheet
+        open={repoSheetOpen}
+        title="Add repository"
+        closeDisabled={repoLoading}
+        onClose={() => setRepoSheetOpen(false)}
+      >
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
+              GitHub repository URL
+            </span>
+            <input
+              type="url"
+              inputMode="url"
+              value={repoUrl}
+              autoFocus
+              onChange={(e) => setRepoUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void runRepoPreview();
+                }
+              }}
+              placeholder="https://github.com/owner/repo"
+              className="block w-full border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 font-mono text-[14px] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)]"
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={() => void runRepoPreview()}
+            disabled={repoLoading || repoUrl.trim().length === 0}
+            className="flex h-11 w-full items-center justify-center gap-3 border border-[var(--color-ink)] bg-[var(--color-ink)] font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--color-paper)] hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:border-[var(--color-rule-strong)] disabled:bg-[var(--color-paper-sunken)] disabled:text-[var(--fg-subtle)]"
+          >
+            {repoLoading ? (
+              <>
+                <Spinner />
+                Reading repo
+              </>
+            ) : (
+              "Fetch preview"
+            )}
+          </button>
+
+          {repoError ? (
+            <p
+              role="alert"
+              className="border-l-2 border-[var(--color-accent)] bg-[var(--color-paper-raised)]/60 px-3 py-2 font-mono text-[11px] text-[var(--color-accent)]"
+            >
+              {repoError}
+            </p>
+          ) : null}
+
+          {repoPreview ? (
+            <RepoCard preview={repoPreview} />
+          ) : null}
+
+          {repoPreview ? (
+            <>
+              <label className="flex flex-col gap-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
+                  Notes (optional)
+                </span>
+                <textarea
+                  rows={2}
+                  value={repoNotes}
+                  onChange={(e) => setRepoNotes(e.target.value)}
+                  placeholder="Why this repo caught your eye…"
+                  className="block w-full resize-y border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 font-body text-[15px] leading-[1.6] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)]"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={confirmRepo}
+                className="h-11 w-full border border-[var(--color-ink)] bg-[var(--color-ink)] font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--color-paper)] hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)]"
+              >
+                Add to tray
+              </button>
+            </>
+          ) : null}
         </div>
       </Sheet>
     </div>

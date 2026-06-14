@@ -18,6 +18,10 @@ export type PostDelta = {
   tags: string[];
   categories: string[];
   sourceRecordId: string | null;
+  // Provider provenance + structured digest (e.g. github repo stats), mirrored
+  // so the catalog row can render the repo chip without re-fetching the source.
+  providerId: string;
+  contentDigest: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 };

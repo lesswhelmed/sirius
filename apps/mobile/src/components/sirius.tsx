@@ -6,6 +6,7 @@ import { SymbolView } from "expo-symbols";
 import { forwardRef, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
   InputAccessoryView,
   Keyboard,
   KeyboardAvoidingView,
@@ -13,6 +14,7 @@ import {
   Platform,
   Pressable,
   type PressableProps,
+  ScrollView,
   type StyleProp,
   StyleSheet,
   Text,
@@ -23,9 +25,18 @@ import {
   type ViewProps,
   type ViewStyle,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SFSymbol } from "sf-symbols-typescript";
 
 import { Sirius } from "@/constants/theme";
+
+// A multiline TextInput grows with its content. Left uncapped it eventually
+// fills (and overruns) the screen, shoving the action buttons behind the
+// keyboard with no way back. Cap it at ~40% of the window so it scrolls
+// internally instead, keeping the surrounding controls reachable.
+const MULTILINE_MAX_HEIGHT = Math.round(
+  Dimensions.get("window").height * 0.4
+);
 
 // Full-bleed paper background. Screens layer their own padding on top.
 export function Screen({ style, ...rest }: ViewProps) {
@@ -121,15 +132,25 @@ export function StatusPip({
 }
 
 const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
-  function Field({ label, style, ...rest }, ref) {
+  function Field({ label, style, multiline, inputAccessoryViewID, ...rest }, ref) {
+    // Multiline inputs have no return-key dismiss on iOS, so they need the
+    // shared "Done" accessory bar to escape the keyboard. Wire it up by default
+    // (callers can still override) and make sure a <KeyboardDoneBar/> is rendered
+    // on the same screen.
+    const accessoryID =
+      multiline && Platform.OS === "ios"
+        ? (inputAccessoryViewID ?? KEYBOARD_ACCESSORY_ID)
+        : inputAccessoryViewID;
     return (
       <View style={styles.field}>
         {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
         <TextInput
           ref={ref}
-          style={[styles.input, style]}
+          style={[styles.input, multiline ? styles.inputMultiline : null, style]}
           placeholderTextColor={Sirius.color.inkSubtle}
           selectionColor={Sirius.color.accent}
+          multiline={multiline}
+          inputAccessoryViewID={accessoryID}
           {...rest}
         />
       </View>
@@ -327,6 +348,7 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <Modal
       visible={visible}
@@ -344,14 +366,30 @@ export function Sheet({
           accessibilityLabel="Close"
           onPress={onClose}
         />
-        <View style={styles.sheet}>
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: Sirius.space.xl + insets.bottom },
+          ]}
+        >
           <View style={styles.sheetHandle} />
           {title ? (
             <Eyebrow accessibilityRole="header" style={styles.sheetTitle}>
               {title}
             </Eyebrow>
           ) : null}
-          {children}
+          {/* Scrollable body so a tall input (or any overflow) can never push
+              the action buttons off-screen — everything stays reachable even
+              with the keyboard up. */}
+          <ScrollView
+            style={styles.sheetBody}
+            contentContainerStyle={styles.sheetBodyContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {children}
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -486,6 +524,11 @@ const styles = StyleSheet.create({
     color: Sirius.color.ink,
     minHeight: 48,
   },
+  inputMultiline: {
+    maxHeight: MULTILINE_MAX_HEIGHT,
+    textAlignVertical: "top",
+    paddingTop: 12,
+  },
   primaryButton: {
     backgroundColor: Sirius.color.accent,
     borderRadius: Sirius.radius.none,
@@ -585,9 +628,13 @@ const styles = StyleSheet.create({
     borderColor: Sirius.color.ruleStrong,
     paddingHorizontal: Sirius.space.xl,
     paddingTop: Sirius.space.md,
-    paddingBottom: Sirius.space.xxl,
     gap: Sirius.space.lg,
+    // Never let the sheet swallow the whole screen: leave a tappable scrim gap
+    // at the top (the requested top margin) so there's always a way out.
+    maxHeight: "88%",
   },
+  sheetBody: { flexShrink: 1 },
+  sheetBodyContent: { gap: Sirius.space.lg },
   sheetHandle: {
     alignSelf: "center",
     width: 44,

@@ -238,6 +238,10 @@ export type PostDelta = {
   tags: string[];
   categories: string[];
   sourceRecordId: string | null;
+  // Provider provenance + its structured digest, so the device can render the
+  // repo chip (and any future provider badge) without re-fetching the source.
+  providerId: string;
+  contentDigest: Prisma.JsonValue | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -296,6 +300,8 @@ export async function listPostsChangedSince(opts: {
             tags: p.tags.map((t) => t.name),
             categories: p.categories.map((c) => c.name),
             sourceRecordId: p.sourceRecordId,
+            providerId: p.providerId,
+            contentDigest: p.contentDigest,
             createdAt: p.createdAt,
             updatedAt: p.updatedAt,
           },

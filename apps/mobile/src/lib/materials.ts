@@ -33,6 +33,11 @@ import {
 } from "@/lib/sync/writes";
 
 export type UrlMaterial = { kind: "url"; url: string; notes?: string };
+// A GitHub repository link. Submitted exactly like a URL (the worker detects the
+// github.com host and takes its dedicated structure+key-files path); kept as its
+// own kind so the composer can show the server-fetched confirm-preview card and
+// tag the tray row. All GitHub processing is server-side — no on-device draft.
+export type RepoMaterial = { kind: "repo"; url: string; notes?: string };
 export type NoteMaterial = { kind: "note"; text: string };
 export type ImageMaterial = {
   kind: "image";
@@ -74,6 +79,7 @@ export type UnsupportedMaterial = {
 
 export type Material =
   | UrlMaterial
+  | RepoMaterial
   | NoteMaterial
   | ImageMaterial
   | VideoMaterial
@@ -207,6 +213,8 @@ export function describeMaterial(material: Material): string {
   switch (material.kind) {
     case "url":
       return material.url;
+    case "repo":
+      return material.url;
     case "note":
       return material.text;
     case "image":
@@ -304,6 +312,30 @@ const urlHandler: MaterialHandler<"url"> = {
       } catch (err) {
         if (localId) await markLocalFailed(localId);
         const label = `URL ${i + 1}/${materials.length}`;
+        ctx.onError?.(label, err);
+        errors.push(formatError(err, label));
+        failed.push(m);
+      }
+    }
+    return { submitted, errors, failed };
+  },
+};
+
+const repoHandler: MaterialHandler<"repo"> = {
+  kind: "repo",
+  async submit(materials, ctx) {
+    const errors: string[] = [];
+    const failed: RepoMaterial[] = [];
+    let submitted = 0;
+    // A repo is a URL submission — the worker's github.com detection routes it
+    // to the dedicated structure+key-files path. No on-device drafting: per the
+    // platform split, all GitHub processing happens server-side.
+    for (const [i, m] of materials.entries()) {
+      try {
+        await submitUrl(m.url, m.notes ?? "", ctx.force, ctx.projectId);
+        submitted++;
+      } catch (err) {
+        const label = `Repo ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
         failed.push(m);
@@ -561,6 +593,7 @@ const documentHandler: MaterialHandler<"document"> = {
 
 const HANDLERS = {
   url: urlHandler,
+  repo: repoHandler,
   note: noteHandler,
   image: imageHandler,
   video: videoHandler,
@@ -571,6 +604,7 @@ const HANDLERS = {
 function groupByKind(materials: Material[]) {
   return {
     url: materials.filter((m): m is UrlMaterial => m.kind === "url"),
+    repo: materials.filter((m): m is RepoMaterial => m.kind === "repo"),
     note: materials.filter((m): m is NoteMaterial => m.kind === "note"),
     image: materials.filter((m): m is ImageMaterial => m.kind === "image"),
     video: materials.filter((m): m is VideoMaterial => m.kind === "video"),
@@ -598,6 +632,11 @@ export async function submitMaterials(
   submitted += urlResult.submitted;
   errors.push(...urlResult.errors);
   failed.push(...urlResult.failed);
+
+  const repoResult = await HANDLERS.repo.submit(grouped.repo, ctx);
+  submitted += repoResult.submitted;
+  errors.push(...repoResult.errors);
+  failed.push(...repoResult.failed);
 
   const noteResult = await HANDLERS.note.submit(grouped.note, ctx);
   submitted += noteResult.submitted;

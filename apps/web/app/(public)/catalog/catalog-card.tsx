@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Post, PostStatus, PostType } from "@repo/db";
 import { DateDisplay } from "../../../lib/date-display";
 import { PostImage } from "../../_chrome/post-image";
+import { RepoChip } from "../../_chrome/repo-chip";
 
 const TYPE_LABEL: Record<PostType, string> = {
   CONCRETE: "Concrete",
@@ -100,7 +101,14 @@ export function CatalogCard({ post }: { post: Post }) {
 
         <div className="mt-auto flex items-baseline justify-between gap-3 pt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
           <DateDisplay value={post.originalDate ?? post.createdAt} />
-          {host ? <span className="truncate">{host}</span> : null}
+          {post.providerId === "github" ? (
+            <RepoChip
+              providerId={post.providerId}
+              contentDigest={post.contentDigest}
+            />
+          ) : host ? (
+            <span className="truncate">{host}</span>
+          ) : null}
         </div>
       </div>
     </Link>

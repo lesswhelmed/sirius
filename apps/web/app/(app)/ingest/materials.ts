@@ -8,6 +8,10 @@
 // reworking the composer screen.
 
 export type UrlMaterial = { kind: "url"; url: string; notes?: string };
+// A GitHub repository link. Submitted exactly like a URL (the worker detects the
+// github.com host and takes its dedicated structure+key-files path); kept as its
+// own kind so the composer can show the confirm-preview repo card and tag it.
+export type RepoMaterial = { kind: "repo"; url: string; notes?: string };
 export type NoteMaterial = { kind: "note"; text: string };
 export type ImageMaterial = {
   kind: "image";
@@ -42,6 +46,7 @@ export type DocumentMaterial = {
 
 export type Material =
   | UrlMaterial
+  | RepoMaterial
   | NoteMaterial
   | ImageMaterial
   | VideoMaterial
@@ -57,6 +62,7 @@ export type MaterialKind = Material["kind"];
 
 export type CaptureKindKey =
   | "link"
+  | "repo"
   | "note"
   | "photos"
   | "video"
@@ -77,6 +83,12 @@ export const CAPTURE_KINDS: CaptureKind[] = [
     label: "Link",
     glyph: "↗",
     hint: "Add one or more web links to the tray",
+  },
+  {
+    key: "repo",
+    label: "Repository",
+    glyph: "◆",
+    hint: "Paste a GitHub repo URL, preview it, and add it to the tray",
   },
   {
     key: "note",
@@ -113,6 +125,7 @@ export const CAPTURE_KINDS: CaptureKind[] = [
 // Short mono tag shown on each staged tray row.
 const TRAY_TAGS: Record<MaterialKind, string> = {
   url: "URL",
+  repo: "REPO",
   note: "NOTE",
   image: "PHOTO",
   video: "VIDEO",
@@ -127,6 +140,7 @@ export function trayTag(material: Material): string {
 export function describeMaterial(material: Material): string {
   switch (material.kind) {
     case "url":
+    case "repo":
       return material.url;
     case "note":
       return material.text;
@@ -376,6 +390,7 @@ async function submitFile(
 function groupByKind(materials: Material[]) {
   return {
     url: materials.filter((m): m is UrlMaterial => m.kind === "url"),
+    repo: materials.filter((m): m is RepoMaterial => m.kind === "repo"),
     note: materials.filter((m): m is NoteMaterial => m.kind === "note"),
     image: materials.filter((m): m is ImageMaterial => m.kind === "image"),
     video: materials.filter((m): m is VideoMaterial => m.kind === "video"),
@@ -399,6 +414,13 @@ export async function submitMaterials(
   for (const [i, m] of grouped.url.entries()) {
     const label = grouped.url.length > 1 ? `url ${i + 1}/${grouped.url.length}` : "url";
     outcomes.push(await submitUrl(m, label, ctx));
+  }
+
+  // A repo is a URL submission — the worker's github.com detection routes it to
+  // the dedicated structure+key-files path. Reuse submitUrl with a repo label.
+  for (const [i, m] of grouped.repo.entries()) {
+    const label = grouped.repo.length > 1 ? `repo ${i + 1}` : "repo";
+    outcomes.push(await submitUrl({ kind: "url", url: m.url, notes: m.notes }, label, ctx));
   }
 
   for (const [i, m] of grouped.note.entries()) {

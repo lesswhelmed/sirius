@@ -12,6 +12,8 @@ import {
   View,
 } from "react-native";
 
+import { readRepoDigest } from "@repo/github-ingest/digest";
+
 import { KindLabel, PageHeader, Screen, TextLink } from "@/components/sirius";
 import { PostTypeTone, Sirius } from "@/constants/theme";
 import { resolveMediaUrl } from "@/lib/api";
@@ -63,6 +65,18 @@ export default function LibraryScreen() {
       const tone = PostTypeTone[item.type] ?? Sirius.color.inkMuted;
       const imageUri = resolveMediaUrl(item.imageUrl);
       const pip = STATE_PIP[item.syncState];
+      // Repo provenance chip for GitHub-ingested posts (shared reader so the
+      // chip matches web exactly). Null for every non-github / pre-sync row.
+      const repo = readRepoDigest(item.providerId, item.contentDigest);
+      const repoChip = repo
+        ? [
+            repo.stars !== null ? `★ ${repo.stars.toLocaleString()}` : null,
+            repo.primaryLanguage,
+            repo.license,
+          ]
+            .filter(Boolean)
+            .join("  ·  ")
+        : null;
       // Synced rows have a server slug; optimistic rows route to a local detail.
       // Pass the originating tab so the detail screen's back button reads
       // "Catalog" rather than the "(tabs)" route-name fallback.
@@ -104,6 +118,11 @@ export default function LibraryScreen() {
                   ]}
                 >
                   {pip}
+                </Text>
+              ) : null}
+              {repoChip ? (
+                <Text style={styles.repoChip} numberOfLines={1}>
+                  {repoChip}
                 </Text>
               ) : null}
             </View>
@@ -217,6 +236,13 @@ const styles = StyleSheet.create({
     color: Sirius.color.inkSubtle,
   },
   pipFailed: { color: Sirius.color.accent },
+  repoChip: {
+    flexShrink: 1,
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    color: Sirius.color.inkMuted,
+  },
   rowTitle: {
     fontFamily: Sirius.font.serif,
     fontSize: 20,

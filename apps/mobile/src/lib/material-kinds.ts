@@ -10,6 +10,7 @@ import type { Material } from "@/lib/materials";
 
 export type CaptureKindKey =
   | "link"
+  | "repo"
   | "note"
   | "photos"
   | "video"
@@ -25,7 +26,8 @@ export type CaptureKind = {
   // How tapping the card collects content:
   //   "form"   → open a sheet with a text field (link, note)
   //   "picker" → launch a native picker immediately (photos)
-  input: "form" | "picker";
+  //   "repo"   → open the GitHub repo sheet (paste → preview → confirm)
+  input: "form" | "picker" | "repo";
   // VoiceOver/TalkBack hint describing what activating the card does.
   hint: string;
 };
@@ -38,6 +40,14 @@ export const CAPTURE_KINDS: CaptureKind[] = [
     glyph: "↗",
     input: "form",
     hint: "Add one or more web links to the tray",
+  },
+  {
+    key: "repo",
+    label: "Repository",
+    symbol: "chevron.left.forwardslash.chevron.right",
+    glyph: "◆",
+    input: "repo",
+    hint: "Paste a GitHub repo URL, preview it, and add it to the tray",
   },
   {
     key: "note",
@@ -84,6 +94,7 @@ export const CAPTURE_KINDS: CaptureKind[] = [
 // Short mono tag shown on each staged tray row.
 const TRAY_TAGS: Record<Material["kind"], string> = {
   url: "URL",
+  repo: "REPO",
   note: "NOTE",
   image: "PHOTO",
   video: "VIDEO",

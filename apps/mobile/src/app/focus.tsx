@@ -12,6 +12,7 @@ import {
 
 import {
   Field,
+  KeyboardDoneBar,
   PageHeader,
   PrimaryButton,
   Screen,
@@ -212,6 +213,7 @@ export default function FocusScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+      <KeyboardDoneBar />
     </Screen>
   );
 }

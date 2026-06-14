@@ -21,6 +21,7 @@
     "dev:stack": "turbo run dev",
     "dev:proxy": "bash scripts/setup-dev-proxy.sh",
     "lint": "turbo run lint",
+    "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "db:generate": "turbo run db:generate --filter=@repo/db",

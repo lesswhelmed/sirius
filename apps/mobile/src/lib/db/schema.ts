@@ -68,6 +68,16 @@ export const posts = sqliteTable(
     imageUrl: text("image_url"), // server-relative or absolute; resolved at render
     images: text("images", { mode: "json" }).$type<PostImage[] | null>(),
 
+    // Provider provenance + its structured digest, mirrored from the server so
+    // the catalog row can render the repo chip (github stars/lang/license) and
+    // any future provider badge. Null on local drafts + rows synced before this
+    // column existed — the chip simply doesn't render for those.
+    providerId: text("provider_id"),
+    contentDigest: text("content_digest", { mode: "json" }).$type<Record<
+      string,
+      unknown
+    > | null>(),
+
     // On-device draft to render BEFORE the server save exists. Dropped on reconcile.
     draftEnvelopeJson: text("draft_envelope_json"),
 

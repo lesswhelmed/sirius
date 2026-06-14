@@ -7,6 +7,7 @@ import { DateDisplay } from "../../../../lib/date-display";
 import { getCachedPost } from "../../../../lib/cached";
 import { getSessionOrNull } from "../../../../lib/session";
 import { PostImage } from "../../../_chrome/post-image";
+import { RepoChip } from "../../../_chrome/repo-chip";
 import { ColophonTabs } from "./colophon-tabs";
 import { ViewBeacon } from "./view-beacon";
 
@@ -105,6 +106,17 @@ export default async function PostDetailPage({
             value={post.originalDate ?? post.createdAt}
             variant="date-long"
           />
+          {post.providerId === "github" ? (
+            <>
+              <span aria-hidden="true" className="text-[var(--fg-faint)]">
+                ·
+              </span>
+              <RepoChip
+                providerId={post.providerId}
+                contentDigest={post.contentDigest}
+              />
+            </>
+          ) : null}
         </div>
 
         <h1 className="mt-6 font-display text-[44px] leading-[0.98] tracking-[-0.015em] text-balance sm:text-[56px] lg:text-[64px]">
