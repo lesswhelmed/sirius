@@ -159,3 +159,63 @@ export function subtreeIndex(
   const total = groups.reduce((sum, g) => sum + g.posts.length, 0);
   return { root, total, multiNode: groups.length > 1, groups };
 }
+
+// Post count per drillable node (category or project), in a single pass — the
+// O(1)-per-row lookup the outline/tree hosts render counts from instead of
+// calling `subtreeIndex` per node. Counts match `subtreeIndex(node).total`
+// exactly:
+//   - category -> distinct posts with a `match` edge anywhere in its subtree.
+//     A post matched deep in the tree counts toward every ancestor category,
+//     so we roll each matched category up through its path ancestors and tally
+//     the post once per distinct ancestor (set-dedup handles sibling matches).
+//   - project  -> distinct posts assigned to it.
+// Post nodes are absent from the map (they don't drill). Read with
+// `counts.get(id) ?? 0`.
+export function nodeCounts(scene: EmbeddingScene): Map<string, number> {
+  const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+  const counts = new Map<string, number>();
+
+  // A category's own id + every ancestor category id, derived from its path.
+  // Guard each prefix against the node set so a stray path segment that isn't a
+  // real category can't invent a count bucket.
+  const ancestorsOf = (cat: SceneNode): string[] => {
+    const path = cat.path ?? cat.id;
+    const segs = path.split("/");
+    const ids: string[] = [];
+    for (let i = segs.length; i >= 1; i--) {
+      const prefix = segs.slice(0, i).join("/");
+      if (byId.get(prefix)?.kind === "category") ids.push(prefix);
+    }
+    return ids;
+  };
+
+  // postId -> the set of categories (self + ancestors) any match touches.
+  const catReach = new Map<string, Set<string>>();
+  for (const e of scene.edges) {
+    if (e.kind !== "match") continue;
+    const cat = byId.get(e.to);
+    if (cat?.kind !== "category") continue;
+    const reach = catReach.get(e.from) ?? new Set<string>();
+    for (const id of ancestorsOf(cat)) reach.add(id);
+    catReach.set(e.from, reach);
+  }
+  for (const [postId, reach] of catReach) {
+    if (byId.get(postId)?.kind !== "post") continue;
+    for (const id of reach) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+
+  // Projects: distinct assigned posts.
+  const projectPosts = new Map<string, Set<string>>();
+  for (const e of scene.edges) {
+    if (e.kind !== "assignment") continue;
+    const proj = byId.get(e.to);
+    if (proj?.kind !== "project") continue;
+    if (byId.get(e.from)?.kind !== "post") continue;
+    const posts = projectPosts.get(e.to) ?? new Set<string>();
+    posts.add(e.from);
+    projectPosts.set(e.to, posts);
+  }
+  for (const [projId, posts] of projectPosts) counts.set(projId, posts.size);
+
+  return counts;
+}
