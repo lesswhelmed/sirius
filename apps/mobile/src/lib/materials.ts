@@ -83,6 +83,22 @@ export type Material =
 
 const URL_IN_TEXT_REGEX = /https?:\/\/[^\s]+/i;
 
+// True only for values we can actually ingest as a link. iOS routes some shares
+// (notably Apple Notes) through the share intent's web-URL slot even when the
+// payload is plain note text. Those must NOT be classified as `url`, or they
+// fail the server's strict `.url()` validation and never import — so we gate the
+// web-URL slot on real http(s) parseability and fall back to treating it as a
+// note (raw text → BLOG) otherwise.
+function isHttpUrl(value: string): boolean {
+  if (!/^https?:\/\//i.test(value)) return false;
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Cap on URLs accepted from one "Add link" action, matching the server's
 // tolerance for fan-out batches.
 export const MAX_URLS_PER_BATCH = 200;
@@ -150,15 +166,28 @@ export function materialsFromShareIntent(
     }
   }
 
-  const webUrl = shareIntent.webUrl?.trim();
+  // Treat the web-URL slot as a real link only when it actually parses as
+  // http(s). A non-URL value here (e.g. Apple Notes routing note text through
+  // this slot) is folded into the note candidates below instead of being
+  // submitted as a URL and rejected by the server's URL gate.
+  const rawWebUrl = shareIntent.webUrl?.trim();
+  const webUrl = rawWebUrl && isHttpUrl(rawWebUrl) ? rawWebUrl : undefined;
   if (webUrl) {
     materials.push({ kind: "url", url: webUrl });
   }
 
-  const text = shareIntent.text?.trim();
-  if (text && (!webUrl || !text.includes(webUrl))) {
-    // Text that isn't just the already-captured URL. Pull an embedded URL if
-    // present, otherwise treat the whole thing as a note.
+  // Plain-text candidates: the text slot, plus a web-URL slot value we just
+  // declined to treat as a link. Dedup so an app that fills both slots with the
+  // same content yields a single note.
+  const noteCandidates = new Set<string>();
+  const rawText = shareIntent.text?.trim();
+  if (rawText) noteCandidates.add(rawText);
+  if (rawWebUrl && !webUrl) noteCandidates.add(rawWebUrl);
+
+  for (const text of noteCandidates) {
+    // Skip text that's just the URL we already captured.
+    if (webUrl && text.includes(webUrl)) continue;
+    // Pull an embedded URL if present, otherwise treat the whole thing as a note.
     const match = !webUrl ? text.match(URL_IN_TEXT_REGEX)?.[0] : undefined;
     if (match) {
       materials.push({ kind: "url", url: match });
