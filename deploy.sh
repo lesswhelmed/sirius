@@ -41,6 +41,12 @@ ln -sfn "$DEPLOY_ID" "$WEB_BUILDS_DIR/current"
 echo "==> pm2 startOrReload"
 pm2 startOrReload ecosystem.config.cjs --update-env
 
+# Warm the embedding-scene reverse-lookup index (Observatory / mobile Tree):
+# seed the analysis taxonomy, embed projects + posts, then smoke-check the scene.
+# Idempotent — every step skips already-embedded rows — so it's safe on re-run.
+echo "==> scene backfill"
+bun run scene:backfill
+
 echo "==> pm2 save"
 pm2 save
 

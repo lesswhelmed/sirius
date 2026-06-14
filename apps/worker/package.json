@@ -8,6 +8,7 @@
     "dev": "bun run --watch src/index.ts",
     "setup": "bun run src/setup.ts",
     "backfill:covers": "bun run src/scripts/backfill-cover-images.ts",
+    "scene:backfill": "bun run scripts/seed-analysis-categories.ts && bun run scripts/backfill-project-embeddings.ts && bun run scripts/backfill-post-embeddings.ts && bun run scripts/smoke-scene.ts",
     "test": "bun test",
     "smoke:categorize": "bun run scripts/smoke-categorize.ts",
     "lint": "eslint . --max-warnings 0",
