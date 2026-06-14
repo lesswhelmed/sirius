@@ -1,6 +1,6 @@
 // Dev-only blackbox bench for on-device post drafting. Runs the REAL
-// pipeline — draftNotePost → inference lock → generateText/Output.object →
-// withDraftRepair → schema — against a fixed bank of note fixtures, then applies deterministic
+// pipeline — draftNotePost → inference lock → generateText → generateDraft
+// (extractJsonObject → schema) — against a fixed bank of note fixtures, then applies deterministic
 // quality checks to the result. No composer, no submission, no server: this
 // isolates "does the local model produce a valid, decent post draft" from the
 // ingest plumbing (which has its own verified path).
@@ -59,7 +59,10 @@ export type FixtureResult = {
   checks: DraftCheck[];
 };
 
-const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+// Hyphen-separated lowercase groups. Unicode-aware (\p{Ll}/\p{N}) so accented
+// lowercase tags like "café" pass — the wire schema accepts them and the worker
+// normalizes slugs, so the bench shouldn't flag them as failures.
+const KEBAB = /^[\p{Ll}\p{N}]+(-[\p{Ll}\p{N}]+)*$/u;
 
 // Deterministic quality gates, mirroring the drafting prompt's contract.
 // Schema validity is already enforced by draftNotePost (null = failed there).

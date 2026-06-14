@@ -1,5 +1,5 @@
 // Dev-only draft test bench: exercises on-device post drafting end-to-end
-// (lock → generateText/Output.object → withDraftRepair → schema) against fixture notes, with
+// (lock → generateText → generateDraft → schema) against fixture notes, with
 // deterministic quality checks — no composer, no submission, no server.
 // Open via the /llm screen's dev link or deep link:
 //   dev.copt.sirius://llm-test?run=all
