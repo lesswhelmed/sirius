@@ -88,16 +88,30 @@ bun --cwd apps/mobile build:prod      # eas build --profile production (store)
 bun --cwd apps/mobile update:prod     # eas update --branch production (OTA JS push)
 ```
 
-Root-level one-liners for production release (delegate to the gated mobile
-scripts above; all use `bunx eas-cli`, no global install needed). EAS
-`requireCommit: true` → run on a clean, committed tree:
+Root-level one-liners (delegate to the gated mobile scripts above; all use
+`bunx eas-cli`, no global install needed). EAS `requireCommit: true` → run on a
+clean, committed tree. Convention: a bare-platform name is **production**;
+preview/dev are profile-qualified.
 ```sh
+# production (store)
 bun run mobile:build:ios          # eas build --profile production --platform ios
 bun run mobile:build:android      # eas build --profile production --platform android
 bun run mobile:build:all          # eas build --profile production --platform all (both)
 bun run mobile:submit:ios         # eas submit  --profile production --platform ios (App Store Connect)
 bun run mobile:submit:android     # eas submit  --profile production --platform android (Play)
+# preview (internal)
+bun run mobile:build:preview          # --profile preview  --platform all
+bun run mobile:build:preview:ios      # --profile preview  --platform ios
+bun run mobile:build:preview:android  # --profile preview  --platform android
+# development (dev client)
+bun run mobile:build:dev              # --profile development --platform all
+bun run mobile:build:dev:ios          # --profile development --platform ios
+bun run mobile:build:dev:android      # --profile development --platform android
 ```
+For a dev client on a **physical** device use the `development-device` profile
+directly (`bun --cwd=apps/mobile run build:dev:ios` builds the simulator dev
+client; the `development-device` profile in `eas.json` is the on-hardware one —
+no root alias yet, ask if you want one).
 
 - Three profiles/channels: `development` (dev client, localhost), `preview` (internal,
   `lesswhelmed.com`), `production` (store, `lesswhelmed.com`). The per-profile
