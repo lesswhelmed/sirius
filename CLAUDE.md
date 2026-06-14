@@ -19,7 +19,7 @@ Package manager is **bun** (`bun@1.3.14`, hoisted linker). Run from repo root un
 ```sh
 bun install                     # install (use --frozen-lockfile on deploy)
 bun run build                   # turbo build all
-bun run dev                     # one-shot full stack: boot iOS Simulator + trust CA + web + worker + mobile. Mobile dev = `expo prebuild --clean && bun run verify:native-ai && expo run:ios`, so the native build (on-device-AI/llama.rn JSI bridge baked in + verified) FINISHES before Metro/the app. Fast JS-only escape hatch: `bun --cwd apps/mobile ios`. web at https://sirius.local. Wrapper: scripts/dev.sh
+bun run dev                     # one-shot full stack: boot iOS Simulator + trust CA + web + worker + mobile. Mobile dev = `prebuild-if-native-changed.mjs && bun run verify:native-ai && expo run:ios`: clean-prebuilds (+ pod install) ONLY when a native input changed (deps, app.json/plugins, llama.rn override) or ios/ is missing — else fast incremental run (no Pod reinstall). Native build (on-device-AI/llama.rn JSI bridge baked in + verified) still FINISHES before Metro. Fast JS-only escape hatch: `bun --cwd apps/mobile ios`. web at https://sirius.local. Wrapper: scripts/dev.sh
 bun run dev:stack               # raw `turbo dev` all (persistent), NO simulator/proxy prep — escape hatch
 bun run dev:proxy               # heavy proxy reset / macOS re-trust / one-time iPhone CA-trust runbook (scripts/setup-dev-proxy.sh)
 bun run lint                    # turbo lint (eslint, --max-warnings 0 per app)
