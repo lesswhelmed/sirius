@@ -66,6 +66,7 @@ export function buildScene(rows: SceneInputRows): EmbeddingScene {
       label: c.name,
       position: positions[i++]!,
       path: c.path,
+      parentPath: c.parentPath,
       depth: c.depth,
       purpose: c.purpose,
     });

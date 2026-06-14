@@ -47,17 +47,30 @@ export function linkedPosts(
 
 // The category taxonomy as an adjacency map keyed by parent path (null = root),
 // for rendering the outline/tree in either host. A category's parent is its
-// `path` minus the last `/segment`; top-level categories key under `null`.
+// authoritative `parentPath` (the worker's source of truth) — NOT its path
+// string: the dynamic `topics/` taxonomy stores top-level nodes as
+// `path: "topics/x"` with `parentPath: null` against a virtual `topics` root
+// that is never persisted, so chopping the path would bucket them under a
+// non-existent `"topics"` key and the outline would render empty.
 // Children preserve scene order (categories arrive ordered by path).
 export function categoryChildren(
   scene: EmbeddingScene
 ): Map<string | null, SceneNode[]> {
+  const categoryPaths = new Set(
+    scene.nodes
+      .filter((n) => n.kind === "category" && n.path != null)
+      .map((n) => n.path!)
+  );
   const children = new Map<string | null, SceneNode[]>();
   for (const n of scene.nodes) {
     if (n.kind !== "category") continue;
-    const parent = n.path?.includes("/")
-      ? n.path.slice(0, n.path.lastIndexOf("/"))
-      : null;
+    // Honor the authoritative parentPath. Fall back to root when it's null OR
+    // points at a node absent from the scene (e.g. dropped by the
+    // dimensionality filter) so a category never silently disappears.
+    const parent =
+      n.parentPath != null && categoryPaths.has(n.parentPath)
+        ? n.parentPath
+        : null;
     const list = children.get(parent) ?? [];
     list.push(n);
     children.set(parent, list);

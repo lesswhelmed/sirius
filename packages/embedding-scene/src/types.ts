@@ -9,6 +9,7 @@ export interface SceneNode {
   position: [number, number, number];
   // kind-specific extras, all optional so one node shape serves all kinds
   path?: string; // category
+  parentPath?: string | null; // category — authoritative parent (null = top-level)
   depth?: number; // category
   purpose?: string; // category — why this analysis facet exists
   slug?: string; // post
