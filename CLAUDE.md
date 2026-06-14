@@ -88,6 +88,17 @@ bun --cwd apps/mobile build:prod      # eas build --profile production (store)
 bun --cwd apps/mobile update:prod     # eas update --branch production (OTA JS push)
 ```
 
+Root-level one-liners for production release (delegate to the gated mobile
+scripts above; all use `bunx eas-cli`, no global install needed). EAS
+`requireCommit: true` → run on a clean, committed tree:
+```sh
+bun run mobile:build:ios          # eas build --profile production --platform ios
+bun run mobile:build:android      # eas build --profile production --platform android
+bun run mobile:build:all          # eas build --profile production --platform all (both)
+bun run mobile:submit:ios         # eas submit  --profile production --platform ios (App Store Connect)
+bun run mobile:submit:android     # eas submit  --profile production --platform android (Play)
+```
+
 - Three profiles/channels: `development` (dev client, localhost), `preview` (internal,
   `lesswhelmed.com`), `production` (store, `lesswhelmed.com`). The per-profile
   `EXPO_PUBLIC_AUTH_BASE_URL` is the only env that differs.

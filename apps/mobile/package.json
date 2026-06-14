@@ -14,12 +14,16 @@
     "verify:native-ai": "node ./scripts/verify-native-ai.mjs",
     "eas-build-post-install": "bun run verify:native-ai",
     "prebuild:clean": "expo prebuild --clean",
-    "build:dev": "bun run verify:native-ai && eas build --profile development --platform all",
-    "build:dev:ios": "bun run verify:native-ai && eas build --profile development --platform ios",
-    "build:preview": "bun run verify:native-ai && eas build --profile preview --platform all",
-    "build:prod": "bun run verify:native-ai && eas build --profile production --platform all",
-    "update:preview": "eas update --branch preview",
-    "update:prod": "eas update --branch production"
+    "build:dev": "bun run verify:native-ai && bunx eas-cli build --profile development --platform all",
+    "build:dev:ios": "bun run verify:native-ai && bunx eas-cli build --profile development --platform ios",
+    "build:preview": "bun run verify:native-ai && bunx eas-cli build --profile preview --platform all",
+    "build:prod": "bun run verify:native-ai && bunx eas-cli build --profile production --platform all",
+    "build:prod:ios": "bun run verify:native-ai && bunx eas-cli build --profile production --platform ios",
+    "build:prod:android": "bun run verify:native-ai && bunx eas-cli build --profile production --platform android",
+    "submit:prod:ios": "bunx eas-cli submit --profile production --platform ios",
+    "submit:prod:android": "bunx eas-cli submit --profile production --platform android",
+    "update:preview": "bunx eas-cli update --branch preview",
+    "update:prod": "bunx eas-cli update --branch production"
   },
   "dependencies": {
     "@better-auth/expo": "^1.6.13",
