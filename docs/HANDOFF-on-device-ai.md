@@ -14,15 +14,20 @@ every earlier failed draft fell through to Gemini with zero data loss.
 Three findings from the verification session (all addressed):
 1. **JSI error = stale binary**, as the original plan said — fixed by installing the
    fresh build (no code change).
-2. **`llama.rn@0.11.5` breaks structured output** through `@react-native-ai/llama@0.12`
-   (peer range `^0.10.1`): the json_schema grammar is silently never applied
-   (fail-open), proven with a trivial `{answer: string}` probe returning prose. USER
-   DECISION: keep 0.11.5, work around in app code — `curate.ts` now uses
-   `generateObject(schema)` + `experimental_repairText` (extracts the JSON object,
-   escapes raw newlines Qwen emits inside strings) + JSON shape spelled out in the
-   prompt (body right after title, marked REQUIRED — Qwen omits trailing long fields) +
-   `maxOutputTokens: 1024`. `generateObject` is deprecated in ai v6 but is the only API
-   with the repair hook.
+2. **Structured output is belt-and-suspenders, not grammar-trusting.** On
+   `llama.rn@0.11.5` (the version at the time) the json_schema grammar was silently never
+   applied (fail-open) through `@react-native-ai/llama@0.12`, proven with a trivial
+   `{answer: string}` probe returning prose. **As of `362c8c7` the stack is pinned at
+   `llama.rn@0.12.4`** (root `overrides` + `apps/mobile` dep + `@react-native-ai/llama@0.12`),
+   and 0.12.4's grammar behavior is **UNVERIFIED on-device** — so the app does not rely on
+   sampler-level enforcement. `curate.ts` uses `generateText({ output: Output.object(schema) })`
+   (the `generateObject` API was removed/deprecated in AI SDK 6) and keeps a repair belt:
+   the prompt spells out the JSON shape (body right after title, marked REQUIRED — small
+   models omit trailing long fields), and `withDraftRepair()` catches the
+   `NoObjectGeneratedError` `Output.object` throws on a parse miss, pulls the first balanced
+   `{…}` out of `err.text` (escaping the raw newlines Qwen emits inside string values), and
+   re-validates against the schema. `Output.object` has no `repairText` hook (the old
+   `generateObject` did), which is why the belt now lives in `withDraftRepair` instead.
 3. **Interrupted GGUF downloads wedge the model as "ready"** (library checks are
    existence-only; a 960MB fragment of the 2.1GB Qwen did this) — `engine.ts` now writes
    a `<file>.complete` marker only after all files finish, `isModelReady` requires it,
@@ -112,7 +117,7 @@ Record results here; anything that fails becomes a new open item.
 | `apps/worker/src/pipeline/draft-runner.ts` | `tryClientDraft`: defensive safeParse of the stored envelope; null → Gemini fallthrough. Only note + image kinds. |
 | `apps/worker/src/pipeline/pipeline.ts` | Branch point: logs `draft:client` (skip) vs `gemini:parsed`. |
 | `apps/mobile/src/lib/llm/engine.ts` | One prepared model at a time, n_ctx 4096, projectorPath for vision. |
-| `apps/mobile/src/lib/llm/curate.ts` | `draftNotePost` / `draftSightPost` — `generateObject` + prompt-JSON + `experimental_repairText` (deliberate: only API with the repair hook; grammar enforcement is broken on llama.rn 0.11). Any failure → null → server drafts. |
+| `apps/mobile/src/lib/llm/curate.ts` | `draftNotePost` / `draftUrlPost` / `draftSightPost` — `generateText` + `Output.object(schema)` + prompt-JSON + `withDraftRepair()` (the repair belt; re-parses `err.text` on a `NoObjectGeneratedError`). Belt-and-suspenders because grammar enforcement was fail-open on llama.rn 0.11 and is unverified on the now-pinned 0.12.4. Any failure → null → server drafts. |
 | `apps/mobile/src/lib/llm/transcribe.ts` | Apple SpeechAnalyzer (iOS 26+), lazy-imported; audio bytes never upload on this path — submits as note-kind. |
 | `apps/mobile/src/lib/outbox.ts` | FIFO at `documentDirectory/outbox.json`, note-kind only; 4xx drops, network error keeps. Idempotency = server contentHash (draft excluded from hash). |
 | `apps/mobile/src/lib/materials.ts` | Where curation/transcription/outbox wire into note/audio/image handlers. |
@@ -122,8 +127,9 @@ Record results here; anything that fails becomes a new open item.
 
 ## Live processes / external systems
 
-- Nothing running. Dev: `bun run dev:proxy` (once per boot) then `bun run dev`
-  (web at `https://sirius.localhost`), `bun run worker:dev`, `bun --cwd apps/mobile ios`.
+- Nothing running. Dev: `bun run dev` (boots the Simulator, starts the portless proxy in LAN
+  mode, trusts the CA, and runs web + worker + mobile). Web serves at **`https://sirius.local`**
+  (LAN mode serves ONLY the `.local` name). `bun run dev:proxy` is the heavier proxy-reset path.
 - EAS project `c14faf73-b1f9-425e-b66b-974ac26b827c`; `requireCommit: true` — clean tree
   before any cloud build. `ios/`/`android/` are gitignored, never commit them.
 - HF models (filenames verified via HF API): `Qwen/Qwen2.5-3B-Instruct-GGUF/qwen2.5-3b-instruct-q4_k_m.gguf`
@@ -132,9 +138,12 @@ Record results here; anything that fails becomes a new open item.
 
 ## Open items (in order)
 
-1. ~~Resolve the llama.rn 0.11.5 bump~~ — RESOLVED: kept 0.11.5; structured-output break
-   worked around in `curate.ts` (user decision). Consider filing the fail-open grammar
-   bug upstream on `callstackincubator/ai`.
+1. ~~Resolve the llama.rn 0.11.5 bump~~ — SUPERSEDED: the stack is now pinned at
+   **`llama.rn@0.12.4`** (root `overrides` + `apps/mobile` dep), the New-Architecture-capable
+   release, with a clean native rebuild against it (see `docs/HANDOFF-ondevice-ai-newarch-jsi.md`
+   for that migration). The `curate.ts` prompt-JSON + `withDraftRepair()` belt is kept
+   regardless, since 0.12.4's grammar enforcement is still unverified on-device. Consider
+   filing the fail-open grammar bug upstream on `callstackincubator/ai`.
 2. ~~Rebuild the dev client~~ — DONE (Jun 11 00:55 build, installed on the iPhone 17 Pro
    sim `08F63C27`).
 3. ~~Phase A (simulator)~~ — DONE: `/llm` chat streams locally, no JSI error. Still

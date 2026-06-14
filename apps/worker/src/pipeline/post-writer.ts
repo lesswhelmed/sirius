@@ -5,13 +5,8 @@
 // (c) upsert Tag / Category rows for the draft, and (d) upsert the Post row
 // itself in a single transaction.
 
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { copyFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import {
   PostStatus,
@@ -19,8 +14,11 @@ import {
   prisma,
   type Prisma,
 } from "@repo/db";
+import { getImageGenConfig } from "../lib/ai-config";
+import { ensureDir, resolveSightDir, resolveSocialDir } from "../lib/media-paths";
 import { escapeMdxProse } from "../lib/mdx-escape";
 import { revalidatePost } from "../lib/revalidate";
+import { generateCoverImage } from "./image-generator";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 
 export type WriteResult = {
@@ -29,35 +27,9 @@ export type WriteResult = {
   imagePaths: string[];
 };
 
-// Default lands MDX-served image batches in apps/web/public/sight/<batchId>/
-// when the worker is run from apps/worker/. Operators can override via
-// SIGHT_IMAGE_DIR (must be an absolute path so PM2 / Docker / systemd can
-// target a different docroot without changing cwd assumptions).
-function resolveSightDir(): string {
-  const override = process.env.SIGHT_IMAGE_DIR?.trim();
-  if (override) {
-    return override;
-  }
-  return resolve(process.cwd(), "..", "web", "public", "sight");
-}
-
-function ensureDir(dir: string): void {
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-
-// Cover images for URL/social ingests (e.g. Instagram) live in
-// apps/web/public/social/ so they're served from our own origin. This is
-// essential for Instagram: its CDN URLs are signed and expire within days,
-// so we must download the bytes once at ingestion rather than hot-link them.
-function resolveSocialDir(): string {
-  const override = process.env.SOCIAL_IMAGE_DIR?.trim();
-  if (override) {
-    return override;
-  }
-  return resolve(process.cwd(), "..", "web", "public", "social");
-}
+// Docroot resolution (resolveSightDir / resolveSocialDir / ensureDir) lives in
+// lib/media-paths.ts so the image-generator can share it without a circular
+// import back through this module.
 
 function extFromContentType(contentType: string | null): string | null {
   if (!contentType) return null;
@@ -315,19 +287,37 @@ export async function writePost(
   const originalUrl = getOriginalUrl(input);
   const sourceHash = getSourceHash(input);
   const originalDate = originalDateFromFrontmatter(parsed.frontmatter);
-  // SIGHT batches: the hero is the first photo. Otherwise download remote cover
-  // images once (Instagram CDN links expire), serving them from public/social;
-  // local /sight/ paths and nulls pass through.
-  const imageUrl =
-    sightImages.length > 0
-      ? (sightImages[0]?.url ?? null)
-      : await localizeCoverImage(getImageUrl(parsed.frontmatter), parsed.slug);
   const contentDigest = getContentDigest(parsed.frontmatter);
 
   const excerpt =
     typeof parsed.frontmatter.excerpt === "string"
       ? (parsed.frontmatter.excerpt as string)
       : null;
+
+  // SIGHT batches: the hero is the first photo. Otherwise download remote cover
+  // images once (Instagram CDN links expire), serving them from public/social;
+  // local /sight/ paths and nulls pass through.
+  let imageUrl =
+    sightImages.length > 0
+      ? (sightImages[0]?.url ?? null)
+      : await localizeCoverImage(getImageUrl(parsed.frontmatter), parsed.slug);
+
+  // No cover from the source (notes → BLOG, plain-URL → FINDING)? Generate a
+  // bespoke editorial cover so the catalog grid is never empty. Strictly
+  // non-fatal — generateCoverImage returns null on any failure and the post
+  // still publishes with its type-label placeholder, like a failed download.
+  if (!imageUrl && getImageGenConfig().enabled) {
+    imageUrl = await generateCoverImage({
+      slug: parsed.slug,
+      title: parsed.title,
+      excerpt,
+      content: body,
+      type: parsed.type,
+      tags: Array.isArray(parsed.frontmatter.tags)
+        ? (parsed.frontmatter.tags as string[])
+        : [],
+    });
+  }
 
   const post = await prisma.post.upsert({
     where: { slug: parsed.slug },

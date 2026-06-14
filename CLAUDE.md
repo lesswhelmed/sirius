@@ -145,11 +145,22 @@ Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zo
 ### Workspaces
 - `apps/web` — Next.js 16 App Router. The product: broker storefront, ingest UI, queue, auth pages, and all HTTP APIs.
 - `apps/worker` — long-running Bun daemon. Polls the DB for ingest jobs, runs the Gemini pipeline. Runs via `bun run src/index.ts` (no build step).
-- `apps/mobile` — Expo / React Native client (auth + composer + library/queue), talks to `apps/web` APIs with the better-auth Expo client.
+- `apps/mobile` — Expo / React Native client. Tabs: Capture (composer), Catalog (library),
+  Queue, and **Tree** (the analysis-taxonomy outline — native counterpart of web's
+  Observatory, see below). Talks to `apps/web` APIs with the better-auth Expo client; also
+  drafts posts on-device (`src/lib/llm/`, llama.rn — see `docs/HANDOFF-on-device-ai.md`).
 - `apps/docs` — **unused** vestigial Turborepo starter stub. Ignore unless explicitly asked.
 - `packages/db` — `@repo/db`: Prisma schema, generated client, and all DB access helpers.
 - `packages/auth` — `@repo/auth`: the single `betterAuth(...)` instance + email sending.
 - `packages/ui` — `@repo/ui`: shared React components.
+- `packages/embedding-scene` — `@repo/embedding-scene`: host-agnostic scene-graph types
+  (`EmbeddingScene`/`SceneNode`) + pure queries (`categoryChildren`, `projectNodes`,
+  `linkedPosts`) + the `useSceneSelection` hook. Shared by web's `/space` Observatory and the
+  mobile Tree tab so both compute the taxonomy outline + drill-in identically. Fed by
+  `GET /api/app/embedding-scene` (session-authed).
+- `packages/{ingest-draft,extraction}` — `@repo/ingest-draft` (versioned draft wire schemas
+  shared by mobile on-device drafting + worker) and `@repo/extraction` (URL `url_context`
+  extraction shared by `/api/app/extract` + the worker).
 - `packages/{eslint-config,typescript-config}` — shared configs.
 
 ### The ingest pipeline (the core flow)
@@ -182,10 +193,21 @@ worker never call each other directly, they only share the DB and the `@repo/db`
    The post **type is forced by the worker after the model returns** so a model regression
    can't drift it.
 4. **Persist (worker).** `post-writer.ts` (replaces copt-dev's mdx-writer): copies image
-   batches into `apps/web/public/sight/<batchId>/` (override with `SIGHT_IMAGE_DIR`),
-   rewrites `IMAGE_N` placeholders in the body to served URLs, `connectOrCreate`s Tag/Category
-   rows, and **upserts** the `Post` by slug. Then the worker marks the submission(s) completed
-   and deletes the staged file.
+   batches into `apps/web/public/sight/<batchId>/` (override with `SIGHT_IMAGE_DIR`; the
+   Instagram/social path uses `SOCIAL_IMAGE_DIR` → `public/social/`), rewrites `IMAGE_N`
+   placeholders in the body to served URLs, `connectOrCreate`s Tag/Category rows, and
+   **upserts** the `Post` by slug. Then the worker marks the submission(s) completed and
+   deletes the staged file.
+
+### Serving worker-written media (`/sight`, `/social`)
+The worker writes post images into `public/sight/` and `public/social/` **at runtime**, but
+`next start` only serves `public/` files that existed at build time — so those URLs would 404
+in production. Two custom catch-all route handlers bridge the gap:
+`apps/web/app/sight/[...path]/route.ts` and `apps/web/app/social/[...path]/route.ts`, both
+backed by `apps/web/lib/media/serve-media.ts` (path-traversal-guarded reads from the configured
+dirs). In production a Caddy `file_server` fronts these paths directly off disk for speed
+(`infra/caddy/` — Caddyfile + README); the Next handlers are the dev-mode + fallback path. Keep
+`SIGHT_IMAGE_DIR` / `SOCIAL_IMAGE_DIR` in `.env.production` in sync with the Caddy roots.
 
 ### Database (`packages/db`)
 - PostgreSQL via Prisma 7 **driver adapter** (`@prisma/adapter-pg`, `PrismaPg`), not the
@@ -206,12 +228,25 @@ worker never call each other directly, they only share the DB and the `@repo/db`
   auth config**. `User` carries extra broker-storefront fields (`handle`, `bio`, `location`).
 
 ### Web route groups (`apps/web/app`)
-- `(app)` — session-gated broker cockpit (ingest, queue, library, inbox). `layout.tsx` calls
-  `requireSession` and redirects to `/setup-handle` if the user has no `handle`.
+- `(app)` — session-gated broker cockpit (ingest, queue, library, inbox, and the `/space`
+  **Observatory**). `layout.tsx` calls `requireSession` and redirects to `/setup-handle` if the
+  user has no `handle`.
 - `(auth)` — sign-in/up, verify-email, forgot/reset password.
 - `(public)` — public storefront: `/catalog`, `/catalog/[handle]`, `/listing/[slug]` + inquiry form.
-- API layout: `/api/app/*` = session-authed app APIs; `/api/*` (ingest/ingest-images) = bearer;
-  `/api/catalog/*` = public read; `/api/auth/*` = better-auth.
+- API layout: `/api/app/*` = session-authed app APIs (incl. `/api/app/embedding-scene` →
+  the Observatory/Tree scene); `/api/*` (ingest/ingest-images) = bearer; `/api/catalog/*` =
+  public read; `/api/auth/*` = better-auth. Plus the media catch-alls `/sight/*` + `/social/*`
+  (see "Serving worker-written media").
+
+### The Observatory / Tree (`/space` + mobile Tree tab)
+`/space` (`apps/web/app/(app)/space/space-view.tsx`) renders the embedding space: a 3D scene
+(Three.js) + a sidebar taxonomy outline + a drill-in "Index" of posts under a selected node.
+The mobile **Tree** tab (`apps/mobile/src/app/(tabs)/tree.tsx`) is its native, canvas-free
+mirror — the same outline + a "Focus areas" (projects) section, tap-to-drill into the same
+Index. Both consume `GET /api/app/embedding-scene` and share all tree-shaping/drill logic from
+`@repo/embedding-scene` (`categoryChildren`, `projectNodes`, `linkedPosts`, `useSceneSelection`)
+so the two hosts can never disagree. The scene is **owner-scoped** — it only populates for a
+signed-in user who has posts with embeddings + categorized/assigned content.
 
 ## Deployment
 `bun run deploy` (`scripts/deploy-remote.sh`, reads `.env.production`) pushes `main`, runs

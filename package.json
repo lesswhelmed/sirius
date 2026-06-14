@@ -32,6 +32,7 @@
     "notmobile:dev": "turbo run dev --filter=!mobile",
     "worker:dev": "turbo run dev --filter=worker",
     "worker:setup": "turbo run setup --filter=worker",
+    "worker:backfill:covers": "bun --cwd=apps/worker run backfill:covers",
     "env:production": "bun run scripts/create-production-env.ts",
     "auth:reset-password": "bun run scripts/reset-user-password.ts",
     "deploy": "bash scripts/deploy-remote.sh"

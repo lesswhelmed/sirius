@@ -1,5 +1,13 @@
 # HANDOFF: EAS iOS production build fails — fingerprint runtimeVersion mismatch
 
+> **Update 2026-06-14 — the llama.rn duplication in §A is RESOLVED.** The stack is now
+> pinned to a **single `llama.rn@0.12.4`** (root `overrides` + `apps/mobile` dep), so the
+> nondeterministic config-plugin / entitlement diff from the duplicate copies is gone, and
+> `apps/mobile/scripts/verify-native-ai.mjs` hard-asserts the single 0.12.4 install on every
+> build. The §B `node_modules` drift (clean reinstall before building) and the durable
+> `runtimeVersion.policy` concern below still stand. Re-run the EAS prod build to confirm the
+> fingerprint now matches; treat §A's "dedupe llama.rn / pick a version" instructions as DONE.
+
 **Owner question:** this blocks the App Store deploy goal. The real EAS log is now in hand
 (below). Fix subagent: implement the bounded local fix, verify fingerprint determinism
 **locally**, and STOP for human review before consuming another EAS build or making any

@@ -1,7 +1,13 @@
 # HANDOFF — On-device AI "missing engine" under the New Architecture
 
-**Date:** 2026-06-13
-**Status:** Root cause confirmed. No code changed yet (owner asked for a handoff only).
+**Date:** 2026-06-13 · **Updated:** 2026-06-14
+**Status:** ✅ **RESOLVED.** The `llama.rn` upgrade to `0.12.4` is fully landed and the
+recommended fix below was applied: `apps/mobile/scripts/verify-native-ai.mjs` now pins
+`EXPECTED_LLAMA_RN = "0.12.4"` and passes, `engine.ts` no longer narrates the `0.10.1` story,
+and a clean native rebuild against `0.12.4` was verified on the iPhone 17 Pro simulator on
+2026-06-14 (`verify-native-ai` ✓ all checks, app installed + launched, no "missing engine"
+copy). The recommended-fix and inconsistency sections below are kept as a historical record of
+the migration — they are **done**, not open work.
 **Area:** `apps/mobile` on-device LLM (`llama.rn` JSI bridge)
 
 ---

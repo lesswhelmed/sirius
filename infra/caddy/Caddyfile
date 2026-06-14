@@ -1,17 +1,22 @@
-# Caddy site config for sirius-2-simple (lesswhelmed.com).
+# Caddy site block for sirius-2-simple — the `lesswhelmed.com` SITE ONLY.
 #
-# SOURCE OF TRUTH — version-controlled here for reference. The live config lives
-# at /etc/caddy/Caddyfile on the deploy host (172.239.45.200); applying changes
-# is a documented manual step (needs sudo). See ./README.md.
+# ⚠️ This is NOT the whole server config. The live /etc/caddy/Caddyfile on the
+# deploy host (172.239.45.200) is SHARED and also serves `copt.dev`,
+# `www.copt.dev`, and `brotanicaldistro.com`. DO NOT `cp` this file over the live
+# one — that would delete those other sites. Apply it by MERGING: replace only
+# the `lesswhelmed.com { … }` block in the live file with the block below, leave
+# the others untouched. See ./README.md for the exact merge + validate steps.
 #
-# Routing is split into mutually-exclusive `handle` blocks:
+# Routing inside the block is mutually-exclusive `handle` blocks:
 #   1. /_next/static/*  — immutable hashed build assets (proxied to Next).
 #   2. /sight/* /social/* — post media the worker writes at RUNTIME. Next's
 #      static handler can only serve files present at BUILD time, so these are
 #      served straight from disk by file_server here (and by in-app route
 #      handlers at apps/web/app/{sight,social}/[...path] as the dev/fallback
 #      path + next/image optimizer target). Keep this root in sync with
-#      SIGHT_IMAGE_DIR/SOCIAL_IMAGE_DIR in .env.production.
+#      SIGHT_IMAGE_DIR/SOCIAL_IMAGE_DIR in .env.production. NOTE: the `file_server`
+#      reads files under /home/deploy, so the `caddy` service user must be in the
+#      `deploy` group (`sudo usermod -aG deploy caddy` + restart) — see README.
 #   3. everything else — the Next.js server on :3003.
 
 lesswhelmed.com {

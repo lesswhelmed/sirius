@@ -64,6 +64,40 @@ export function getEmbeddingDimensionality(): number {
     : DEFAULT_EMBEDDING_DIMENSIONALITY;
 }
 
+// Auto-generated cover images. When a drafted post resolves to no imageUrl
+// (notes → BLOG, plain-URL → FINDING), the worker renders a bespoke editorial
+// cover with Gemini's Nano Banana Pro so the catalog grid is never empty. Only
+// the Pro image model honors imageConfig (aspectRatio/imageSize), so it's the
+// default — see image-generator.ts. Strictly non-fatal: a failure leaves the
+// post imageless rather than failing the write.
+export type ImageGenConfig = {
+  enabled: boolean;
+  model: string;
+  briefModel: string;
+  aspectRatio: string;
+  imageSize: string;
+};
+
+// gemini-3-pro-image-preview = Nano Banana Pro; only it supports imageConfig.
+const DEFAULT_IMAGE_GEN_MODEL = "gemini-3-pro-image-preview";
+// Cheap text model that distills each post into a vivid art-direction brief.
+const DEFAULT_IMAGE_BRIEF_MODEL = "gemini-2.5-flash";
+// 3:2 sits between the catalog card (4:3) and detail hero (16:10); both crop it
+// cleanly under object-cover.
+const DEFAULT_IMAGE_ASPECT_RATIO = "3:2";
+const DEFAULT_IMAGE_SIZE = "2K";
+
+export function getImageGenConfig(): ImageGenConfig {
+  return {
+    // Default ON; set IMAGE_GEN_ENABLED=false to disable cover generation.
+    enabled: process.env.IMAGE_GEN_ENABLED !== "false",
+    model: process.env.IMAGE_GEN_MODEL ?? DEFAULT_IMAGE_GEN_MODEL,
+    briefModel: process.env.IMAGE_GEN_BRIEF_MODEL ?? DEFAULT_IMAGE_BRIEF_MODEL,
+    aspectRatio: process.env.IMAGE_GEN_ASPECT_RATIO ?? DEFAULT_IMAGE_ASPECT_RATIO,
+    imageSize: process.env.IMAGE_GEN_SIZE ?? DEFAULT_IMAGE_SIZE,
+  };
+}
+
 export type ClassifyConfig = {
   enabled: boolean;
   projectMatchMin: number;
@@ -98,6 +132,10 @@ export function getClassifyConfig(): ClassifyConfig {
 export {
   DEFAULT_EMBEDDING_DIMENSIONALITY,
   DEFAULT_EMBEDDING_MODEL,
+  DEFAULT_IMAGE_ASPECT_RATIO,
+  DEFAULT_IMAGE_BRIEF_MODEL,
+  DEFAULT_IMAGE_GEN_MODEL,
+  DEFAULT_IMAGE_SIZE,
   DEFAULT_MODEL,
   DEFAULT_TEMPERATURE,
   DEFAULT_YOUTUBE_MODEL,
