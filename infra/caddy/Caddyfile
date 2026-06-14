@@ -1,0 +1,52 @@
+# Caddy site config for sirius-2-simple (lesswhelmed.com).
+#
+# SOURCE OF TRUTH — version-controlled here for reference. The live config lives
+# at /etc/caddy/Caddyfile on the deploy host (172.239.45.200); applying changes
+# is a documented manual step (needs sudo). See ./README.md.
+#
+# Routing is split into mutually-exclusive `handle` blocks:
+#   1. /_next/static/*  — immutable hashed build assets (proxied to Next).
+#   2. /sight/* /social/* — post media the worker writes at RUNTIME. Next's
+#      static handler can only serve files present at BUILD time, so these are
+#      served straight from disk by file_server here (and by in-app route
+#      handlers at apps/web/app/{sight,social}/[...path] as the dev/fallback
+#      path + next/image optimizer target). Keep this root in sync with
+#      SIGHT_IMAGE_DIR/SOCIAL_IMAGE_DIR in .env.production.
+#   3. everything else — the Next.js server on :3003.
+
+lesswhelmed.com {
+	# Security headers applied to every response.
+	header {
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+		X-XSS-Protection "1; mode=block"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	encode gzip zstd
+
+	# 1. Immutable Next.js build assets.
+	@static path /_next/static/*
+	handle @static {
+		header Cache-Control "public, immutable, max-age=31536000"
+		reverse_proxy 127.0.0.1:3003
+	}
+
+	# 2. Runtime-written post media, served from disk (bypasses Node).
+	#    Request /sight/<batch>/1.jpg -> <root>/sight/<batch>/1.jpg.
+	@media path /sight/* /social/*
+	handle @media {
+		root * /home/deploy/apps/sirius/apps/web/public
+		header Cache-Control "public, max-age=604800"
+		file_server
+	}
+
+	# 3. Everything else -> Next.js.
+	handle {
+		reverse_proxy 127.0.0.1:3003 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Host {host}
+		}
+	}
+}

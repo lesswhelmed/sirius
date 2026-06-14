@@ -3,7 +3,7 @@
 //   - apps/worker  — Gemini structured output (Output.object) and validation
 //                    of client-supplied drafts before skipping the Gemini stage
 //   - apps/web     — request validation when a submission carries a draft
-//   - apps/mobile  — on-device drafting with a local LLM (generateObject)
+//   - apps/mobile  — on-device drafting with a local LLM (generateText + Output.object)
 // The post TYPE is intentionally absent everywhere here: the worker forces
 // PostType from the submission kind so neither a model regression nor a
 // buggy/malicious client can drift it.

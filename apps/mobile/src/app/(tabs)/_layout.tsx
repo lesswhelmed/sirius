@@ -52,6 +52,10 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Queue</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="tray.full" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="tree">
+        <NativeTabs.Trigger.Label>Tree</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="list.bullet.indent" />
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }

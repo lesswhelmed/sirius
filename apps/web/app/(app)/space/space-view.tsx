@@ -4,26 +4,12 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useMemo } from "react";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
-import { linkedPosts } from "@repo/embedding-scene/scene-queries";
+import {
+  categoryChildren,
+  linkedPosts,
+} from "@repo/embedding-scene/scene-queries";
 import { SpaceScene } from "@repo/embedding-scene/react/space-scene";
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
-
-// Build the taxonomy tree (category nodes only) for the side panel.
-function categoryChildren(
-  scene: EmbeddingScene
-): Map<string | null, SceneNode[]> {
-  const children = new Map<string | null, SceneNode[]>();
-  for (const n of scene.nodes) {
-    if (n.kind !== "category") continue;
-    const parent = n.path?.includes("/")
-      ? n.path.slice(0, n.path.lastIndexOf("/"))
-      : null;
-    const list = children.get(parent) ?? [];
-    list.push(n);
-    children.set(parent, list);
-  }
-  return children;
-}
 
 function TreeBranch({
   parent,

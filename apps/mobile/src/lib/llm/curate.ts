@@ -5,21 +5,24 @@
 // worker's Gemini stage picks it up, so local drafting can only ever improve
 // privacy/latency, never lose a capture.
 //
-// Drafts are generated with generateObject(schema), but the prompt ALSO spells
-// out the JSON shape and experimental_repairText extracts the object from any
-// surrounding prose/fences: as of llama.rn 0.11.x (verified on-device
-// 2026-06-11) the json_schema grammar was silently dropped when driven through
-// @react-native-ai/llama@0.12, so schema enforcement at the sampler couldn't be
-// relied on. We are now on llama.rn 0.12.4 and the grammar behavior there is
-// UNVERIFIED — the prompt+repair belt is harmless either way and stays until a
-// device run confirms the sampler enforces the schema again.
+// Drafts are generated with generateText + Output.object(schema) (generateObject
+// is deprecated in AI SDK 6), but the prompt ALSO spells out the JSON shape and a
+// repair belt extracts the object from any surrounding prose/fences: as of
+// llama.rn 0.11.x (verified on-device 2026-06-11) the json_schema grammar was
+// silently dropped when driven through @react-native-ai/llama@0.12, so schema
+// enforcement at the sampler couldn't be relied on. We are now on llama.rn 0.12.4
+// and the grammar behavior there is UNVERIFIED — the prompt+repair belt is
+// harmless either way and stays until a device run confirms the sampler enforces
+// the schema again. Output.object has no repairText hook (generateObject did), so
+// the belt now lives in withDraftRepair: it catches the NoObjectGeneratedError
+// thrown on a parse miss and re-parses err.text itself.
 import {
   type DraftEnvelope,
   PostDraftSchema,
   type SightDraftEnvelope,
   SightDraftSchema,
 } from "@repo/ingest-draft";
-import { generateObject } from "ai";
+import { generateText, NoObjectGeneratedError, Output } from "ai";
 
 import { checkNativeBridge, isModelReady, withPreparedModel } from "./engine";
 import { VISION_MODEL_ID } from "./models";
@@ -30,8 +33,8 @@ const DRAFT_TIMEOUT_MS = 180_000;
 // Returns the first balanced JSON object in the text (tolerating prose
 // preambles and ``` fences), with raw control characters inside string
 // literals escaped — small local models routinely emit real newlines inside
-// the multi-paragraph "body" value, which is invalid JSON. Used as
-// generateObject's repairText so a near-miss reply still parses.
+// the multi-paragraph "body" value, which is invalid JSON. Used by
+// withDraftRepair to recover a near-miss reply that Output.object couldn't parse.
 function extractJsonObject(text: string): string | null {
   const start = text.indexOf("{");
   if (start === -1) {
@@ -79,8 +82,30 @@ function extractJsonObject(text: string): string | null {
   return null;
 }
 
-const repairText = async ({ text }: { text: string }) =>
-  extractJsonObject(text);
+// Awaits a generateText({ output: Output.object(schema) }) call and returns its
+// validated object. Output.object runs a bare JSON.parse on the reply and throws
+// NoObjectGeneratedError on any miss — and generateText, unlike the old
+// generateObject, has no repairText hook. So we reinstate the belt here: on a
+// miss, pull the balanced JSON object out of the raw text (err.text) and validate
+// it against the schema ourselves. schema is typed structurally on `.parse` so we
+// avoid pulling zod's types in; T is pinned by both the schema and the promise.
+async function withDraftRepair<T>(
+  schema: { parse: (value: unknown) => T },
+  pending: Promise<{ output: T }>
+): Promise<T> {
+  try {
+    const { output } = await pending;
+    return output;
+  } catch (err) {
+    if (NoObjectGeneratedError.isInstance(err) && err.text) {
+      const repaired = extractJsonObject(err.text);
+      if (repaired) {
+        return schema.parse(JSON.parse(repaired));
+      }
+    }
+    throw err;
+  }
+}
 
 const NOTE_JSON_INSTRUCTIONS = [
   "Respond with ONLY a JSON object — no commentary, no markdown fences.",
@@ -142,7 +167,7 @@ export async function draftNotePost(
       // Queues behind any in-flight chat/draft generation; the timeout covers
       // the wait too, so a draft that waited it out bails instead of burning
       // another generation.
-      const { object } = await withPreparedModel(
+      const post = await withPreparedModel(
         settings.modelId,
         "draft",
         (model) => {
@@ -150,22 +175,24 @@ export async function draftNotePost(
             // Timed out while queued behind another generation.
             throw new Error("draft timed out waiting for the model");
           }
-          return generateObject({
-            model,
-            schema: PostDraftSchema,
-            prompt: buildNotePrompt(notes),
-            temperature: 0.7,
-            maxOutputTokens: 1024,
-            abortSignal: controller.signal,
-            experimental_repairText: repairText,
-          });
+          return withDraftRepair(
+            PostDraftSchema,
+            generateText({
+              model,
+              output: Output.object({ schema: PostDraftSchema }),
+              prompt: buildNotePrompt(notes),
+              temperature: 0.7,
+              maxOutputTokens: 1024,
+              abortSignal: controller.signal,
+            })
+          );
         }
       );
       return {
         schemaVersion: 1,
         engine: `llama.rn:${settings.modelId}`,
         draftedAt: new Date().toISOString(),
-        post: object,
+        post,
       };
     } finally {
       clearTimeout(timer);
@@ -215,29 +242,31 @@ export async function draftUrlPost(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
     try {
-      const { object } = await withPreparedModel(
+      const post = await withPreparedModel(
         settings.modelId,
         "draft",
         (model) => {
           if (controller.signal.aborted) {
             throw new Error("draft timed out waiting for the model");
           }
-          return generateObject({
-            model,
-            schema: PostDraftSchema,
-            prompt: buildUrlPrompt(summary, notes),
-            temperature: 0.7,
-            maxOutputTokens: 1024,
-            abortSignal: controller.signal,
-            experimental_repairText: repairText,
-          });
+          return withDraftRepair(
+            PostDraftSchema,
+            generateText({
+              model,
+              output: Output.object({ schema: PostDraftSchema }),
+              prompt: buildUrlPrompt(summary, notes),
+              temperature: 0.7,
+              maxOutputTokens: 1024,
+              abortSignal: controller.signal,
+            })
+          );
         }
       );
       return {
         schemaVersion: 1,
         engine: `llama.rn:${settings.modelId}+server-extract`,
         draftedAt: new Date().toISOString(),
-        post: object,
+        post,
       };
     } finally {
       clearTimeout(timer);
@@ -312,7 +341,7 @@ export async function draftSightPost(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
     try {
-      const { object } = await withPreparedModel(
+      const post = await withPreparedModel(
         VISION_MODEL_ID,
         "draft",
         (model) => {
@@ -320,33 +349,35 @@ export async function draftSightPost(
             // Timed out while queued behind another generation.
             throw new Error("draft timed out waiting for the model");
           }
-          return generateObject({
-            model,
-            schema: SightDraftSchema,
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: buildSightPrompt(imageUris.length, notes),
-                  },
-                  ...imageUris.map((uri) => ({
-                    type: "file" as const,
-                    mediaType: "image/jpeg",
-                    data: uri,
-                  })),
-                ],
-              },
-            ],
-            temperature: 0.7,
-            maxOutputTokens: 1024,
-            abortSignal: controller.signal,
-            experimental_repairText: repairText,
-          });
+          return withDraftRepair(
+            SightDraftSchema,
+            generateText({
+              model,
+              output: Output.object({ schema: SightDraftSchema }),
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: buildSightPrompt(imageUris.length, notes),
+                    },
+                    ...imageUris.map((uri) => ({
+                      type: "file" as const,
+                      mediaType: "image/jpeg",
+                      data: uri,
+                    })),
+                  ],
+                },
+              ],
+              temperature: 0.7,
+              maxOutputTokens: 1024,
+              abortSignal: controller.signal,
+            })
+          );
         }
       );
-      if (object.imageAlts.length !== imageUris.length) {
+      if (post.imageAlts.length !== imageUris.length) {
         // The worker's post-writer tolerates a count mismatch (falls back to
         // the title), but a small VLM losing track of image order is a strong
         // signal the rest of the draft is unreliable too. Let Gemini do it.
@@ -356,7 +387,7 @@ export async function draftSightPost(
         schemaVersion: 1,
         engine: `llama.rn:${VISION_MODEL_ID}`,
         draftedAt: new Date().toISOString(),
-        post: object,
+        post,
       };
     } finally {
       clearTimeout(timer);

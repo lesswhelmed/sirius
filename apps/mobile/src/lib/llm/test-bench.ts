@@ -1,6 +1,6 @@
 // Dev-only blackbox bench for on-device post drafting. Runs the REAL
-// pipeline — draftNotePost → inference lock → generateObject → repairText →
-// schema — against a fixed bank of note fixtures, then applies deterministic
+// pipeline — draftNotePost → inference lock → generateText/Output.object →
+// withDraftRepair → schema — against a fixed bank of note fixtures, then applies deterministic
 // quality checks to the result. No composer, no submission, no server: this
 // isolates "does the local model produce a valid, decent post draft" from the
 // ingest plumbing (which has its own verified path).

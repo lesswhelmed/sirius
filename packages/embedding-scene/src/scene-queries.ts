@@ -44,3 +44,31 @@ export function linkedPosts(
 
   return [];
 }
+
+// The category taxonomy as an adjacency map keyed by parent path (null = root),
+// for rendering the outline/tree in either host. A category's parent is its
+// `path` minus the last `/segment`; top-level categories key under `null`.
+// Children preserve scene order (categories arrive ordered by path).
+export function categoryChildren(
+  scene: EmbeddingScene
+): Map<string | null, SceneNode[]> {
+  const children = new Map<string | null, SceneNode[]>();
+  for (const n of scene.nodes) {
+    if (n.kind !== "category") continue;
+    const parent = n.path?.includes("/")
+      ? n.path.slice(0, n.path.lastIndexOf("/"))
+      : null;
+    const list = children.get(parent) ?? [];
+    list.push(n);
+    children.set(parent, list);
+  }
+  return children;
+}
+
+// All project ("focus area") nodes in the scene, alphabetical by label —
+// matches the project ordering `linkedPosts` uses for a project's posts.
+export function projectNodes(scene: EmbeddingScene): SceneNode[] {
+  return scene.nodes
+    .filter((n) => n.kind === "project")
+    .sort((a, b) => a.label.localeCompare(b.label));
+}

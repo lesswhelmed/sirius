@@ -80,36 +80,25 @@ Then edit `.env.production` and replace every `<...>` placeholder:
    `SIGHT_IMAGE_DIR=/home/deploy/apps/sirius/apps/web/public/sight`,
    `SOCIAL_IMAGE_DIR=/home/deploy/apps/sirius/apps/web/public/social`.
 
-6. **Caddy site block** — add to `/etc/caddy/Caddyfile`:
+6. **Caddy site block** — the canonical config is version-controlled at
+   [`infra/caddy/Caddyfile`](infra/caddy/Caddyfile) (apply instructions in
+   [`infra/caddy/README.md`](infra/caddy/README.md)). Copy it to
+   `/etc/caddy/Caddyfile`.
 
-   ```caddyfile
-   lesswhelmed.com {
-       reverse_proxy 127.0.0.1:3003 {
-           header_up X-Real-IP {remote_host}
-           header_up X-Forwarded-Host {host}
-       }
+   Besides reverse-proxying to Next on :3003, it has a dedicated block that
+   serves `/sight/*` and `/social/*` from disk via `file_server` (rooted at
+   `.../apps/web/public`). This is **required**: the worker writes post media
+   there at runtime, and `next start` only serves `public/` files that existed
+   at build time — without this block (or the in-app `app/{sight,social}` route
+   handlers) those images 404. Keep the `file_server` root in sync with
+   `SIGHT_IMAGE_DIR`/`SOCIAL_IMAGE_DIR` above.
 
-       header {
-           X-Frame-Options "SAMEORIGIN"
-           X-Content-Type-Options "nosniff"
-           X-XSS-Protection "1; mode=block"
-           Strict-Transport-Security "max-age=31536000; includeSubDomains"
-           -Server
-       }
-
-       @static path /_next/static/*
-       handle @static {
-           header Cache-Control "public, immutable, max-age=31536000"
-           reverse_proxy 127.0.0.1:3003
-       }
-
-       encode gzip zstd
-   }
-   ```
-
-   Then:
+   Apply:
 
    ```sh
+   scp -i ~/.ssh/id_copt_dev_v1 infra/caddy/Caddyfile deploy@172.239.45.200:/tmp/Caddyfile
+   ssh -i ~/.ssh/id_copt_dev_v1 deploy@172.239.45.200
+   sudo cp /tmp/Caddyfile /etc/caddy/Caddyfile
    sudo caddy fmt --overwrite /etc/caddy/Caddyfile
    sudo caddy validate --config /etc/caddy/Caddyfile
    sudo systemctl reload caddy
