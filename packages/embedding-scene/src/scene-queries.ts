@@ -115,7 +115,10 @@ export function subtreeIndex(
   }
 
   // Category subtree = the node's own path + any path nested beneath it.
-  const prefix = root.path ?? root.id;
+  // A valid category always has a path; bail on a malformed node rather than
+  // falling back to the id and matching nothing/anything.
+  const prefix = root.path;
+  if (prefix == null) return null;
   const subtreeCatIds = new Set(
     scene.nodes
       .filter(

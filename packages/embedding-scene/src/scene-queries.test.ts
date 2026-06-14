@@ -107,3 +107,14 @@ test("unknown or post node returns null", () => {
   expect(subtreeIndex(S, "nope")).toBeNull();
   expect(subtreeIndex(S, "p1")).toBeNull();
 });
+
+test("ignores matches to categories outside the drilled subtree", () => {
+  const s = scene(
+    [cat("art"), cat("art/photo"), cat("science"), post("x1", "Crossover", "crossover")],
+    [match("x1", "science", 0.95), match("x1", "art/photo", 0.4)]
+  );
+  const idx = subtreeIndex(s, "art")!;
+  expect(idx.total).toBe(1); // counted once, inside art
+  expect(idx.groups[0]!.node.id).toBe("art/photo"); // attributed to the in-subtree match, not the higher outside one
+  expect(idx.groups[0]!.posts.map((e) => e.node.id)).toEqual(["x1"]);
+});
