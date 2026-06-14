@@ -4,7 +4,7 @@
 // dropped — see the migration plan.)
 
 import { buildClassificationInput } from "./classification/adapters";
-import { assignOrg } from "./classification/assign-org";
+import { assignOrg, sceneRowWarning } from "./classification/assign-org";
 import { tryClientDraft } from "./draft-runner";
 import { runGemini } from "./gemini-runner";
 import { writePost } from "./post-writer";
@@ -71,14 +71,31 @@ export async function processIngest(
       postId: written.postId,
       classificationInput,
     });
-    if (org) {
+    // Surface the scene-row metrics so a prod worker that's silently writing no
+    // PostEmbedding/PostCategoryMatch is visible. A throw is caught below; an
+    // eligible ingest that wrote zero rows (embedding skipped, or no category
+    // linkage → absent from the Tree) is flagged here, not buried as a no-op.
+    const warning = sceneRowWarning(org);
+    if (warning) {
+      logger("org:warn", {
+        postId: written.postId,
+        reason: warning,
+        postEmbeddingWritten: org.postEmbeddingWritten,
+        categoryMatchCount: org.categoryMatchCount,
+      });
+    } else {
       logger("org:assigned", {
-        projectId: org.projectId,
-        created: org.created,
+        postId: written.postId,
+        skipped: org.skipped,
+        projectId: org.project?.projectId ?? null,
+        created: org.project?.created ?? false,
+        postEmbeddingWritten: org.postEmbeddingWritten,
+        categoryMatchCount: org.categoryMatchCount,
       });
     }
   } catch (error) {
     logger("org:error", {
+      postId: written.postId,
       error: error instanceof Error ? error.message : String(error),
     });
   }

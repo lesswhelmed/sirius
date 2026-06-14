@@ -39,7 +39,47 @@ export interface AssignOrgArgs {
   classificationInput: ClassificationInput;
 }
 
-export type AssignOrgResult = { projectId: string; created: boolean } | null;
+// Why the stage wrote no scene rows. "disabled"/"unattributed" are the expected
+// no-op paths (bearer ingest or classification turned off); anything else is a
+// real ingest that should have populated the embedding space and didn't.
+export type AssignOrgSkipReason = "disabled" | "unattributed";
+
+// Outcome of the auto-org stage. Always returned (never null) so the pipeline
+// can tell a legitimate skip apart from an eligible ingest that silently wrote
+// zero PostEmbedding/PostCategoryMatch rows. `postEmbeddingWritten` +
+// `categoryMatchCount` are the scene-row metrics; `project` is the org
+// assignment (null when scoped/skipped/unmatched).
+export interface AssignOrgResult {
+  postEmbeddingWritten: boolean;
+  categoryMatchCount: number;
+  project: { projectId: string; created: boolean } | null;
+  skipped: AssignOrgSkipReason | null;
+}
+
+const SKIPPED: (reason: AssignOrgSkipReason) => AssignOrgResult = (reason) => ({
+  postEmbeddingWritten: false,
+  categoryMatchCount: 0,
+  project: null,
+  skipped: reason,
+});
+
+// Pure observability decision: did an ELIGIBLE ingest (not a known disabled/
+// unattributed skip) land with no scene rows? An eligible ingest must write a
+// PostEmbedding and at least one PostCategoryMatch to surface in the embedding
+// space + Tree; zero of either means it's invisible. Returns a one-line reason
+// for the structured warning, or null when there's nothing to flag.
+export function sceneRowWarning(result: AssignOrgResult): string | null {
+  if (result.skipped != null) {
+    return null;
+  }
+  if (!result.postEmbeddingWritten) {
+    return "no PostEmbedding written";
+  }
+  if (result.categoryMatchCount === 0) {
+    return "no PostCategoryMatch rows (post absent from Tree)";
+  }
+  return null;
+}
 
 function submissionIdsOf(input: PipelineInput): string[] {
   return input.kind === "image"
@@ -171,8 +211,11 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
   const config = getClassifyConfig();
 
   // Bearer ingest (no user) is never embedded or auto-filed.
-  if (!config.enabled || ownerId == null) {
-    return null;
+  if (!config.enabled) {
+    return SKIPPED("disabled");
+  }
+  if (ownerId == null) {
+    return SKIPPED("unattributed");
   }
 
   const ids = submissionIdsOf(input);
@@ -229,10 +272,16 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
   for (const t of topics) {
     matchByPath.set(t.path, Math.max(matchByPath.get(t.path) ?? 0, t.score));
   }
+  const categoryMatchCount = matchByPath.size;
   await replacePostCategoryMatches(
     postId,
     [...matchByPath].map(([path, score]) => ({ path, score }))
   );
+
+  // Embedding is always written above; category linkage may be empty if neither
+  // a facet nor a topic cleared its match floor. Carried out so the pipeline can
+  // flag an eligible ingest that landed with no Tree linkage.
+  const sceneRows = { postEmbeddingWritten: true, categoryMatchCount };
 
   // Reconcile the flat Category table (post colophon/listing) to the canonical
   // resolved leaf names so it dedupes too. Non-fatal.
@@ -253,9 +302,10 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
     }
   }
 
-  // Explicitly-scoped ingests keep their user-chosen Project — no auto-org.
+  // Explicitly-scoped ingests keep their user-chosen Project — no auto-org. The
+  // scene rows are still written above, so this is not a skip.
   if (input.projectId != null) {
-    return null;
+    return { ...sceneRows, project: null, skipped: null };
   }
 
   const centroidArgs = {
@@ -274,9 +324,13 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
         projectId: bestProject.projectId,
         ...centroidArgs,
       });
-      return { projectId: bestProject.projectId, created: false };
+      return {
+        ...sceneRows,
+        project: { projectId: bestProject.projectId, created: false },
+        skipped: null,
+      };
     }
-    return null;
+    return { ...sceneRows, project: null, skipped: null };
   }
 
   // No embedding match. Derived names repeat constantly ("Journal",
@@ -291,11 +345,15 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
   if (existingProject) {
     const assigned = await assignPostToProject(ownerId, postId, existingProject.id);
     if (!assigned.ok) {
-      return null;
+      return { ...sceneRows, project: null, skipped: null };
     }
     await setSubmissionProject(ids, existingProject.id);
     await updateProjectCentroid({ projectId: existingProject.id, ...centroidArgs });
-    return { projectId: existingProject.id, created: false };
+    return {
+      ...sceneRows,
+      project: { projectId: existingProject.id, created: false },
+      skipped: null,
+    };
   }
 
   const aspiration =
@@ -314,13 +372,13 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
     metadata: { autoCreated: true },
   });
   if (!created.ok) {
-    return null;
+    return { ...sceneRows, project: null, skipped: null };
   }
   const projectId = created.project.id;
 
   const assigned = await assignPostToProject(ownerId, postId, projectId);
   if (!assigned.ok) {
-    return null;
+    return { ...sceneRows, project: null, skipped: null };
   }
   await setSubmissionProject(ids, projectId);
 
@@ -336,5 +394,9 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
     dimensionality,
   });
 
-  return { projectId, created: true };
+  return {
+    ...sceneRows,
+    project: { projectId, created: true },
+    skipped: null,
+  };
 }

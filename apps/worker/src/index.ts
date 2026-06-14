@@ -265,8 +265,17 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
       }
     }
     const input = buildInput(rows);
-    const stageLogger = (stage: string, extra?: Record<string, unknown>) =>
-      log("info", `stage:${stage}`, { ids, ...(extra ?? {}) });
+    // Escalate the log level for non-fatal failure stages (e.g. `org:warn`,
+    // `org:error`) so a worker silently writing no scene rows is visible in
+    // prod logs/alerting instead of buried at info alongside every step.
+    const stageLogger = (stage: string, extra?: Record<string, unknown>) => {
+      const level = stage.endsWith(":error")
+        ? "error"
+        : stage.endsWith(":warn")
+          ? "warn"
+          : "info";
+      log(level, `stage:${stage}`, { ids, ...(extra ?? {}) });
+    };
     // Keep the lease fresh while a long job runs so the reclaimer doesn't treat
     // a still-running job as crashed. Cleared in `finally`.
     const heartbeatEvery = Math.max(5_000, Math.floor(leaseMs() / 3));
