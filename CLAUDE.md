@@ -63,7 +63,7 @@ portless child). Dev hostnames have ONE source of truth — **`packages/auth/dev
 header documents the contract, including that `EXPO_PUBLIC_AUTH_BASE_URL`
 (apps/mobile/.env) and `BETTER_AUTH_URL`/`NEXT_PUBLIC_BETTER_AUTH_URL` (root .env) must
 all point at the host the current proxy mode serves (`https://sirius.local`). Bypass with
-`PORTLESS=0 bun --cwd apps/web run dev:app`. The physical-device test runbook lives in
+`PORTLESS=0 bun --cwd=apps/web run dev:app`. The physical-device test runbook lives in
 `docs/HANDOFF-on-device-ai.md`.
 
 There is **no test runner wired up** (`scripts/testing/` exists but nothing in package.json

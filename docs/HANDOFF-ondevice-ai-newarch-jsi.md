@@ -98,7 +98,7 @@ still had the legacy-bridge `install()`. A clean rebuild against `0.12.4` was no
    and that the `download-native-artifacts` postinstall ran (xcframework present in
    `node_modules/llama.rn/ios/rnllama.xcframework`).
 2. **Fix the gate:** in `apps/mobile/scripts/verify-native-ai.mjs` set `EXPECTED_LLAMA_RN = "0.12.4"`
-   and update the stale comment. Run `bun --cwd apps/mobile run verify:native-ai` → must pass.
+   and update the stale comment. Run `bun --cwd=apps/mobile run verify:native-ai` → must pass.
 3. **Update `engine.ts` comments** referencing `0.10.1` to `0.12.4` (no logic change expected;
    `installJsi`/`checkNativeBridge` API is unchanged across the bump — verify).
 4. **Clean native rebuild against 0.12.4:** `bun --cwd apps/mobile dev`

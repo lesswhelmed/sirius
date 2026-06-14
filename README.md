@@ -154,7 +154,7 @@ Local dev serves the web app behind [portless](https://www.npmjs.com/package/por
 stable URL **`https://sirius.localhost`** (the proxy forwards to `next dev` on port 3000), so the
 mobile app's auth base URL never goes stale when your network changes. Run `bun run dev:proxy` once
 after a reboot before `bun run dev`. Bypass the proxy entirely with
-`PORTLESS=0 bun --cwd apps/web run dev:app` (plain `http://localhost:3000`).
+`PORTLESS=0 bun --cwd=apps/web run dev:app` (plain `http://localhost:3000`).
 
 Mobile (from repo root):
 
@@ -217,7 +217,7 @@ start it automatically at login instead: `portless service install`.
 To run plain `http://localhost:3000` without the proxy:
 
 ```sh
-PORTLESS=0 bun --cwd apps/web run dev:app
+PORTLESS=0 bun --cwd=apps/web run dev:app
 ```
 
 > **Simulator-only.** This setup targets the iOS Simulator (it shares the Mac's loopback, so
