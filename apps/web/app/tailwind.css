@@ -16,36 +16,68 @@
 	--radius-chip: 0px;
 	--radius-input: 0px;
 
-	/* Paper-and-ink palette */
-	--color-paper: #f3ecdc;
-	--color-paper-raised: #eadfc6;
-	--color-paper-sunken: #e6d9bc;
-	--color-paper-deep: #d9c39a;
+	/* ─────────────────────────────────────────────────────────────
+	   THEMING — read this before touching any color.
 
-	--color-ink: #1c1612;
-	--color-ink-muted: #5a4f43;
-	--color-ink-subtle: #897d6d;
-	--color-ink-faint: #b8a98e;
+	   Color tokens below are semantic ROLES, not literal colors:
+	     paper  = base surface        ink   = primary text
+	     rule   = hairline / border   accent = the single oxblood accent
+	     mark   = highlight (mustard)  sage  = secondary tone
+	   Every theme keeps the SAME token names and only swaps their
+	   VALUES, so components never hardcode a color — they reference
+	   var(--color-paper), var(--fg), etc.
 
-	--color-rule: rgb(28 22 18 / 0.16);
-	--color-rule-strong: rgb(28 22 18 / 0.45);
-	--color-rule-emphatic: rgb(28 22 18 / 0.85);
+	   DARK is the default and its values live HERE (set once). LIGHT
+	   (and any future theme) overrides only these --color-* tokens in
+	   one [data-theme="…"] block in @layer base below — add a theme by
+	   adding one block, nothing else. The @layer base override beats
+	   this @theme default because the `base` cascade layer outranks the
+	   `theme` layer.
+	   ───────────────────────────────────────────────────────────── */
 
-	/* Oxblood — single editorial accent */
-	--color-accent: #8b2e2a;
-	--color-accent-deep: #5a1c1a;
-	--color-accent-soft: rgb(139 46 42 / 0.1);
-	--color-accent-ring: rgb(139 46 42 / 0.45);
+	/* Paper — surfaces (warm near-black in dark) */
+	--color-paper: #15110d;
+	--color-paper-raised: #1e1813;
+	--color-paper-sunken: #100c09;
+	--color-paper-deep: #2a2118;
 
-	/* Mustard marker — highlight */
-	--color-mark: #c89530;
-	--color-mark-soft: rgb(200 149 48 / 0.2);
+	/* Ink — text (warm off-white in dark).
+	   ink-subtle tuned to clear WCAG AA (4.5:1) on both paper and raised. */
+	--color-ink: #ece3d3;
+	--color-ink-muted: #b3a895;
+	--color-ink-subtle: #948775;
+	--color-ink-faint: #5c5247;
+
+	/* Rules — hairlines (light, low-alpha on dark) */
+	--color-rule: rgb(236 227 211 / 0.14);
+	--color-rule-strong: rgb(236 227 211 / 0.34);
+	--color-rule-emphatic: rgb(236 227 211 / 0.7);
+
+	/* Oxblood — single editorial accent. Lifted for dark-bg contrast and
+	   tuned to clear AA (4.5:1) on both paper and raised; -deep is the
+	   brighter hover. */
+	--color-accent: #d65f57;
+	--color-accent-deep: #e07a72;
+	--color-accent-soft: rgb(214 95 87 / 0.16);
+	--color-accent-ring: rgb(214 95 87 / 0.5);
+
+	/* Mustard marker — highlight. --color-mark stays bright for use as a
+	   highlight/marker BACKGROUND; --color-mark-text is the AA-legible
+	   variant for the rare case mustard is used as TEXT (here it already
+	   passes on dark, so it equals --color-mark). */
+	--color-mark: #d9a847;
+	--color-mark-soft: rgb(217 168 71 / 0.2);
+	--color-mark-text: var(--color-mark);
 
 	/* Sage — secondary tone */
-	--color-sage: #4a6741;
-	--color-sage-soft: rgb(74 103 65 / 0.14);
+	--color-sage: #7f9a72;
+	--color-sage-soft: rgb(127 154 114 / 0.16);
 
-	/* Backwards-compat aliases used elsewhere in code */
+	/* Observatory node tints */
+	--color-node-category: #8a7bff;
+	--color-node-default: #ffb84d;
+
+	/* Backwards-compat aliases — reference role tokens, so they follow the theme */
 	--color-bg: var(--color-paper);
 	--color-surface: var(--color-paper-raised);
 	--color-surface-2: var(--color-paper-sunken);
@@ -55,16 +87,18 @@
 	--color-fg-muted: var(--color-ink-muted);
 	--color-fg-subtle: var(--color-ink-subtle);
 
-	--color-status-pending: #897d6d;
-	--color-status-processing: #8b2e2a;
-	--color-status-completed: #4a6741;
-	--color-status-failed: #8b2e2a;
-	--color-status-skipped: #b8a98e;
+	/* Status — reference role tokens, so they follow the theme */
+	--color-status-pending: var(--color-ink-subtle);
+	--color-status-processing: var(--color-accent);
+	--color-status-completed: var(--color-sage);
+	--color-status-failed: var(--color-accent);
+	--color-status-skipped: var(--color-ink-faint);
 }
 
 @layer base {
+	/* Theme-agnostic aliases — reference role tokens, so one definition
+	   serves every theme. */
 	:root {
-		color-scheme: light;
 		--bg: var(--color-paper);
 		--surface: var(--color-paper-raised);
 		--surface-2: var(--color-paper-sunken);
@@ -75,6 +109,69 @@
 		--fg-subtle: var(--color-ink-subtle);
 		--fg-faint: var(--color-ink-faint);
 		--accent: var(--color-accent);
+		font-optical-sizing: auto;
+	}
+
+	/* ── DARK (default) ──────────────────────────────────────────────
+	   Color tokens come from @theme; here we set the theme-specific
+	   bits: native control scheme + the paper-grain texture (light
+	   flecks on dark). `:root` makes dark the no-JS fallback; the
+	   explicit selector re-asserts it when JS sets data-theme="dark". */
+	:root,
+	[data-theme="dark"] {
+		color-scheme: dark;
+		--texture-glow-accent: rgb(214 95 87 / 0.06);
+		--texture-glow-mark: rgb(217 168 71 / 0.06);
+		--texture-noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.93 0 0 0 0 0.89 0 0 0 0 0.83 0 0 0 0.035 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+	}
+
+	/* ── LIGHT ───────────────────────────────────────────────────────
+	   Overrides only the --color-* role tokens (set once). Lives in the
+	   `base` layer so it outranks the @theme (theme-layer) defaults. */
+	[data-theme="light"] {
+		color-scheme: light;
+
+		/* Paper — surfaces */
+		--color-paper: #f3ecdc;
+		--color-paper-raised: #eadfc6;
+		--color-paper-sunken: #e6d9bc;
+		--color-paper-deep: #d9c39a;
+
+		/* Ink — text. ink-subtle darkened from #897d6d to clear WCAG AA
+		   (4.5:1) on paper/raised/sunken for the small mono labels. */
+		--color-ink: #1c1612;
+		--color-ink-muted: #5a4f43;
+		--color-ink-subtle: #665b4a;
+		--color-ink-faint: #b8a98e;
+
+		/* Rules — hairlines */
+		--color-rule: rgb(28 22 18 / 0.16);
+		--color-rule-strong: rgb(28 22 18 / 0.45);
+		--color-rule-emphatic: rgb(28 22 18 / 0.85);
+
+		/* Oxblood accent */
+		--color-accent: #8b2e2a;
+		--color-accent-deep: #5a1c1a;
+		--color-accent-soft: rgb(139 46 42 / 0.1);
+		--color-accent-ring: rgb(139 46 42 / 0.45);
+
+		/* Mustard marker (bright for highlight bg) + AA-legible text variant */
+		--color-mark: #c89530;
+		--color-mark-soft: rgb(200 149 48 / 0.2);
+		--color-mark-text: #8a6410;
+
+		/* Sage */
+		--color-sage: #4a6741;
+		--color-sage-soft: rgb(74 103 65 / 0.14);
+
+		/* Observatory node tints (darkened for cream-bg contrast) */
+		--color-node-category: #5a4bd6;
+		--color-node-default: #b8791f;
+
+		/* Paper-grain texture — dark flecks on cream */
+		--texture-glow-accent: rgb(139 46 42 / 0.04);
+		--texture-glow-mark: rgb(200 149 48 / 0.05);
+		--texture-noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.11 0 0 0 0 0.09 0 0 0 0 0.08 0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 	}
 
 	html,
@@ -97,11 +194,6 @@
 		text-decoration: none;
 	}
 
-	/* Newsreader optical sizing — let the variable axis breathe at display sizes */
-	:root {
-		font-optical-sizing: auto;
-	}
-
 	/* Smooth focus ring for keyboard navigation only */
 	:where(button, a, input, textarea, select):focus {
 		outline: none;
@@ -111,15 +203,15 @@
 		background-image:
 			radial-gradient(
 				ellipse 70% 50% at 12% 4%,
-				rgb(139 46 42 / 0.04),
+				var(--texture-glow-accent),
 				transparent 60%
 			),
 			radial-gradient(
 				ellipse 60% 40% at 92% 96%,
-				rgb(200 149 48 / 0.05),
+				var(--texture-glow-mark),
 				transparent 65%
 			),
-			url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.11 0 0 0 0 0.09 0 0 0 0 0.08 0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+			var(--texture-noise);
 		background-attachment: fixed, fixed, fixed;
 	}
 

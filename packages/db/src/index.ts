@@ -43,6 +43,7 @@ export * from "./analytics";
 export * from "./projects";
 export * from "./embeddings";
 export * from "./classify";
+export * from "./notify";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

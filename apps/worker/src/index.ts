@@ -10,6 +10,7 @@ import {
   type IngestSubmission,
   markCompleted,
   markFailed,
+  notifyPostChanged,
   reclaimStaleProcessing,
 } from "@repo/db";
 import { removeStagedFile } from "./lib/staging";
@@ -69,6 +70,29 @@ function sourceRecordIdFor(rows: IngestSubmission[]): string {
     return `batch:${first.batchId}`;
   }
   return first.id;
+}
+
+// Nudge connected mobile clients that a post just landed (see @repo/db notify.ts
+// + the /api/app/posts/stream SSE route). Best-effort and fire-and-forget: a
+// failed NOTIFY must never fail the ingest that triggered it, and the client's
+// delta pull would heal a missed nudge anyway.
+function emitPostChange(args: {
+  postId: string;
+  slug: string;
+  rows: IngestSubmission[];
+  sourceRecordId: string;
+}): void {
+  void notifyPostChanged({
+    op: "upsert",
+    postId: args.postId,
+    slug: args.slug,
+    ownerId: args.rows[0]?.submittedById ?? null,
+    sourceRecordId: args.sourceRecordId || null,
+    updatedAt: new Date().toISOString(),
+  }).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    log("error", "notify-failed", { slug: args.slug, error: message });
+  });
 }
 
 // Resurrect rows stranded in "processing" by a hard-killed worker. Best-effort:
@@ -228,6 +252,14 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
         for (const row of rows) {
           removeStagedFile(row.stagedFilePath);
         }
+        // Still nudge: a retried/deduped submit means the client may be holding
+        // an optimistic row waiting to reconcile against this existing post.
+        emitPostChange({
+          postId: existing.id,
+          slug: existing.slug,
+          rows,
+          sourceRecordId: sourceRecordId ?? "",
+        });
         log("info", "idempotent-skip", { ids, slug: existing.slug });
         return;
       }
@@ -249,6 +281,12 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
       for (const row of rows) {
         removeStagedFile(row.stagedFilePath);
       }
+      emitPostChange({
+        postId: result.postId,
+        slug: result.postSlug,
+        rows,
+        sourceRecordId: sourceRecordIdFor(rows),
+      });
       log("info", "completed", {
         ids,
         postSlug: result.postSlug,

@@ -52,7 +52,7 @@ import {
   submitMaterials,
   urlMaterialsFromText,
 } from "@/lib/materials";
-import { flushOutbox } from "@/lib/outbox";
+import { kickSync } from "@/lib/sync/engine";
 
 // A material staged in the tray, with a stable id for keys + removal.
 type StagedMaterial = { uid: string; material: Material };
@@ -346,8 +346,9 @@ export default function ComposerScreen() {
       setBusy(false);
     }
     // Anything parked offline earlier gets another chance whenever we have a
-    // working submit path open. Fire-and-forget; the queue screen reflects it.
-    void flushOutbox();
+    // working submit path open, and we pull any posts the worker just wrote.
+    // Fire-and-forget; the live queries reflect it.
+    kickSync("submit");
 
     if (errors.length > 0) {
       // Keep only the materials that failed staged for retry; everything that

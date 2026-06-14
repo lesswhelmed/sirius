@@ -15,7 +15,7 @@ const TYPE_LABEL: Record<PostType, string> = {
 const TYPE_TONE: Record<PostType, string> = {
   CONCRETE: "text-[var(--color-ink)]",
   BLOG: "text-[var(--color-sage)]",
-  FINDING: "text-[var(--color-mark)]",
+  FINDING: "text-[var(--color-mark-text)]",
   SIGHT: "text-[var(--color-accent)]",
   SOCIAL: "text-[var(--color-ink-muted)]",
 };

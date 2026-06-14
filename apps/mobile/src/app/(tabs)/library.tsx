@@ -1,10 +1,9 @@
-import type { Post } from "@repo/db";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useLiveQuery } from "drizzle-orm/expo-sqlite";
+import { desc, ne } from "drizzle-orm";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -13,17 +12,12 @@ import {
   View,
 } from "react-native";
 
-import {
-  KindLabel,
-  PageHeader,
-  PrimaryButton,
-  Screen,
-  TextLink,
-} from "@/components/sirius";
+import { KindLabel, PageHeader, Screen, TextLink } from "@/components/sirius";
 import { PostTypeTone, Sirius } from "@/constants/theme";
-import { apiGet, resolveMediaUrl } from "@/lib/api";
-
-type PostsPage = { items: Post[]; nextCursor: string | null };
+import { resolveMediaUrl } from "@/lib/api";
+import { db } from "@/lib/db/client";
+import { posts, type PostRow, type SyncState } from "@/lib/db/schema";
+import { kickSync } from "@/lib/sync/engine";
 
 const TYPE_LABEL: Record<string, string> = {
   CONCRETE: "Concrete",
@@ -33,37 +27,50 @@ const TYPE_LABEL: Record<string, string> = {
   SOCIAL: "Social",
 };
 
-export default function LibraryScreen() {
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    refetch,
-    isRefetching,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteQuery({
-    queryKey: ["posts"],
-    queryFn: async ({ pageParam }) => {
-      const qs = new URLSearchParams({ limit: "30" });
-      if (pageParam) qs.set("cursor", pageParam);
-      return apiGet<PostsPage>(`/api/app/posts?${qs.toString()}`);
-    },
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-  });
+// Pip text for rows that aren't yet the canonical server copy. `synced` (and
+// the impossible-here `tombstone`) show nothing.
+const STATE_PIP: Partial<Record<SyncState, string>> = {
+  local_draft: "Draft",
+  pending: "Saving…",
+  failed: "Failed",
+};
 
-  const items = data?.pages.flatMap((p) => p.items) ?? [];
+export default function LibraryScreen() {
+  // Live view of the local mirror: local drafts, in-flight submissions, and
+  // synced server posts, newest first. Re-renders automatically on any row
+  // change (sync pull, SSE reconcile, optimistic write).
+  const { data, error } = useLiveQuery(
+    db
+      .select()
+      .from(posts)
+      .where(ne(posts.syncState, "tombstone"))
+      .orderBy(desc(posts.createdAt), desc(posts.localId))
+  );
+  const items = data ?? [];
+
+  // Pull-to-refresh kicks a delta pull; flip a brief spinner since the live
+  // query has no fetching state of its own.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    kickSync("manual");
+    // The live query updates as rows land; clear the indicator shortly after.
+    setTimeout(() => setRefreshing(false), 800);
+  }, []);
 
   const renderItem = useCallback(
-    ({ item }: { item: Post }) => {
+    ({ item }: { item: PostRow }) => {
       const tone = PostTypeTone[item.type] ?? Sirius.color.inkMuted;
       const imageUri = resolveMediaUrl(item.imageUrl);
+      const pip = STATE_PIP[item.syncState];
+      // Synced rows have a server slug; optimistic rows route to a local detail.
+      const onPress = () =>
+        item.slug
+          ? router.push(`/post/${item.slug}`)
+          : router.push(`/post/local/${item.localId}`);
       return (
         <Pressable
-          onPress={() => router.push(`/post/${item.slug}`)}
+          onPress={onPress}
           accessibilityRole="button"
           accessibilityLabel={`${item.title} — ${TYPE_LABEL[item.type] ?? item.type}`}
           style={({ pressed }) => [styles.row, pressed && styles.pressed]}
@@ -83,9 +90,21 @@ export default function LibraryScreen() {
             </View>
           )}
           <View style={styles.rowText}>
-            <KindLabel tone={tone}>
-              {TYPE_LABEL[item.type] ?? item.type}
-            </KindLabel>
+            <View style={styles.rowMeta}>
+              <KindLabel tone={tone}>
+                {TYPE_LABEL[item.type] ?? item.type}
+              </KindLabel>
+              {pip ? (
+                <Text
+                  style={[
+                    styles.pip,
+                    item.syncState === "failed" && styles.pipFailed,
+                  ]}
+                >
+                  {pip}
+                </Text>
+              ) : null}
+            </View>
             <Text style={styles.rowTitle} numberOfLines={2}>
               {item.title}
             </Text>
@@ -96,20 +115,13 @@ export default function LibraryScreen() {
     []
   );
 
-  if (isLoading) {
-    return (
-      <Screen style={styles.centered}>
-        <ActivityIndicator color={Sirius.color.accent} />
-      </Screen>
-    );
-  }
-
-  if (isError) {
+  // The live query surfaces a query error only if SQLite itself fails (the
+  // tables are migrated before first paint, so this is rare).
+  if (error) {
     return (
       <Screen style={styles.centeredPad}>
         <Text style={styles.errorTitle}>Couldn’t load the catalog</Text>
-        <Text style={styles.errorBody}>{(error as Error).message}</Text>
-        <PrimaryButton label="Retry" onPress={() => refetch()} />
+        <Text style={styles.errorBody}>{error.message}</Text>
       </Screen>
     );
   }
@@ -118,18 +130,14 @@ export default function LibraryScreen() {
     <Screen>
       <FlatList
         data={items}
-        keyExtractor={(p) => p.id}
+        keyExtractor={(p) => p.localId}
         renderItem={renderItem}
         contentContainerStyle={styles.list}
         ItemSeparatorComponent={Separator}
-        onEndReached={() => {
-          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
-        }}
-        onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
             tintColor={Sirius.color.accent}
           />
         }
@@ -157,13 +165,6 @@ export default function LibraryScreen() {
             </Text>
           </View>
         }
-        ListFooterComponent={
-          isFetchingNextPage ? (
-            <View style={styles.footerLoader}>
-              <ActivityIndicator color={Sirius.color.accent} />
-            </View>
-          ) : null
-        }
       />
     </Screen>
   );
@@ -174,7 +175,6 @@ function Separator() {
 }
 
 const styles = StyleSheet.create({
-  centered: { alignItems: "center", justifyContent: "center" },
   centeredPad: {
     justifyContent: "center",
     paddingHorizontal: Sirius.space.xl,
@@ -203,6 +203,18 @@ const styles = StyleSheet.create({
   thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   thumbPlaceholderText: { fontFamily: Sirius.font.serif, fontSize: 24 },
   rowText: { flex: 1, justifyContent: "center", gap: Sirius.space.xs },
+  rowMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.sm,
+  },
+  pip: {
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: Sirius.color.inkSubtle,
+  },
+  pipFailed: { color: Sirius.color.accent },
   rowTitle: {
     fontFamily: Sirius.font.serif,
     fontSize: 20,

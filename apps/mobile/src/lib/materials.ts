@@ -25,6 +25,12 @@ import {
 } from "@/lib/llm/curate";
 import { canTranscribeOnDevice, transcribeAudio } from "@/lib/llm/transcribe";
 import { enqueueOutbox } from "@/lib/outbox";
+import {
+  createLocalDraft,
+  deleteLocalDraft,
+  linkSubmission,
+  markLocalFailed,
+} from "@/lib/sync/writes";
 
 export type UrlMaterial = { kind: "url"; url: string; notes?: string };
 export type NoteMaterial = { kind: "note"; text: string };
@@ -250,10 +256,24 @@ const urlHandler: MaterialHandler<"url"> = {
           ? ((await draftUrlPost(summary, m.notes ?? "")) ?? undefined)
           : undefined;
       }
+      // With an on-device draft, show it immediately as an optimistic FINDING.
+      // (URL drafting needs the network extract, so this branch only runs
+      // online; a later submit failure is therefore a real server error.)
+      const localId = draft
+        ? await createLocalDraft({ type: "FINDING", envelope: draft })
+        : undefined;
       try {
-        await submitUrl(m.url, m.notes ?? "", ctx.force, ctx.projectId, draft);
+        const ok = await submitUrl(
+          m.url,
+          m.notes ?? "",
+          ctx.force,
+          ctx.projectId,
+          draft
+        );
+        if (localId) await linkSubmission(localId, ok.id);
         submitted++;
       } catch (err) {
+        if (localId) await markLocalFailed(localId);
         const label = `URL ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
@@ -281,20 +301,31 @@ const noteHandler: MaterialHandler<"note"> = {
       const draft = draftLocally
         ? ((await draftNotePost(m.text)) ?? undefined)
         : undefined;
+      // With an on-device draft, render it instantly as an optimistic BLOG. The
+      // localId threads to the submission (or the offline outbox row) so the
+      // server post reconciles back into this same card.
+      const localId = draft
+        ? await createLocalDraft({ type: "BLOG", envelope: draft })
+        : undefined;
       try {
-        await submitNote(m.text, ctx.force, ctx.projectId, draft);
+        const ok = await submitNote(m.text, ctx.force, ctx.projectId, draft);
+        if (localId) await linkSubmission(localId, ok.id);
         submitted++;
       } catch (err) {
         if (!(err instanceof ApiError)) {
           // No server response — offline or unreachable. Park the exact request
-          // body in the outbox; it flushes when connectivity returns and the
-          // server's contentHash dedup keeps retries idempotent.
+          // body in the outbox (tagged with localId so replay links the post);
+          // it flushes when connectivity returns and the server's contentHash
+          // dedup keeps retries idempotent. The optimistic row stays visible as
+          // a local draft until then.
           await enqueueOutbox(
-            noteIngestBody(m.text, ctx.force, ctx.projectId, draft)
+            noteIngestBody(m.text, ctx.force, ctx.projectId, draft),
+            localId
           );
           queued++;
           continue;
         }
+        if (localId) await markLocalFailed(localId);
         const label = materials.length > 1 ? `Note ${i + 1}` : "Note";
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
@@ -323,7 +354,17 @@ const imageHandler: MaterialHandler<"image"> = {
           notes
         )
       : null;
-    const { submitted, failedIndices } = await submitImageBatch(
+    // Optimistic SIGHT row rendered from the local photo URIs + on-device draft;
+    // reconciliation swaps in the served gallery URLs once the worker writes the
+    // post (sourceRecordId === "batch:<batchId>").
+    const localId = sightDraft
+      ? await createLocalDraft({
+          type: "SIGHT",
+          envelope: sightDraft,
+          imageUris: inputs.map((i) => i.uri),
+        })
+      : undefined;
+    const { submitted, failedIndices, batchId } = await submitImageBatch(
       inputs,
       notes,
       (label, err) => {
@@ -333,6 +374,16 @@ const imageHandler: MaterialHandler<"image"> = {
       ctx.projectId,
       sightDraft ? JSON.stringify(sightDraft) : undefined
     );
+    if (localId) {
+      // The worker only writes the post once ALL rows arrive, so a partial
+      // upload (any failure) means it'll never complete — surface that as
+      // failed rather than a perpetually-pending card.
+      if (failedIndices.length === 0 && batchId) {
+        await linkSubmission(localId, `batch:${batchId}`);
+      } else {
+        await markLocalFailed(localId);
+      }
+    }
     const failed = failedIndices
       .map((i) => materials[i])
       .filter((m): m is ImageMaterial => m !== undefined);
@@ -399,22 +450,35 @@ const audioHandler: MaterialHandler<"audio"> = {
           const draft = (await canDraftOnDevice())
             ? ((await draftNotePost(noteText)) ?? undefined)
             : undefined;
+          const localId = draft
+            ? await createLocalDraft({ type: "BLOG", envelope: draft })
+            : undefined;
           try {
-            await submitNote(noteText, ctx.force, ctx.projectId, draft);
+            const ok = await submitNote(
+              noteText,
+              ctx.force,
+              ctx.projectId,
+              draft
+            );
+            if (localId) await linkSubmission(localId, ok.id);
             submitted++;
             continue;
           } catch (err) {
             if (!(err instanceof ApiError)) {
               // Offline: the transcript (and draft) are text — park them in
-              // the outbox like any other note. Fully offline voice memos.
+              // the outbox like any other note (tagged with localId so replay
+              // links the post). Fully offline voice memos.
               await enqueueOutbox(
-                noteIngestBody(noteText, ctx.force, ctx.projectId, draft)
+                noteIngestBody(noteText, ctx.force, ctx.projectId, draft),
+                localId
               );
               queued++;
               continue;
             }
-            // Server rejected the note — fall through to the upload path below
-            // rather than losing the capture.
+            // Server rejected the note — discard the optimistic draft and fall
+            // through to the upload path below (server will draft from the
+            // audio) rather than leaving an orphaned card or losing the capture.
+            if (localId) await deleteLocalDraft(localId);
           }
         }
       }

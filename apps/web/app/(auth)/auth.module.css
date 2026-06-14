@@ -14,12 +14,12 @@
   background:
     radial-gradient(
       ellipse 50% 40% at 18% 12%,
-      rgb(139 46 42 / 0.10),
+      var(--texture-glow-accent),
       transparent 60%
     ),
     radial-gradient(
       ellipse 45% 35% at 84% 88%,
-      rgb(200 149 48 / 0.10),
+      var(--texture-glow-mark),
       transparent 65%
     );
 }

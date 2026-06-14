@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, Newsreader, JetBrains_Mono } from "next/font/google";
 import "./tailwind.css";
+import { ThemeProvider } from "./_theme/theme-provider";
+import { ThemeScript } from "./_theme/theme-script";
 
 const instrumentSerif = Instrument_Serif({
   weight: "400",
@@ -36,11 +38,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    // data-theme defaults to dark for SSR; ThemeScript reconciles it with the
+    // stored preference before paint. suppressHydrationWarning covers that
+    // pre-hydration attribute mutation.
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <ThemeScript />
+      </head>
       <body
         className={`${instrumentSerif.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
       >
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

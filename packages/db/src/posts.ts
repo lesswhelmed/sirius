@@ -215,6 +215,100 @@ export function findPostBySlug(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Delta feed for the mobile offline mirror.
+//
+// The mobile app keeps a local SQLite copy of the owner's posts and syncs
+// incrementally: it asks for everything that changed since the last watermark
+// (a Post.updatedAt timestamp). Tombstoned rows (syncStatus === "tombstone")
+// come back as deletes. Tags/categories are flattened to NAME arrays since the
+// mobile mirror stores them denormalized. Scoped to one owner — each device only
+// ever pulls its own posts.
+// ---------------------------------------------------------------------------
+export type PostDelta = {
+  id: string;
+  slug: string;
+  title: string;
+  content: string;
+  excerpt: string | null;
+  type: PostType;
+  status: PostStatus;
+  imageUrl: string | null;
+  images: Prisma.JsonValue | null;
+  tags: string[];
+  categories: string[];
+  sourceRecordId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type PostChange =
+  | { op: "upsert"; post: PostDelta }
+  | { op: "delete"; id: string; deletedAt: string };
+
+export type PostChangesResult = {
+  changes: PostChange[];
+  // ISO of the newest updatedAt in this page; the client's next `since`. Null
+  // only when the page was empty (client keeps its existing watermark).
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
+export async function listPostsChangedSince(opts: {
+  ownerId: string;
+  since: Date;
+  limit?: number;
+}): Promise<PostChangesResult> {
+  const take = Math.min(MAX_PAGE, Math.max(1, opts.limit ?? MAX_PAGE));
+  // Strict `gt` + (updatedAt, id) ordering. Two posts sharing an exact
+  // millisecond updatedAt across a page boundary is vanishingly unlikely at this
+  // write volume; reconciliation is an idempotent upsert-by-id so a duplicate
+  // delivery is harmless even if it happened.
+  const rows = await prisma.post.findMany({
+    where: {
+      submittedById: opts.ownerId,
+      updatedAt: { gt: opts.since },
+    },
+    orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+    take: take + 1,
+    include: {
+      tags: { select: { name: true } },
+      categories: { select: { name: true } },
+    },
+  });
+  const hasMore = rows.length > take;
+  const trimmed = hasMore ? rows.slice(0, take) : rows;
+  const changes: PostChange[] = trimmed.map((p) =>
+    p.syncStatus === "tombstone"
+      ? { op: "delete", id: p.id, deletedAt: p.updatedAt.toISOString() }
+      : {
+          op: "upsert",
+          post: {
+            id: p.id,
+            slug: p.slug,
+            title: p.title,
+            content: p.content,
+            excerpt: p.excerpt,
+            type: p.type,
+            status: p.status,
+            imageUrl: p.imageUrl,
+            images: p.images,
+            tags: p.tags.map((t) => t.name),
+            categories: p.categories.map((c) => c.name),
+            sourceRecordId: p.sourceRecordId,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+          },
+        }
+  );
+  const last = trimmed[trimmed.length - 1];
+  return {
+    changes,
+    nextCursor: last ? last.updatedAt.toISOString() : null,
+    hasMore,
+  };
+}
+
 // Public catalog: Instagram-sourced (SOCIAL) posts that have been published.
 export interface CatalogFilters {
   q?: string;

@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { getUserHandle } from "@repo/db";
 import { requireSession } from "../../lib/session";
 import { SignOutLink } from "./_chrome/sign-out-link";
+import { ThemeMenu } from "../_theme/theme-menu";
 import { SiteNav, SiteNavFallback, SIGNED_IN_NAV } from "../_chrome/site-nav";
 import { formatDateLong } from "../../lib/datetime";
 
@@ -41,6 +42,10 @@ export default function AppLayout({
               </span>
             </Link>
             <div className="hidden items-baseline gap-3 pb-1 sm:flex">
+              <ThemeMenu />
+              <span aria-hidden="true" className="text-[var(--color-rule-strong)]">
+                |
+              </span>
               <Suspense fallback={null}>
                 <UserEmail />
               </Suspense>
@@ -55,7 +60,8 @@ export default function AppLayout({
             <SiteNav items={SIGNED_IN_NAV} />
           </Suspense>
 
-          <div className="flex items-center justify-end pt-2 sm:hidden">
+          <div className="flex items-center justify-between gap-3 pt-2 sm:hidden">
+            <ThemeMenu />
             <SignOutLink />
           </div>
         </header>

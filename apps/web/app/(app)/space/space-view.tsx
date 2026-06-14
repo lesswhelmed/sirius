@@ -72,7 +72,10 @@ function IndexPanel({
     node.kind === "category"
       ? (node.path ?? node.label).replace(/\//g, " / ")
       : `focus / ${node.label}`;
-  const ruleColor = node.kind === "category" ? "#8a7bff" : "#ffb84d";
+  const ruleColor =
+    node.kind === "category"
+      ? "var(--color-node-category)"
+      : "var(--color-node-default)";
   return (
     <aside
       aria-label={`Posts linked to ${node.label}`}

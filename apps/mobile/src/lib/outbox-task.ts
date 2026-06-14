@@ -1,7 +1,9 @@
-// Background flush for the offline note outbox. The OS wakes the app
+// Background sync for the offline-first store. The OS wakes the app
 // periodically (BGTaskScheduler on iOS, WorkManager on Android) so notes
-// captured offline can reach the server even if the user doesn't reopen the
-// app after connectivity returns.
+// captured offline can reach the server — and so the local mirror catches up on
+// new posts — even if the user doesn't reopen the app after connectivity
+// returns. It replays the pending outbox and pulls post deltas, but does NOT
+// open the SSE socket (nothing is foregrounded to keep it alive).
 //
 // Honest limits: both platforms schedule opportunistically (battery/network
 // heuristics, >=15 min between runs, no exact timing), and iOS never runs
@@ -15,13 +17,13 @@
 import * as BackgroundTask from "expo-background-task";
 import * as TaskManager from "expo-task-manager";
 
-import { flushOutbox } from "@/lib/outbox";
+import { replayAndPullOnce } from "@/lib/sync/engine";
 
 export const OUTBOX_TASK = "outbox-flush";
 
 TaskManager.defineTask(OUTBOX_TASK, async () => {
   try {
-    await flushOutbox();
+    await replayAndPullOnce();
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch {
     return BackgroundTask.BackgroundTaskResult.Failed;

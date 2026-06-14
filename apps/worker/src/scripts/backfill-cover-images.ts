@@ -15,6 +15,7 @@
 //   --dry-run        list the posts that would get a cover; generate nothing
 //   --limit=N        cap how many posts to process (newest first)
 //   --sleep=MS       delay between renders (default 1500ms; be kind to the API)
+//   --exclude=a,b,c  skip these exact slugs (e.g. throwaway test/QA posts)
 
 import { prisma } from "@repo/db";
 import { revalidatePost } from "../lib/revalidate";
@@ -29,12 +30,18 @@ const yellow = (s: string) => color(33, s);
 const dim = (s: string) => color(90, s);
 const bold = (s: string) => color(1, s);
 
-type Args = { dryRun: boolean; limit: number | null; sleepMs: number };
+type Args = {
+  dryRun: boolean;
+  limit: number | null;
+  sleepMs: number;
+  exclude: Set<string>;
+};
 
 function parseArgs(argv: string[]): Args {
   let dryRun = false;
   let limit: number | null = null;
   let sleepMs = 1500;
+  const exclude = new Set<string>();
   for (const arg of argv) {
     if (arg === "--dry-run") {
       dryRun = true;
@@ -44,9 +51,14 @@ function parseArgs(argv: string[]): Args {
     } else if (arg.startsWith("--sleep=")) {
       const n = Number(arg.slice("--sleep=".length));
       sleepMs = Number.isFinite(n) && n >= 0 ? Math.floor(n) : sleepMs;
+    } else if (arg.startsWith("--exclude=")) {
+      for (const slug of arg.slice("--exclude=".length).split(",")) {
+        const s = slug.trim();
+        if (s) exclude.add(s);
+      }
     }
   }
-  return { dryRun, limit, sleepMs };
+  return { dryRun, limit, sleepMs, exclude };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -62,7 +74,7 @@ async function main(): Promise<void> {
       )
   );
 
-  const posts = await prisma.post.findMany({
+  const allImageless = await prisma.post.findMany({
     where: { imageUrl: null },
     select: {
       id: true,
@@ -74,10 +86,24 @@ async function main(): Promise<void> {
       tags: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },
-    ...(args.limit ? { take: args.limit } : {}),
   });
 
-  console.log(`${bold(String(posts.length))} post(s) without a cover image.\n`);
+  // Exact-slug exclusions (throwaway test/QA posts) are filtered before the
+  // limit so --limit counts real targets, not skipped ones.
+  const excludedHits = allImageless.filter((p) => args.exclude.has(p.slug));
+  let posts = allImageless.filter((p) => !args.exclude.has(p.slug));
+  if (args.limit) {
+    posts = posts.slice(0, args.limit);
+  }
+
+  if (excludedHits.length > 0) {
+    console.log(
+      dim(
+        `Excluding ${excludedHits.length} slug(s): ${excludedHits.map((p) => p.slug).join(", ")}\n`
+      )
+    );
+  }
+  console.log(`${bold(String(posts.length))} post(s) to cover.\n`);
   if (posts.length === 0) {
     return;
   }

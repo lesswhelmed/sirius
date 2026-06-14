@@ -12,6 +12,14 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
+// Drizzle ships its migrations as `.sql` files that the generated
+// `migrations.js` bundle imports directly; `babel-plugin-inline-import`
+// (babel.config.js) inlines them, but Metro must first treat `.sql` as a
+// source file it will hand to Babel.
+if (!config.resolver.sourceExts.includes("sql")) {
+  config.resolver.sourceExts.push("sql");
+}
+
 // three's exports map serves a different build per import kind (`import` →
 // three.module.js, `require` → three.cjs). Our TS/fiber-ESM code imports it
 // while fiber's CJS dist requires it, so Metro bundles BOTH builds and the

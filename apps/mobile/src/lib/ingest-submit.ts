@@ -133,9 +133,9 @@ export async function submitImageBatch(
   // (mirroring notes) so the worker's rows[0] read works regardless of which
   // row it claims first.
   draftJson?: string
-): Promise<{ submitted: number; failedIndices: number[] }> {
+): Promise<{ submitted: number; failedIndices: number[]; batchId: string }> {
   if (images.length === 0) {
-    return { submitted: 0, failedIndices: [] };
+    return { submitted: 0, failedIndices: [], batchId: "" };
   }
   const batchId = Crypto.randomUUID();
   let submitted = 0;
@@ -161,7 +161,7 @@ export async function submitImageBatch(
       onError?.(`image ${i + 1}`, err);
     }
   }
-  return { submitted, failedIndices };
+  return { submitted, failedIndices, batchId };
 }
 
 export function formatError(err: unknown, label: string): string {

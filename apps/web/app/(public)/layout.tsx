@@ -10,6 +10,7 @@ import {
   SIGNED_IN_NAV,
   SIGNED_OUT_NAV,
 } from "../_chrome/site-nav";
+import { ThemeMenu } from "../_theme/theme-menu";
 
 export default function PublicLayout({
   children,
@@ -41,6 +42,10 @@ export default function PublicLayout({
               </span>
             </Link>
             <div className="hidden items-baseline gap-3 pb-1 sm:flex">
+              <ThemeMenu />
+              <span aria-hidden="true" className="text-[var(--color-rule-strong)]">
+                |
+              </span>
               <Suspense fallback={null}>
                 <AccountLink />
               </Suspense>
@@ -50,6 +55,10 @@ export default function PublicLayout({
           <Suspense fallback={<SiteNavFallback items={SIGNED_OUT_NAV} />}>
             <PublicNavSlot />
           </Suspense>
+
+          <div className="flex items-center justify-end pt-2 sm:hidden">
+            <ThemeMenu />
+          </div>
         </header>
 
         <main className="py-12 sm:py-16 lg:py-20">

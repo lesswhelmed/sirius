@@ -1,5 +1,7 @@
 import type { IngestSubmission } from "@repo/db";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { asc, eq } from "drizzle-orm";
+import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,7 +22,9 @@ import {
 } from "@/components/sirius";
 import { Sirius, SubmissionStatusPip } from "@/constants/theme";
 import { apiGet } from "@/lib/api";
-import { flushOutbox, getOutboxStatus, type OutboxStatus } from "@/lib/outbox";
+import { db } from "@/lib/db/client";
+import { pendingSubmissions, type PendingRow } from "@/lib/db/schema";
+import { kickSync } from "@/lib/sync/engine";
 
 type QueuePage = { items: IngestSubmission[]; nextCursor: string | null };
 
@@ -61,23 +65,22 @@ export default function QueueScreen() {
     }
   }, [refetch]);
 
-  // Notes captured offline, waiting on this device. Piggybacks the queue's
-  // poll cadence and nudges a flush so the banner clears itself once online.
-  const queryClient = useQueryClient();
-  const outbox = useQuery({
-    queryKey: ["outbox-status"],
-    queryFn: async () => {
-      void flushOutbox();
-      return getOutboxStatus();
-    },
-    refetchInterval: 5000,
-  });
+  // Notes captured offline, waiting on this device — a live view of the pending
+  // outbox (SQLite), so the banner updates the instant a row is queued, retried,
+  // or sent without any polling.
+  const { data: pendingRows } = useLiveQuery(
+    db
+      .select()
+      .from(pendingSubmissions)
+      .where(eq(pendingSubmissions.status, "queued"))
+      .orderBy(asc(pendingSubmissions.createdAt))
+  );
+  const pending = pendingRows ?? [];
+  const pendingHead = pending[0];
 
-  const sendNow = useCallback(async () => {
-    await flushOutbox();
-    await queryClient.invalidateQueries({ queryKey: ["outbox-status"] });
-    await queryClient.invalidateQueries({ queryKey: ["queue"] });
-  }, [queryClient]);
+  const sendNow = useCallback(() => {
+    kickSync("manual");
+  }, []);
 
   const renderItem = useCallback(
     ({ item }: { item: IngestSubmission }) => {
@@ -130,7 +133,7 @@ export default function QueueScreen() {
               titleAccent="."
               subtitle="Submissions move pending → processing → done."
             />
-            {outbox.data && outbox.data.count > 0 ? (
+            {pending.length > 0 ? (
               <View style={styles.outboxBanner}>
                 <View style={styles.outboxRow}>
                   <StatusPip
@@ -138,15 +141,14 @@ export default function QueueScreen() {
                     color={Sirius.color.inkSubtle}
                   />
                   <Text style={styles.outboxText}>
-                    {outbox.data.count} note
-                    {outbox.data.count === 1 ? "" : "s"} waiting for a
-                    connection.
+                    {pending.length} note
+                    {pending.length === 1 ? "" : "s"} waiting for a connection.
                   </Text>
-                  <TextLink label="Send now →" onPress={() => void sendNow()} />
+                  <TextLink label="Send now →" onPress={sendNow} />
                 </View>
-                {outbox.data.headAttempts > 0 ? (
+                {pendingHead && pendingHead.attempts > 0 ? (
                   <Text style={styles.outboxStatus}>
-                    {describeOutboxStatus(outbox.data)}
+                    {describeOutboxStatus(pendingHead)}
                   </Text>
                 ) : null}
               </View>
@@ -175,24 +177,12 @@ function Separator() {
   return <View style={styles.sep} />;
 }
 
-// "3 tries · last 4:42 PM · no connection" — only shown once the head item
-// has actually failed at least once.
-function describeOutboxStatus(status: OutboxStatus): string {
-  const parts = [
-    `${status.headAttempts} ${status.headAttempts === 1 ? "try" : "tries"}`,
-  ];
-  if (status.lastAttemptAt) {
-    parts.push(
-      `last ${new Date(status.lastAttemptAt).toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      })}`
-    );
-  }
-  if (status.lastOutcome === "network") {
-    parts.push("no connection");
-  } else if (status.lastOutcome === "server") {
-    parts.push("server error");
+// "3 tries · no connection" — only shown once the head item has actually failed
+// at least once. Reads straight off the persisted pending row.
+function describeOutboxStatus(head: PendingRow): string {
+  const parts = [`${head.attempts} ${head.attempts === 1 ? "try" : "tries"}`];
+  if (head.lastError) {
+    parts.push(head.lastError);
   }
   return parts.join(" · ");
 }

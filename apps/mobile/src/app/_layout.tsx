@@ -127,6 +127,10 @@ export default function RootLayout() {
                   options={{ headerShown: true, title: "" }}
                 />
                 <Stack.Screen
+                  name="post/local/[localId]"
+                  options={{ headerShown: true, title: "" }}
+                />
+                <Stack.Screen
                   name="tree/[...node]"
                   options={{ headerShown: true, title: "Index" }}
                 />
