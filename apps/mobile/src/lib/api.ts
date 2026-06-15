@@ -1,6 +1,6 @@
 import { FileSystemUploadType, uploadAsync } from "expo-file-system/legacy";
 
-import { authBaseURL, authClient } from "./auth-client";
+import { authBaseURL, authClient, getSession, signOut } from "./auth-client";
 
 type Json =
   | string
@@ -17,6 +17,103 @@ export class ApiError extends Error {
     super(message);
     this.status = status;
     this.body = body;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auth retry → logout policy
+//
+// An authenticated request that comes back 401/403 may be a transient blip or a
+// session whose cookie can still refresh, so we don't fail it outright. Instead
+// every helper (fetch- and uploadAsync-based) routes its attempt through
+// runWithAuthRetry: on 401/403 it force-rechecks the session against the server
+// (bypassing better-auth's cookie cache), re-issues the original request when the
+// session is valid again, and only signs out — letting the reactive useSession()
+// in the root layout redirect to sign-in — after the retries are exhausted.
+// ---------------------------------------------------------------------------
+
+const MAX_AUTH_RETRIES = 3;
+const BACKOFF_BASE_MS = 500;
+const BACKOFF_MAX_MS = 4000;
+
+// Single-flight session re-check shared by concurrent 401s, so N simultaneous
+// failures collapse into ONE server hit rather than N.
+let inFlightRecheck: Promise<boolean> | null = null;
+// Latch: once signOut() has fired, further in-flight requests fail fast (throw
+// their own ApiError) without re-triggering signOut(). Reset on any 2xx or a
+// recovered session.
+let loggedOut = false;
+
+// Same exponential-backoff-with-jitter shape as src/lib/sync/sse.ts.
+function authBackoff(attempt: number): number {
+  const base = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** attempt);
+  return base / 2 + Math.random() * (base / 2); // jitter in [base/2, base)
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Force a server-side session check, bypassing the cookie cache. A successful
+// re-check refreshes the stored cookie so the next buildHeaders()/getCookie()
+// picks up the rotated value. Concurrent callers share one in-flight promise.
+function recheckSession(): Promise<boolean> {
+  if (!inFlightRecheck) {
+    inFlightRecheck = getSession({ query: { disableCookieCache: true } })
+      .then(({ data }) => data != null)
+      .catch(() => false)
+      .finally(() => {
+        inFlightRecheck = null;
+      });
+  }
+  return inFlightRecheck;
+}
+
+// Core retry runner. `perform` is a thunk that runs ONE attempt and either
+// returns the parsed result or throws — an ApiError carrying status 401/403
+// triggers the retry/logout policy; anything else propagates immediately. The
+// thunk must rebuild its own headers each call so a refreshed cookie is used.
+async function runWithAuthRetry<T>(perform: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const result = await perform();
+      // A successful request means the session is healthy again.
+      loggedOut = false;
+      return result;
+    } catch (err) {
+      const status =
+        err instanceof ApiError ? err.status : undefined;
+      if (status !== 401 && status !== 403) {
+        throw err;
+      }
+      // Another concurrent request already drove us through logout; fail fast.
+      if (loggedOut) {
+        throw err;
+      }
+      // Re-check the session (single-flight). A valid session means the cookie
+      // refreshed — clear the latch and retry the original request right away.
+      const valid = await recheckSession();
+      if (valid) {
+        loggedOut = false;
+        continue;
+      }
+      // Still unauthenticated. Out of retries → sign out and surface the
+      // original error; the root layout's useSession() handles the redirect.
+      if (attempt >= MAX_AUTH_RETRIES) {
+        if (!loggedOut) {
+          loggedOut = true;
+          // Logout is best-effort: even if clearing the session throws, we must
+          // still surface the original ApiError, and useSession() reacts anyway.
+          try {
+            await signOut();
+          } catch {
+            // ignore — fall through to throw the original error
+          }
+        }
+        throw err;
+      }
+      await delay(authBackoff(attempt));
+    }
   }
 }
 
@@ -63,12 +160,14 @@ export async function apiGet<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const res = await fetch(toUrl(path), {
-    ...init,
-    method: "GET",
-    headers: buildHeaders(init?.headers),
+  return runWithAuthRetry(async () => {
+    const res = await fetch(toUrl(path), {
+      ...init,
+      method: "GET",
+      headers: buildHeaders(init?.headers),
+    });
+    return parseResponse<T>(res);
   });
-  return parseResponse<T>(res);
 }
 
 export async function apiPostJson<T>(
@@ -76,15 +175,17 @@ export async function apiPostJson<T>(
   body: Json,
   init?: RequestInit
 ): Promise<T> {
-  const headers = buildHeaders(init?.headers);
-  headers.set("Content-Type", "application/json");
-  const res = await fetch(toUrl(path), {
-    ...init,
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
+  return runWithAuthRetry(async () => {
+    const headers = buildHeaders(init?.headers);
+    headers.set("Content-Type", "application/json");
+    const res = await fetch(toUrl(path), {
+      ...init,
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    return parseResponse<T>(res);
   });
-  return parseResponse<T>(res);
 }
 
 // Generic non-GET JSON request reusing the same header/cookie + parse path as
@@ -96,17 +197,19 @@ export async function apiSend<T>(
   body?: Json,
   init?: RequestInit
 ): Promise<T> {
-  const headers = buildHeaders(init?.headers);
-  if (body !== undefined) {
-    headers.set("Content-Type", "application/json");
-  }
-  const res = await fetch(toUrl(path), {
-    ...init,
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+  return runWithAuthRetry(async () => {
+    const headers = buildHeaders(init?.headers);
+    if (body !== undefined) {
+      headers.set("Content-Type", "application/json");
+    }
+    const res = await fetch(toUrl(path), {
+      ...init,
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    return parseResponse<T>(res);
   });
-  return parseResponse<T>(res);
 }
 
 export async function apiPatch<T>(
@@ -152,18 +255,21 @@ export async function uploadFile<T>(
   fileUri: string,
   { fieldName, mimeType, parameters }: UploadFileOptions
 ): Promise<T> {
-  const headers: Record<string, string> = {};
-  const cookie = authClient.getCookie();
-  if (cookie) {
-    headers.Cookie = cookie;
-  }
-  const result = await uploadAsync(toUrl(path), fileUri, {
-    httpMethod: "POST",
-    uploadType: FileSystemUploadType.MULTIPART,
-    fieldName,
-    mimeType,
-    parameters,
-    headers,
+  return runWithAuthRetry(async () => {
+    // Rebuild headers each attempt so a refreshed cookie is picked up on retry.
+    const headers: Record<string, string> = {};
+    const cookie = authClient.getCookie();
+    if (cookie) {
+      headers.Cookie = cookie;
+    }
+    const result = await uploadAsync(toUrl(path), fileUri, {
+      httpMethod: "POST",
+      uploadType: FileSystemUploadType.MULTIPART,
+      fieldName,
+      mimeType,
+      parameters,
+      headers,
+    });
+    return parseUploadResult<T>(result.status, result.body);
   });
-  return parseUploadResult<T>(result.status, result.body);
 }
