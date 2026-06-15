@@ -5,10 +5,16 @@ import { DateDisplay } from "../../../../lib/date-display";
 import type { DateInput } from "../../../../lib/datetime";
 import { ShareButton } from "./share-button";
 import { SaveButton } from "./save-button";
+import { DeletePostButton } from "./delete-post-button";
 import {
   AssignToProject,
   type ProjectOption,
 } from "../../_components/assign-to-project";
+
+export interface SourceFile {
+  submissionId: string;
+  originalFilename: string | null;
+}
 
 type TabKey = "details" | "history" | "analytics";
 
@@ -59,6 +65,8 @@ export function ColophonTabs({
   canSave = false,
   projects = [],
   canAssign = false,
+  isOwner = false,
+  sourceFiles = [],
 }: {
   post: ColophonPost;
   stats?: ColophonStats | null;
@@ -66,8 +74,12 @@ export function ColophonTabs({
   canSave?: boolean;
   projects?: ProjectOption[];
   canAssign?: boolean;
+  isOwner?: boolean;
+  sourceFiles?: SourceFile[];
 }) {
   const [tab, setTab] = useState<TabKey>("details");
+  const downloadLinkClass =
+    "inline-flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] transition-colors hover:text-[var(--color-accent)]";
 
   return (
     <aside className="space-y-7 lg:border-l lg:border-[var(--color-rule)] lg:pl-8">
@@ -145,6 +157,51 @@ export function ColophonTabs({
             MD
           </a>
         </div>
+
+        {isOwner ? (
+          <div className="space-y-2 pt-1">
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+              Your source files
+            </p>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <a
+                href={`/api/app/posts/${post.slug}/notes`}
+                download
+                className={downloadLinkClass}
+              >
+                <span aria-hidden="true">↓</span>
+                Notes
+                <span className="text-[var(--fg-faint)]">MD</span>
+              </a>
+              {sourceFiles.length === 1 ? (
+                <a
+                  href={`/api/app/posts/${post.slug}/source`}
+                  download
+                  className={downloadLinkClass}
+                >
+                  <span aria-hidden="true">↓</span>
+                  Original
+                </a>
+              ) : null}
+              {sourceFiles.length > 1
+                ? sourceFiles.map((f, i) => (
+                    <a
+                      key={f.submissionId}
+                      href={`/api/app/posts/${post.slug}/source?submissionId=${f.submissionId}`}
+                      download
+                      className={downloadLinkClass}
+                    >
+                      <span aria-hidden="true">↓</span>
+                      {f.originalFilename ?? `File ${i + 1}`}
+                    </a>
+                  ))
+                : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1">
+              <DeletePostButton slug={post.slug} />
+            </div>
+          </div>
+        ) : null}
       </div>
     </aside>
   );

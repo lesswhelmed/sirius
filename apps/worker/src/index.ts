@@ -3,6 +3,7 @@
 // row(s) completed or failed. Run with `bun run start` (see README).
 import { setTimeout as sleep } from "node:timers/promises";
 import {
+  claimNextArchiveRequest,
   claimNextNonImage,
   claimReadyImageBatch,
   findPostBySourceRecordId,
@@ -11,8 +12,12 @@ import {
   markCompleted,
   markFailed,
   notifyPostChanged,
+  recordRetainedOriginal,
+  reclaimStaleImageBatches,
   reclaimStaleProcessing,
 } from "@repo/db";
+import { processArchiveRequest } from "./archive/run-archive";
+import { retainOriginal } from "./lib/originals";
 import { removeStagedFile } from "./lib/staging";
 import { processIngest } from "./pipeline/pipeline";
 import type { PipelineInput, StagedImage } from "./pipeline/types";
@@ -97,6 +102,15 @@ function emitPostChange(args: {
 
 // Resurrect rows stranded in "processing" by a hard-killed worker. Best-effort:
 // a DB hiccup here must not crash the daemon.
+// Time an image batch may sit with missing uploads before it's abandoned. The
+// web composer submits all rows of a batch within one request burst, so a batch
+// that's still short of totalCount after this window will never complete.
+const DEFAULT_BATCH_ASSEMBLY_MS = 1_800_000; // 30 min
+
+function batchAssemblyMs(): number {
+  return envInt("INGEST_BATCH_ASSEMBLY_MS", DEFAULT_BATCH_ASSEMBLY_MS);
+}
+
 async function runReclaim(): Promise<void> {
   try {
     const result = await reclaimStaleProcessing({
@@ -108,6 +122,10 @@ async function runReclaim(): Promise<void> {
         requeued: result.requeued,
         deadLettered: result.deadLettered,
       });
+    }
+    const staleBatchRows = await reclaimStaleImageBatches(batchAssemblyMs());
+    if (staleBatchRows > 0) {
+      log("info", "reclaim-image-batches", { failedRows: staleBatchRows });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -130,6 +148,55 @@ function readPayload(submission: IngestSubmission): PayloadShape {
     return p as PayloadShape;
   }
   return {};
+}
+
+// Filename used for a retained original within its submission dir. Image batch
+// rows are numbered by their position (1.jpg, 2.jpg, …); single-file kinds keep
+// a stable "original.<ext>". Extension comes from the submit-time payload.
+function buildOriginalFilename(row: IngestSubmission): string {
+  const payload = readPayload(row);
+  const fallbackExt = row.kind === "image" ? "jpg" : "bin";
+  const extension =
+    typeof payload.extension === "string" && payload.extension
+      ? payload.extension
+      : fallbackExt;
+  if (row.kind === "image") {
+    return `${(row.imageIndex ?? 0) + 1}.${extension}`;
+  }
+  return `original.${extension}`;
+}
+
+// Moves a successfully-processed row's staged binary into the private originals
+// store and records where it landed. Best-effort: a retain failure logs but must
+// not fail the already-written post (the original is just unavailable to
+// download, no worse than a missed cleanup). Rows without a staged binary
+// (url/note) are skipped.
+async function retainRowOriginals(rows: IngestSubmission[]): Promise<void> {
+  for (const row of rows) {
+    if (!row.stagedFilePath) {
+      continue;
+    }
+    try {
+      const filename = buildOriginalFilename(row);
+      const retained = retainOriginal({
+        submittedById: row.submittedById,
+        submissionId: row.id,
+        stagedFilePath: row.stagedFilePath,
+        filename,
+      });
+      const payload = readPayload(row);
+      await recordRetainedOriginal(row.id, {
+        retainedFilePath: retained.path,
+        originalMimeType:
+          typeof payload.contentType === "string" ? payload.contentType : null,
+        originalSizeBytes: retained.sizeBytes,
+        originalFilename: filename,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log("error", "retain-failed", { id: row.id, error: message });
+    }
+  }
 }
 
 function buildInput(rows: IngestSubmission[]): PipelineInput {
@@ -248,7 +315,12 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
         ? await findPostBySourceRecordId(sourceRecordId)
         : null;
       if (existing) {
-        await markCompleted(ids, { resultPostSlug: existing.slug });
+        await markCompleted(ids, {
+          resultPostSlug: existing.slug,
+          resultPostId: existing.id,
+        });
+        // The original was already retained on the first successful run; this
+        // deduped re-submit just drops its staged copy.
         for (const row of rows) {
           removeStagedFile(row.stagedFilePath);
         }
@@ -286,10 +358,12 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
       const result = await processIngest(input, stageLogger);
       await markCompleted(ids, {
         resultPostSlug: result.postSlug,
+        resultPostId: result.postId,
       });
-      for (const row of rows) {
-        removeStagedFile(row.stagedFilePath);
-      }
+      // Retention: keep the uploaded originals instead of deleting them, so the
+      // owner can download them later. Done after markCompleted (the post is
+      // already written; retention is best-effort and never fails the job).
+      await retainRowOriginals(rows);
       emitPostChange({
         postId: result.postId,
         slug: result.postSlug,
@@ -320,6 +394,18 @@ async function tick(): Promise<boolean> {
   const batch = await claimReadyImageBatch();
   if (batch.length > 0) {
     await processBatch(batch);
+    return true;
+  }
+  const archiveReq = await claimNextArchiveRequest();
+  if (archiveReq) {
+    try {
+      await processArchiveRequest(archiveReq, (msg, extra) =>
+        log("info", msg, extra)
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log("error", "archive-failed", { id: archiveReq.id, error: message });
+    }
     return true;
   }
   return false;

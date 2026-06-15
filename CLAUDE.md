@@ -216,6 +216,26 @@ dirs). In production a Caddy `file_server` fronts these paths directly off disk 
 (`infra/caddy/` — Caddyfile + README); the Next handlers are the dev-mode + fallback path. Keep
 `SIGHT_IMAGE_DIR` / `SOCIAL_IMAGE_DIR` in `.env.production` in sync with the Caddy roots.
 
+### Retained originals + data archives (PRIVATE — `/private-uploads`)
+
+Retention policy: every uploaded original (image/audio/video/document) is **kept** on
+successful processing, not deleted — the worker MOVES the staged binary into a private
+`ORIGINALS_DIR` (default `<repo>/private-uploads/originals`, keyed
+`{userId}/{submissionId}/{file}`) and records `IngestSubmission.retainedFilePath`. Files
+persist **until the user deletes the post** (no time-based cleanup); failed/idempotent-skip
+submissions still drop their staged bytes. Unlike `/sight` + `/social`, these roots are
+**NOT under `public/` and NEVER fronted by Caddy** — the only access is owner-gated:
+`GET /api/app/posts/[slug]/source` (session + ownership; streams the original(s), JSON
+file-index for batches), `GET /api/app/posts/[slug]/notes` (synthesized `.md`/`.txt`), and
+`DELETE /api/app/posts/[slug]` (removes post + source rows + retained files). Both stream
+via `apps/web/lib/originals/serve-original.ts` (traversal-guarded, `private, no-store`).
+Users export everything from `/settings`: `POST /api/app/archive` enqueues an
+`ArchiveRequest`; the worker (`apps/worker/src/archive/run-archive.ts`, claimed off the same
+poll loop) zips their originals + note text into `ARCHIVES_DIR` and Resend-emails a
+token link to `GET /api/app/archive/download?token=...` (token-gated, not session-gated, so
+the email link works; expires after `ARCHIVE_TTL_HOURS`, default 7d). Keep `ORIGINALS_DIR` /
+`ARCHIVES_DIR` in `.env.production` pointed **outside** the Caddy `public` root.
+
 ### Database (`packages/db`)
 
 - PostgreSQL via Prisma 7 **driver adapter** (`@prisma/adapter-pg`, `PrismaPg`), not the

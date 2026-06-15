@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Streamdown } from "streamdown";
-import { getPostViewStats, isPostSaved, listProjects } from "@repo/db";
+import {
+  getPostViewStats,
+  isPostSaved,
+  listProjects,
+  listRetainedSourcesForPost,
+} from "@repo/db";
 
 import { DateDisplay } from "../../../../lib/date-display";
 import { getCachedPost } from "../../../../lib/cached";
@@ -66,17 +71,24 @@ export default async function PostDetailPage({
 
   const session = await getSessionOrNull();
   const userId = session?.user.id ?? null;
-  // Only the user who ingested the post may file it under a Project.
-  const canAssign = userId != null && post.submittedById === userId;
-  const [initialSaved, stats, projectPage] = await Promise.all([
+  // Only the user who ingested the post may file it under a Project, download
+  // its source originals, or delete it.
+  const isOwner = userId != null && post.submittedById === userId;
+  const canAssign = isOwner;
+  const [initialSaved, stats, projectPage, retainedSources] = await Promise.all([
     userId ? isPostSaved(userId, post.id) : Promise.resolve(false),
     getPostViewStats(post.id),
     canAssign
       ? listProjects(userId, { status: "active" })
       : Promise.resolve(null),
+    isOwner ? listRetainedSourcesForPost(post.id) : Promise.resolve([]),
   ]);
   const projectOptions =
     projectPage?.items.map((p) => ({ id: p.id, title: p.title })) ?? [];
+  const sourceFiles = retainedSources.map((s) => ({
+    submissionId: s.id,
+    originalFilename: s.originalFilename,
+  }));
   const sightImages = parseSightImages(post.images);
 
   return (
@@ -192,6 +204,8 @@ export default async function PostDetailPage({
           canSave={userId != null}
           projects={projectOptions}
           canAssign={canAssign}
+          isOwner={isOwner}
+          sourceFiles={sourceFiles}
         />
       </div>
 

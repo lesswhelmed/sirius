@@ -22,25 +22,37 @@ process.env.WEB_REVALIDATE_URL = "";
 process.env.REVALIDATE_TOKEN = "";
 
 // Capture every prisma.post.upsert call so we can inspect the args writePost
-// builds. Returns a stub row shaped like the real upsert result.
+// builds. The upsert is keyed on the source identity now (not the slug), so the
+// stub row reads its slug from `create`. Returns a stub row shaped like the real
+// upsert result.
 type UpsertArgs = {
-  where: { slug: string };
+  where: {
+    providerId_sourceRecordId: { providerId: string; sourceRecordId: string };
+  };
   create: Record<string, unknown>;
   update: Record<string, unknown>;
 };
 const upsertCalls: UpsertArgs[] = [];
 const upsertMock = mock(async (args: UpsertArgs) => {
   upsertCalls.push(args);
-  return { id: "post_test_1", slug: args.where.slug };
+  return { id: "post_test_1", slug: args.create.slug as string };
 });
 
-// Stub ONLY prisma.post.upsert; spread the rest of @repo/db's real exports so
-// other test files importing @repo/db (e.g. resolve-categories.test.ts) still
-// see a complete module. (`Prisma` is a type-only import in post-writer.ts, so
-// it's erased — no runtime export needed.)
+// Stub the prisma.post reads/writes writePost touches; spread the rest of
+// @repo/db's real exports so other test files importing @repo/db (e.g.
+// resolve-categories.test.ts) still see a complete module. (`Prisma` is a
+// type-only import in post-writer.ts, so it's erased — no runtime export needed.)
+// findFirst/findUnique back resolveSlug: no existing source and no slug clash, so
+// it returns the draft's slug unchanged and the upsert runs exactly once.
 mock.module("@repo/db", () => ({
   ...dbActual,
-  prisma: { post: { upsert: upsertMock } },
+  prisma: {
+    post: {
+      upsert: upsertMock,
+      findFirst: mock(async () => null),
+      findUnique: mock(async () => null),
+    },
+  },
 }));
 
 // Import the unit under test AFTER the mock is registered (static imports are

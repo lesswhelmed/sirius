@@ -34,9 +34,13 @@ export type PostEmbedding = Prisma.PostEmbeddingGetPayload<
 export type PostCategoryMatch = Prisma.PostCategoryMatchGetPayload<
   Record<string, never>
 >;
+export type ArchiveRequest = Prisma.ArchiveRequestGetPayload<
+  Record<string, never>
+>;
 
 export * from "./ingest";
 export * from "./posts";
+export * from "./post-delete";
 export * from "./users";
 export * from "./saved";
 export * from "./analytics";
@@ -45,6 +49,7 @@ export * from "./embeddings";
 export * from "./categories";
 export * from "./classify";
 export * from "./notify";
+export * from "./archive";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

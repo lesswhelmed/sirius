@@ -52,6 +52,10 @@ apps/web/public/sight/
 # Downloaded cover images for url/social ingests (Instagram, etc.)
 apps/web/public/social/
 
+# Private retained originals + built data archives (NOT under public/, never
+# served by Caddy). Worker writes here at runtime; web streams them owner-gated.
+/private-uploads/
+
 # Testing creds (agent-browser scripts)
 scripts/testing/.creds.local
 .mcp.json

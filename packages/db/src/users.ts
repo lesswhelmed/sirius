@@ -82,3 +82,15 @@ export async function getUserHandle(userId: string): Promise<string | null> {
   });
   return row?.handle ?? null;
 }
+
+// Email + display name for a user — used by the worker to address the
+// archive-ready notification.
+export async function getUserContact(
+  userId: string
+): Promise<{ email: string; name: string } | null> {
+  const row = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, name: true },
+  });
+  return row ? { email: row.email, name: row.name } : null;
+}

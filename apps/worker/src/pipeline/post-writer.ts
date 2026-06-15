@@ -18,7 +18,9 @@ import { getImageGenConfig } from "../lib/ai-config";
 import { ensureDir, resolveSightDir, resolveSocialDir } from "../lib/media-paths";
 import { escapeMdxProse } from "../lib/mdx-escape";
 import { revalidatePost } from "../lib/revalidate";
+import { randomSlugWord } from "../lib/slug-words";
 import { generateCoverImage } from "./image-generator";
+import { generateVideoThumbnail } from "./video-thumbnail";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 
 export type WriteResult = {
@@ -191,6 +193,65 @@ function getSourceRecordId(
   return input.submission.id;
 }
 
+// Slugs are title-derived (gemini-runner) and globally `@unique`, but the post's
+// true identity is its source `(providerId, sourceRecordId)`. Resolve a stable,
+// collision-free slug so that:
+//   - re-processing the SAME source (scoped to its owner) keeps its existing slug
+//     — even if the model's title, and thus the freshly-derived slug, drifted — so
+//     the write updates that row instead of creating a duplicate; and
+//   - a DIFFERENT source that happens to slugify the same gets a random-word
+//     suffix (`my-trip-otter`) instead of overwriting the first source's post.
+// Slug stays GLOBALLY unique (public URLs resolve by slug alone), so the random
+// word is re-checked against the whole table, not just the owner's posts.
+async function resolveSlug(
+  desired: string,
+  source: {
+    submittedById: string | null;
+    providerId: string;
+    sourceRecordId: string;
+  }
+): Promise<string> {
+  const existing = await prisma.post.findFirst({
+    where: {
+      submittedById: source.submittedById,
+      providerId: source.providerId,
+      sourceRecordId: source.sourceRecordId,
+    },
+    select: { slug: true },
+  });
+  if (existing) {
+    return existing.slug;
+  }
+
+  let candidate = desired;
+  for (let attempt = 0; ; attempt++) {
+    const clash = await prisma.post.findUnique({
+      where: { slug: candidate },
+      select: { id: true },
+    });
+    if (!clash) {
+      return candidate;
+    }
+    // After several single-word misses, pair two words so a small list can't
+    // wedge the loop on a crowded base slug.
+    const suffix =
+      attempt < 8
+        ? randomSlugWord()
+        : `${randomSlugWord()}-${randomSlugWord()}`;
+    candidate = `${desired}-${suffix}`;
+  }
+}
+
+// Prisma's P2002 = unique-constraint violation (duck-typed so we don't need the
+// runtime Prisma namespace, which is imported here as a type only).
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: unknown }).code === "P2002"
+  );
+}
+
 function getProviderId(frontmatter: Record<string, unknown>): string {
   const override = frontmatter.provider_id;
   if (typeof override === "string" && override.length > 0) {
@@ -288,6 +349,11 @@ export async function writePost(
 
   const providerId = getProviderId(parsed.frontmatter);
   const sourceRecordId = getSourceRecordId(input, parsed.frontmatter);
+  let slug = await resolveSlug(parsed.slug, {
+    submittedById: input.submittedById ?? null,
+    providerId,
+    sourceRecordId,
+  });
   const filePath = `db://ingest/${sourceRecordId}`;
   const fileHash = createHash("sha256").update(body).digest("hex");
   const originalUrl = getOriginalUrl(input);
@@ -306,7 +372,18 @@ export async function writePost(
   let imageUrl =
     sightImages.length > 0
       ? (sightImages[0]?.url ?? null)
-      : await localizeCoverImage(getImageUrl(parsed.frontmatter), parsed.slug);
+      : await localizeCoverImage(getImageUrl(parsed.frontmatter), slug);
+
+  // Video ingest → BLOG with no source cover. Pull a poster frame from the
+  // staged video with ffmpeg and use it as the cover. The staged file still
+  // exists here (retention moves it only AFTER writePost). Non-fatal: returns
+  // null if ffmpeg is missing or extraction fails, falling through to image-gen.
+  if (!imageUrl && input.kind === "video") {
+    imageUrl = await generateVideoThumbnail({
+      slug,
+      sourcePath: input.stagedFilePath,
+    });
+  }
 
   // No cover from the source (notes → BLOG, plain-URL → FINDING)? Generate a
   // bespoke editorial cover so the catalog grid is never empty. Strictly
@@ -314,7 +391,7 @@ export async function writePost(
   // still publishes with its type-label placeholder, like a failed download.
   if (!imageUrl && getImageGenConfig().enabled) {
     imageUrl = await generateCoverImage({
-      slug: parsed.slug,
+      slug,
       title: parsed.title,
       excerpt,
       content: body,
@@ -325,58 +402,100 @@ export async function writePost(
     });
   }
 
-  const post = await prisma.post.upsert({
-    where: { slug: parsed.slug },
-    create: {
-      slug: parsed.slug,
-      title: parsed.title,
-      content: body,
-      excerpt,
-      type: parsed.type as PostType,
-      status: PostStatus.PUBLISHED,
-      filePath,
-      fileHash,
-      originalDate,
-      originalUrl,
-      imageUrl,
-      ...(sightImages.length > 0
-        ? { images: sightImages as unknown as Prisma.InputJsonValue }
-        : {}),
-      ...(contentDigest !== null ? { contentDigest } : {}),
-      published: true,
-      sourceType: "ingest",
-      providerId,
-      sourceRecordId,
-      sourceHash,
-      syncStatus: "synced",
-      lastSyncedAt: new Date(),
-      submittedById: input.submittedById ?? null,
-      projectId: input.projectId ?? null,
-      tags: { connectOrCreate: tagConnects },
-      categories: { connectOrCreate: categoryConnects },
-    },
-    update: {
-      title: parsed.title,
-      content: body,
-      excerpt,
-      fileHash,
-      filePath,
-      originalUrl,
-      imageUrl,
-      ...(sightImages.length > 0
-        ? { images: sightImages as unknown as Prisma.InputJsonValue }
-        : {}),
-      ...(contentDigest !== null ? { contentDigest } : {}),
-      sourceHash,
-      lastSyncedAt: new Date(),
-      ...(input.submittedById
-        ? { submittedById: input.submittedById }
-        : {}),
-      ...(input.projectId ? { projectId: input.projectId } : {}),
-      tags: { connectOrCreate: tagConnects },
-      categories: { connectOrCreate: categoryConnects },
-    },
-  });
+  // Write keyed on the post's TRUE identity (providerId, sourceRecordId), not the
+  // slug, so re-processing a source UPDATEs its row instead of inserting a
+  // duplicate under a drifted slug. The update payload is shared with the
+  // race-recovery path below.
+  const sourceWhere = {
+    providerId_sourceRecordId: { providerId, sourceRecordId },
+  };
+  const updateData: Prisma.PostUncheckedUpdateInput = {
+    title: parsed.title,
+    content: body,
+    excerpt,
+    fileHash,
+    filePath,
+    originalUrl,
+    imageUrl,
+    ...(sightImages.length > 0
+      ? { images: sightImages as unknown as Prisma.InputJsonValue }
+      : {}),
+    ...(contentDigest !== null ? { contentDigest } : {}),
+    sourceHash,
+    lastSyncedAt: new Date(),
+    ...(input.submittedById ? { submittedById: input.submittedById } : {}),
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    tags: { connectOrCreate: tagConnects },
+    categories: { connectOrCreate: categoryConnects },
+  };
+
+  // Prisma's upsert is NOT atomic under concurrency: two runs of the same source
+  // can both miss and both attempt the INSERT, and one loses on a unique index.
+  // Recover by disambiguating WHICH index fired via a follow-up read (robust to
+  // how the pg adapter reports the violated target):
+  //   - source identity already present → a concurrent run created it; UPDATE.
+  //   - else our slug was taken by a different source between resolve+insert →
+  //     pick a fresh slug and retry the create.
+  let post: Awaited<ReturnType<typeof prisma.post.upsert>> | undefined;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      post = await prisma.post.upsert({
+        where: sourceWhere,
+        create: {
+          slug,
+          title: parsed.title,
+          content: body,
+          excerpt,
+          type: parsed.type as PostType,
+          status: PostStatus.PUBLISHED,
+          filePath,
+          fileHash,
+          originalDate,
+          originalUrl,
+          imageUrl,
+          ...(sightImages.length > 0
+            ? { images: sightImages as unknown as Prisma.InputJsonValue }
+            : {}),
+          ...(contentDigest !== null ? { contentDigest } : {}),
+          published: true,
+          sourceType: "ingest",
+          providerId,
+          sourceRecordId,
+          sourceHash,
+          syncStatus: "synced",
+          lastSyncedAt: new Date(),
+          submittedById: input.submittedById ?? null,
+          projectId: input.projectId ?? null,
+          tags: { connectOrCreate: tagConnects },
+          categories: { connectOrCreate: categoryConnects },
+        },
+        update: updateData,
+      });
+      break;
+    } catch (err) {
+      if (!isUniqueViolation(err) || attempt === 4) {
+        throw err;
+      }
+      const conflict = await prisma.post.findUnique({
+        where: sourceWhere,
+        select: { id: true },
+      });
+      if (conflict) {
+        post = await prisma.post.update({ where: sourceWhere, data: updateData });
+        break;
+      }
+      slug = await resolveSlug(parsed.slug, {
+        submittedById: input.submittedById ?? null,
+        providerId,
+        sourceRecordId,
+      });
+    }
+  }
+  if (!post) {
+    throw new Error(
+      `post-writer: failed to persist ${providerId}/${sourceRecordId} after retries`
+    );
+  }
 
   // Best-effort: refresh the web app's cached body + lists for this post.
   await revalidatePost(post.slug);

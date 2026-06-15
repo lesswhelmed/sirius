@@ -51,6 +51,10 @@ model Post {
   embedding       PostEmbedding?      @relation("PostEmbedding")
   categoryMatches PostCategoryMatch[] @relation("PostCategoryMatches")
 
+  // The ingest submission(s) that produced this post (1 for url/note/file,
+  // N for a SIGHT image batch). Used to resolve a post's retained originals.
+  sourceSubmissions IngestSubmission[] @relation("PostSourceSubmissions")
+
   tags            Tag[]           @relation("PostToTag")
   categories      Category[]      @relation("PostToCategory")
   hlexiconEntries HlexiconEntry[] @relation("PostToHlexicon")
@@ -59,6 +63,9 @@ model Post {
 
   // prevent cross-provider slug collisions
   @@unique([providerId, slug])
+  // a post's true identity: re-processing the same source updates this row
+  // instead of creating a duplicate (post-writer.resolveSlug relies on this).
+  @@unique([providerId, sourceRecordId])
   @@index([slug])
   @@index([type])
   @@index([status])
@@ -208,7 +215,7 @@ model PostCategoryMatch {
 
 model IngestSubmission {
   id             String    @id @default(cuid())
-  kind           String // "url" | "image" | "note"
+  kind           String // "url" | "image" | "note" | "video" | "audio" | "document"
   payload        Json // raw normalized request payload
   contentHash    String    @unique // dedup key; force=true salts the hash
   batchId        String? // groups image rows that should become one SIGHT post
@@ -225,6 +232,15 @@ model IngestSubmission {
   startedAt      DateTime?
   completedAt    DateTime?
 
+  // Retained original (liability/retention). On successful processing the worker
+  // MOVES the staged binary into ORIGINALS_DIR and records its absolute path here
+  // instead of deleting it. Null for url/note kinds (no binary) and for rows still
+  // pending/failed. Owner downloads stream from this path; never served publicly.
+  retainedFilePath  String?
+  originalMimeType  String?
+  originalSizeBytes Int?
+  originalFilename  String?
+
   // Broker attribution: which user kicked off this ingest. Worker copies onto Post.
   submittedById String?
   submittedBy   User?   @relation("UserSubmissions", fields: [submittedById], references: [id], onDelete: SetNull)
@@ -234,11 +250,43 @@ model IngestSubmission {
   projectId String?
   project   Project? @relation("ProjectSubmissions", fields: [projectId], references: [id], onDelete: SetNull)
 
+  // The Post this submission produced. A SIGHT post maps to N image rows, so the
+  // relation lets a post resolve all its source originals. resultPostSlug is kept
+  // for back-compat; this FK is the lookup path. SetNull so a post delete doesn't
+  // cascade-delete submissions (the delete path removes them explicitly).
+  resultPostId String?
+  resultPost   Post?   @relation("PostSourceSubmissions", fields: [resultPostId], references: [id], onDelete: SetNull)
+
   @@index([status])
   @@index([batchId])
   @@index([kind])
   @@index([submittedById])
   @@index([projectId])
+  @@index([resultPostId])
+}
+
+// A user-requested zip archive of all their retained originals + note text.
+// Built asynchronously by the worker; delivered via a time-limited token link
+// (emailed). status: pending → processing → ready | failed | expired.
+model ArchiveRequest {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation("UserArchiveRequests", fields: [userId], references: [id], onDelete: Cascade)
+  status       String    @default("pending")
+  attempts     Int       @default(0)
+  token        String?   @unique // url-safe random; set when ready
+  fileCount    Int?
+  sizeBytes    Int?
+  downloadPath String? // absolute path of the built zip under ARCHIVES_DIR
+  expiresAt    DateTime?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([token])
 }
 
 model SavedPost {
@@ -312,6 +360,7 @@ model User {
   saves             SavedPost[]  @relation("UserSaves")
   aspirations Aspiration[]       @relation("UserAspirations")
   projects    Project[]          @relation("UserProjects")
+  archiveRequests ArchiveRequest[] @relation("UserArchiveRequests")
 
   @@index([email])
   @@index([handle])

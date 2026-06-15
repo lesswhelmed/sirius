@@ -1,20 +1,13 @@
 import { findPostBySlug } from "@repo/db";
+import {
+  buildFrontMatter,
+  safeFilename,
+} from "../../../../../../lib/export/markdown";
 import { getSessionOrNull } from "../../../../../../lib/session";
 
 // Downloadable export of a single post. Authenticated-only (internal tool).
 // Any signed-in user may export; for owner-only, gate on
 //   session.user.id === post.submittedBy?.id
-function safeFilename(slug: string): string {
-  return slug.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
-
-function toFrontMatter(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => JSON.stringify(v)).join(", ")}]`;
-  }
-  if (value == null) return "";
-  return JSON.stringify(value);
-}
 
 export async function GET(
   request: Request,
@@ -46,10 +39,7 @@ export async function GET(
       tags: post.tags.map((t) => t.name),
       categories: post.categories.map((c) => c.displayName),
     };
-    const frontMatter = Object.entries(fm)
-      .filter(([, v]) => v != null)
-      .map(([k, v]) => `${k}: ${toFrontMatter(v)}`)
-      .join("\n");
+    const frontMatter = buildFrontMatter(fm);
     const body = `---\n${frontMatter}\n---\n\n${post.content}\n`;
     return new Response(body, {
       status: 200,

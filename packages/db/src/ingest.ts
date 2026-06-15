@@ -105,53 +105,168 @@ export async function claimNextNonImage(): Promise<IngestSubmission | null> {
 }
 
 export async function claimReadyImageBatch(): Promise<IngestSubmission[]> {
-  const candidate = await prisma.ingestSubmission.findFirst({
+  // Consider every pending image batch oldest-first and claim the first one whose
+  // rows are ALL present. An incomplete batch (some uploads never arrived) must
+  // NOT block newer, complete batches behind it in the queue — picking only the
+  // single oldest row (as before) caused head-of-line blocking: one stuck batch
+  // froze all image processing. reclaimStaleImageBatches ages the stuck one out.
+  const pending = await prisma.ingestSubmission.findMany({
     where: { status: "pending", kind: "image", batchId: { not: null } },
     orderBy: { createdAt: "asc" },
+    select: { batchId: true, totalCount: true },
   });
-  if (!candidate?.batchId || candidate.totalCount == null) {
+  if (pending.length === 0) {
     return [];
   }
-  const batchCount = await prisma.ingestSubmission.count({
-    where: { batchId: candidate.batchId, kind: "image" },
-  });
-  if (batchCount < candidate.totalCount) {
-    return [];
+  // Dedupe batchIds preserving oldest-first order.
+  const seen = new Set<string>();
+  const ordered: { batchId: string; totalCount: number | null }[] = [];
+  for (const row of pending) {
+    if (row.batchId && !seen.has(row.batchId)) {
+      seen.add(row.batchId);
+      ordered.push({ batchId: row.batchId, totalCount: row.totalCount });
+    }
   }
-  const rows = await prisma.ingestSubmission.findMany({
-    where: {
-      batchId: candidate.batchId,
-      kind: "image",
-      status: "pending",
-    },
-    orderBy: { imageIndex: "asc" },
-  });
-  if (rows.length === 0) {
-    return [];
+
+  for (const { batchId, totalCount } of ordered) {
+    if (totalCount == null) {
+      continue;
+    }
+    const batchCount = await prisma.ingestSubmission.count({
+      where: { batchId, kind: "image" },
+    });
+    if (batchCount < totalCount) {
+      continue; // not all uploads present yet — try the next batch
+    }
+    const claim = await prisma.ingestSubmission.updateMany({
+      where: { batchId, kind: "image", status: "pending" },
+      data: {
+        status: "processing",
+        attempts: { increment: 1 },
+        startedAt: new Date(),
+      },
+    });
+    if (claim.count === 0) {
+      continue; // lost the race to another worker; try the next batch
+    }
+    return prisma.ingestSubmission.findMany({
+      where: { batchId, kind: "image", status: "processing" },
+      orderBy: { imageIndex: "asc" },
+    });
   }
-  const claim = await prisma.ingestSubmission.updateMany({
-    where: {
-      batchId: candidate.batchId,
-      kind: "image",
-      status: "pending",
-    },
+  return [];
+}
+
+// Dead-letters image batches that can never complete: some of their uploads
+// never arrived and the batch has sat incomplete past the assembly timeout.
+// Without this, a partial batch lingers forever (its rows stay pending). Returns
+// the number of rows failed.
+export async function reclaimStaleImageBatches(
+  assemblyTimeoutMs: number
+): Promise<number> {
+  const cutoff = new Date(Date.now() - assemblyTimeoutMs);
+  const pending = await prisma.ingestSubmission.findMany({
+    where: { status: "pending", kind: "image", batchId: { not: null } },
+    select: { batchId: true, totalCount: true, createdAt: true },
+  });
+  if (pending.length === 0) {
+    return 0;
+  }
+  const byBatch = new Map<
+    string,
+    { total: number | null; present: number; newest: Date }
+  >();
+  for (const row of pending) {
+    const id = row.batchId as string;
+    const cur = byBatch.get(id);
+    if (cur) {
+      cur.present += 1;
+      if (row.createdAt > cur.newest) cur.newest = row.createdAt;
+    } else {
+      byBatch.set(id, {
+        total: row.totalCount,
+        present: 1,
+        newest: row.createdAt,
+      });
+    }
+  }
+  const staleBatchIds: string[] = [];
+  for (const [id, info] of byBatch) {
+    const incomplete = info.total == null || info.present < info.total;
+    if (incomplete && info.newest < cutoff) {
+      staleBatchIds.push(id);
+    }
+  }
+  if (staleBatchIds.length === 0) {
+    return 0;
+  }
+  const result = await prisma.ingestSubmission.updateMany({
+    where: { batchId: { in: staleBatchIds }, kind: "image", status: "pending" },
     data: {
-      status: "processing",
-      attempts: { increment: 1 },
-      startedAt: new Date(),
+      status: "failed",
+      errorMessage: "incomplete batch: not all uploads arrived before timeout",
+      completedAt: new Date(),
     },
   });
-  if (claim.count === 0) {
-    return [];
-  }
-  return prisma.ingestSubmission.findMany({
-    where: { batchId: candidate.batchId, kind: "image", status: "processing" },
-    orderBy: { imageIndex: "asc" },
-  });
+  return result.count;
 }
 
 export interface CompletionPatch {
   resultPostSlug?: string | null;
+  resultPostId?: string | null;
+}
+
+export interface RetainedOriginalPatch {
+  retainedFilePath: string;
+  originalMimeType?: string | null;
+  originalSizeBytes?: number | null;
+  originalFilename?: string | null;
+}
+
+// Records where the worker moved a submission's staged binary so the owner can
+// later download it. Called per row after a successful retain (replaces the old
+// removeStagedFile delete on the success path).
+export async function recordRetainedOriginal(
+  id: string,
+  patch: RetainedOriginalPatch
+): Promise<void> {
+  await prisma.ingestSubmission.update({
+    where: { id },
+    data: {
+      retainedFilePath: patch.retainedFilePath,
+      originalMimeType: patch.originalMimeType ?? null,
+      originalSizeBytes: patch.originalSizeBytes ?? null,
+      originalFilename: patch.originalFilename ?? null,
+    },
+  });
+}
+
+// The retained source originals for a post (1 for url/note/file, N for a SIGHT
+// image batch). Only rows that actually have a retained file on disk.
+export function listRetainedSourcesForPost(
+  postId: string
+): Promise<IngestSubmission[]> {
+  return prisma.ingestSubmission.findMany({
+    where: { resultPostId: postId, retainedFilePath: { not: null } },
+    orderBy: { imageIndex: "asc" },
+  });
+}
+
+export function countRetainedSourcesForPost(postId: string): Promise<number> {
+  return prisma.ingestSubmission.count({
+    where: { resultPostId: postId, retainedFilePath: { not: null } },
+  });
+}
+
+// All source submissions for a post (regardless of retained file) — used to
+// synthesize the owner's notes-as-text export from the raw payloads.
+export function listSourceSubmissionsForPost(
+  postId: string
+): Promise<IngestSubmission[]> {
+  return prisma.ingestSubmission.findMany({
+    where: { resultPostId: postId },
+    orderBy: { imageIndex: "asc" },
+  });
 }
 
 export async function markCompleted(

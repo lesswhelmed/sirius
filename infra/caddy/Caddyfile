@@ -40,6 +40,13 @@ lesswhelmed.com {
 
 	# 2. Runtime-written post media, served from disk (bypasses Node).
 	#    Request /sight/<batch>/1.jpg -> <root>/sight/<batch>/1.jpg.
+	#
+	# ⚠️ Serve ONLY /sight/* and /social/* here. The PRIVATE retained originals
+	# and built data archives (ORIGINALS_DIR / ARCHIVES_DIR, default
+	# <repo>/private-uploads/...) must NEVER be added to this file_server — they
+	# hold users' raw uploads and are owner-/token-gated by the Next route
+	# handlers (/api/app/posts/[slug]/source, /api/app/archive/download). Keep
+	# them outside this `root` so file_server can't reach them.
 	@media path /sight/* /social/*
 	handle @media {
 		root * /home/deploy/apps/sirius/apps/web/public
