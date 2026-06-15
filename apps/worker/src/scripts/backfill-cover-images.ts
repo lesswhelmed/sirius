@@ -1,25 +1,52 @@
-// One-time backfill: generate editorial cover images for existing posts that
-// have no imageUrl, so the whole catalog grid shows something. New posts get
+// One-time backfill: generate editorial cover images for existing posts whose
+// cover is broken, so the whole catalog grid shows something. New posts get
 // covers inline in the worker pipeline (post-writer.ts → image-generator.ts);
 // this script fills the gap for everything ingested before that landed.
 //
-// Posts with a SIGHT gallery already have imageUrl set to images[0].url, so the
-// `imageUrl: null` filter alone targets exactly the imageless BLOG/FINDING set.
+// A post's cover is considered "broken" when either:
+//   • imageUrl is null (notes → BLOG, plain-URL → FINDING never got a cover), OR
+//   • imageUrl points to a LOCAL path (/social/… or /sight/…) whose file is no
+//     longer on disk — e.g. a render that was lost or never persisted. The plain
+//     `imageUrl: null` filter misses this second class, so the catalog shows a
+//     blank card even though the row "has" an imageUrl.
+// Remote (http) imageUrls are left alone — we can't cheaply verify them and they
+// don't live under our docroot.
 //
 // Run from apps/worker/ (cwd assumption shared with resolveSocialDir):
 //   bun run src/scripts/backfill-cover-images.ts --dry-run --limit=3
 //   bun run src/scripts/backfill-cover-images.ts --limit=20
-//   bun run src/scripts/backfill-cover-images.ts            # all
+//   bun run src/scripts/backfill-cover-images.ts                  # all users
+//   bun run src/scripts/backfill-cover-images.ts --user=a@b.com   # one owner
 //
 // Flags:
 //   --dry-run        list the posts that would get a cover; generate nothing
 //   --limit=N        cap how many posts to process (newest first)
 //   --sleep=MS       delay between renders (default 1500ms; be kind to the API)
 //   --exclude=a,b,c  skip these exact slugs (e.g. throwaway test/QA posts)
+//   --user=EMAIL     only this owner's posts (matches Post.submittedBy.email)
 
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { prisma } from "@repo/db";
 import { revalidatePost } from "../lib/revalidate";
 import { generateCoverImage } from "../pipeline/image-generator";
+
+// Local imageUrls are served from apps/web/public/<path>. Mirror the cwd
+// assumption that resolveSocialDir/resolveSightDir make so missing-file
+// detection lines up with where the worker actually writes covers.
+const PUBLIC_DIR = resolve(process.cwd(), "..", "web", "public");
+
+// True when a post needs a (re)generated cover: no url at all, or a local path
+// whose file has gone missing. Remote http(s) urls are assumed live.
+function coverIsBroken(imageUrl: string | null): boolean {
+  if (!imageUrl) {
+    return true;
+  }
+  if (imageUrl.startsWith("/")) {
+    return !existsSync(resolve(PUBLIC_DIR, imageUrl.slice(1)));
+  }
+  return false;
+}
 
 function color(code: number, text: string): string {
   return `\x1b[${code}m${text}\x1b[0m`;
@@ -35,12 +62,14 @@ type Args = {
   limit: number | null;
   sleepMs: number;
   exclude: Set<string>;
+  userEmail: string | null;
 };
 
 function parseArgs(argv: string[]): Args {
   let dryRun = false;
   let limit: number | null = null;
   let sleepMs = 1500;
+  let userEmail: string | null = null;
   const exclude = new Set<string>();
   for (const arg of argv) {
     if (arg === "--dry-run") {
@@ -56,9 +85,12 @@ function parseArgs(argv: string[]): Args {
         const s = slug.trim();
         if (s) exclude.add(s);
       }
+    } else if (arg.startsWith("--user=")) {
+      const e = arg.slice("--user=".length).trim();
+      userEmail = e || null;
     }
   }
-  return { dryRun, limit, sleepMs, exclude };
+  return { dryRun, limit, sleepMs, exclude, userEmail };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -70,12 +102,29 @@ async function main(): Promise<void> {
   console.log(
     bold("\nBackfill cover images") +
       dim(
-        ` — ${args.dryRun ? "DRY RUN" : "LIVE"}, limit=${args.limit ?? "none"}, sleep=${args.sleepMs}ms\n`
+        ` — ${args.dryRun ? "DRY RUN" : "LIVE"}, user=${args.userEmail ?? "all"}, limit=${args.limit ?? "none"}, sleep=${args.sleepMs}ms\n`
       )
   );
 
-  const allImageless = await prisma.post.findMany({
-    where: { imageUrl: null },
+  // Resolve the owner filter up front so a typo'd email fails loudly instead of
+  // silently backfilling nothing.
+  let submittedById: string | undefined;
+  if (args.userEmail) {
+    const owner = await prisma.user.findFirst({
+      where: { email: args.userEmail },
+      select: { id: true },
+    });
+    if (!owner) {
+      console.error(red(`No user found with email ${args.userEmail}.`));
+      process.exit(1);
+    }
+    submittedById = owner.id;
+  }
+
+  // Fetch the candidate set (optionally owner-scoped), then keep only posts
+  // whose cover is broken — null imageUrl OR a local path missing on disk.
+  const candidates = await prisma.post.findMany({
+    where: submittedById ? { submittedById } : {},
     select: {
       id: true,
       slug: true,
@@ -83,15 +132,17 @@ async function main(): Promise<void> {
       excerpt: true,
       content: true,
       type: true,
+      imageUrl: true,
       tags: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },
   });
+  const broken = candidates.filter((p) => coverIsBroken(p.imageUrl));
 
   // Exact-slug exclusions (throwaway test/QA posts) are filtered before the
   // limit so --limit counts real targets, not skipped ones.
-  const excludedHits = allImageless.filter((p) => args.exclude.has(p.slug));
-  let posts = allImageless.filter((p) => !args.exclude.has(p.slug));
+  const excludedHits = broken.filter((p) => args.exclude.has(p.slug));
+  let posts = broken.filter((p) => !args.exclude.has(p.slug));
   if (args.limit) {
     posts = posts.slice(0, args.limit);
   }
@@ -111,7 +162,8 @@ async function main(): Promise<void> {
   let filled = 0;
   let failed = 0;
   for (const post of posts) {
-    const head = `${dim(post.type.padEnd(8))} ${post.slug}`;
+    const reason = post.imageUrl ? "missing file" : "no url";
+    const head = `${dim(post.type.padEnd(8))} ${post.slug} ${dim(`(${reason})`)}`;
     if (args.dryRun) {
       console.log(`${yellow("·")} ${head} ${dim("— would generate")}`);
       continue;

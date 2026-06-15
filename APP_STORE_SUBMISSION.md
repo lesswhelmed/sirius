@@ -172,16 +172,36 @@ All copy below respects Apple's character limits. Paste into App Store Connect �
 > and publish what you choose. The copy below and the screenshots both reflect that (any
 > earlier "militaria broker" framing has been removed from the product).
 
-- **App Name** (≤30): `Sirius`
-- **Subtitle** (≤30): `Capture, draft, and publish` *(27)*
-- **Promotional text** (≤170, editable without review):
-  > Turn any link, photo, note, or voice memo into a clean, organized post — drafted for you
-  > by AI, ready to keep or publish.
-- **Keywords** (≤100, comma-separated, **no spaces**):
-  `capture,notes,bookmark,read later,AI,summary,knowledge,catalog,publishing,links,research,organize`
-- **Description** (≤4000):
+> **Tip:** each value below is in its own code block — hover it and click the copy icon to
+> grab the exact text, then paste it straight into App Store Connect.
 
+**App Name** (≤30):
+
+```text
+Sirius
 ```
+
+**Subtitle** (≤30, this is 27):
+
+```text
+Capture, draft, and publish
+```
+
+**Promotional text** (≤170, editable without review):
+
+```text
+Turn any link, photo, note, or voice memo into a clean, organized post — drafted for you by AI, ready to keep or publish.
+```
+
+**Keywords** (≤100, comma-separated, **no spaces**):
+
+```text
+capture,notes,bookmark,read later,AI,summary,knowledge,catalog,publishing,links,research,organize
+```
+
+**Description** (≤4000):
+
+```text
 Sirius turns the things you capture — links, photos, notes, code repositories, videos,
 documents, even voice memos — into clean, organized posts, drafted for you by AI.
 
@@ -206,13 +226,36 @@ inquiry form on your public page.
 Sirius does not use third-party advertising or cross-app tracking.
 ```
 
-- **What's New** (≤4000) — for v1.0.0:
-  > First release of Sirius. Capture links, photos, notes, and more; let AI draft a post for
-  > you; organize everything; and publish what you choose.
-- **Support URL:** `https://lesswhelmed.com/support`
-- **Marketing URL** (optional): `https://lesswhelmed.com`
-- **Privacy Policy URL:** `https://lesswhelmed.com/privacy`
-- **Copyright:** `2026 Mina Saleeb`
+**What's New** (≤4000) — for v1.0.0:
+
+```text
+First release of Sirius. Capture links, photos, notes, and more; let AI draft a post for you; organize everything; and publish what you choose.
+```
+
+**Support URL:**
+
+```text
+https://lesswhelmed.com/support
+```
+
+**Marketing URL** (optional):
+
+```text
+https://lesswhelmed.com
+```
+
+**Privacy Policy URL:**
+
+```text
+https://lesswhelmed.com/privacy
+```
+
+**Copyright:**
+
+```text
+2026 Mina Saleeb
+```
+
 - **Category:** Primary **Productivity**, Secondary **Lifestyle**
   *(alternatives: Shopping, or Reference — Productivity fits the catalog/inventory workflow best)*
 - [ ] All metadata fields filled, no placeholder text
@@ -299,14 +342,12 @@ prompt → answer **"No"** to tracking.
 
 In App Store Connect → your version:
 
-- [ ] **App Review Information** → add the reviewer demo account:
-  ```
-  Username: <reviewer email on lesswhelmed.com>
-  Password: <password>
-  Notes: Sirius requires an account. Sign in with the credentials above.
-         The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL
-         or add a photo/note → it drafts a catalog entry → review in Catalog → publish.
-  ```
+- [ ] **App Review Information** → add the reviewer demo account. Copy the notes block below
+      (fill in the username/password fields in ASC separately):
+
+```text
+Sirius requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog → publish.
+```
 - [ ] Choose release option: **Manual release** (recommended for a first launch so you
       control go-live), Automatic, or Phased.
 - [ ] Click **Add for Review → Submit**.
