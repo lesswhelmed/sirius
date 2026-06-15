@@ -3,8 +3,9 @@
 // differs only in Canvas import, camera control (pan-to-orbit), and overlay.
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import type { ThreeEvent } from "@react-three/fiber";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import type { RefObject } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { BackSide } from "three";
@@ -12,7 +13,10 @@ import type { EmbeddingScene } from "@repo/embedding-scene/types";
 import { SpaceScene } from "@repo/embedding-scene/react/space-scene";
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
 
-import { apiGet } from "../lib/api";
+// Share the Tree tab's scene query — SAME key + fetcher, so opening one screen
+// warms the other within staleTime (no duplicate fetch) and Tree's
+// pull-to-refresh refreshes this screen too.
+import { SCENE_QUERY_KEY, fetchScene } from "./(tabs)/tree";
 
 interface Orbit {
   yaw: number;
@@ -82,24 +86,22 @@ function CameraRig({ target }: { target: RefObject<Orbit> }) {
 
 export default function SpaceScreen() {
   const router = useRouter();
-  const [scene, setScene] = useState<EmbeddingScene | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    apiGet<EmbeddingScene>("/api/app/embedding-scene")
-      .then(setScene)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : "failed to load"));
-  }, []);
+  const { data: scene, isLoading, error } = useQuery({
+    queryKey: SCENE_QUERY_KEY,
+    queryFn: fetchScene,
+  });
 
   // Hook needs a scene; render gate first.
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.error}>{error}</Text>
+        <Text style={styles.error}>
+          {error instanceof Error ? error.message : "failed to load"}
+        </Text>
       </View>
     );
   }
-  if (!scene) {
+  if (isLoading || !scene) {
     return (
       <View style={styles.center}>
         <Text style={styles.muted}>Loading space…</Text>

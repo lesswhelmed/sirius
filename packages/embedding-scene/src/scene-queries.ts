@@ -173,24 +173,36 @@ export function subtreeIndex(
   return { root, total, multiNode: groups.length > 1, groups };
 }
 
-// Post count per drillable node (category or project), in a single pass — the
+export interface NodeCounts {
+  // Posts filed *directly* on a node — for a category, distinct posts with a
+  // `match` edge straight to it (matches `linkedPosts(scene, id).length`); for
+  // a project, distinct assigned posts. The exact-correspondence count.
+  direct: Map<string, number>;
+  // Posts under a node *and its whole subtree*, deduped per post (matches
+  // `subtreeIndex(node).total`). For a project this equals `direct` (projects
+  // have no children). Monotonic: a parent is always >= each of its children.
+  subtree: Map<string, number>;
+}
+
+// Post counts per drillable node (category or project), in a single pass — the
 // O(1)-per-row lookup the outline/tree hosts render counts from instead of
-// calling `subtreeIndex` per node. Counts match `subtreeIndex(node).total`
-// exactly:
-//   - category -> distinct posts with a `match` edge anywhere in its subtree.
-//     A post matched deep in the tree counts toward every ancestor category,
-//     so we roll each matched category up through its path ancestors and tally
-//     the post once per distinct ancestor (set-dedup handles sibling matches).
-//   - project  -> distinct posts assigned to it.
-// Post nodes are absent from the map (they don't drill). Read with
-// `counts.get(id) ?? 0`.
-export function nodeCounts(scene: EmbeddingScene): Map<string, number> {
+// calling `linkedPosts`/`subtreeIndex` per node. Returns both flavours:
+//   - `direct[catId]`  === linkedPosts(scene, catId).length (own match edges)
+//   - `subtree[catId]` === subtreeIndex(scene, catId).total (rolled up: a post
+//     matched deep in the tree counts toward every ancestor category, deduped
+//     once per distinct ancestor so sibling matches don't double-count).
+//   - projects: `direct` and `subtree` are identical (no children) — distinct
+//     assigned posts.
+// Post nodes are absent from both maps (they don't drill). Read with
+// `counts.<flavour>.get(id) ?? 0`.
+export function nodeCounts(scene: EmbeddingScene): NodeCounts {
   const byId = new Map(scene.nodes.map((n) => [n.id, n]));
-  const counts = new Map<string, number>();
+  const direct = new Map<string, number>();
+  const subtree = new Map<string, number>();
 
   // A category's own id + every ancestor category id, derived from its path.
   // Guard each prefix against the node set so a stray path segment that isn't a
-  // real category can't invent a count bucket.
+  // real category can't invent a count bucket. [0] is always the node itself.
   const ancestorsOf = (cat: SceneNode): string[] => {
     const path = cat.path ?? cat.id;
     const segs = path.split("/");
@@ -202,22 +214,35 @@ export function nodeCounts(scene: EmbeddingScene): Map<string, number> {
     return ids;
   };
 
-  // postId -> the set of categories (self + ancestors) any match touches.
-  const catReach = new Map<string, Set<string>>();
+  // Direct category counts mirror `linkedPosts`: distinct posts whose match
+  // edge lands straight on the category. postId -> set of directly-matched cats.
+  const directReach = new Map<string, Set<string>>();
+  // Subtree reach rolls each match up through its path ancestors.
+  const subtreeReach = new Map<string, Set<string>>();
   for (const e of scene.edges) {
     if (e.kind !== "match") continue;
     const cat = byId.get(e.to);
     if (cat?.kind !== "category") continue;
-    const reach = catReach.get(e.from) ?? new Set<string>();
-    for (const id of ancestorsOf(cat)) reach.add(id);
-    catReach.set(e.from, reach);
+    const dReach = directReach.get(e.from) ?? new Set<string>();
+    dReach.add(cat.id);
+    directReach.set(e.from, dReach);
+    const sReach = subtreeReach.get(e.from) ?? new Set<string>();
+    for (const id of ancestorsOf(cat)) sReach.add(id);
+    subtreeReach.set(e.from, sReach);
   }
-  for (const [postId, reach] of catReach) {
-    if (byId.get(postId)?.kind !== "post") continue;
-    for (const id of reach) counts.set(id, (counts.get(id) ?? 0) + 1);
-  }
+  const tally = (
+    reach: Map<string, Set<string>>,
+    into: Map<string, number>
+  ): void => {
+    for (const [postId, ids] of reach) {
+      if (byId.get(postId)?.kind !== "post") continue;
+      for (const id of ids) into.set(id, (into.get(id) ?? 0) + 1);
+    }
+  };
+  tally(directReach, direct);
+  tally(subtreeReach, subtree);
 
-  // Projects: distinct assigned posts.
+  // Projects: distinct assigned posts — `direct` and `subtree` are the same.
   const projectPosts = new Map<string, Set<string>>();
   for (const e of scene.edges) {
     if (e.kind !== "assignment") continue;
@@ -228,7 +253,10 @@ export function nodeCounts(scene: EmbeddingScene): Map<string, number> {
     posts.add(e.from);
     projectPosts.set(e.to, posts);
   }
-  for (const [projId, posts] of projectPosts) counts.set(projId, posts.size);
+  for (const [projId, posts] of projectPosts) {
+    direct.set(projId, posts.size);
+    subtree.set(projId, posts.size);
+  }
 
-  return counts;
+  return { direct, subtree };
 }

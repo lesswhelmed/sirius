@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 
-import { subtreeIndex } from "./scene-queries";
+import { linkedPosts, nodeCounts, subtreeIndex } from "./scene-queries";
 import type { EmbeddingScene, SceneNode, SceneEdge } from "./types";
 
 // Minimal scene builder: categories (id === path), posts, projects, and edges.
@@ -106,6 +106,52 @@ test("project drill is flat with its assignment posts", () => {
 test("unknown or post node returns null", () => {
   expect(subtreeIndex(S, "nope")).toBeNull();
   expect(subtreeIndex(S, "p1")).toBeNull();
+});
+
+test("nodeCounts.direct matches linkedPosts(node).length for every category", () => {
+  const { direct } = nodeCounts(S);
+  for (const n of NODES) {
+    if (n.kind !== "category" && n.kind !== "project") continue;
+    expect(direct.get(n.id) ?? 0).toBe(linkedPosts(S, n.id).length);
+  }
+});
+
+test("nodeCounts.subtree matches subtreeIndex(node).total", () => {
+  const { subtree } = nodeCounts(S);
+  for (const n of NODES) {
+    if (n.kind !== "category" && n.kind !== "project") continue;
+    expect(subtree.get(n.id) ?? 0).toBe(subtreeIndex(S, n.id)!.total);
+  }
+});
+
+test("nodeCounts.subtree rollup dedups per post and is monotonic", () => {
+  const { subtree } = nodeCounts(S);
+  // sketch sees p1 (0.9) + p3 (0.5); photo sees p2 (0.8) + p3 (0.7). p3 is
+  // counted under both children, but art dedups it to 3 distinct posts.
+  expect(subtree.get("art/sketch")).toBe(2); // p1, p3
+  expect(subtree.get("art/photo")).toBe(2); // p2, p3
+  expect(subtree.get("art")).toBe(3); // p1, p2, p3 (deduped)
+  expect(subtree.get("art")!).toBeGreaterThanOrEqual(subtree.get("art/sketch")!);
+  expect(subtree.get("art")!).toBeGreaterThanOrEqual(subtree.get("art/photo")!);
+});
+
+test("nodeCounts.direct < subtree where children carry posts", () => {
+  const { direct, subtree } = nodeCounts(S);
+  // art has no direct matches of its own; all posts sit on its children.
+  expect(direct.get("art") ?? 0).toBe(0);
+  expect(subtree.get("art")).toBe(3);
+});
+
+test("nodeCounts: projects count distinct assigned posts; direct === subtree", () => {
+  const { direct, subtree } = nodeCounts(S);
+  expect(direct.get("proj1")).toBe(1); // p4
+  expect(subtree.get("proj1")).toBe(1);
+});
+
+test("nodeCounts: post nodes are absent from both maps", () => {
+  const { direct, subtree } = nodeCounts(S);
+  expect(direct.has("p1")).toBe(false);
+  expect(subtree.has("p1")).toBe(false);
 });
 
 test("ignores matches to categories outside the drilled subtree", () => {
