@@ -26,7 +26,7 @@
     "@repo/github-ingest": "*",
     "@repo/ingest-draft": "*",
     "@repo/ui": "*",
-    "better-auth": "^1.6.13",
+    "better-auth": "^1.6.18",
     "heic-convert": "^2.1.0",
     "next": "16.2.0",
     "react": "^19.2.0",

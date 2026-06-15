@@ -27,8 +27,7 @@ import {
   ActionCard,
   Eyebrow,
   Field,
-  KEYBOARD_ACCESSORY_ID,
-  KeyboardDoneBar,
+  KeyboardDoneButton,
   PrimaryButton,
   Screen,
   Sheet,
@@ -644,10 +643,10 @@ export default function ComposerScreen() {
               autoFocus
               autoCapitalize={activeKey === "link" ? "none" : "sentences"}
               autoCorrect={activeKey !== "link"}
-              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
               value={draft}
               onChangeText={setDraft}
             />
+            <KeyboardDoneButton style={styles.keyboardDone} />
             <PrimaryButton label="Add to tray" onPress={confirmForm} />
             <View style={styles.sheetCancel}>
               <TextLink
@@ -656,7 +655,6 @@ export default function ComposerScreen() {
                 onPress={() => setActiveKey(null)}
               />
             </View>
-            <KeyboardDoneBar />
           </>
         ) : null}
       </Sheet>
@@ -703,7 +701,6 @@ export default function ComposerScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
-          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
           value={repoUrl}
           onChangeText={setRepoUrl}
           onSubmitEditing={() => void runRepoPreview()}
@@ -727,7 +724,6 @@ export default function ComposerScreen() {
               placeholder="Why this repo caught your eye…"
               multiline
               autoCapitalize="sentences"
-              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
               style={styles.repoNotesInput}
               value={repoNotes}
               onChangeText={setRepoNotes}
@@ -739,6 +735,7 @@ export default function ComposerScreen() {
             />
           </>
         ) : null}
+        <KeyboardDoneButton style={styles.keyboardDone} />
         <View style={styles.sheetCancel}>
           <TextLink
             label="Cancel"
@@ -748,7 +745,6 @@ export default function ComposerScreen() {
             }}
           />
         </View>
-        <KeyboardDoneBar />
       </Sheet>
     </Screen>
   );
@@ -866,6 +862,8 @@ const styles = StyleSheet.create({
     borderColor: Sirius.color.rule,
   },
   sheetInput: { minHeight: 120, textAlignVertical: "top", paddingTop: 12 },
+  // Keyboard "Done" sits right-aligned just above the sheet's submit button.
+  keyboardDone: { alignSelf: "flex-end" },
   sheetCancel: { alignItems: "center" },
   sheetSecondaryButton: { marginTop: Sirius.space.sm },
   repoError: {

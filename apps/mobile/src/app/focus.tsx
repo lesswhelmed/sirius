@@ -12,7 +12,7 @@ import {
 
 import {
   Field,
-  KeyboardDoneBar,
+  KeyboardDoneButton,
   PageHeader,
   PrimaryButton,
   Screen,
@@ -158,6 +158,7 @@ export default function FocusScreen() {
               multiline
               style={styles.descriptionInput}
             />
+            <KeyboardDoneButton style={styles.keyboardDone} />
             <PrimaryButton
               label="Add focus area"
               onPress={create}
@@ -213,7 +214,6 @@ export default function FocusScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
-      <KeyboardDoneBar />
     </Screen>
   );
 }
@@ -234,6 +234,8 @@ const styles = StyleSheet.create({
   },
   form: { gap: Sirius.space.md },
   descriptionInput: { minHeight: 72, textAlignVertical: "top", paddingTop: 12 },
+  // Sits right-aligned just above the full-width submit button.
+  keyboardDone: { alignSelf: "flex-end" },
   formError: {
     fontFamily: Sirius.font.mono,
     fontSize: 10,

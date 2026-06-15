@@ -4,10 +4,9 @@
 // downloaded/managed (the composer's "Draft on device" toggle points here).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { streamText } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -22,6 +21,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  KeyboardDoneButton,
   MetaText,
   PrimaryButton,
   Screen,
@@ -302,25 +302,6 @@ function Chat({
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 44;
 
-  // A multiline TextInput has no return-key dismiss on iOS, and iOS ignores
-  // `inputAccessoryViewID` on multiline inputs — so the shared <KeyboardDoneBar/>
-  // never renders here and a long message can trap the keyboard open. Track
-  // keyboard visibility ourselves and show a reliable "Done" control above the
-  // input that calls Keyboard.dismiss() (works for multiline, unlike the bar).
-  const [keyboardUp, setKeyboardUp] = useState(false);
-  useEffect(() => {
-    const show = Keyboard.addListener("keyboardDidShow", () =>
-      setKeyboardUp(true)
-    );
-    const hide = Keyboard.addListener("keyboardDidHide", () =>
-      setKeyboardUp(false)
-    );
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
   const send = async () => {
     const text = input.trim();
     if (!text || busy) {
@@ -433,24 +414,10 @@ function Chat({
             multiline
             editable={!busy}
           />
-          {/* Right column: a "Done" dismiss button stacked directly above Send
-              while the keyboard is up (multiline iOS inputs have no return-key
-              dismiss and ignore inputAccessoryViewID). */}
+          {/* Right column: the shared "Done" dismiss button stacked directly
+              above Send (renders only while the keyboard is up). */}
           <View style={styles.sendCol}>
-            {keyboardUp ? (
-              <Pressable
-                onPress={() => Keyboard.dismiss()}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Hide keyboard"
-                style={({ pressed }) => [
-                  styles.kbDone,
-                  pressed && styles.kbDonePressed,
-                ]}
-              >
-                <Text style={styles.kbDoneText}>Done</Text>
-              </Pressable>
-            ) : null}
+            <KeyboardDoneButton />
             <Pressable
               style={[styles.sendBtn, busy ? styles.sendBtnDisabled : null]}
               onPress={send}
@@ -553,22 +520,8 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { opacity: 0.5 },
   sendLabel: { color: Sirius.color.paper, fontSize: 14, fontWeight: "600" },
-  // Right column stacking the "Done" dismiss button directly above Send; both
-  // stretch to the same width so they read as a pair. "Done" only renders while
-  // the keyboard is up — the reliable dismiss control for the multiline field.
+  // Right column stacking the shared <KeyboardDoneButton/> directly above Send;
+  // both stretch to the same width so they read as a pair.
   sendCol: { alignItems: "stretch", gap: 6 },
-  kbDone: {
-    alignItems: "center",
-    backgroundColor: Sirius.color.paperRaised,
-    borderRadius: 10,
-    justifyContent: "center",
-    paddingVertical: 10,
-  },
-  kbDonePressed: { opacity: 0.6 },
-  kbDoneText: {
-    color: Sirius.color.accent,
-    fontSize: 14,
-    fontWeight: "600",
-  },
   error: { color: "#a33", fontSize: 13, marginTop: 8 },
 });

@@ -3,11 +3,10 @@
 // screens without pulling in a styling library. Everything is built on plain
 // react-native + StyleSheet.create per the project's RN conventions.
 import { SymbolView } from "expo-symbols";
-import { forwardRef, type ReactNode } from "react";
+import { forwardRef, type ReactNode, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
-  InputAccessoryView,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -132,15 +131,9 @@ export function StatusPip({
 }
 
 const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
-  function Field({ label, style, multiline, inputAccessoryViewID, ...rest }, ref) {
-    // Multiline inputs have no return-key dismiss on iOS, so they need the
-    // shared "Done" accessory bar to escape the keyboard. Wire it up by default
-    // (callers can still override) and make sure a <KeyboardDoneBar/> is rendered
-    // on the same screen.
-    const accessoryID =
-      multiline && Platform.OS === "ios"
-        ? (inputAccessoryViewID ?? KEYBOARD_ACCESSORY_ID)
-        : inputAccessoryViewID;
+  function Field({ label, style, multiline, ...rest }, ref) {
+    // Multiline inputs have no return-key dismiss on iOS; screens pair them with
+    // a <KeyboardDoneButton/> near the submit control (see useKeyboardVisible).
     return (
       <View style={styles.field}>
         {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
@@ -150,7 +143,6 @@ const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
           placeholderTextColor={Sirius.color.inkSubtle}
           selectionColor={Sirius.color.accent}
           multiline={multiline}
-          inputAccessoryViewID={accessoryID}
           {...rest}
         />
       </View>
@@ -160,37 +152,56 @@ const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
 
 export { Field };
 
-// Shared nativeID linking any TextInput to the one <KeyboardDoneBar/> on screen.
-export const KEYBOARD_ACCESSORY_ID = "sirius.keyboard.done";
+// Tracks soft-keyboard visibility. The one reliable primitive for "is the
+// keyboard up" — drives <KeyboardDoneButton/> and any keyboard-aware layout.
+export function useKeyboardVisible(): boolean {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () =>
+      setVisible(true)
+    );
+    const hide = Keyboard.addListener("keyboardDidHide", () =>
+      setVisible(false)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return visible;
+}
 
-// A "Done" toolbar pinned to the top of the iOS keyboard. Multiline inputs
-// (notes, chat) have no return-key dismiss, so without this the keyboard traps
-// the user — you can't reach the submit control underneath it. Link an input
-// with `inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}` and render this alongside
-// it. InputAccessoryView rides the keyboard itself, so it works inside Modals
-// (the capture Sheet) where a KeyboardAvoidingView can't be trusted. Android
-// has a system dismiss key, so this renders nothing there.
-export function KeyboardDoneBar({ label = "Done" }: { label?: string }) {
-  if (Platform.OS !== "ios") {
+// Reusable keyboard-dismiss button. iOS multiline TextInputs have no return-key
+// dismiss AND ignore `inputAccessoryViewID` (the old InputAccessoryView bar
+// silently never rendered for them) — so a long note/chat message could trap the
+// keyboard open. Drop this next to a screen's submit control: it shows only while
+// the keyboard is up (iOS; Android has a system dismiss) and calls
+// Keyboard.dismiss(). Caller owns placement via `style`.
+export function KeyboardDoneButton({
+  label = "Done",
+  style,
+}: {
+  label?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const visible = useKeyboardVisible();
+  if (Platform.OS !== "ios" || !visible) {
     return null;
   }
   return (
-    <InputAccessoryView nativeID={KEYBOARD_ACCESSORY_ID}>
-      <View style={styles.keyboardBar}>
-        <Pressable
-          onPress={() => Keyboard.dismiss()}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss keyboard"
-          style={({ pressed }) => [
-            styles.keyboardDone,
-            pressed && styles.linkPressed,
-          ]}
-        >
-          <Text style={styles.keyboardDoneText}>{label}</Text>
-        </Pressable>
-      </View>
-    </InputAccessoryView>
+    <Pressable
+      onPress={() => Keyboard.dismiss()}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel="Hide keyboard"
+      style={({ pressed }) => [
+        styles.keyboardDoneBtn,
+        pressed && styles.linkPressed,
+        style,
+      ]}
+    >
+      <Text style={styles.keyboardDoneBtnText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -565,27 +576,18 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   link: { fontSize: 15, fontWeight: "600" },
   linkPressed: { opacity: 0.6 },
-  keyboardBar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
+  keyboardDoneBtn: {
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: Sirius.color.paperRaised,
-    borderTopWidth: 1,
-    borderColor: Sirius.color.ruleStrong,
-    paddingHorizontal: Sirius.space.lg,
-    paddingVertical: Sirius.space.sm,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
   },
-  keyboardDone: {
-    paddingHorizontal: Sirius.space.sm,
-    paddingVertical: Sirius.space.xs,
-  },
-  keyboardDoneText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 13,
-    fontWeight: "600",
-    letterSpacing: 1,
-    textTransform: "uppercase",
+  keyboardDoneBtnText: {
     color: Sirius.color.accent,
+    fontSize: 14,
+    fontWeight: "600",
   },
   actionCard: {
     flex: 1,
