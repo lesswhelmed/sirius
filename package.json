@@ -40,10 +40,10 @@
     "deploy": "bash scripts/deploy-remote.sh"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.0",
-    "prettier": "^3.8.3",
+    "@tailwindcss/postcss": "^4.3.1",
+    "prettier": "^3.8.4",
     "tailwindcss": "^4",
-    "turbo": "^2.9.16",
+    "turbo": "^2.9.18",
     "typescript": "~6.0.3"
   },
   "engines": {
@@ -56,7 +56,7 @@
   ],
   "dependencies": {
     "@react-native-ai/apple": "^0.12.0",
-    "better-auth": "^1.6.13"
+    "better-auth": "^1.6.18"
   },
   "//trustedDependencies": "llama.rn 0.12.4 fetches its native artifacts (the rnllama xcframework / Android libs) via a postinstall (install/download-native-artifacts.js); bun blocks postinstalls by default. Without this, EVERY install — local AND EAS cloud — produces a build with no native llama, breaking on-device AI. Keep it trusted.",
   "trustedDependencies": [
