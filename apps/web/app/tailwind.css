@@ -112,6 +112,14 @@
 		font-optical-sizing: auto;
 	}
 
+	/* Interactive controls get a pointer cursor. Tailwind v4 preflight
+	   leaves <button> at cursor:default, which hides clickability from
+	   pointer users; restore it for enabled buttons and role="button". */
+	button:not(:disabled),
+	[role="button"]:not(:disabled) {
+		cursor: pointer;
+	}
+
 	/* ── DARK (default) ──────────────────────────────────────────────
 	   Color tokens come from @theme; here we set the theme-specific
 	   bits: native control scheme + the paper-grain texture (light
