@@ -30,6 +30,21 @@ bun run db:generate
 echo "==> prisma migrate deploy"
 bun run db:migrate:deploy
 
+# Next.js encrypts Server Action closures with this key. It MUST be byte-identical
+# at build time and at runtime, and stable across deploys — otherwise browser tabs
+# loaded from a prior build hit "Failed to find Server Action" after every redeploy.
+# We pull it from .env here so the build (this shell, passed through via turbo.json
+# globalEnv) and the pm2 runtime (apps load root .env via dotenv) use the same value.
+# Generate once with: openssl rand -base64 32
+echo "==> resolve Server Action encryption key"
+NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(grep -E '^NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=' .env | cut -d= -f2- || true)"
+if [ -z "${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:-}" ]; then
+  echo "ERROR: NEXT_SERVER_ACTIONS_ENCRYPTION_KEY is missing/empty in .env" >&2
+  echo "       Add a stable key to .env first: openssl rand -base64 32" >&2
+  exit 1
+fi
+export NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+
 echo "==> turbo build (BUILD_DIR=$WEB_BUILDS_DIR/$DEPLOY_ID)"
 mkdir -p "$WEB_BUILDS_DIR"
 # distDir in apps/web/next.config.js reads BUILD_DIR; relative to apps/web cwd.

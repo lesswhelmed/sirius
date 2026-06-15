@@ -4,6 +4,7 @@
   "globalEnv": [
     "NODE_ENV",
     "BUILD_DIR",
+    "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY",
     "DATABASE_URL",
     "BETTER_AUTH_URL",
     "INGEST_TOKEN",
