@@ -85,12 +85,12 @@ async function main(): Promise<void> {
   try {
     const first = await runOne(
       user.id,
-      "Photographed a WWII woodland-camo field jacket with brass buttons for my militaria collection catalog.",
+      "Pulled my first espresso shot on the new machine — 18g in, 36g out, around 28 seconds.",
       noteDraft(
-        "WWII Field Jacket",
-        "A vintage woodland camouflage field jacket with brass buttons and canvas webbing, photographed for a militaria collection.",
-        ["wwii", "field-jacket", "camo"],
-        ["uniform", "militaria"]
+        "First Espresso Pull",
+        "Notes from pulling a first espresso shot on a new machine: 18g dose, 36g yield, ~28 second extraction.",
+        ["espresso", "coffee", "brewing"],
+        ["coffee", "brewing"]
       )
     );
     console.log(`first  -> project ${first.projectId} created=${first.created}`);
@@ -100,12 +100,12 @@ async function main(): Promise<void> {
 
     const second = await runOne(
       user.id,
-      "Another woodland camo combat coat from WWII, brass hardware, added to the same militaria collection.",
+      "Dialed in the grinder for the same espresso setup — finer grind gave better crema and flow.",
       noteDraft(
-        "WWII Combat Coat",
-        "A green woodland camo combat coat with brass hardware from the second world war, for the militaria collection.",
-        ["wwii", "combat-coat", "camo"],
-        ["uniform", "militaria"]
+        "Dialing In the Grinder",
+        "Adjusting the grinder for the same espresso setup: a finer grind improved crema and slowed the flow into the right range.",
+        ["espresso", "grinder", "coffee"],
+        ["coffee", "brewing"]
       )
     );
     console.log(`second -> project ${second.projectId} created=${second.created}`);

@@ -1,7 +1,7 @@
 // Seed the global Analysis Category taxonomy into CategoryEmbedding with
 // precomputed gemini-embedding-2 vectors. This is the domain-agnostic index the
 // auto-org reverse lookup matches captured content against — deliberately
-// general (NOT collector/military-specific like seed-military-taxonomy.ts) so it
+// general and domain-agnostic (not tied to any one collection type) so it
 // generalizes across users and content domains.
 //
 // Lives in apps/worker (not apps/web) because it needs the embedding client and

@@ -60,7 +60,7 @@ export default function SignUpScreen() {
       >
         <View style={styles.container}>
           <PageHeader
-            eyebrow="Sirius — The Broker"
+            eyebrow="Sirius — A field journal"
             title="Create account"
             titleAccent="."
             subtitle="Start a catalog and bring your collection on file."

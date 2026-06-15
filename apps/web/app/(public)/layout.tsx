@@ -23,7 +23,7 @@ export default function PublicLayout({
         <header className="pt-6 sm:pt-8">
           <div className="hairline-b flex items-center justify-between gap-4 pb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
             <span className="nums-lining">Vol. I · Catalog</span>
-            <span className="hidden sm:block">Antiquarian Military Broker</span>
+            <span className="hidden sm:block">A field journal</span>
             <span className="truncate text-right nums-lining">
               <Suspense fallback={<span aria-hidden="true">&nbsp;</span>}>
                 <TodayStamp />
@@ -67,7 +67,7 @@ export default function PublicLayout({
 
         <footer>
           <div className="hairline-t flex flex-wrap items-center justify-between gap-2 pt-4 pb-10 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-            <span className="nums-lining">A broker for antique militaria</span>
+            <span className="nums-lining">A field journal for everything you capture</span>
             <span aria-hidden="true" className="text-[var(--color-accent)]">
               ⁂
             </span>
@@ -120,14 +120,14 @@ async function AccountLink() {
       href={`/catalog/${handle}`}
       className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] hover:text-[var(--color-accent)]"
     >
-      My shop · @{handle}
+      My space · @{handle}
     </Link>
   ) : (
     <Link
       href="/setup-handle"
       className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] hover:text-[var(--color-accent)]"
     >
-      Set up shop
+      Set up your space
     </Link>
   );
 }

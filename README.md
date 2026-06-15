@@ -30,7 +30,7 @@ opening pull requests.
 | 🤖 **Schema-validated AI** | Vercel AI SDK + Gemini with `Output.object(zod)` — no manual JSON parsing      |
 | 🔀 **Input-aware routing** | URL → `url_context`, Instagram → Apify, YouTube → transcript, images → gallery |
 | 🗄️ **Direct-to-Postgres**  | No PRs, no MDX commits — the worker upserts `Post` rows the web app reads      |
-| 📱 **Web + mobile**        | Next.js cockpit/storefront and an Expo client sharing one Better Auth instance |
+| 📱 **Web + mobile**        | Next.js cockpit/catalog and an Expo client sharing one Better Auth instance |
 
 ---
 
@@ -116,7 +116,7 @@ an explorable 3D scene.
 
 | Path                                  | What it is                                                                       |
 | ------------------------------------- | -------------------------------------------------------------------------------- |
-| `apps/web`                            | Next.js 16 App Router — storefront, ingest UI, queue, auth, all HTTP APIs        |
+| `apps/web`                            | Next.js 16 App Router — catalog, ingest UI, queue, auth, all HTTP APIs           |
 | `apps/worker`                         | Long-running Bun daemon — polls the DB, runs the Gemini pipeline (no build step) |
 | `apps/mobile`                         | Expo / React Native client (auth + composer + library/queue)                     |
 | `apps/docs`                           | Unused vestigial Turborepo starter stub — ignore                                 |

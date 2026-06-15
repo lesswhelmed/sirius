@@ -8,9 +8,9 @@ import { cosineSimilarity, embedContent, queryPrefix } from "../src/lib/embeddin
 
 async function main(): Promise<void> {
   const texts = {
-    a: "a vintage M81 woodland camouflage field jacket with brass zippers",
-    b: "an old army camo combat coat in green woodland pattern",
-    c: "a recipe for chocolate chip cookies with brown butter",
+    a: "a pour-over coffee setup with a gooseneck kettle and ceramic dripper",
+    b: "brewing drip coffee by hand with a paper filter and a slow bloom",
+    c: "a 3D-printed bracket for mounting a desk lamp",
   };
 
   const [ea, eb, ec] = await Promise.all([

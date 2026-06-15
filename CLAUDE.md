@@ -148,7 +148,7 @@ Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zo
 
 ### Workspaces
 
-- `apps/web` — Next.js 16 App Router. The product: broker storefront, ingest UI, queue, auth pages, and all HTTP APIs.
+- `apps/web` — Next.js 16 App Router. The product: the public catalog, ingest UI, queue, auth pages, and all HTTP APIs.
 - `apps/worker` — long-running Bun daemon. Polls the DB for ingest jobs, runs the Gemini pipeline. Runs via `bun run src/index.ts` (no build step).
 - `apps/mobile` — Expo / React Native client. Tabs: Capture (composer), Catalog (library),
   Queue, and **Tree** (the analysis-taxonomy outline — native counterpart of web's
@@ -234,15 +234,15 @@ dirs). In production a Caddy `file_server` fronts these paths directly off disk 
 - Next.js mounts it at `/api/auth/[...all]`. Rate limiting is DB-backed and **production-only**.
 - The Prisma User/Session/Account/Verification/RateLimit models use `@@map` to lowercase table
   names and match Better Auth field conventions — **don't rename fields without updating the
-  auth config**. `User` carries extra broker-storefront fields (`handle`, `bio`, `location`).
+  auth config**. `User` carries extra public-profile fields (`handle`, `bio`, `location`).
 
 ### Web route groups (`apps/web/app`)
 
-- `(app)` — session-gated broker cockpit (ingest, queue, library, inbox, and the `/space`
+- `(app)` — session-gated owner cockpit (ingest, queue, library, inbox, and the `/space`
   **Observatory**). `layout.tsx` calls `requireSession` and redirects to `/setup-handle` if the
   user has no `handle`.
 - `(auth)` — sign-in/up, verify-email, forgot/reset password.
-- `(public)` — public storefront: `/catalog`, `/catalog/[handle]`, `/listing/[slug]` + inquiry form.
+- `(public)` — public catalog: `/catalog`, `/catalog/[handle]`, `/listing/[slug]` + inquiry form.
 - API layout: `/api/app/*` = session-authed app APIs (incl. `/api/app/embedding-scene` →
   the Observatory/Tree scene); `/api/*` (ingest/ingest-images) = bearer; `/api/catalog/*` =
   public read; `/api/auth/*` = better-auth. Plus the media catch-alls `/sight/*` + `/social/*`

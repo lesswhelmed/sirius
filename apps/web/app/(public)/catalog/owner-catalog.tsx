@@ -100,9 +100,9 @@ export async function OwnerCatalog({
             The Catalog<span className="text-[var(--color-accent)]">.</span>
           </h1>
           <p className="mt-3 max-w-md font-display italic text-[17px] leading-snug text-[var(--fg-muted)]">
-            Everything {userName.split(" ")[0] || "you"} has ingested — dispatches,
-            findings, sights, social, and concretes — across every status, in
-            one place.
+            Everything {userName.split(" ")[0] || "you"} has captured and curated
+            — dispatches, findings, sights, social, and concretes — across every
+            status, in one place.
           </p>
         </div>
 

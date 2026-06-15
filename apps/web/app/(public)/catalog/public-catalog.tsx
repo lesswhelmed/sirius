@@ -5,7 +5,7 @@ import { getCachedCatalog } from "../../../lib/cached";
 import { PostImage } from "../../_chrome/post-image";
 import { CatalogSearch } from "./search";
 
-// The public broker storefront index: published listings across all sellers.
+// The public catalog index: published posts across all users.
 // Shown to signed-out visitors at /catalog. Signed-in users get the private
 // owner catalog instead (see page.tsx).
 export async function PublicCatalog({ q }: { q: string }) {
@@ -17,15 +17,15 @@ export async function PublicCatalog({ q }: { q: string }) {
       <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-            The Broker
+            The Catalog
           </p>
           <h1 className="mt-1 font-display italic text-[44px] leading-[0.95] tracking-[-0.01em] text-balance sm:text-[56px]">
-            Antique militaria<span className="text-[var(--color-accent)]">,</span>{" "}
-            <span className="not-italic">filed for inquiry.</span>
+            Curated<span className="text-[var(--color-accent)]">,</span>{" "}
+            <span className="not-italic">in the open.</span>
           </h1>
           <p className="mt-3 max-w-md font-display italic text-[17px] leading-snug text-[var(--fg-muted)]">
-            Listings ingested from collectors and dealers. To purchase, send the
-            seller a note — Sirius brokers the introduction.
+            Entries people have captured, refined, and chosen to publish. Sign up
+            to start curating your own.
           </p>
         </div>
 
@@ -34,7 +34,7 @@ export async function PublicCatalog({ q }: { q: string }) {
             {listings.length}
           </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-            listings
+            entries
           </span>
         </div>
       </header>
@@ -46,7 +46,7 @@ export async function PublicCatalog({ q }: { q: string }) {
       {listings.length === 0 ? (
         <div className="mt-10 border-y border-[var(--color-rule)] py-20 text-center">
           <p className="font-display italic text-[26px] leading-tight text-[var(--fg-muted)]">
-            Nothing on the shelves yet.
+            The catalog is empty.
           </p>
           <p className="mt-3 text-[15px] text-[var(--fg-subtle)]">
             Check back soon — or{" "}
@@ -54,7 +54,7 @@ export async function PublicCatalog({ q }: { q: string }) {
               href="/sign-up"
               className="text-[var(--color-accent)] underline underline-offset-4"
             >
-              sign up and list your own
+              sign up and start your own
             </Link>
             .
           </p>

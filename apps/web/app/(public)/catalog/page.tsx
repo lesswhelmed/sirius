@@ -5,7 +5,7 @@ import { PublicCatalog } from "./public-catalog";
 
 // /catalog serves two audiences from one URL:
 //  - signed-in: the owner's private catalog (all their posts, every status)
-//  - signed-out: the public broker storefront (published listings)
+//  - signed-out: the public catalog (everyone's published posts)
 // The shared (public) chrome already swaps in the signed-in nav when a session
 // is present, so the page only needs to branch the body.
 export default async function CatalogPage({

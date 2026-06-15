@@ -2,7 +2,7 @@
 //
 // Design intent: the durable artifact is structured JSON, not prose. Every
 // field is intended to be re-readable by future similarity / classification
-// passes (e.g. "find more vintage M81 woodland camo pants like this one").
+// passes (e.g. "find more posts with a similar jacket or pattern").
 //
 // Rules of thumb:
 // - Be specific about what's actually visible / written; do not invent.
@@ -90,7 +90,7 @@ const VisualSchema = z
       .array(z.string())
       .max(20)
       .describe(
-        "Distinct patterns/prints (e.g. 'm81 woodland camo', 'tigerstripe', 'pinstripe', 'plain')."
+        "Distinct patterns/prints (e.g. 'striped', 'floral', 'plaid', 'plain')."
       ),
     text: z
       .array(z.string())

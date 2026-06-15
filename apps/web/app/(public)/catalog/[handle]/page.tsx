@@ -4,7 +4,7 @@ import { DateDisplay } from "../../../../lib/date-display";
 import { getCachedStorefront } from "../../../../lib/cached";
 import { PostImage } from "../../../_chrome/post-image";
 
-export default async function StorefrontPage({
+export default async function PublicCatalogPage({
   params,
 }: {
   params: Promise<{ handle: string }>;
@@ -22,7 +22,7 @@ export default async function StorefrontPage({
       <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-            Shop · @{user.handle}
+            Catalog · @{user.handle}
           </p>
           <h1 className="mt-1 font-display italic text-[44px] leading-[0.95] tracking-[-0.01em] text-balance sm:text-[56px]">
             {user.name}
@@ -45,7 +45,7 @@ export default async function StorefrontPage({
             {posts.items.length}
           </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-            on offer
+            entries
           </span>
         </div>
       </header>
@@ -53,7 +53,7 @@ export default async function StorefrontPage({
       {posts.items.length === 0 ? (
         <div className="mt-10 border-y border-[var(--color-rule)] py-20 text-center">
           <p className="font-display italic text-[26px] leading-tight text-[var(--fg-muted)]">
-            This shop is empty.
+            Nothing in this catalog yet.
           </p>
         </div>
       ) : (

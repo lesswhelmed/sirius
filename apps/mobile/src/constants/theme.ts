@@ -67,7 +67,7 @@ export const MaxContentWidth = 800;
 /**
  * Sirius editorial design tokens — the mobile counterpart of the web app's
  * paper-and-ink system (see apps/web/app/tailwind.css). The whole app is a
- * single warm "paper" theme (light only, like the web storefront) so the
+ * single warm "paper" theme (light only, like the web app) so the
  * native client reads as the same publication rather than a generic blue SaaS
  * shell. Colors are tuned for legible contrast on paper: text tones clear
  * 4.5:1, vivid hues (mark) are reserved for decorative pips, not text.

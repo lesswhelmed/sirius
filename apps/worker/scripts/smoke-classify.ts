@@ -28,8 +28,8 @@ const MIME_BY_EXT: Record<string, string> = {
 async function main(): Promise<void> {
   const config = getClassifyConfig();
   const fixtureText =
-    "Researching the history of WWII-era field equipment: woodland camo jackets, " +
-    "canvas webbing, and brass-buckle belts photographed for a collection catalog.";
+    "Researching pour-over coffee technique: grind size, water temperature, and " +
+    "bloom timing, with photos and notes kept for a brewing log.";
 
   const parts: EmbedPart[] = [{ text: queryPrefix(fixtureText) }];
   const imagePath = process.argv[2];

@@ -33,31 +33,31 @@ export default async function ListingPage({
     notFound();
   }
 
-  const sellerHandle = post.submittedBy?.handle ?? null;
+  const authorHandle = post.submittedBy?.handle ?? null;
 
   return (
     <article className="mx-auto max-w-[1100px]">
       <Link
-        href={sellerHandle ? `/catalog/${sellerHandle}` : "/catalog"}
+        href={authorHandle ? `/catalog/${authorHandle}` : "/catalog"}
         className="inline-flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] transition-colors hover:text-[var(--color-accent)]"
       >
         <span aria-hidden="true">←</span>
-        {sellerHandle ? `Back to @${sellerHandle}` : "Back to catalog"}
+        {authorHandle ? `Back to @${authorHandle}` : "Back to catalog"}
       </Link>
 
       <header className="mt-8">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-y border-[var(--color-rule-emphatic)] py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)]">
-          <span className="text-[var(--color-accent)]">Listing</span>
-          {sellerHandle ? (
+          <span className="text-[var(--color-accent)]">Entry</span>
+          {authorHandle ? (
             <>
               <span aria-hidden="true" className="text-[var(--fg-faint)]">
                 ·
               </span>
               <Link
-                href={`/catalog/${sellerHandle}`}
+                href={`/catalog/${authorHandle}`}
                 className="hover:text-[var(--color-accent)]"
               >
-                @{sellerHandle}
+                @{authorHandle}
               </Link>
             </>
           ) : null}

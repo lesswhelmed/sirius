@@ -52,7 +52,7 @@ export default function SignInScreen() {
       >
         <View style={styles.container}>
           <PageHeader
-            eyebrow="Sirius — The Broker"
+            eyebrow="Sirius — A field journal"
             title="Sign in"
             titleAccent="."
             subtitle="Return to your catalog and queue."
