@@ -60,16 +60,21 @@ async function runOne(
   if (!org) {
     throw new Error("assignOrg returned null (expected a result)");
   }
+  if (!org.project) {
+    throw new Error("assignOrg did not assign a project (expected one)");
+  }
   // verify the post + submission were actually updated
   const refreshed = await prisma.post.findUnique({ where: { id: post.id } });
-  if (refreshed?.projectId !== org.projectId) {
-    throw new Error(`post.projectId (${refreshed?.projectId}) != org.projectId (${org.projectId})`);
+  if (refreshed?.projectId !== org.project.projectId) {
+    throw new Error(
+      `post.projectId (${refreshed?.projectId}) != org.project.projectId (${org.project.projectId})`
+    );
   }
   const sub = await prisma.ingestSubmission.findUnique({ where: { id: submission.id } });
-  if (sub?.projectId !== org.projectId) {
+  if (sub?.projectId !== org.project.projectId) {
     throw new Error(`submission.projectId (${sub?.projectId}) not backfilled`);
   }
-  return org;
+  return org.project;
 }
 
 async function main(): Promise<void> {
