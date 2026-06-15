@@ -39,6 +39,10 @@ import {
 } from "@/lib/llm/engine";
 import { formatSize, modelSpec, textModels } from "@/lib/llm/models";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
+import {
+  canTranscribeOnDevice,
+  prepareTranscription,
+} from "@/lib/llm/transcribe";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -74,7 +78,7 @@ export default function LlmScreen() {
     mutationFn: async () => {
       setDownloadPct(0);
       await downloadModelById(modelId!, (pct) =>
-        setDownloadPct(Math.round(pct))
+        setDownloadPct(Math.round(pct)),
       );
     },
     onSettled: () => {
@@ -111,54 +115,57 @@ export default function LlmScreen() {
   if (!ready.data) {
     return (
       <Screen style={styles.container}>
-        <View style={styles.downloadCard}>
-          <MetaText style={styles.cardEyebrow}>Local model</MetaText>
-          <Text style={styles.modelName}>{spec.label}</Text>
-          <Text style={styles.modelDetail}>
-            {formatSize(spec.sizeBytes)} download · runs entirely on this
-            device. Once downloaded, chat and on-device drafting work without a
-            connection.
-          </Text>
-          {download.isPending ? (
-            <View style={styles.progressWrap}>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${downloadPct ?? 0}%` },
-                  ]}
-                />
-              </View>
-              <MetaText>{downloadPct ?? 0}%</MetaText>
-            </View>
-          ) : (
-            <PrimaryButton
-              label="Download model"
-              onPress={() => download.mutate()}
-            />
-          )}
-          {download.isError ? (
-            <Text style={styles.error}>
-              Download failed:{" "}
-              {download.error instanceof Error
-                ? download.error.message
-                : "unknown error"}
+        <ScrollView contentContainerStyle={styles.cardStack}>
+          <View style={styles.downloadCard}>
+            <MetaText style={styles.cardEyebrow}>Local model</MetaText>
+            <Text style={styles.modelName}>{spec.label}</Text>
+            <Text style={styles.modelDetail}>
+              {formatSize(spec.sizeBytes)} download · runs entirely on this
+              device. Once downloaded, chat and on-device drafting work without
+              a connection.
             </Text>
-          ) : null}
-          <ModelPicker
-            currentId={spec.id}
-            onSelect={(id) => {
-              void updateLlmSettings({ modelId: id }).then(() => {
-                void queryClient.invalidateQueries({
-                  queryKey: ["llm-settings"],
+            {download.isPending ? (
+              <View style={styles.progressWrap}>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${downloadPct ?? 0}%` },
+                    ]}
+                  />
+                </View>
+                <MetaText>{downloadPct ?? 0}%</MetaText>
+              </View>
+            ) : (
+              <PrimaryButton
+                label="Download model"
+                onPress={() => download.mutate()}
+              />
+            )}
+            {download.isError ? (
+              <Text style={styles.error}>
+                Download failed:{" "}
+                {download.error instanceof Error
+                  ? download.error.message
+                  : "unknown error"}
+              </Text>
+            ) : null}
+            <ModelPicker
+              currentId={spec.id}
+              onSelect={(id) => {
+                void updateLlmSettings({ modelId: id }).then(() => {
+                  void queryClient.invalidateQueries({
+                    queryKey: ["llm-settings"],
+                  });
+                  void queryClient.invalidateQueries({
+                    queryKey: ["llm-model-ready"],
+                  });
                 });
-                void queryClient.invalidateQueries({
-                  queryKey: ["llm-model-ready"],
-                });
-              });
-            }}
-          />
-        </View>
+              }}
+            />
+          </View>
+          <TranscriptionAssets />
+        </ScrollView>
       </Screen>
     );
   }
@@ -201,6 +208,80 @@ function ModelPicker({
   );
 }
 
+// On-device audio transcription assets (Apple SpeechAnalyzer, iOS 26+). This is
+// independent of the GGUF model above — it pre-downloads the language assets so
+// the composer's "voice memo → note" path transcribes instantly and offline. We
+// surface it here (the model page) un-gated, unlike the dev-only /llm-test bench
+// where it first lived. Hidden on Android/old iOS where SpeechAnalyzer is absent.
+// NOTE: the assets only exist on a physical iPhone — the iOS Simulator runtime
+// ships none, so isAvailable() stays false and prepare() can't succeed there.
+function TranscriptionAssets() {
+  const queryClient = useQueryClient();
+
+  const available = useQuery({
+    queryKey: ["llm-transcribe-available"],
+    queryFn: canTranscribeOnDevice,
+    enabled: Platform.OS === "ios",
+  });
+
+  const prepare = useMutation({
+    mutationFn: async () => {
+      // prepareTranscription swallows the native error and returns false; turn
+      // that into a message that names the most common cause (running on sim).
+      const ok = await prepareTranscription();
+      if (!ok) {
+        throw new Error(
+          "Couldn't download assets. On the Simulator this is expected — SpeechAnalyzer assets only exist on a physical iPhone (iOS 26+).",
+        );
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["llm-transcribe-available"],
+      });
+    },
+  });
+
+  if (Platform.OS !== "ios") {
+    return null;
+  }
+
+  return (
+    <View style={styles.downloadCard}>
+      <MetaText style={styles.cardEyebrow}>
+        Audio transcription (Apple)
+      </MetaText>
+      <Text style={styles.modelName}>Offline voice notes</Text>
+      <Text style={styles.modelDetail}>
+        Apple SpeechAnalyzer turns voice memos into note text entirely on this
+        device (iOS 26+). Download the language assets once so the first
+        transcription is instant. Requires a physical iPhone — the Simulator
+        ships none.
+      </Text>
+      {available.data ? (
+        <MetaText style={styles.cardEyebrow}>Assets ready ✓</MetaText>
+      ) : prepare.isPending ? (
+        <View style={styles.progressWrap}>
+          <ActivityIndicator color={Sirius.color.inkMuted} />
+          <MetaText>Downloading language assets…</MetaText>
+        </View>
+      ) : (
+        <PrimaryButton
+          label="Download transcription assets"
+          onPress={() => prepare.mutate()}
+        />
+      )}
+      {prepare.isError ? (
+        <Text style={styles.error}>
+          {prepare.error instanceof Error
+            ? prepare.error.message
+            : "Download failed"}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function Chat({
   modelId,
   modelLabel,
@@ -229,7 +310,10 @@ function Chat({
     }
     setInput("");
     setError(null);
-    const history: ChatMessage[] = [...messages, { role: "user", content: text }];
+    const history: ChatMessage[] = [
+      ...messages,
+      { role: "user", content: text },
+    ];
     setMessages([...history, { role: "assistant", content: "" }]);
     try {
       // The model runs one generation at a time; if curation is mid-draft,
@@ -277,9 +361,10 @@ function Chat({
             <View style={styles.empty}>
               <MetaText style={styles.cardEyebrow}>{modelLabel}</MetaText>
               <Text style={styles.modelDetail}>
-                Running locally on this device. Nothing you type here leaves
-                the phone.
+                Running locally on this device. Nothing you type here leaves the
+                phone.
               </Text>
+              <TranscriptionAssets />
               {__DEV__ ? (
                 <TextLink
                   label="Draft test bench →"
@@ -298,7 +383,9 @@ function Chat({
               >
                 <Text
                   style={
-                    m.role === "user" ? styles.bubbleUserText : styles.bubbleText
+                    m.role === "user"
+                      ? styles.bubbleUserText
+                      : styles.bubbleText
                   }
                 >
                   {m.content ||
@@ -357,6 +444,7 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 20,
   },
+  cardStack: { gap: 16, paddingBottom: 16 },
   cardEyebrow: { textTransform: "uppercase" },
   modelName: {
     color: Sirius.color.ink,
@@ -385,7 +473,10 @@ const styles = StyleSheet.create({
     height: 14,
     width: 14,
   },
-  radioActive: { backgroundColor: Sirius.color.ink, borderColor: Sirius.color.ink },
+  radioActive: {
+    backgroundColor: Sirius.color.ink,
+    borderColor: Sirius.color.ink,
+  },
   pickerLabel: { color: Sirius.color.inkMuted, fontSize: 14 },
   empty: { gap: 8, paddingTop: 32 },
   messages: { gap: 10, paddingBottom: 16 },
