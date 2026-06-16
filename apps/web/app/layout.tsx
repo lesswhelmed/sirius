@@ -3,6 +3,7 @@ import { Instrument_Serif, Newsreader, JetBrains_Mono } from "next/font/google";
 import "./tailwind.css";
 import { ThemeProvider } from "./_theme/theme-provider";
 import { ThemeScript } from "./_theme/theme-script";
+import { SITE_NAME, SITE_URL } from "../lib/site";
 
 const instrumentSerif = Instrument_Serif({
   weight: "400",
@@ -28,8 +29,11 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sirius — A Field Journal",
-  description: "A field journal. Capture, refine, and publish your work.",
+  metadataBase: new URL(SITE_URL),
+  title: `${SITE_NAME} — Capture anything. Keep what matters.`,
+  description:
+    "Sirius turns the things you capture — links, photos, notes, repos, videos, documents, even voice memos — into clean, organized posts, drafted for you by AI. Keep them private or publish to your catalog.",
+  applicationName: SITE_NAME,
 };
 
 export default function RootLayout({

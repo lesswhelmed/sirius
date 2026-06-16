@@ -277,6 +277,11 @@ function getContentDigest(
 
 function getSourceHash(input: PipelineInput): string | null {
   if (input.kind === "image") {
+    // NB: an image row's contentHash is SLOT-keyed (sha256 of
+    // batchId:imageIndex:bytes — see contentHashForImage), NOT a pure-bytes
+    // digest. So this Post.sourceHash is a stable batch fingerprint, not a
+    // content-identity hash: a future change-detection path must not compare it
+    // against contentHashForBytes(imageBytes).
     const first = input.submissions[0];
     return first?.contentHash ?? null;
   }

@@ -9,7 +9,11 @@ import {
   type SightDraftEnvelope,
 } from "@repo/ingest-draft";
 
-import { contentHashForBytes, contentHashForUrls } from "./hash";
+import {
+  contentHashForBytes,
+  contentHashForImage,
+  contentHashForUrls,
+} from "./hash";
 import { heicToJpeg, isHeicExtension } from "./heic";
 import { sniffImageFormat } from "./image-format";
 import {
@@ -237,11 +241,18 @@ export async function submitImageIngest(
 ): Promise<SubmitResult> {
   const submissionId = randomUUID();
 
-  // Dedup hash is computed from the ORIGINAL uploaded bytes and must stay so:
-  // hashing post-conversion JPEG would (a) drift across libheif/sharp bumps and
-  // (b) re-ingest already-stored photos as "new". Conversion only affects the
-  // staged file + persisted contentType/extension, never the hash input.
-  const contentHash = contentHashForBytes(payload.bytes);
+  // Dedup identity is the batch SLOT (batchId, imageIndex), not the raw bytes —
+  // a global pure-bytes hash makes a duplicate photo collide with an existing row
+  // under a different batchId, so no row is created for this slot and the batch
+  // never reaches totalCount (see contentHashForImage). Hashed from the ORIGINAL
+  // uploaded bytes (not the post-conversion JPEG) so the digest doesn't drift
+  // across libheif/sharp bumps; conversion only affects the staged file +
+  // persisted contentType/extension.
+  const contentHash = contentHashForImage(
+    payload.bytes,
+    payload.metadata.batchId,
+    payload.metadata.imageIndex
+  );
 
   // Don't trust the client Content-Type alone: iOS Shortcuts / curl / share
   // sheets often send application/octet-stream or image/heic-sequence, which

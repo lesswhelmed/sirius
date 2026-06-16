@@ -15,59 +15,81 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-1
 ## ⚠️ Needs your input / decisions
 
 - [ ] **Deploy the new legal pages.** I added `apps/web/app/(public)/privacy/page.tsx` and
-      `…/support/page.tsx`. They must be live at `https://lesswhelmed.com/privacy` and
-      `/support` **before** you submit (both currently 404). Deploy with `bun run deploy`.
+  ```
+  `…/support/page.tsx`. They must be live at `https://lesswhelmed.com/privacy` and
+  `/support` **before** you submit (both currently 404). Deploy with `bun run deploy`.
+  ```
 - [ ] **Create a reviewer account on prod** (the app gates on login). Register a fresh
-      account on `https://lesswhelmed.com`, **verify its email**, and confirm it can sign in.
-      Put the credentials in App Review notes (section 12). Do not use your personal account.
+  ```
+  account on `https://lesswhelmed.com`, **verify its email**, and confirm it can sign in.
+  Put the credentials in App Review notes (section 12). Do not use your personal account.
+  ```
 - [ ] **Confirm the contact email.** The privacy + support pages and the guide use
-      `saleebmina@copt.dev`. Change it if you want a dedicated support inbox.
+  ```
+  `saleebmina@copt.dev`. Change it if you want a dedicated support inbox.
+  ```
 - [ ] **Pick the primary category** (recommended **Productivity**, secondary **Lifestyle** —
-      see section 7). Confirm or change.
+  ```
+  see section 7). Confirm or change.
+  ```
 - [ ] **Confirm the age rating answers** (section 9). The app shows user-generated content;
-      answer the questionnaire honestly (likely 4+/12+ depending on UGC answers).
+  ```
+  answer the questionnaire honestly (likely 4+/12+ depending on UGC answers).
+  ```
 - [ ] **Current ASC state:** a submit already ran on 2026-06-14. Confirm whether an earlier
-      build is already "In Review", or whether you want to submit **build #24** fresh.
+  ```
+  build is already "In Review", or whether you want to submit **build #24** fresh.
+  ```
 
 ---
 
 ## Detected environment (pinned)
 
-| Tool | Version (this repo) | Source |
-|------|--------------------|--------|
-| Expo SDK | `56.0.11` | `apps/mobile/package.json`, root `overrides` |
-| React Native | `0.85.3` | `apps/mobile/package.json` |
-| React | `19.2.3` | pinned in root `overrides` |
-| eas-cli | `>= 20.0.0` | `apps/mobile/eas.json` → `cli.version` |
-| Node (build) | `22.12.0` | `eas.json` build profiles |
-| Bun | `1.3.14` | root `packageManager` |
-| iOS deployment target | Expo SDK 56 default (not overridden) | `app.json` |
+
+| Tool                  | Version (this repo)                  | Source                                       |
+| --------------------- | ------------------------------------ | -------------------------------------------- |
+| Expo SDK              | `56.0.11`                            | `apps/mobile/package.json`, root `overrides` |
+| React Native          | `0.85.3`                             | `apps/mobile/package.json`                   |
+| React                 | `19.2.3`                             | pinned in root `overrides`                   |
+| eas-cli               | `>= 20.0.0`                          | `apps/mobile/eas.json` → `cli.version`       |
+| Node (build)          | `22.12.0`                            | `eas.json` build profiles                    |
+| Bun                   | `1.3.14`                             | root `packageManager`                        |
+| iOS deployment target | Expo SDK 56 default (not overridden) | `app.json`                                   |
+
 
 ---
 
 ## 1. Prerequisites checklist
 
-- [x] Apple Developer Program membership — Team **`L7U86T3YRV`** (Mina Saleeb, Individual)
+- [x] Apple Developer Program membership — Team `**L7U86T3YRV**` (Mina Saleeb, Individual)
 - [x] Distribution cert + provisioning profiles on EAS (valid to **2027-06-01**), for both
-      `dev.copt.sirius` and `dev.copt.sirius.share-extension`
+  ```
+  `dev.copt.sirius` and `dev.copt.sirius.share-extension`
+  ```
 - [x] Logged into EAS — `minasaleeb` / `saleebmina@copt.dev`
-      (verify any time: `cd apps/mobile && bunx eas-cli whoami`)
+  ```
+  (verify any time: `cd apps/mobile && bunx eas-cli whoami`)
+  ```
 - [x] App Store Connect access (same Apple ID on the team)
-- [ ] A Mac is **optional** — EAS builds in the cloud. You only need a Mac for the
-      interactive `eas submit` Apple login (or use an ASC API key for non-interactive).
+- [x] A Mac is **optional** — EAS builds in the cloud. You only need a Mac for the
+  ```
+  interactive `eas submit` Apple login (or use an ASC API key for non-interactive).
+  ```
 
 ---
 
 ## 2. App identity
 
-| Field | Value |
-|-------|-------|
-| App name | **Sirius** |
-| Bundle ID | `dev.copt.sirius` (+ `dev.copt.sirius.share-extension`) |
-| Scheme | `siriusapp` |
-| Marketing version (CFBundleShortVersionString) | `1.0.0` (`app.json` → `version`) |
-| Build number (CFBundleVersion) | **EAS-managed** (`appVersionSource: remote`, `autoIncrement: true`) — latest is **24** |
-| Runtime version | `fingerprint` policy (OTA updates only reach matching native builds) |
+
+| Field                                          | Value                                                                                  |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------- |
+| App name                                       | **Sirius AI**                                                                          |
+| Bundle ID                                      | `dev.copt.sirius` (+ `dev.copt.sirius.share-extension`)                                |
+| Scheme                                         | `siriusapp`                                                                            |
+| Marketing version (CFBundleShortVersionString) | `1.0.0` (`app.json` → `version`)                                                       |
+| Build number (CFBundleVersion)                 | **EAS-managed** (`appVersionSource: remote`, `autoIncrement: true`) — latest is **24** |
+| Runtime version                                | `fingerprint` policy (OTA updates only reach matching native builds)                   |
+
 
 **Version policy:** never edit `buildNumber` by hand — EAS owns it. To ship a feature
 release, bump `version` (e.g. `1.0.1`) in `app.json`; EAS auto-increments the build number.
@@ -81,10 +103,14 @@ For JS-only fixes to an already-shipped binary, use EAS Update (section 13).
 
 - [x] Bundle ID registered: `dev.copt.sirius`
 - [x] App record exists — `ascAppId 6775729513` (backfilled into `eas.json` →
-      `submit.production.ios.ascAppId`, so future submits are non-interactive)
+  ```
+  `submit.production.ios.ascAppId`, so future submits are non-interactive)
+  ```
 - [ ] In App Store Connect → **App Information**, confirm: primary language, SKU, bundle ID,
-      **content rights** (do you have rights to all content? yes — it's your catalog), and
-      category (section 7).
+  ```
+  **content rights** (do you have rights to all content? yes — it's your catalog), and
+  category (section 7).
+  ```
 
 ---
 
@@ -111,10 +137,11 @@ bunx eas-cli build --profile production --platform ios
 - [ ] Build reaches **FINISHED** (watch the printed `expo.dev/...builds/...` URL)
 
 **Common failure modes:**
+
 - *Dirty tree* → "requireCommit" error. Commit/stash and retry.
 - *"Configure expo-updates" phase error* (seen 2026-06) → usually a duplicate `llama.rn`
-  native module. See `HANDOFF-ios-build-failure.md`. Builds #22–24 succeeded, so this is
-  currently resolved — don't pre-emptively change the `llama.rn`/provider pinning.
+native module. See `HANDOFF-ios-build-failure.md`. Builds #22–24 succeeded, so this is
+currently resolved — don't pre-emptively change the `llama.rn`/provider pinning.
 - *Credential errors* → shouldn't happen (managed by EAS); if so, `bunx eas-cli credentials`.
 
 ---
@@ -132,11 +159,12 @@ bunx eas-cli submit --profile production --platform ios --latest
 # bunx eas-cli submit --profile production --platform ios --id df285dbd-eb69-4fa4-b877-b8e5099b855b
 ```
 
-- [ ] Sign in with the Apple ID on Team `L7U86T3YRV` (+ 2FA)
-- [ ] EAS uploads the `.ipa`; ASC then "processes" it (a few minutes to ~1 hr)
+- [x] Sign in with the Apple ID on Team `L7U86T3YRV` (+ 2FA)
+- [x] EAS uploads the `.ipa`; ASC then "processes" it (a few minutes to ~1 hr)
 
 **Non-interactive alternative** (if you create an App Store Connect API key — `.p8` + Key ID
-+ Issuer ID):
+
+- Issuer ID):
 
 ```sh
 cd apps/mobile
@@ -155,10 +183,14 @@ bunx eas-cli submit --profile production --platform ios --latest --non-interacti
 
 - [ ] Once the build is processed, it appears under **TestFlight**.
 - [ ] **Internal testing** (up to 100 users on your team) needs no beta review — fastest way
-      to smoke-test the prod binary against `lesswhelmed.com`.
+  ```
+  to smoke-test the prod binary against `lesswhelmed.com`.
+  ```
 - [ ] **External testing** (public/large groups) requires a one-time **Beta App Review**.
 - [ ] Verify on a real device that login works against prod and the main tabs load before
-      submitting for App Review.
+  ```
+  submitting for App Review.
+  ```
 
 ---
 
@@ -167,10 +199,11 @@ bunx eas-cli submit --profile production --platform ios --latest --non-interacti
 All copy below respects Apple's character limits. Paste into App Store Connect →
 **[your app] → [version] → App Store** tab.
 
-> **Positioning:** Sirius is a **personal content catalog** — you capture links, photos,
-> notes, repos, videos, documents, and voice memos, AI drafts a clean entry, and you curate
-> and publish what you choose. The copy below and the screenshots both reflect that (any
-> earlier "militaria broker" framing has been removed from the product).
+> **Positioning:** Sirius is a **private personal content catalog** — you capture links,
+> photos, notes, repos, videos, documents, and voice memos, AI drafts a clean entry, and you
+> curate and keep what you choose. Posts are private to you. The copy below and the
+> screenshots both reflect that (any earlier "militaria broker" framing has been removed from
+> the product).
 
 > **Tip:** each value below is in its own code block — hover it and click the copy icon to
 > grab the exact text, then paste it straight into App Store Connect.
@@ -181,22 +214,22 @@ All copy below respects Apple's character limits. Paste into App Store Connect �
 Sirius
 ```
 
-**Subtitle** (≤30, this is 27):
+**Subtitle** (≤30):
 
 ```text
-Capture, draft, and publish
+Capture, draft, and organize
 ```
 
 **Promotional text** (≤170, editable without review):
 
 ```text
-Turn any link, photo, note, or voice memo into a clean, organized post — drafted for you by AI, ready to keep or publish.
+Turn any link, photo, note, or voice memo into a clean, organized post — drafted for you by AI, kept private in your own library.
 ```
 
 **Keywords** (≤100, comma-separated, **no spaces**):
 
 ```text
-capture,notes,bookmark,read later,AI,summary,knowledge,catalog,publishing,links,research,organize
+capture,notes,bookmark,read later,AI,summary,knowledge,catalog,private,links,research,organize
 ```
 
 **Description** (≤4000):
@@ -211,17 +244,16 @@ Capture anything:
 • Jot a quick note or record a voice memo.
 
 Let it draft for you. Sirius reads what you submitted and writes a structured post — title,
-summary, tags, and details — that you review, edit, and keep or publish. On iPhone it can
+summary, tags, and details — that you review, edit, and keep. On iPhone it can
 even draft entirely on-device.
 
 Stay organized:
-• Catalog — your full library, from draft to published.
+• Catalog — your full private library, from draft to done.
 • Queue — watch each capture move from pending to done.
 • Tree — explore everything by theme and category, with related posts grouped together.
 
 Your space, your terms:
-Keep posts private or publish them to your own catalog. Visitors can reach you through an
-inquiry form on your public page.
+Your posts are private to you. Everything you capture stays in your own library.
 
 Sirius does not use third-party advertising or cross-app tracking.
 ```
@@ -229,7 +261,7 @@ Sirius does not use third-party advertising or cross-app tracking.
 **What's New** (≤4000) — for v1.0.0:
 
 ```text
-First release of Sirius. Capture links, photos, notes, and more; let AI draft a post for you; organize everything; and publish what you choose.
+First release of Sirius. Capture links, photos, notes, and more; let AI draft a post for you; and organize everything in your own private library.
 ```
 
 **Support URL:**
@@ -257,7 +289,8 @@ https://lesswhelmed.com/privacy
 ```
 
 - **Category:** Primary **Productivity**, Secondary **Lifestyle**
-  *(alternatives: Shopping, or Reference — Productivity fits the catalog/inventory workflow best)*
+*(alternatives: Shopping, or Reference — Productivity fits the catalog/inventory workflow best)*
+
 - [ ] All metadata fields filled, no placeholder text
 
 ---
@@ -271,13 +304,14 @@ iPhones — you do **not** need 6.5", and you do **not** need iPad (the app sets
 - **Exact pixel size:** **1320 × 2868** portrait (also accepted for the 6.9" slot: 1290×2796).
 - **Count:** 3–10 per localization (Apple requires at least 1; aim for 3–5 strong ones).
 - **Captured for you** into `app-store-assets/screenshots/iphone-6.9/` from an
-  iPhone 17 Pro Max simulator (6.9", native 1320×2868). See the manifest in that folder.
+iPhone 17 Pro Max simulator (6.9", native 1320×2868). See the manifest in that folder.
 
 Do / don't:
+
 - ✅ Real in-app screens, clean status bar, portrait.
 - ✅ You may add a marketing frame/caption, but raw screenshots are accepted as-is.
 - ❌ No device bezels that misrepresent the UI, no placeholder/lorem content, no other
-     platforms' chrome.
+   platforms' chrome.
 
 - [ ] Upload the PNGs from `app-store-assets/screenshots/iphone-6.9/` to the 6.9" slot
 
@@ -298,17 +332,20 @@ Fill App Store Connect → **App Privacy** to match what the app actually collec
 with `apps/web/app/(public)/privacy/page.tsx`). Sirius does **not** track and shows no ATT
 prompt → answer **"No"** to tracking.
 
-| Data type | Collected? | Linked to user? | Purpose | Tracking? |
-|-----------|:---:|:---:|---------|:---:|
-| Contact Info — Email address | Yes | Yes | App Functionality | No |
-| Contact Info — Name | Yes | Yes | App Functionality | No |
-| User Content — Photos/Videos | Yes | Yes | App Functionality | No |
-| User Content — Other (URLs, notes, posts) | Yes | Yes | App Functionality | No |
-| Identifiers — User ID | Yes | Yes | App Functionality | No |
-| Usage Data — Product Interaction (post views) | Yes | Yes | Analytics | No |
+
+| Data type                                     | Collected? | Linked to user? | Purpose           | Tracking? |
+| --------------------------------------------- | ---------- | --------------- | ----------------- | --------- |
+| Contact Info — Email address                  | Yes        | Yes             | App Functionality | No        |
+| Contact Info — Name                           | Yes        | Yes             | App Functionality | No        |
+| User Content — Photos/Videos                  | Yes        | Yes             | App Functionality | No        |
+| User Content — Other (URLs, notes, posts)     | Yes        | Yes             | App Functionality | No        |
+| Identifiers — User ID                         | Yes        | Yes             | App Functionality | No        |
+| Usage Data — Product Interaction (post views) | Yes        | Yes             | Analytics         | No        |
+
 
 - Diagnostics/Crash data: **not collected** (no crash SDK configured).
 - Third-party advertising / data "sold": **No**.
+
 - [ ] App Privacy completed and matches the privacy policy
 
 ---
@@ -316,9 +353,13 @@ prompt → answer **"No"** to tracking.
 ## 10. Export compliance / encryption
 
 - [x] `ITSAppUsesNonExemptEncryption: false` is set in `app.json` (`ios.infoPlist`), so the
-      binary declares it uses only exempt encryption (standard HTTPS).
+  ```
+  binary declares it uses only exempt encryption (standard HTTPS).
+  ```
 - [ ] In the submission flow, the encryption question is therefore answered automatically as
-      **"No"** (uses only exempt/standard encryption). Nothing else to file.
+  ```
+  **"No"** (uses only exempt/standard encryption). Nothing else to file.
+  ```
 
 ---
 
@@ -333,7 +374,9 @@ prompt → answer **"No"** to tracking.
 - [ ] App Privacy completed
 - [ ] Export compliance answered (No)
 - [ ] Reviewer demo account created on prod, email verified, **tested**, and entered in
-      App Review notes
+  ```
+  App Review notes
+  ```
 - [ ] App icon shows (1024² no alpha — already in the binary)
 
 ---
@@ -343,16 +386,22 @@ prompt → answer **"No"** to tracking.
 In App Store Connect → your version:
 
 - [ ] **App Review Information** → add the reviewer demo account. Copy the notes block below
-      (fill in the username/password fields in ASC separately):
+  ```
+  (fill in the username/password fields in ASC separately):
+  ```
 
 ```text
-Sirius requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog → publish.
+Sirius requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog. Posts are private to the account.
 ```
+
 - [ ] Choose release option: **Manual release** (recommended for a first launch so you
-      control go-live), Automatic, or Phased.
+  ```
+  control go-live), Automatic, or Phased.
+  ```
 - [ ] Click **Add for Review → Submit**.
 
 **What reviewers commonly reject (preempt these):**
+
 - Login wall with no working demo account → covered by the reviewer account above.
 - Broken privacy/support URLs → deploy the pages first (section 11).
 - Privacy label not matching actual data use → section 9 mirrors the policy.
@@ -365,9 +414,9 @@ Sirius requires an account. Sign in with the demo credentials provided in the Us
 
 - **Review timeline:** typically 24–48 hours; first submissions can take longer.
 - **If rejected:** read the Resolution Center message, fix the specific issue, reply or
-  resubmit. Most rejections are metadata/demo-account/privacy issues, not the binary.
+resubmit. Most rejections are metadata/demo-account/privacy issues, not the binary.
 - **Releasing:** if you chose Manual release, click **Release** once "Pending Developer
-  Release."
+Release."
 - **Shipping updates:**
   - *JS-only change* (no native deps changed) → **EAS Update** (OTA), no re-review:
     ```sh
@@ -375,7 +424,7 @@ Sirius requires an account. Sign in with the demo credentials provided in the Us
     ```
     (Only reaches builds with a matching native fingerprint.)
   - *Native change or App Store metadata change* → bump `version`, new
-    `eas build --profile production --platform ios`, `eas submit`, new review.
+  `eas build --profile production --platform ios`, `eas submit`, new review.
 
 ---
 
@@ -387,4 +436,8 @@ Sirius requires an account. Sign in with the demo credentials provided in the Us
 - `APP_STORE_SUBMISSION.md` — this guide
 
 No app behavior/feature code was changed.
+
 ```
+
+```
+

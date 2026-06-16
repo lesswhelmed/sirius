@@ -22,3 +22,27 @@ export function contentHashForBytes(
     : Buffer.from(bytes as ArrayBuffer);
   return createHash("sha256").update(buf).digest("hex");
 }
+
+// Dedup identity for an image batch MEMBER is its slot (batchId, imageIndex),
+// not its raw bytes. The contentHash unique index is global, so a pure-bytes
+// hash makes a duplicate photo — the same image twice in one batch, or one ever
+// submitted before — collide with an existing row under a DIFFERENT batchId.
+// That returns a "deduped" row instead of creating this batch's slot, leaving
+// the batch permanently short of totalCount so the worker never writes the SIGHT
+// post. Folding batchId + imageIndex in fixes that while keeping in-flight retries
+// idempotent: re-posting the SAME slot (same batchId+imageIndex+bytes) still hashes
+// identically and dedups. Bytes stay in the digest so an accidental same-slot
+// re-post with different content is still treated as the same slot.
+export function contentHashForImage(
+  bytes: ArrayBuffer | Uint8Array | Buffer,
+  batchId: string,
+  imageIndex: number
+): string {
+  const buf = Buffer.isBuffer(bytes)
+    ? bytes
+    : Buffer.from(bytes as ArrayBuffer);
+  return createHash("sha256")
+    .update(`${batchId}:${imageIndex}:`)
+    .update(buf)
+    .digest("hex");
+}

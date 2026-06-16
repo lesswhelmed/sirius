@@ -11,8 +11,20 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { ensureDir, resolveOriginalsDir } from "./originals-paths";
+
+// Reduce an arbitrary filename to a single safe path segment: strip any
+// directory components (basename defeats "../" and absolute paths) and replace
+// anything outside a conservative allowlist. Callers currently pass
+// server-derived names (original.<ext>, <n>.<ext>) from a fixed extension
+// allowlist, so this is defense-in-depth against a future caller threading
+// client-controlled input into the originals store.
+function safeSegment(filename: string): string {
+  const cleaned = basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
+  // basename("") === "" and a name of all-dots collapses to nothing useful.
+  return cleaned && cleaned !== "." && cleaned !== ".." ? cleaned : "original";
+}
 
 export function originalsOwnerBucket(submittedById: string | null): string {
   return submittedById ?? "_anon";
@@ -51,7 +63,11 @@ export function retainOriginal(input: RetainOriginalInput): RetainedOriginal {
     input.submissionId
   );
   ensureDir(destDir);
-  const dest = join(destDir, input.filename);
+  const dest = join(destDir, safeSegment(input.filename));
+  // Defense in depth: never let a computed dest escape its submission dir.
+  if (resolve(dest) !== resolve(destDir) && !resolve(dest).startsWith(resolve(destDir) + sep)) {
+    throw new Error(`retainOriginal: refusing path outside originals dir: ${input.filename}`);
+  }
   try {
     renameSync(input.stagedFilePath, dest);
   } catch (error) {

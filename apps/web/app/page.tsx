@@ -14,6 +14,7 @@ export default function Home() {
 
 async function Redirector() {
   const session = await getSessionOrNull();
-  redirect(session ? "/ingest" : "/sign-in?next=/ingest");
+  // Signed-in owners land in the app; everyone else meets the marketing page.
+  redirect(session ? "/ingest" : "/product");
   return null; // unreachable: redirect() throws, but satisfies the JSX return type
 }
