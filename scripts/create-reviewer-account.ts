@@ -18,8 +18,23 @@
 //   DATABASE_URL="<prod-url>" bun run reviewer:seed --teardown --purge-user # also delete the user
 
 import { createHash, randomBytes } from "node:crypto";
-import { prisma } from "@repo/db";
+import {
+  assignPostToProject,
+  createAspiration,
+  createProject,
+  findAspirationByTitle,
+  findProjectByTitle,
+  type IngestSubmission,
+  Prisma,
+  prisma,
+} from "@repo/db";
 import { hashPassword } from "better-auth/crypto";
+// Reuse the worker's REAL auto-org pipeline stage so seeded demo content gets
+// the same embeddings + dynamic topic taxonomy + category matches a live ingest
+// would produce — no faked vectors. Requires GEMINI_API_KEY (embedding model).
+import { buildClassificationInput } from "../apps/worker/src/pipeline/classification/adapters";
+import { assignOrg } from "../apps/worker/src/pipeline/classification/assign-org";
+import type { GeminiOutput, PipelineInput } from "../apps/worker/src/pipeline/types";
 
 const DEFAULT_EMAIL = "reviewer@lesswhelmed.com";
 const DEFAULT_HANDLE = "sirius-review";
@@ -37,6 +52,7 @@ type ParsedArgs = {
   posts: number;
   teardown: boolean;
   purgeUser: boolean;
+  scene: boolean;
 };
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -47,6 +63,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let posts = 6;
   let teardown = false;
   let purgeUser = false;
+  let scene = true;
 
   const takeValue = (arg: string, inline: string, next: () => string | undefined) =>
     arg.startsWith(`${inline}=`) ? arg.slice(inline.length + 1) : next();
@@ -58,6 +75,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       teardown = true;
     } else if (arg === "--purge-user") {
       purgeUser = true;
+    } else if (arg === "--no-scene") {
+      scene = false;
     } else if (arg === "--password" || arg.startsWith("--password=")) {
       password = takeValue(arg, "--password", () => argv[++i]);
     } else if (arg === "--email" || arg.startsWith("--email=")) {
@@ -83,6 +102,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     posts,
     teardown,
     purgeUser,
+    scene,
   };
 }
 
@@ -95,7 +115,8 @@ function usage(): never {
   --handle <handle>    storefront handle (default ${DEFAULT_HANDLE})
   --name <name>        display name (default "${DEFAULT_NAME}")
   --posts <n>          number of demo posts to seed (default 6)
-  --teardown           remove demo posts + submissions
+  --no-scene           skip categories + focus areas (no embeddings; no GEMINI_API_KEY needed)
+  --teardown           remove demo posts + submissions + focus areas
   --purge-user         with --teardown, also delete the reviewer user
 
 Env fallbacks: REVIEWER_EMAIL, REVIEWER_PASSWORD, REVIEWER_HANDLE, REVIEWER_NAME.`
@@ -232,7 +253,7 @@ function submissionKindFor(type: PostType): "note" | "url" | "image" {
   return "note";
 }
 
-function submissionPayloadFor(post: DemoPost): Record<string, unknown> {
+function submissionPayloadFor(post: DemoPost): Prisma.InputJsonValue {
   if (post.type === "FINDING") {
     return { urls: post.originalUrl ? [post.originalUrl] : [], notes: "" };
   }
@@ -256,12 +277,12 @@ async function ensureReviewerUser(args: ParsedArgs): Promise<{
   }
 
   const supplied = args.password;
-  const password = supplied ?? randomBytes(12).toString("base64url");
-  if (password.length < 8) {
+  if (supplied != null && supplied.length < 8) {
     console.error("Password must be at least 8 characters.");
     process.exit(1);
   }
 
+  // Upsert by email — never creates a duplicate user on re-run.
   const user = await prisma.user.upsert({
     where: { email: args.email },
     create: {
@@ -278,39 +299,59 @@ async function ensureReviewerUser(args: ParsedArgs): Promise<{
     select: { id: true, email: true, handle: true },
   });
 
-  const hashed = await hashPassword(password);
   const existing = await prisma.account.findFirst({
     where: { userId: user.id, providerId: "credential" },
     select: { id: true },
   });
 
-  if (existing) {
-    await prisma.account.update({
-      where: { id: existing.id },
-      data: { password: hashed, updatedAt: new Date() },
-    });
-  } else {
-    await prisma.account.create({
-      data: {
-        userId: user.id,
-        accountId: user.id,
-        providerId: "credential",
-        password: hashed,
-      },
-    });
+  // Idempotent: don't churn an existing login on re-run. Set a password only on
+  // first creation, or when one is explicitly supplied (an intentional reset).
+  let generated: string | null = null;
+  if (supplied != null || existing == null) {
+    const password = supplied ?? randomBytes(12).toString("base64url");
+    const hashed = await hashPassword(password);
+    if (existing) {
+      await prisma.account.update({
+        where: { id: existing.id },
+        data: { password: hashed, updatedAt: new Date() },
+      });
+    } else {
+      await prisma.account.create({
+        data: {
+          userId: user.id,
+          accountId: user.id,
+          providerId: "credential",
+          password: hashed,
+        },
+      });
+    }
+    generated = supplied ? null : password;
   }
 
   return {
     userId: user.id,
     email: user.email,
     handle: user.handle ?? args.handle,
-    password: supplied ? null : password,
+    password: generated,
   };
 }
 
-async function seedDemoContent(userId: string, count: number): Promise<number> {
+// One seeded post + the submission that "produced" it, kept so the scene step
+// can run each through the worker pipeline (assignOrg needs the submission).
+type SeededItem = {
+  postId: string;
+  slug: string;
+  submission: IngestSubmission;
+  demo: DemoPost;
+};
+
+async function seedDemoContent(
+  userId: string,
+  count: number
+): Promise<SeededItem[]> {
   const selected = DEMO_POSTS.slice(0, count);
   const now = Date.now();
+  const items: SeededItem[] = [];
 
   for (let i = 0; i < selected.length; i++) {
     const post = selected[i];
@@ -385,14 +426,139 @@ async function seedDemoContent(userId: string, count: number): Promise<number> {
         : {}),
     };
 
-    await prisma.ingestSubmission.upsert({
+    const submission = await prisma.ingestSubmission.upsert({
       where: { contentHash },
       create: { contentHash, ...submissionData },
       update: submissionData,
     });
+
+    items.push({ postId: created.id, slug: created.slug, submission, demo: post });
   }
 
-  return selected.length;
+  return items;
+}
+
+// Curated focus areas (Projects) grouping the demo posts, so the reviewer's Tree
+// shows a few populated areas instead of one project per post. Any focus area
+// with at least one seeded post this run is created.
+const FOCUS_AREAS: { title: string; description: string; slugs: string[] }[] = [
+  {
+    title: "Home & Garden",
+    description:
+      "Everyday rituals around the home — a slower coffee, sourdough, and a balcony herb garden.",
+    slugs: [
+      "pour-over-coffee-ritual",
+      "sourdough-starter-week-one",
+      "balcony-herb-garden",
+    ],
+  },
+  {
+    title: "Outside & Workspace",
+    description: "Time outdoors and a calmer, tidier desk setup.",
+    slugs: ["ridge-trail-day-hike", "desk-setup-cable-cleanup"],
+  },
+  {
+    title: "Focus & Reading",
+    description:
+      "Deep work, a lightweight weekly review, and rediscovering the public library.",
+    slugs: [
+      "deep-work-reading-note",
+      "weekly-review-template",
+      "city-library-rediscovered",
+    ],
+  },
+];
+
+// Give the seeded posts real categories + focus areas by running each one
+// through the worker's actual auto-org stage (assignOrg). assignOrg embeds the
+// content, grows the dynamic topic taxonomy, and writes PostCategoryMatch rows;
+// because we pre-assign a curated Project, it takes the scoped path and keeps
+// that focus area (mints nothing). Idempotent: aspiration/projects are
+// found-or-created by title, and every assignOrg write is an upsert/replace.
+// Needs GEMINI_API_KEY (embedding model). Mirrors a real signed-in ingest.
+async function seedScene(ownerId: string, items: SeededItem[]): Promise<void> {
+  if (items.length === 0) return;
+
+  const aspirationTitle = "Personal";
+  const aspiration =
+    (await findAspirationByTitle(ownerId, aspirationTitle)) ??
+    (await createAspiration({
+      ownerId,
+      title: aspirationTitle,
+      description: "Demo focus areas for App Store review.",
+      metadata: { demo: true },
+    }));
+
+  // Find-or-create a Project per focus area that has a seeded post this run.
+  const seededSlugs = new Set(items.map((i) => i.slug));
+  const projectIdByTitle = new Map<string, string>();
+  const projectTitleBySlug = new Map<string, string>();
+  for (const fa of FOCUS_AREAS) {
+    const present = fa.slugs.filter((s) => seededSlugs.has(s));
+    if (present.length === 0) continue;
+    let projectId = (await findProjectByTitle(ownerId, fa.title))?.id;
+    if (!projectId) {
+      const created = await createProject({
+        ownerId,
+        title: fa.title,
+        description: fa.description,
+        aspirationId: aspiration.id,
+        metadata: { demo: true },
+      });
+      if (!created.ok) {
+        console.warn(`  ! skipped focus area "${fa.title}": ${created.reason}`);
+        continue;
+      }
+      projectId = created.project.id;
+    }
+    projectIdByTitle.set(fa.title, projectId);
+    for (const s of present) projectTitleBySlug.set(s, fa.title);
+  }
+
+  let categorized = 0;
+  for (const item of items) {
+    const faTitle = projectTitleBySlug.get(item.slug) ?? null;
+    const projectId = faTitle ? (projectIdByTitle.get(faTitle) ?? null) : null;
+
+    // Pre-assign the curated focus area so assignOrg's scoped path keeps it.
+    if (projectId) {
+      await assignPostToProject(ownerId, item.postId, projectId);
+    }
+
+    const parsed: GeminiOutput = {
+      slug: item.demo.slug,
+      title: item.demo.title,
+      type: item.demo.type,
+      body: item.demo.content,
+      frontmatter: {
+        tags: item.demo.tags,
+        categories: item.demo.categories.map((c) => c.name),
+        excerpt: item.demo.excerpt,
+      },
+      rawMdx: "",
+    };
+    const input: PipelineInput = {
+      kind: "note",
+      submission: item.submission,
+      notes: item.demo.excerpt,
+      submittedById: ownerId,
+      projectId,
+    };
+    const classificationInput = buildClassificationInput(input, parsed);
+    const result = await assignOrg({
+      input,
+      postId: item.postId,
+      classificationInput,
+    });
+    if (result.categoryMatchCount > 0) categorized++;
+    console.log(
+      `  • ${item.slug} → ${faTitle ?? "(no focus area)"} · ${result.categoryMatchCount} categor${result.categoryMatchCount === 1 ? "y" : "ies"}`
+    );
+  }
+
+  console.log(
+    `Scene seeded: ${projectIdByTitle.size} focus area(s); ${categorized}/${items.length} posts categorized.`
+  );
 }
 
 async function teardown(args: ParsedArgs): Promise<void> {
@@ -409,10 +575,19 @@ async function teardown(args: ParsedArgs): Promise<void> {
   const subs = await prisma.ingestSubmission.deleteMany({
     where: { submittedById: user.id, contentHash: { startsWith: DEMO_HASH_PREFIX } },
   });
+  // Deleting posts cascades their PostEmbedding + PostCategoryMatch rows;
+  // deleting projects cascades their ProjectEmbedding. (Dynamic CategoryEmbedding
+  // taxonomy nodes are global and left in place — with no matching posts they're
+  // simply invisible in any scene.)
   const posts = await prisma.post.deleteMany({
     where: { submittedById: user.id, providerId: DEMO_PROVIDER_ID },
   });
-  console.log(`Removed ${posts.count} demo post(s) and ${subs.count} submission(s).`);
+  const projects = await prisma.project.deleteMany({ where: { ownerId: user.id } });
+  const aspirations = await prisma.aspiration.deleteMany({ where: { ownerId: user.id } });
+  console.log(
+    `Removed ${posts.count} demo post(s), ${subs.count} submission(s), ` +
+      `${projects.count} focus area(s), ${aspirations.count} aspiration(s).`
+  );
 
   if (args.purgeUser) {
     // Sessions + accounts cascade on user delete (onDelete: Cascade).
@@ -430,17 +605,36 @@ async function main(): Promise<void> {
   }
 
   const reviewer = await ensureReviewerUser(args);
-  const seeded = await seedDemoContent(reviewer.userId, args.posts);
+  const items = await seedDemoContent(reviewer.userId, args.posts);
+
+  if (args.scene) {
+    const key =
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.GOOGLE_GENAI_API_KEY;
+    if (!key) {
+      console.error(
+        "\nScene step needs GEMINI_API_KEY (the embedding model) to seed categories + focus areas.\n" +
+          "Set it (the same Gemini key the worker uses), or pass --no-scene to skip."
+      );
+      process.exit(1);
+    }
+    console.log("\nSeeding categories + focus areas through the worker pipeline…");
+    await seedScene(reviewer.userId, items);
+  }
 
   console.log("\nApp Store reviewer account ready:");
   console.log("--------------------------------------------------");
   console.log(`  Email:    ${reviewer.email}`);
   console.log(
-    `  Password: ${reviewer.password ?? "(unchanged — supplied value)"}`
+    `  Password: ${reviewer.password ?? "(unchanged — existing/supplied password kept)"}`
   );
   console.log(`  Handle:   ${reviewer.handle}`);
   console.log(`  User ID:  ${reviewer.userId}`);
-  console.log(`  Demo posts seeded: ${seeded}`);
+  console.log(`  Demo posts seeded: ${items.length}`);
+  console.log(
+    `  Categories + focus areas: ${args.scene ? "yes (via worker pipeline)" : "skipped (--no-scene)"}`
+  );
   console.log("--------------------------------------------------");
   if (reviewer.password) {
     console.log("Save the password now — it is not stored anywhere else.");
