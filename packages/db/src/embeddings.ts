@@ -139,8 +139,12 @@ export async function replacePostCategoryMatches(
   ]);
 }
 
-// Everything the embedding-scene needs for one owner, in one read. Categories
-// are global; posts/projects are owner-scoped. Matches ride along per post.
+// Everything the embedding-scene needs for one owner, in one read. ALL three
+// arrays are owner-scoped: posts/projects by `ownerId`; categories are derived
+// down to only the taxonomy nodes this owner's own posts match (+ ancestors).
+// The CategoryEmbedding table itself is global and has no ownerId, so a dynamic
+// topic node grown from another user's content must never leak into this owner's
+// scene — see getEmbeddingSceneRows for how ownership is derived.
 export interface EmbeddingSceneRows {
   categories: CategoryEmbedding[];
   projects: (ProjectEmbedding & { project: { title: string } })[];
@@ -153,7 +157,7 @@ export interface EmbeddingSceneRows {
 export async function getEmbeddingSceneRows(
   ownerId: string
 ): Promise<EmbeddingSceneRows> {
-  const [categories, projects, postRows] = await Promise.all([
+  const [allCategories, projects, postRows] = await Promise.all([
     prisma.categoryEmbedding.findMany({ orderBy: { path: "asc" } }),
     prisma.projectEmbedding.findMany({
       where: { ownerId },
@@ -179,6 +183,25 @@ export async function getEmbeddingSceneRows(
     post: { slug: post.slug, title: post.title, projectId: post.projectId },
     matches: post.categoryMatches,
   }));
+
+  // Owner-scope the taxonomy. CategoryEmbedding is a global table (no ownerId),
+  // so we keep only the nodes THIS owner's posts actually match, then walk
+  // parentPath up to the root so every kept node stays connected for the tree.
+  // Result: the scene never reveals a category (seed or dynamic) the owner has
+  // no content under — no cross-user topic leakage via the Tree/Observatory.
+  const byPath = new Map(allCategories.map((c) => [c.path, c]));
+  const keep = new Set<string>();
+  for (const p of posts) {
+    for (const m of p.matches) {
+      let path: string | null = m.path;
+      while (path && !keep.has(path)) {
+        keep.add(path);
+        path = byPath.get(path)?.parentPath ?? null;
+      }
+    }
+  }
+  const categories = allCategories.filter((c) => keep.has(c.path));
+
   return { categories, projects, posts };
 }
 

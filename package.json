@@ -37,6 +37,7 @@
     "scene:backfill": "bun --cwd=apps/worker run scene:backfill",
     "env:production": "bun run scripts/create-production-env.ts",
     "auth:reset-password": "bun run scripts/reset-user-password.ts",
+    "reviewer:seed": "bun run scripts/create-reviewer-account.ts",
     "deploy": "bash scripts/deploy-remote.sh"
   },
   "devDependencies": {

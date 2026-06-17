@@ -69,6 +69,14 @@ function recheckSession(): Promise<boolean> {
   return inFlightRecheck;
 }
 
+// Force a server-side session check (single-flight), refreshing the stored
+// cookie if it rotated. Exposed for non-apiGet callers — the SSE channel uses
+// it to recover a rotated cookie before reconnecting, since EventSource has no
+// access to runWithAuthRetry. Resolves true if the session is still valid.
+export function refreshSession(): Promise<boolean> {
+  return recheckSession();
+}
+
 // Core retry runner. `perform` is a thunk that runs ONE attempt and either
 // returns the parsed result or throws — an ApiError carrying status 401/403
 // triggers the retry/logout policy; anything else propagates immediately. The
@@ -90,20 +98,19 @@ async function runWithAuthRetry<T>(perform: () => Promise<T>): Promise<T> {
       if (loggedOut) {
         throw err;
       }
-      // Re-check the session (single-flight). A valid session means the cookie
-      // refreshed — clear the latch and retry the original request right away.
-      const valid = await recheckSession();
-      if (valid) {
-        loggedOut = false;
-        continue;
-      }
-      // Still unauthenticated. Out of retries → sign out and surface the
-      // original error; the root layout's useSession() handles the redirect.
+      // Out of attempts → sign out and surface the original error; the root
+      // layout's useSession() handles the redirect. This cap is checked BEFORE
+      // the recheck so it also bounds the pathological case where recheckSession
+      // keeps reporting the session valid but the request still 401s (a stale/
+      // rotated local cookie the recheck can't reconcile) — without it that path
+      // re-issues forever and the caller's promise never settles.
       if (attempt >= MAX_AUTH_RETRIES) {
         if (!loggedOut) {
           loggedOut = true;
           // Logout is best-effort: even if clearing the session throws, we must
           // still surface the original ApiError, and useSession() reacts anyway.
+          // Clearing the local cookie also forces a clean re-login, which is the
+          // only recovery when the stored cookie is desynced from the server.
           try {
             await signOut();
           } catch {
@@ -111,6 +118,15 @@ async function runWithAuthRetry<T>(perform: () => Promise<T>): Promise<T> {
           }
         }
         throw err;
+      }
+      // Re-check the session (single-flight). A valid session means the cookie
+      // refreshed — clear the latch and retry the original request right away;
+      // otherwise back off before retrying. Either way the cap above eventually
+      // ends the loop.
+      const valid = await recheckSession();
+      if (valid) {
+        loggedOut = false;
+        continue;
       }
       await delay(authBackoff(attempt));
     }

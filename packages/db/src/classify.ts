@@ -1,6 +1,7 @@
 // Reverse-lookup matcher for auto-org. Given a content embedding (computed by
-// the worker), rank the global Analysis Categories and the user's existing
-// Project embeddings by cosine similarity, and decide match-vs-create.
+// the worker), rank the dynamic topic taxonomy (CategoryEmbedding rows, all grown
+// from user content) and the user's existing Project embeddings by cosine
+// similarity, and decide match-vs-create.
 //
 // Pure decision logic — no Gemini calls here; the vector is passed in. v1 does
 // brute-force in-memory cosine (fine for tens of categories + a few projects per

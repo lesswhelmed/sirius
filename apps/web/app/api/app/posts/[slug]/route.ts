@@ -1,6 +1,7 @@
 import { deletePostAndSources, findPostBySlug } from "@repo/db";
 import { revalidateTag } from "next/cache";
 import { removeRetainedForSubmission } from "../../../../../lib/originals/originals-paths";
+import { canReadPost } from "../../../../../lib/post-access";
 import { getSessionOrNull } from "../../../../../lib/session";
 
 export async function GET(
@@ -14,7 +15,10 @@ export async function GET(
 
   const { slug } = await params;
   const post = await findPostBySlug(slug);
-  if (!post) {
+  // Funnel the read decision through canReadPost (the one place the policy
+  // lives). Deny with 404, not 403, so a non-owner can't probe which slugs
+  // exist. Published posts have a public home at /listing/[slug].
+  if (!post || !(await canReadPost(post, session.user.id))) {
     return Response.json({ error: "not-found" }, { status: 404 });
   }
 

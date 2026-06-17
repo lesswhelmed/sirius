@@ -18,6 +18,7 @@ non-zero on failure.
 | `wait-completed.sh <id> [timeout_s]` | Block on DB polling until the row reaches a terminal state. Prints `completed:<slug>` or exits non-zero. |
 | `verify-post.sh <slug>` | Assert the resulting Post is reachable via `/library` and `/posts/<slug>`. |
 | `e2e.sh [URL]` | The five above, chained. |
+| `scoping-audit.sh` | Cross-user data-isolation guardrail. Seeds two A-owned marker rows, signs in as user **B**, asserts B sees none of A's rows via `/api/app/queue` + `/api/app/posts` and gets 404 on A's post + export. Needs `TEST_EMAIL_B`/`TEST_PASSWORD_B`. See `docs/SECURITY-data-scoping.md`. |
 | `teardown.sh [--delete-user]` | Close the browser; optionally drop the test user (FK-cascades). |
 
 ## Invariants

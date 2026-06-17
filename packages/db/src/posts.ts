@@ -98,6 +98,18 @@ export async function listPosts(
   };
 }
 
+// Owner-scoped cursor list for the signed-in cockpit. `ownerId` is required and
+// always overrides any caller-supplied owner, so the session-authed `/api/app/
+// posts` route cannot return another user's posts. `listPosts` stays the
+// low-level builder for the public catalog/storefront composition helpers, which
+// set their own explicit (intentionally public) filters.
+export function listOwnerPosts(
+  ownerId: string,
+  opts: Omit<ListPostsOptions, "submittedById"> = {}
+): Promise<PageResult<Post>> {
+  return listPosts({ ...opts, submittedById: ownerId });
+}
+
 // Numbered (offset) pagination for the catalog ledger. Distinct from the
 // cursor-based listPosts so each contract stays unambiguous.
 export type PostSort = "newest" | "oldest" | "title";

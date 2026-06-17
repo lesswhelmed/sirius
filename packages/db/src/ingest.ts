@@ -399,11 +399,19 @@ export interface PageResult<T> {
 
 // Cursor pagination by (createdAt desc, id). The cursor is just the trailing
 // submission id; Prisma's `cursor` + `skip: 1` handles the rest.
+//
+// `submittedById` is REQUIRED, not optional: this powers the signed-in Queue,
+// which must only ever show the caller's own submissions. Making it a required
+// positional arg means a caller physically cannot forget to scope (the unscoped
+// variant doesn't exist), which is how this surface leaked every user's queue
+// before. The worker reads its work via claimNextNonImage/claimReadyImageBatch,
+// not this helper, so it is unaffected.
 export async function listSubmissions(
+  submittedById: string,
   opts: ListSubmissionsOptions = {}
 ): Promise<PageResult<IngestSubmission>> {
   const take = Math.min(MAX_PAGE, Math.max(1, opts.limit ?? DEFAULT_PAGE));
-  const where: Prisma.IngestSubmissionWhereInput = {};
+  const where: Prisma.IngestSubmissionWhereInput = { submittedById };
   if (opts.status) {
     where.status = Array.isArray(opts.status)
       ? { in: opts.status }

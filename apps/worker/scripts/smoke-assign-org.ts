@@ -4,7 +4,8 @@
 //   2. the second REUSES that same Project (similar content matches)
 // Then deletes everything it created. Mutates the DB but cleans up after itself.
 //
-// Prereq: seed-analysis-categories.ts has been run. Needs GEMINI_API_KEY + DATABASE_URL.
+// Prereq: GEMINI_API_KEY + DATABASE_URL. The taxonomy is grown from user content
+// (dynamic topics/*); this smoke exercises auto-org against the user's own data.
 // Usage (from repo root so root .env loads):
 //   bun apps/worker/scripts/smoke-assign-org.ts
 import { prisma } from "@repo/db";

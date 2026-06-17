@@ -57,7 +57,8 @@ echo "==> pm2 startOrReload"
 pm2 startOrReload ecosystem.config.cjs --update-env
 
 # Warm the embedding-scene reverse-lookup index (Observatory / mobile Tree):
-# seed the analysis taxonomy, embed projects + posts, then smoke-check the scene.
+# embed projects + posts, then smoke-check the scene. The taxonomy is grown
+# entirely from user content (dynamic topics/* nodes) — no seed facets.
 # Idempotent — every step skips already-embedded rows — so it's safe on re-run.
 echo "==> scene backfill"
 bun run scene:backfill

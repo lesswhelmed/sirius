@@ -5,7 +5,7 @@ import { Live } from "./live";
 export default async function QueuePage() {
   const session = await requireSession("/queue");
   const [initial, projectTitles] = await Promise.all([
-    listSubmissions({ limit: 50 }),
+    listSubmissions(session.user.id, { limit: 50 }),
     listProjectTitles(session.user.id),
   ]);
 

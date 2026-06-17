@@ -10,6 +10,7 @@ import {
 
 import { DateDisplay } from "../../../../lib/date-display";
 import { getCachedPost } from "../../../../lib/cached";
+import { canReadPost } from "../../../../lib/post-access";
 import { getSessionOrNull } from "../../../../lib/session";
 import { PostImage } from "../../../_chrome/post-image";
 import { RepoChip } from "../../../_chrome/repo-chip";
@@ -71,8 +72,15 @@ export default async function PostDetailPage({
 
   const session = await getSessionOrNull();
   const userId = session?.user.id ?? null;
+  // Read gate: the cockpit detail view is owner-only today. The decision lives
+  // in canReadPost (widen it there when sharing lands) — non-readers 404 here
+  // and use the public /listing/[slug] for any published post.
+  if (!(await canReadPost(post, userId))) {
+    notFound();
+  }
   // Only the user who ingested the post may file it under a Project, download
-  // its source originals, or delete it.
+  // its source originals, or delete it. Kept separate from read access on
+  // purpose: sharing a post for reading must never grant these write actions.
   const isOwner = userId != null && post.submittedById === userId;
   const canAssign = isOwner;
   const [initialSaved, stats, projectPage, retainedSources] = await Promise.all([

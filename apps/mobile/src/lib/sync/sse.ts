@@ -9,6 +9,7 @@
 // can rotate) and uses exponential backoff + jitter.
 import EventSource from "react-native-sse";
 
+import { refreshSession } from "@/lib/api";
 import { authBaseURL, authClient } from "@/lib/auth-client";
 import { pullChanges } from "./changes-pull";
 
@@ -47,12 +48,22 @@ function scheduleReconnect(): void {
   attempts += 1;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    open();
+    void open();
   }, delay);
 }
 
-function open(): void {
+async function open(): Promise<void> {
   if (!active) return;
+  // On a reconnect (a prior connection errored — most often a 401 from a cookie
+  // that rotated server-side), force a single-flight session re-check first so
+  // getCookie() below returns the refreshed token. Without this the stream just
+  // reconnects with the same stale cookie and 401-loops. EventSource gives us no
+  // status code, so we can't tell a 401 from any other drop — refreshing on
+  // every reconnect is cheap (single-flight, shared with apiGet) and harmless.
+  if (attempts > 0) {
+    await refreshSession();
+    if (!active) return; // disconnected while awaiting the recheck
+  }
   const cookie = authClient.getCookie();
   if (!cookie) {
     // Not signed in yet — retry later (sign-in will have a cookie by then).
@@ -90,7 +101,7 @@ export function connectSse(): void {
   if (active) return; // already connected or mid-backoff
   active = true;
   attempts = 0;
-  open();
+  void open();
 }
 
 export function disconnectSse(): void {

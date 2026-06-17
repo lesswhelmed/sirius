@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
 
-  const page = await listSubmissions({
+  const page = await listSubmissions(session.user.id, {
     limit: Number.isFinite(limit) ? limit : undefined,
     cursor,
     status: status && status.length > 0 ? status : undefined,

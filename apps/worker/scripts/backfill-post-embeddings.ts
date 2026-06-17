@@ -3,8 +3,15 @@
 // same queryPrefix(retrievalText) signal the live pipeline uses, built from the
 // post's stored title/content. Idempotent: already-embedded posts are skipped
 // by the listPostsNeedingEmbedding query. Run: bun run apps/worker/scripts/backfill-post-embeddings.ts
+//
+// --reclassify: also RE-RUN classifyContent for every already-embedded post
+// (reusing the stored embedding — no re-embed) and replace its category links.
+// Use after a taxonomy change (e.g. purging seed facets) so posts that only
+// matched removed categories get re-linked to the surviving user-grown topics
+// instead of dropping out of the Tree. Off by default, so deploy is unchanged.
 import {
   listPostsNeedingEmbedding,
+  prisma,
   replacePostCategoryMatches,
   upsertPostEmbedding,
   classifyContent,
@@ -17,10 +24,45 @@ import {
 import { embedContent, embeddingHash, queryPrefix } from "../src/lib/embeddings";
 import { buildRetrievalText } from "../src/pipeline/classification/prep";
 
+// Re-link every already-embedded post to the CURRENT taxonomy via cosine, using
+// the stored embedding. Mirrors the classify step below; grows no new topics.
+async function reclassifyEmbedded(config: ReturnType<typeof getClassifyConfig>): Promise<void> {
+  let total = 0;
+  let zeroMatch = 0;
+  const rows = await prisma.postEmbedding.findMany({
+    where: { ownerId: { not: null } },
+    select: { postId: true, ownerId: true, embedding: true },
+  });
+  for (const row of rows) {
+    if (!row.ownerId) continue;
+    const { categories } = await classifyContent({
+      ownerId: row.ownerId,
+      contentEmbedding: row.embedding,
+      projectMatchMin: config.projectMatchMin,
+      categoryMatchMin: config.categoryMatchMin,
+    });
+    await replacePostCategoryMatches(
+      row.postId,
+      categories.map((c) => ({ path: c.path, score: c.score }))
+    );
+    if (categories.length === 0) zeroMatch += 1;
+    total += 1;
+  }
+  console.log(
+    `reclassify complete: ${total} post(s) re-linked, ${zeroMatch} matched no current topic`
+  );
+}
+
 async function main(): Promise<void> {
   const dimensionality = getEmbeddingDimensionality();
   const modelVersion = getEmbeddingModel();
   const config = getClassifyConfig();
+
+  if (process.argv.includes("--reclassify")) {
+    await reclassifyEmbedded(config);
+    return;
+  }
+
   let total = 0;
 
   for (;;) {

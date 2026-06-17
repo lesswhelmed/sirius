@@ -235,17 +235,14 @@ capture,notes,bookmark,read later,AI,summary,knowledge,catalog,private,links,res
 **Description** (≤4000):
 
 ```text
-Sirius turns the things you capture — links, photos, notes, code repositories, videos,
-documents, even voice memos — into clean, organized posts, drafted for you by AI.
+Sirius turns the things you capture — links, photos, notes, code repositories, videos, documents, even voice memos — into clean, organized posts, drafted for you by AI.
 
 Capture anything:
 • Paste a link to an article, listing, or repo.
 • Snap or attach photos.
 • Jot a quick note or record a voice memo.
 
-Let it draft for you. Sirius reads what you submitted and writes a structured post — title,
-summary, tags, and details — that you review, edit, and keep. On iPhone it can
-even draft entirely on-device.
+Let it draft for you. Sirius reads what you submitted and writes a structured post — title, summary, tags, and details — that you review, edit, and keep. On iPhone it can even draft entirely on-device.
 
 Stay organized:
 • Catalog — your full private library, from draft to done.
@@ -311,7 +308,7 @@ Do / don't:
 - ✅ Real in-app screens, clean status bar, portrait.
 - ✅ You may add a marketing frame/caption, but raw screenshots are accepted as-is.
 - ❌ No device bezels that misrepresent the UI, no placeholder/lorem content, no other
-   platforms' chrome.
+ platforms' chrome.
 
 - [ ] Upload the PNGs from `app-store-assets/screenshots/iphone-6.9/` to the 6.9" slot
 

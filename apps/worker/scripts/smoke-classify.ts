@@ -1,10 +1,11 @@
-// Smoke: verify the reverse-lookup matcher against the seeded Analysis Category
-// taxonomy. Embeds a text fixture (and an image fixture if a path is given via
-// SMOKE_IMAGE), runs classifyContent for a throwaway ownerId, and prints the
-// ranked categories + bestProject. Asserts at least one category clears the
-// threshold.
+// Smoke: probe the reverse-lookup matcher against the dynamic topic taxonomy
+// (CategoryEmbedding rows, all grown from user content). Embeds a text fixture
+// (and an image fixture if a path is given via SMOKE_IMAGE), runs classifyContent
+// for a throwaway ownerId, and prints the ranked categories + bestProject. An
+// empty/sparse taxonomy (a fresh DB with no ingested content yet) legitimately
+// yields zero matches — that's reported as SKIP, not FAIL.
 //
-// Prereq: run apps/worker/scripts/seed-analysis-categories.ts first.
+// Prereq: GEMINI_API_KEY + DATABASE_URL (the matcher embeds the fixture live).
 // Usage (from repo root so root .env loads):
 //   bun apps/worker/scripts/smoke-classify.ts
 //   bun apps/worker/scripts/smoke-classify.ts /path/to/photo.jpg   (image fixture)
@@ -57,15 +58,14 @@ async function main(): Promise<void> {
   }
   console.log(`bestProject: ${bestProject ? `${bestProject.projectId} (${bestProject.score.toFixed(4)})` : "none (would auto-create)"}`);
 
-  const pass = categories.length >= 1;
-  console.log(
-    pass
-      ? `PASS: ${categories.length} category match(es) above threshold`
-      : "FAIL: no category cleared the threshold (did you seed the taxonomy?)"
-  );
-  if (!pass) {
-    process.exit(1);
+  // An empty/sparse dynamic taxonomy is a valid state (no user content ingested
+  // yet), so zero matches is a SKIP rather than a failure. The matcher running
+  // without throwing is the actual thing under test.
+  if (categories.length === 0) {
+    console.log("SKIP: no dynamic categories cleared the threshold (empty/sparse taxonomy?)");
+    return;
   }
+  console.log(`PASS: ${categories.length} category match(es) above threshold`);
 }
 
 main()

@@ -3,11 +3,12 @@ import {
   buildFrontMatter,
   safeFilename,
 } from "../../../../../../lib/export/markdown";
+import { canReadPost } from "../../../../../../lib/post-access";
 import { getSessionOrNull } from "../../../../../../lib/session";
 
-// Downloadable export of a single post. Authenticated-only (internal tool).
-// Any signed-in user may export; for owner-only, gate on
-//   session.user.id === post.submittedBy?.id
+// Downloadable export of a single post. Read access is decided by canReadPost
+// (owner-only today; widen there if/when sharing lands) — never re-implement the
+// check here.
 
 export async function GET(
   request: Request,
@@ -20,7 +21,8 @@ export async function GET(
 
   const { slug } = await params;
   const post = await findPostBySlug(slug);
-  if (!post) {
+  // 404 (not 403) for non-readable slugs so existence stays unprobeable.
+  if (!post || !(await canReadPost(post, session.user.id))) {
     return Response.json({ error: "not-found" }, { status: 404 });
   }
 

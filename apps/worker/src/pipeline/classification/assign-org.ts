@@ -1,8 +1,9 @@
 // Auto-org stage. For EVERY user-attributed session-auth ingest, embed the
 // content's classification signal, reverse-look-up against the user's existing
-// Projects and the global Analysis Category taxonomy, and persist the vector +
-// category linkage (PostEmbedding + PostCategoryMatch) so the post appears in
-// the embedding space. Then, for UNSCOPED ingests only (no focus selected),
+// Projects and the dynamic topic taxonomy (grown entirely from user content),
+// and persist the vector + category linkage (PostEmbedding + PostCategoryMatch)
+// so the post appears in the embedding space. Then, for UNSCOPED ingests only
+// (no focus selected),
 // assign the best-matching Project, else reuse an existing Project/Aspiration
 // whose title matches the derived names, else auto-create an Aspiration +
 // Project. Runs after writePost (postId known) but before staged files are
@@ -98,9 +99,9 @@ function titleCaseWords(input: string): string {
 }
 
 // Deterministic names for an auto-created org (no extra LLM call). Project title
-// comes from the model's most-specific candidate category; the Aspiration
-// (scope) from a matched broad-domain analysis category, falling back to the
-// content's domain hint.
+// comes from the model's most-specific candidate category; the Aspiration (scope)
+// from the content's domain hint. Related topic names (the user-derived taxonomy
+// nodes this content matched) seed the description.
 function deriveOrgNames(
   classificationInput: ClassificationInput,
   categories: CategoryMatch[]
@@ -109,15 +110,10 @@ function deriveOrgNames(
   const projectTitle = titleCaseWords(
     prep.candidateCategories[0] ?? categories[0]?.name ?? "new-capture"
   );
-  const domainCategory = categories.find((c) =>
-    c.path.startsWith("analysis/domain/")
-  );
-  const aspirationTitle = titleCaseWords(
-    domainCategory?.name ?? prep.domainHint ?? "general"
-  );
+  const aspirationTitle = titleCaseWords(prep.domainHint ?? "general");
   const related = categories.map((c) => c.name).slice(0, 4).join(", ");
   const description = related
-    ? `Auto-created from captured material. Related analysis: ${related}.`
+    ? `Auto-created from captured material. Related topics: ${related}.`
     : "Auto-created from captured material.";
   return { projectTitle, aspirationTitle, description };
 }
@@ -251,7 +247,7 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
   // Grow/reuse the dynamic topic taxonomy from the model's proposed category
   // paths (embedding-deduped + nestable), so the post links to canonical topic
   // nodes in the Tree. Strictly non-fatal: a resolver error must not lose the
-  // facet matches or dead-letter the ingest, so we fall back to facet-only links.
+  // cosine-matched topic links or dead-letter the ingest, so we fall back to those.
   let topics: ResolvedTopic[] = [];
   try {
     topics = await resolveCategoryPaths(classificationInput.prep.candidateCategories, {
@@ -263,8 +259,9 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
     );
   }
 
-  // One PostCategoryMatch set = analysis facets + resolved topic nodes. Dedupe by
-  // path (the table is unique on [postId, path]), keeping the higher score.
+  // One PostCategoryMatch set = cosine-matched topic nodes (from classifyContent)
+  // + the freshly resolved topic nodes. Both are user-derived dynamic topics/*;
+  // dedupe by path (the table is unique on [postId, path]), keeping the higher score.
   const matchByPath = new Map<string, number>();
   for (const c of categories) {
     matchByPath.set(c.path, Math.max(matchByPath.get(c.path) ?? 0, c.score));
@@ -278,9 +275,9 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
     [...matchByPath].map(([path, score]) => ({ path, score }))
   );
 
-  // Embedding is always written above; category linkage may be empty if neither
-  // a facet nor a topic cleared its match floor. Carried out so the pipeline can
-  // flag an eligible ingest that landed with no Tree linkage.
+  // Embedding is always written above; category linkage may be empty if no topic
+  // cleared its match floor. Carried out so the pipeline can flag an eligible
+  // ingest that landed with no Tree linkage.
   const sceneRows = { postEmbeddingWritten: true, categoryMatchCount };
 
   // Reconcile the flat Category table (post colophon/listing) to the canonical

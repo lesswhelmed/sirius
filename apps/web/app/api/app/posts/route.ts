@@ -1,4 +1,4 @@
-import { listPosts, PostStatus, PostType } from "@repo/db";
+import { listOwnerPosts, PostStatus, PostType } from "@repo/db";
 import { getSessionOrNull } from "../../../../lib/session";
 
 const VALID_TYPES: ReadonlySet<PostType> = new Set<PostType>([
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
 
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
 
-  const page = await listPosts({
+  const page = await listOwnerPosts(session.user.id, {
     limit: Number.isFinite(limit) ? limit : undefined,
     cursor,
     type: type && type.length > 0 ? type : undefined,
