@@ -56,6 +56,9 @@ apps/web/public/social/
 # served by Caddy). Worker writes here at runtime; web streams them owner-gated.
 /private-uploads/
 
+# Private local-only docs (investor agreements, etc.) — never committed.
+/private/
+
 # Testing creds (agent-browser scripts)
 scripts/testing/.creds.local
 .mcp.json
