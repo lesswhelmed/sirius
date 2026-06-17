@@ -7,11 +7,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import {
   findPostBySlug,
   listCatalogPosts,
-  listPostsPage,
   listUserStorefront,
-  type ListPostsPageOptions,
-  type PageNumberResult,
-  type Post,
   type PostWithRelations,
   type StorefrontResult,
 } from "@repo/db";
@@ -20,22 +16,21 @@ export async function getCachedPost(
   slug: string
 ): Promise<PostWithRelations | null> {
   "use cache";
-  cacheLife("hours");
+  // Shared, slug-keyed cache. Freshness is event-driven (worker writes + post
+  // delete revalidate `post-${slug}` with expire:0), so this TTL is only a
+  // backstop. Kept to "minutes" — not "hours" — so any future visibility window
+  // (if canReadPost is widened or a publish/unpublish toggle is ever added and
+  // a revalidate is missed) stays small. Per-request access is still gated by
+  // canReadPost / the PUBLISHED check at every call site.
+  cacheLife("minutes");
   cacheTag(`post-${slug}`);
   return findPostBySlug(slug);
 }
 
-// The signed-in owner catalog. `opts` (including submittedById) becomes the
-// cache key, so each user's view is cached independently; the "posts" tag lets
-// the worker invalidate every catalog when it writes a new post.
-export async function getCachedOwnerCatalog(
-  opts: ListPostsPageOptions
-): Promise<PageNumberResult<Post>> {
-  "use cache";
-  cacheLife("minutes");
-  cacheTag("posts");
-  return listPostsPage(opts);
-}
+// NOTE: the signed-in owner's private catalog is intentionally NOT cached here.
+// It is personalized, session-scoped data (drafts + archived included) and must
+// never share a cross-request cache, or one account could see another's posts
+// after re-login. owner-catalog.tsx reads it directly via listPostsPage().
 
 export async function getCachedCatalog(
   q: string | undefined,

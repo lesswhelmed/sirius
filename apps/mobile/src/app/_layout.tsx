@@ -18,7 +18,9 @@ import { StyleSheet, Text, useColorScheme } from "react-native";
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { Screen } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
+import { useSession } from "@/lib/auth-client";
 import { runMigrations } from "@/lib/db/client";
+import { ensureLocalOwner } from "@/lib/db/owner";
 import { startSync, stopSync } from "@/lib/sync/engine";
 // Side-effect import: defines the background sync task at global scope so
 // headless background launches can run it.
@@ -39,13 +41,39 @@ const queryClient = new QueryClient({
 // background sync task. Every primitive is self-serialized, so overlapping
 // triggers are safe.
 function SyncRunner() {
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? null;
+
+  // The headless background task is registered at process scope; do it once.
   useEffect(() => {
-    startSync();
     void registerOutboxTask();
-    return () => {
-      stopSync();
-    };
   }, []);
+
+  // Sync follows the signed-in identity. On each login (and cold start) make
+  // sure the local store still belongs to this user — wiping it first if a
+  // different account was signed in before, so one account never sees another's
+  // mirrored posts — THEN start the loop. On sign-out (userId → null) tear the
+  // loop + SSE socket down. This covers every logout path (explicit sign-out
+  // and the forced sign-out on a stale session) through one place.
+  useEffect(() => {
+    if (!userId) {
+      stopSync();
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        await ensureLocalOwner(userId);
+      } catch (err) {
+        console.warn("[sync] ensureLocalOwner failed", err);
+      }
+      if (!cancelled) startSync();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
   return null;
 }
 

@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { type PostSort, PostStatus, PostType } from "@repo/db";
-import { getCachedOwnerCatalog } from "../../../lib/cached";
+import { listPostsPage, type PostSort, PostStatus, PostType } from "@repo/db";
 import { CatalogCard } from "./catalog-card";
 import { OwnerFilters, type SortOption } from "./owner-filters";
 import { Pagination } from "./pagination";
@@ -69,7 +68,13 @@ export async function OwnerCatalog({
       SORTS.map((s) => s.value)
     ) ?? DEFAULT_SORT;
 
-  const { items, total, page, totalPages } = await getCachedOwnerCatalog({
+  // Read the owner's private catalog directly per-request — NEVER through a
+  // shared `use cache` wrapper. This is personalized, session-scoped data
+  // (drafts + archived included); caching it cross-request risks one account
+  // seeing another's posts after a re-login. The page is already dynamic
+  // (it reads the session), so this is just a normal per-request DB query,
+  // exactly like the queue/space pages do with session.user.id.
+  const { items, total, page, totalPages } = await listPostsPage({
     submittedById: userId,
     type,
     status,
