@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.1",
+    "expo-mcp": "~0.2.1",
     "prettier": "^3.8.4",
     "tailwindcss": "^4",
     "turbo": "^2.9.18",
