@@ -22,9 +22,10 @@ export const SIGNED_IN_NAV: readonly NavItem[] = [
   { href: "/settings", label: "Settings", folio: "VI" },
 ];
 
-export const SIGNED_OUT_NAV: readonly NavItem[] = [
-  { href: "/catalog", label: "Catalog", folio: "I" },
-];
+// Empty while the public catalog is hidden (see PUBLIC_CATALOG_ENABLED): there
+// is nothing public to point a signed-out visitor at. Add items back here when
+// public/shared browsing returns.
+export const SIGNED_OUT_NAV: readonly NavItem[] = [];
 
 function NavList({
   items,
@@ -33,6 +34,9 @@ function NavList({
   items: readonly NavItem[];
   pathname: string | null;
 }) {
+  if (items.length === 0) {
+    return null;
+  }
   return (
     <nav aria-label="Primary">
       <ul className="hairline-t hairline-b flex items-stretch">

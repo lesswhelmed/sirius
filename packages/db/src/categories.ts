@@ -58,6 +58,40 @@ export async function setPostCategories(
   });
 }
 
+export type OwnerCategory = {
+  name: string;
+  displayName: string;
+  slug: string;
+  count: number;
+};
+
+// Distinct categories across an owner's posts, with how many of their posts sit
+// in each (descending), for the catalog's primary category index. Mirrors
+// listOwnerTags in tags.ts but returns `displayName` too, since the rail renders
+// the human label while filtering by `slug`. Owner-scoped so the cockpit index
+// never surfaces another user's categories.
+export async function listOwnerCategories(
+  ownerId: string
+): Promise<OwnerCategory[]> {
+  const rows = await prisma.category.findMany({
+    where: { posts: { some: { submittedById: ownerId } } },
+    select: {
+      name: true,
+      displayName: true,
+      slug: true,
+      _count: { select: { posts: { where: { submittedById: ownerId } } } },
+    },
+  });
+  return rows
+    .map((c) => ({
+      name: c.name,
+      displayName: c.displayName,
+      slug: c.slug,
+      count: c._count.posts,
+    }))
+    .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
+}
+
 // Prune flat Category rows that no longer label any post. A flat Category exists
 // only to label posts, and post-writer's connectOrCreate creates+links a row
 // atomically, so a 0-post row can only arise AFTER an unlink (e.g. when

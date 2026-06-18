@@ -152,6 +152,53 @@ const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
 
 export { Field };
 
+// A password input with a trailing show/hide eye toggle. Mirrors Field's
+// label + bordered input, but owns its own `secureTextEntry` state and reserves
+// space on the right for the toggle control.
+export function PasswordField({
+  label,
+  style,
+  ...rest
+}: Omit<TextInputProps, "secureTextEntry"> & { label?: string }) {
+  const [hidden, setHidden] = useState(true);
+  return (
+    <View style={styles.field}>
+      {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
+      <View style={styles.passwordRow}>
+        <TextInput
+          style={[styles.input, styles.passwordInput, style]}
+          placeholderTextColor={Sirius.color.inkSubtle}
+          selectionColor={Sirius.color.accent}
+          secureTextEntry={hidden}
+          {...rest}
+        />
+        <Pressable
+          onPress={() => setHidden((h) => !h)}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={hidden ? "Show password" : "Hide password"}
+          style={({ pressed }) => [
+            styles.passwordToggle,
+            pressed && styles.linkPressed,
+          ]}
+        >
+          <SymbolView
+            name={hidden ? "eye" : "eye.slash"}
+            size={20}
+            weight="regular"
+            tintColor={Sirius.color.inkMuted}
+            fallback={
+              <Text style={styles.passwordToggleGlyph}>
+                {hidden ? "Show" : "Hide"}
+              </Text>
+            }
+          />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 // Tracks soft-keyboard visibility. The one reliable primitive for "is the
 // keyboard up" — drives <KeyboardDoneButton/> and any keyboard-aware layout.
 export function useKeyboardVisible(): boolean {
@@ -539,6 +586,24 @@ const styles = StyleSheet.create({
     maxHeight: MULTILINE_MAX_HEIGHT,
     textAlignVertical: "top",
     paddingTop: 12,
+  },
+  passwordRow: { position: "relative", justifyContent: "center" },
+  passwordInput: { paddingRight: 60 },
+  passwordToggle: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  passwordToggleGlyph: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
   },
   primaryButton: {
     backgroundColor: Sirius.color.accent,

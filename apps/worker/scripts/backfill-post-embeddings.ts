@@ -10,11 +10,16 @@
 // matched removed categories get re-linked to the surviving user-grown topics
 // instead of dropping out of the Tree. Off by default, so deploy is unchanged.
 import {
+  addPostTags,
+  type CategoryMatch,
+  classifyContent,
+  deleteOrphanCategories,
   listPostsNeedingEmbedding,
   prisma,
+  removePostTags,
   replacePostCategoryMatches,
+  setPostCategories,
   upsertPostEmbedding,
-  classifyContent,
 } from "@repo/db";
 import {
   getClassifyConfig,
@@ -23,6 +28,34 @@ import {
 } from "../src/lib/ai-config";
 import { embedContent, embeddingHash, queryPrefix } from "../src/lib/embeddings";
 import { buildRetrievalText } from "../src/pipeline/classification/prep";
+import { selectPrimaryCategory } from "../src/pipeline/classification/select-primary";
+
+// Apply the single-category rule to one post from its cosine matches: link the
+// strongest match as the sole PostCategoryMatch + flat Category, and demote
+// every other matched category to a filterable tag. Mirrors assign-org so a
+// reclassify collapses legacy multi-category posts the same way a fresh ingest
+// would. Returns whether a primary was found (0-match posts drop out of Tree).
+async function applySinglePrimary(
+  postId: string,
+  categories: CategoryMatch[]
+): Promise<boolean> {
+  const primary = selectPrimaryCategory(categories, []);
+  await replacePostCategoryMatches(
+    postId,
+    primary ? [{ path: primary.path, score: primary.score }] : []
+  );
+  if (!primary) {
+    return false;
+  }
+  await setPostCategories(postId, [primary.name]);
+  const demoted = categories
+    .map((c) => c.name)
+    .filter((name) => name.toLowerCase() !== primary.name.toLowerCase());
+  await addPostTags(postId, demoted);
+  await removePostTags(postId, [primary.name]);
+  await deleteOrphanCategories();
+  return true;
+}
 
 // Re-link every already-embedded post to the CURRENT taxonomy via cosine, using
 // the stored embedding. Mirrors the classify step below; grows no new topics.
@@ -41,11 +74,8 @@ async function reclassifyEmbedded(config: ReturnType<typeof getClassifyConfig>):
       projectMatchMin: config.projectMatchMin,
       categoryMatchMin: config.categoryMatchMin,
     });
-    await replacePostCategoryMatches(
-      row.postId,
-      categories.map((c) => ({ path: c.path, score: c.score }))
-    );
-    if (categories.length === 0) zeroMatch += 1;
+    const linked = await applySinglePrimary(row.postId, categories);
+    if (!linked) zeroMatch += 1;
     total += 1;
   }
   console.log(
@@ -89,10 +119,7 @@ async function main(): Promise<void> {
           projectMatchMin: config.projectMatchMin,
           categoryMatchMin: config.categoryMatchMin,
         });
-        await replacePostCategoryMatches(
-          post.id,
-          categories.map((c) => ({ path: c.path, score: c.score }))
-        );
+        await applySinglePrimary(post.id, categories);
       }
       total += 1;
       console.log(`embedded ${post.slug} (${total})`);

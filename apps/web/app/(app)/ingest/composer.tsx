@@ -612,7 +612,6 @@ export function Composer() {
         notes: repoNotes.trim() || undefined,
       },
     ]);
-    addPill("queued", `repo · ${repoPreview.owner}/${repoPreview.repo} staged`);
     setRepoSheetOpen(false);
     setRepoUrl("");
     setRepoNotes("");

@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import {
   categoryChildren,
@@ -10,6 +10,7 @@ import {
 } from "@repo/embedding-scene/scene-queries";
 import { SpaceScene } from "@repo/embedding-scene/react/space-scene";
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
+import { TreeView } from "./tree-view";
 
 function TreeBranch({
   parent,
@@ -164,7 +165,68 @@ function IndexPanel({
   );
 }
 
+const TABS: { key: "map" | "tree"; label: string; hint: string }[] = [
+  { key: "map", label: "Map", hint: "3D" },
+  { key: "tree", label: "Tree", hint: "Outline" },
+];
+
 export function SpaceView({ scene }: { scene: EmbeddingScene }) {
+  const [tab, setTab] = useState<"map" | "tree">("map");
+  return (
+    <section>
+      <header>
+        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+          Section V — The Observatory
+        </p>
+        <h1 className="mt-1 font-display italic text-[40px] leading-[0.95] tracking-[-0.01em] sm:text-[48px]">
+          The Space<span className="text-[var(--color-accent)]">.</span>
+        </h1>
+        <p className="mt-3 max-w-md font-display italic text-[17px] leading-snug text-[var(--fg-muted)]">
+          Every analysis branch, focus area, and filed post plotted by meaning.
+          Drag to orbit a sphere, or browse the tree to dive into a branch.
+        </p>
+      </header>
+
+      <div
+        role="tablist"
+        aria-label="Observatory views"
+        className="mt-6 inline-flex border border-[var(--color-rule-strong)]"
+      >
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(t.key)}
+              className={`flex items-baseline gap-2 border-r border-[var(--color-rule-strong)] px-5 py-2.5 font-mono text-[13px] uppercase tracking-[0.18em] transition-colors last:border-r-0 ${
+                active
+                  ? "bg-[var(--color-accent)] text-[var(--color-paper)]"
+                  : "text-[var(--fg-muted)] hover:bg-[var(--color-ink)]/[0.05] hover:text-[var(--fg)]"
+              }`}
+            >
+              {t.label}
+              <span
+                aria-hidden="true"
+                className={`text-[10px] tracking-[0.12em] ${
+                  active ? "text-[var(--color-paper)]/70" : "text-[var(--fg-subtle)]"
+                }`}
+              >
+                {t.hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "map" ? <MapView scene={scene} /> : <TreeView scene={scene} />}
+    </section>
+  );
+}
+
+function MapView({ scene }: { scene: EmbeddingScene }) {
   const {
     selected,
     select,
@@ -181,21 +243,7 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
     else select(id);
   };
   return (
-    <section>
-      <header>
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-          Section V — The Observatory
-        </p>
-        <h1 className="mt-1 font-display italic text-[40px] leading-[0.95] tracking-[-0.01em] sm:text-[48px]">
-          The Space<span className="text-[var(--color-accent)]">.</span>
-        </h1>
-        <p className="mt-3 max-w-md font-display italic text-[17px] leading-snug text-[var(--fg-muted)]">
-          Every analysis branch, focus area, and filed post plotted by meaning.
-          Drag to orbit; click a sphere or a branch to inspect it.
-        </p>
-      </header>
-
-      <div className="hairline-t mt-7 flex h-[calc(100vh-8rem)] min-h-[420px] gap-6 pt-5">
+    <div className="hairline-t mt-7 flex h-[calc(100vh-8rem)] min-h-[420px] gap-6 pt-5">
         <aside className="w-64 shrink-0 overflow-y-auto">
           <h2 className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
             Analysis tree
@@ -269,6 +317,5 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
           ) : null}
         </div>
       </div>
-    </section>
   );
 }

@@ -81,14 +81,16 @@ export function GhostCta({
   );
 }
 
-// The standard hero/closing CTA pair: get the iOS app + see the catalog.
+// The standard hero/closing CTA: get the iOS app. The "See the catalog" ghost
+// CTA is omitted while the public catalog is hidden (PUBLIC_CATALOG_ENABLED) —
+// GhostCta is kept available below so it can be restored when public browsing
+// returns.
 export function CtaPair() {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <PrimaryCta href={APP_STORE_URL} external>
         Get the app
       </PrimaryCta>
-      <GhostCta href="/catalog">See the catalog</GhostCta>
     </div>
   );
 }

@@ -1,8 +1,18 @@
 import Link from "next/link";
-import { listPostsPage, type PostSort, PostStatus, PostType } from "@repo/db";
+import {
+  countPosts,
+  listOwnerCategories,
+  listOwnerTags,
+  listPostsPage,
+  type PostSort,
+  PostStatus,
+  PostType,
+} from "@repo/db";
 import { CatalogCard } from "./catalog-card";
+import { CategoryIndex } from "./category-index";
 import { OwnerFilters, type SortOption } from "./owner-filters";
 import { Pagination } from "./pagination";
+import { TagFilterBox } from "./tag-filter-box";
 
 const TYPES: PostType[] = ["CONCRETE", "BLOG", "FINDING", "SIGHT", "SOCIAL"];
 const STATUSES: PostStatus[] = ["PUBLISHED", "DRAFT", "ARCHIVED"];
@@ -53,6 +63,18 @@ export async function OwnerCatalog({
     typeof searchParams.status === "string" ? searchParams.status : null;
   const qParam =
     typeof searchParams.q === "string" ? searchParams.q : undefined;
+  // The tag param is a comma-joined list of slugs (multi-select, AND semantics).
+  const tagParams =
+    typeof searchParams.tag === "string"
+      ? searchParams.tag
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : [];
+  const categoryParam =
+    typeof searchParams.category === "string"
+      ? searchParams.category
+      : undefined;
   const sortParam =
     typeof searchParams.sort === "string" ? searchParams.sort : null;
   const pageParam =
@@ -74,17 +96,45 @@ export async function OwnerCatalog({
   // seeing another's posts after a re-login. The page is already dynamic
   // (it reads the session), so this is just a normal per-request DB query,
   // exactly like the queue/space pages do with session.user.id.
-  const { items, total, page, totalPages } = await listPostsPage({
-    submittedById: userId,
-    type,
-    status,
-    q: qParam,
-    sort,
-    page: Number.isFinite(pageParam) ? pageParam : 1,
-    pageSize: PAGE_SIZE,
-  });
+  const [
+    { items, total, page, totalPages },
+    ownerTags,
+    ownerCategories,
+    totalCount,
+  ] = await Promise.all([
+    listPostsPage({
+      submittedById: userId,
+      type,
+      status,
+      q: qParam,
+      tags: tagParams,
+      category: categoryParam,
+      sort,
+      page: Number.isFinite(pageParam) ? pageParam : 1,
+      pageSize: PAGE_SIZE,
+      includeTaxonomy: true,
+    }),
+    listOwnerTags(userId),
+    listOwnerCategories(userId),
+    // Unfiltered total for the rail's "All Work" entry, so it stays stable as
+    // categories/tags narrow the list.
+    countPosts({ submittedById: userId }),
+  ]);
 
-  const isFiltered = Boolean(type || status || (qParam && qParam.length > 0));
+  // The active category's human label (the URL carries the slug); fall back to
+  // the slug if its row is gone (e.g. the last post for it was just deleted).
+  const activeCategoryLabel = categoryParam
+    ? (ownerCategories.find((c) => c.slug === categoryParam)?.displayName ??
+      categoryParam)
+    : undefined;
+
+  const isFiltered = Boolean(
+    type ||
+      status ||
+      (qParam && qParam.length > 0) ||
+      tagParams.length > 0 ||
+      categoryParam
+  );
 
   return (
     <section>
@@ -121,68 +171,101 @@ export async function OwnerCatalog({
         </div>
       </header>
 
-      <div className="hairline-t mt-7 pt-4">
-        <OwnerFilters
-          types={TYPES}
-          statuses={STATUSES}
-          typeLabels={TYPE_LABEL}
-          sorts={SORTS}
-          defaultSort={DEFAULT_SORT}
-          activeType={type}
-          activeStatus={status}
-          activeSort={sort}
-          q={qParam ?? ""}
-        />
-      </div>
+      {/* Two-zone layout: the left rail is the primary navigation (category
+          index) + the secondary tag refine box; the filter ledger + entry list
+          fill the main column. The rail collapses above the list on narrow
+          viewports. */}
+      <div className="hairline-t mt-7 flex flex-col gap-8 pt-7 lg:flex-row lg:gap-12">
+        {ownerCategories.length > 0 || ownerTags.length > 0 ? (
+          <aside className="lg:w-[260px] lg:shrink-0">
+            <div className="flex flex-col gap-8 lg:sticky lg:top-8">
+              {ownerCategories.length > 0 ? (
+                <CategoryIndex
+                  categories={ownerCategories}
+                  totalCount={totalCount}
+                  activeCategory={categoryParam}
+                />
+              ) : null}
+              {ownerTags.length > 0 ? (
+                <TagFilterBox tags={ownerTags} activeTags={tagParams} />
+              ) : null}
+            </div>
+          </aside>
+        ) : null}
 
-      {items.length === 0 ? (
-        <div className="mt-10 border-y border-[var(--color-rule)] py-20 text-center">
-          <p
-            aria-hidden="true"
-            className="font-display italic text-[56px] leading-none text-[var(--color-rule-strong)]"
-          >
-            ∅
-          </p>
-          <p className="mt-5 font-display italic text-[26px] leading-tight text-[var(--fg-muted)]">
-            {isFiltered
-              ? "Nothing matches those filters."
-              : "Your catalog is empty."}
-          </p>
-          <p className="mt-3 text-[15px] text-[var(--fg-subtle)]">
-            {isFiltered ? (
-              "Loosen a filter or clear the search to see more of your work."
-            ) : (
-              <>
-                Submit something on{" "}
-                <Link
-                  href="/ingest"
-                  className="text-[var(--color-accent)] underline underline-offset-4"
+        <div className="flex min-w-0 flex-1 flex-col">
+          <OwnerFilters
+            types={TYPES}
+            statuses={STATUSES}
+            typeLabels={TYPE_LABEL}
+            sorts={SORTS}
+            defaultSort={DEFAULT_SORT}
+            activeType={type}
+            activeStatus={status}
+            activeSort={sort}
+            q={qParam ?? ""}
+            tags={ownerTags}
+            activeTags={tagParams}
+            activeCategory={categoryParam}
+            activeCategoryLabel={activeCategoryLabel}
+          />
+
+          {/* Fixed-height, internally-scrolling result region. Its height is tied
+              to the viewport, NOT the number of entries, so paging/filtering
+              never shifts the surrounding layout — the list just scrolls within
+              itself. */}
+          <div className="mt-7 h-[60vh] min-h-[420px] overflow-y-auto border-t border-[var(--color-rule-emphatic)] [scrollbar-color:var(--color-rule-strong)_transparent] [scrollbar-width:thin]">
+            {items.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                <p
+                  aria-hidden="true"
+                  className="font-display italic text-[56px] leading-none text-[var(--color-rule-strong)]"
                 >
-                  Ingest
-                </Link>{" "}
-                to fill it.
-              </>
+                  ∅
+                </p>
+                <p className="mt-5 font-display italic text-[26px] leading-tight text-[var(--fg-muted)]">
+                  {isFiltered
+                    ? "Nothing matches those filters."
+                    : "Your catalog is empty."}
+                </p>
+                <p className="mt-3 text-[15px] text-[var(--fg-subtle)]">
+                  {isFiltered ? (
+                    "Loosen a filter or clear the search to see more of your work."
+                  ) : (
+                    <>
+                      Submit something on{" "}
+                      <Link
+                        href="/ingest"
+                        className="text-[var(--color-accent)] underline underline-offset-4"
+                      >
+                        Ingest
+                      </Link>{" "}
+                      to fill it.
+                    </>
+                  )}
+                </p>
+              </div>
+            ) : (
+              <ul>
+                {items.map((post) => (
+                  <li
+                    key={post.id}
+                    className="border-b border-[var(--color-rule)] transition-colors hover:bg-[var(--color-paper-raised)]/40"
+                  >
+                    <CatalogCard post={post} />
+                  </li>
+                ))}
+              </ul>
             )}
-          </p>
-        </div>
-      ) : (
-        <ul className="mt-8 border-t border-[var(--color-rule-emphatic)]">
-          {items.map((post) => (
-            <li
-              key={post.id}
-              className="border-b border-[var(--color-rule)] transition-colors hover:bg-[var(--color-paper-raised)]/40"
-            >
-              <CatalogCard post={post} />
-            </li>
-          ))}
-        </ul>
-      )}
+          </div>
 
-      {totalPages > 1 ? (
-        <div className="rule-emphatic-t mt-10 pt-4">
-          <Pagination page={page} totalPages={totalPages} />
+          {totalPages > 1 ? (
+            <div className="rule-emphatic-t mt-6 pt-4">
+              <Pagination page={page} totalPages={totalPages} />
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }

@@ -82,6 +82,13 @@ export default function SignInScreen() {
               onChangeText={setPassword}
               editable={!busy}
             />
+            <View style={styles.forgotRow}>
+              <TextLink
+                label="Forgot password?"
+                tone={Sirius.color.inkMuted}
+                onPress={() => router.push("/(auth)/forgot-password")}
+              />
+            </View>
             <PrimaryButton label="Sign in" onPress={handleSubmit} busy={busy} />
           </View>
 
@@ -107,6 +114,11 @@ const styles = StyleSheet.create({
     gap: Sirius.space.xl,
   },
   form: { gap: Sirius.space.lg },
+  forgotRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: -Sirius.space.sm,
+  },
   footer: {
     flexDirection: "row",
     justifyContent: "center",

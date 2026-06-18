@@ -11,6 +11,7 @@
 // already exists, so a classification error must never dead-letter an
 // otherwise-successful ingest.
 import {
+  addPostTags,
   assignPostToProject,
   type CategoryMatch,
   classifyContent,
@@ -22,6 +23,7 @@ import {
   getProject,
   getProjectEmbedding,
   listProjectsNeedingEmbedding,
+  removePostTags,
   replacePostCategoryMatches,
   setPostCategories,
   setSubmissionProject,
@@ -33,6 +35,7 @@ import { embedContent, embeddingHash, queryPrefix } from "../../lib/embeddings";
 import type { PipelineInput } from "../types";
 import type { ClassificationInput } from "./adapters";
 import { type ResolvedTopic, resolveCategoryPaths } from "./resolve-categories";
+import { selectPrimaryCategory } from "./select-primary";
 
 export interface AssignOrgArgs {
   input: PipelineInput;
@@ -259,20 +262,17 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
     );
   }
 
-  // One PostCategoryMatch set = cosine-matched topic nodes (from classifyContent)
-  // + the freshly resolved topic nodes. Both are user-derived dynamic topics/*;
-  // dedupe by path (the table is unique on [postId, path]), keeping the higher score.
-  const matchByPath = new Map<string, number>();
-  for (const c of categories) {
-    matchByPath.set(c.path, Math.max(matchByPath.get(c.path) ?? 0, c.score));
-  }
-  for (const t of topics) {
-    matchByPath.set(t.path, Math.max(matchByPath.get(t.path) ?? 0, t.score));
-  }
-  const categoryMatchCount = matchByPath.size;
+  // A post carries exactly ONE category — the strongest embedding match (cosine
+  // matches preferred; the model's primary resolved topic as fallback). It links
+  // to that single node in BOTH the hierarchical-embedding space
+  // (PostCategoryMatch) and the flat Category table (colophon). The scene's
+  // ownership walk in getEmbeddingSceneRows pulls the branch's ancestors via
+  // parentPath, so a single leaf match still renders a connected Tree.
+  const primary = selectPrimaryCategory(categories, topics);
+  const categoryMatchCount = primary ? 1 : 0;
   await replacePostCategoryMatches(
     postId,
-    [...matchByPath].map(([path, score]) => ({ path, score }))
+    primary ? [{ path: primary.path, score: primary.score }] : []
   );
 
   // Embedding is always written above; category linkage may be empty if no topic
@@ -280,21 +280,28 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
   // ingest that landed with no Tree linkage.
   const sceneRows = { postEmbeddingWritten: true, categoryMatchCount };
 
-  // Reconcile the flat Category table (post colophon/listing) to the canonical
-  // resolved leaf names so it dedupes too. Non-fatal.
-  if (topics.length > 0) {
+  // Reconcile the flat Category + Tag tables. The single primary becomes the
+  // post's only category; every OTHER resolved topic is demoted to a filterable
+  // tag (so nothing the model surfaced is lost — it just stops being a second
+  // category). Non-fatal.
+  if (primary) {
     try {
-      await setPostCategories(
-        postId,
-        topics.map((t) => t.name)
-      );
-      // The relink above (set: []) can orphan the path/synonym rows post-writer
-      // created; prune any Category left labeling zero posts so the table doesn't
-      // grow junk across ingests.
+      await setPostCategories(postId, [primary.name]);
+      // Surplus categories -> tags. addPostTags is additive (keeps the model's
+      // own tags); removePostTags guarantees the primary is never ALSO a tag,
+      // including the surplus rows post-writer may have demoted by order.
+      const demoted = topics
+        .map((t) => t.name)
+        .filter((name) => name.toLowerCase() !== primary.name.toLowerCase());
+      await addPostTags(postId, demoted);
+      await removePostTags(postId, [primary.name]);
+      // setPostCategories' relink (set: []) can orphan the path/synonym rows
+      // post-writer created; prune any Category left labeling zero posts so the
+      // table doesn't grow junk across ingests.
       await deleteOrphanCategories();
     } catch (error) {
       console.warn(
-        `[assign-org] flat-category reconcile failed: ${error instanceof Error ? error.message : String(error)}`
+        `[assign-org] taxonomy reconcile failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

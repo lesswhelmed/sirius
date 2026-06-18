@@ -5,6 +5,10 @@ import { PostStatus } from "@repo/db";
 
 import { DateDisplay } from "../../../../lib/date-display";
 import { getCachedPost } from "../../../../lib/cached";
+import { getSessionOrNull } from "../../../../lib/session";
+import { canReadPost } from "../../../../lib/post-access";
+import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
+import { denyCatalogAccess } from "../../../../lib/catalog-access";
 import { PostImage } from "../../../_chrome/post-image";
 
 const MARKDOWN_CLASS_NAME = [
@@ -29,8 +33,18 @@ export default async function ListingPage({
 }) {
   const { slug } = await params;
   const post = await getCachedPost(slug);
-  if (!post || post.status !== PostStatus.PUBLISHED) {
+  if (!post) {
     notFound();
+  }
+
+  // Read gating lives in canReadPost (owner-only today; widened for friends
+  // later). The public, published-for-anyone path only opens when the public
+  // catalog is enabled; otherwise non-owners are redirected.
+  const viewerId = (await getSessionOrNull())?.user.id ?? null;
+  const publicOk =
+    PUBLIC_CATALOG_ENABLED && post.status === PostStatus.PUBLISHED;
+  if (!publicOk && !(await canReadPost(post, viewerId))) {
+    denyCatalogAccess(viewerId, `/listing/${slug}`);
   }
 
   const authorHandle = post.submittedBy?.handle ?? null;

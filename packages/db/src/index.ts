@@ -47,6 +47,7 @@ export * from "./analytics";
 export * from "./projects";
 export * from "./embeddings";
 export * from "./categories";
+export * from "./tags";
 export * from "./classify";
 export * from "./notify";
 export * from "./archive";

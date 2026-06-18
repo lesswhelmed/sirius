@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { DateDisplay } from "../../../../lib/date-display";
 import type { DateInput } from "../../../../lib/datetime";
+import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
 import { ShareButton } from "./share-button";
 import { SaveButton } from "./save-button";
 import { DeletePostButton } from "./delete-post-button";
@@ -21,6 +23,7 @@ type TabKey = "details" | "history" | "analytics";
 export interface ColophonTag {
   id: string;
   name: string;
+  slug: string;
 }
 
 export interface ColophonCategory {
@@ -139,7 +142,10 @@ export function ColophonTabs({
             projects={projects}
             canAssign={canAssign}
           />
-          <ShareButton slug={post.slug} />
+          {/* Share copies a public /listing/<slug> link; hidden while the
+              public catalog is private (PUBLIC_CATALOG_ENABLED) since non-owners
+              would only be bounced to sign-in. */}
+          {PUBLIC_CATALOG_ENABLED ? <ShareButton slug={post.slug} /> : null}
           <a
             href={`/api/app/posts/${post.slug}/export?format=json`}
             download
@@ -250,7 +256,12 @@ function DetailsTab({ post }: { post: ColophonPost }) {
             <div className="flex flex-wrap gap-x-2 gap-y-1">
               {post.tags.map((t, i) => (
                 <span key={t.id} className="font-display italic text-[15px]">
-                  {t.name}
+                  <Link
+                    href={`/catalog?tag=${encodeURIComponent(t.slug)}`}
+                    className="underline decoration-transparent underline-offset-4 transition-colors hover:decoration-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                  >
+                    {t.name}
+                  </Link>
                   {i < post.tags.length - 1 ? (
                     <span aria-hidden="true" className="ml-2 text-[var(--fg-subtle)]">
                       ,

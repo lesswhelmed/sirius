@@ -31,7 +31,7 @@ export const PostDraftSchema = z.object({
     .min(1)
     .max(3)
     .describe(
-      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'technology/artificial-intelligence', 'design/typography'). Reuse common broad top-level fields (technology, design, business, history, science, art, lifestyle, finance) rather than inventing near-duplicates. A single broad term with no subtopic is fine (e.g. 'cooking')."
+      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'technology/artificial-intelligence', 'design/typography'), ORDERED most-representative first (the post keeps only the single best-fitting category; the rest become tags). Reuse common broad top-level fields (technology, design, business, history, science, art, lifestyle, finance) rather than inventing near-duplicates. A single broad term with no subtopic is fine (e.g. 'cooking')."
     ),
   body: z
     .string()
@@ -65,7 +65,7 @@ export const SightDraftSchema = z.object({
     .min(1)
     .max(3)
     .describe(
-      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'objects/footwear', 'nature/plants'). Reuse common broad top-level fields rather than inventing near-duplicates. A single broad term with no subtopic is fine."
+      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'objects/footwear', 'nature/plants'), ORDERED most-representative first (the post keeps only the single best-fitting category; the rest become tags). Reuse common broad top-level fields rather than inventing near-duplicates. A single broad term with no subtopic is fine."
     ),
   body: z
     .string()

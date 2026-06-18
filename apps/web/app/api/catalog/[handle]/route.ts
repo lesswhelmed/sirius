@@ -1,9 +1,16 @@
 import { listUserStorefront } from "@repo/db";
+import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ handle: string }> },
 ) {
+  // No public storefront feed while the catalog is private. 404 so the
+  // endpoint's existence isn't advertised. Re-enable via the flag.
+  if (!PUBLIC_CATALOG_ENABLED) {
+    return new Response("Not found", { status: 404 });
+  }
+
   const { handle } = await params;
   const url = new URL(request.url);
   const cursor = url.searchParams.get("cursor") ?? undefined;

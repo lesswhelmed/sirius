@@ -1,5 +1,13 @@
+// Canonical post detail, reached by slug from the Library card, the Tree index,
+// and the Space/Observatory. Local-mirror-first: a synced post is rendered
+// straight from the on-device SQLite mirror (instant, fully offline, updates live
+// via useLiveQuery) — the same source the draft view uses, so the user keeps
+// seeing THE SAME post before, during, and after sync. The network fetch is only a
+// fallback for a slug that was never pulled into the mirror (a rare deep-link).
 import type { Category, Post, Tag } from "@repo/db";
 import { useQuery } from "@tanstack/react-query";
+import { useLiveQuery } from "drizzle-orm/expo-sqlite";
+import { and, eq, ne } from "drizzle-orm";
 import { Image } from "expo-image";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
@@ -9,11 +17,25 @@ import { KindLabel, Screen, Title } from "@/components/sirius";
 import { PostMarkdown } from "@/components/post-markdown";
 import { PostTypeTone, Sirius } from "@/constants/theme";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
+import { db } from "@/lib/db/client";
+import { posts, type PostRow } from "@/lib/db/schema";
 import { preparePostMarkdown } from "@/lib/post-markdown";
 
 type PostDetail = Post & { tags: Tag[]; categories: Category[] };
 
 type SightImage = { url: string; alt: string };
+
+// The normalized shape both sources render through, so the mirror branch and the
+// server-fallback branch can never drift in how a post looks.
+type PostView = {
+  type: string;
+  images: SightImage[];
+  imageUrl: string | null;
+  title: string;
+  tags: string[];
+  excerpt: string | null;
+  content: string;
+};
 
 // A gallery photo that degrades to a labeled placeholder on load failure (a
 // deleted/moved file), mirroring the web PostImage "No plate" behavior so the
@@ -56,6 +78,33 @@ function parseSightImages(value: unknown): SightImage[] {
   return out;
 }
 
+// Mirror row → view. body ↔ content; tags is already string[]; images already
+// {url, alt}. parseSightImages also tolerates the local PostImage[] shape.
+function viewFromRow(row: PostRow): PostView {
+  return {
+    type: row.type,
+    images: parseSightImages(row.images),
+    imageUrl: row.imageUrl,
+    title: row.title,
+    tags: row.tags ?? [],
+    excerpt: row.excerpt,
+    content: row.body,
+  };
+}
+
+// Server post → view. content is the markdown body; tags are Tag[] (name only).
+function viewFromServer(data: PostDetail): PostView {
+  return {
+    type: data.type,
+    images: parseSightImages(data.images),
+    imageUrl: data.imageUrl,
+    title: data.title,
+    tags: data.tags.map((t) => t.name),
+    excerpt: data.excerpt,
+    content: data.content,
+  };
+}
+
 const TYPE_LABEL: Record<string, string> = {
   CONCRETE: "Concrete",
   BLOG: "Dispatch",
@@ -70,43 +119,71 @@ export default function PostDetailScreen() {
   // Absent when pushed from another in-stack screen (the Tree index, Space) —
   // there the default (previous screen's title) is already the right label.
   const { slug, from } = useLocalSearchParams<{ slug: string; from?: string }>();
+
+  // Local mirror first. `localRows === undefined` means the live query hasn't
+  // resolved yet; an empty array means there's genuinely no local copy.
+  const { data: localRows } = useLiveQuery(
+    db
+      .select()
+      .from(posts)
+      .where(and(eq(posts.slug, slug), ne(posts.syncState, "tombstone")))
+      .limit(1)
+  );
+  const localLoaded = localRows !== undefined;
+  const localRow = localRows?.[0] ?? null;
+  // Only hit the network for a slug the mirror doesn't have (deep-link to a post
+  // never pulled). Synced posts render entirely offline from the mirror.
+  const useServer = localLoaded && !localRow;
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["post", slug],
     queryFn: () => apiGet<PostDetail>(`/api/app/posts/${slug}`),
-    enabled: !!slug,
+    enabled: !!slug && useServer,
   });
 
-  if (isLoading) {
+  // Wait for the mirror to resolve before deciding mirror-vs-server, so a synced
+  // post never flashes the server spinner/error on the way in.
+  const loading = !localLoaded || (useServer && isLoading);
+  if (loading) {
     return (
       <Screen style={styles.centered}>
         <ActivityIndicator color={Sirius.color.accent} />
       </Screen>
     );
   }
-  if (isError || !data) {
+
+  const view = localRow
+    ? viewFromRow(localRow)
+    : data
+    ? viewFromServer(data)
+    : null;
+
+  if (!view) {
     return (
       <Screen style={styles.centeredPad}>
         <Text style={styles.errorTitle}>Couldn’t load post</Text>
         <Text style={styles.errorBody}>
-          {(error as Error | undefined)?.message ?? "Not found."}
+          {isError
+            ? (error as Error | undefined)?.message ?? "Not found."
+            : "Not found."}
         </Text>
       </Screen>
     );
   }
 
-  const tone = PostTypeTone[data.type] ?? Sirius.color.inkMuted;
-  const sightImages = parseSightImages(data.images);
+  const tone = PostTypeTone[view.type] ?? Sirius.color.inkMuted;
+  const sightImages = view.images;
   // When a SIGHT gallery is present it already includes the hero (images[0]),
   // so render the gallery and skip the standalone hero to avoid showing the
   // first photo twice. Otherwise fall back to the single cover image.
   const heroUri =
-    sightImages.length > 0 ? undefined : resolveMediaUrl(data.imageUrl);
+    sightImages.length > 0 ? undefined : resolveMediaUrl(view.imageUrl);
 
   return (
     <Screen>
       <Stack.Screen
         options={{
-          title: TYPE_LABEL[data.type] ?? "Post",
+          title: TYPE_LABEL[view.type] ?? "Post",
           headerStyle: { backgroundColor: Sirius.color.paper },
           headerTintColor: Sirius.color.ink,
           ...(from ? { headerBackTitle: from } : {}),
@@ -124,21 +201,21 @@ export default function PostDetailScreen() {
         {sightImages.map((img, i) => (
           <GalleryImage key={`${img.url}-${i}`} image={img} />
         ))}
-        <KindLabel tone={tone}>{TYPE_LABEL[data.type] ?? data.type}</KindLabel>
-        <Title accent=".">{data.title}</Title>
-        {data.tags.length > 0 ? (
+        <KindLabel tone={tone}>{TYPE_LABEL[view.type] ?? view.type}</KindLabel>
+        <Title accent=".">{view.title}</Title>
+        {view.tags.length > 0 ? (
           <View style={styles.tagsRow}>
-            {data.tags.map((tag) => (
-              <View key={tag.id} style={styles.tag}>
-                <Text style={styles.tagText}>{tag.name}</Text>
+            {view.tags.map((tag) => (
+              <View key={tag} style={styles.tag}>
+                <Text style={styles.tagText}>{tag}</Text>
               </View>
             ))}
           </View>
         ) : null}
-        {data.excerpt ? <Text style={styles.excerpt}>{data.excerpt}</Text> : null}
-        {data.content ? (
+        {view.excerpt ? <Text style={styles.excerpt}>{view.excerpt}</Text> : null}
+        {view.content ? (
           <PostMarkdown
-            markdown={preparePostMarkdown(data.content, {
+            markdown={preparePostMarkdown(view.content, {
               hasGallery: sightImages.length > 0,
             })}
           />

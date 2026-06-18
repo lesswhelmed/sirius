@@ -6,7 +6,7 @@ import { nextCookies } from "better-auth/next-js";
 import { admin } from "better-auth/plugins/admin";
 
 import { DEV_HOSTS } from "../dev-hosts.js";
-import { sendEmail } from "./email";
+import { renderEmail, sendEmail } from "./email";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -62,10 +62,17 @@ export const auth = betterAuth({
       await sendEmail({
         to: user.email,
         subject: "Reset your password",
-        html: `<p>Hi ${user.name ?? "there"},</p>
-<p>Click the link below to reset your password:</p>
-<p><a href="${url}">${url}</a></p>
-<p>If you didn't request this, you can safely ignore this email.</p>`,
+        html: renderEmail({
+          eyebrow: "New key",
+          heading: "Reset your password.",
+          body: [
+            `Hi ${user.name ?? "there"},`,
+            "We received a request to reset the password on your Sirius account. Use the button below to choose a new one.",
+          ],
+          cta: { label: "Set a new password", url },
+          footnote:
+            "This link expires in about an hour. If you didn't request a reset, you can safely ignore this email — your password stays unchanged.",
+        }),
       });
     },
   },
@@ -79,9 +86,16 @@ export const auth = betterAuth({
       await sendEmail({
         to: user.email,
         subject: "Verify your email",
-        html: `<p>Welcome, ${user.name ?? "there"}!</p>
-<p>Click the link below to verify your email address:</p>
-<p><a href="${url}">${url}</a></p>`,
+        html: renderEmail({
+          eyebrow: "Welcome",
+          heading: "Verify your email.",
+          body: [
+            `Welcome, ${user.name ?? "there"}!`,
+            "Confirm your email address to finish setting up your Sirius account.",
+          ],
+          cta: { label: "Verify email", url },
+          footnote: "If you didn't create a Sirius account, you can ignore this email.",
+        }),
       });
     },
   },

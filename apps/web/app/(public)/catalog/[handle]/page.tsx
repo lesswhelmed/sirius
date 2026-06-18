@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DateDisplay } from "../../../../lib/date-display";
 import { getCachedStorefront } from "../../../../lib/cached";
+import { getSessionOrNull } from "../../../../lib/session";
+import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
+import { denyCatalogAccess } from "../../../../lib/catalog-access";
 import { PostImage } from "../../../_chrome/post-image";
 
 export default async function PublicCatalogPage({
@@ -13,6 +16,15 @@ export default async function PublicCatalogPage({
   const result = await getCachedStorefront(handle, 120);
   if (!result) {
     notFound();
+  }
+
+  // While the public catalog is disabled, a storefront is only its owner's
+  // (published-only) self-preview. Everyone else is redirected.
+  if (!PUBLIC_CATALOG_ENABLED) {
+    const viewerId = (await getSessionOrNull())?.user.id ?? null;
+    if (viewerId == null || result.user.id !== viewerId) {
+      denyCatalogAccess(viewerId, `/catalog/${handle}`);
+    }
   }
 
   const { user, posts } = result;

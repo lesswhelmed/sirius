@@ -30,6 +30,17 @@ export interface PostFilters {
   published?: boolean;
   q?: string;
   submittedById?: string;
+  // Filter to posts carrying this tag (matched by Tag.slug). Combines with the
+  // other filters as AND. Kept for callers/links that pass a single tag; folds
+  // into `tags` below.
+  tag?: string;
+  // Multi-tag refine (matched by Tag.slug), AND semantics — a post must carry
+  // EVERY listed tag to match (one `where.AND` clause per tag). The catalog tag
+  // strip is multi-select, so this is the primary tag filter; `tag` is merged in.
+  tags?: string[];
+  // Filter to the single primary category (matched by Category.slug). A post has
+  // exactly one category in the shipped data model, so this is an equality narrow.
+  category?: string;
 }
 
 // Shared filter semantics for listPosts / listPostsPage / countPosts so the
@@ -59,6 +70,20 @@ function buildPostWhere(opts: PostFilters): Prisma.PostWhereInput {
   }
   if (opts.submittedById) {
     where.submittedById = opts.submittedById;
+  }
+  // Multi-tag refine with AND semantics: a post must carry every selected tag,
+  // so each tag becomes its OWN `{ tags: { some } }` clause (a single `some`
+  // with `slug: { in }` would be OR — match ANY). The legacy single `tag` is
+  // folded into the same set so both entry points share one code path.
+  const tagSlugs = [...(opts.tags ?? []), ...(opts.tag ? [opts.tag] : [])]
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  const uniqueTagSlugs = [...new Set(tagSlugs)];
+  if (uniqueTagSlugs.length > 0) {
+    where.AND = uniqueTagSlugs.map((slug) => ({ tags: { some: { slug } } }));
+  }
+  if (opts.category && opts.category.trim().length > 0) {
+    where.categories = { some: { slug: opts.category.trim() } };
   }
   return where;
 }
@@ -127,6 +152,9 @@ export interface ListPostsPageOptions extends PostFilters {
   pageSize?: number; // default 50, max 200
   sort?: PostSort; // default "newest"
   includeSubmitter?: boolean;
+  // Include the post's tags + single category so the catalog card can render its
+  // taxonomy footer (category pill + tag chips) without an N+1 follow-up query.
+  includeTaxonomy?: boolean;
 }
 
 export type PageNumberResult<T> = {
@@ -137,9 +165,17 @@ export type PageNumberResult<T> = {
   totalPages: number;
 };
 
+// A list row that may carry its relations depending on the include flags. The
+// relation fields are optional so a `Post`-typed consumer still accepts it.
+export type PostListItem = Post & {
+  submittedBy?: SubmitterSummary | null;
+  tags?: Tag[];
+  categories?: Category[];
+};
+
 export async function listPostsPage(
   opts: ListPostsPageOptions = {}
-): Promise<PageNumberResult<Post>> {
+): Promise<PageNumberResult<PostListItem>> {
   const pageSize = Math.min(MAX_PAGE, Math.max(1, opts.pageSize ?? DEFAULT_PAGE));
   const requestedPage = Math.max(1, Math.floor(opts.page ?? 1));
   const where = buildPostWhere(opts);
@@ -151,23 +187,27 @@ export async function listPostsPage(
   const page = Math.min(requestedPage, totalPages);
   const orderBy = POST_ORDER_BY[opts.sort ?? "newest"];
 
+  const include: Prisma.PostInclude = {};
+  if (opts.includeSubmitter) {
+    include.submittedBy = {
+      select: { id: true, name: true, handle: true, image: true },
+    };
+  }
+  if (opts.includeTaxonomy) {
+    include.tags = true;
+    include.categories = true;
+  }
+  const hasInclude = Object.keys(include).length > 0;
+
   const items = await prisma.post.findMany({
     where,
     orderBy,
     skip: (page - 1) * pageSize,
     take: pageSize,
-    ...(opts.includeSubmitter
-      ? {
-          include: {
-            submittedBy: {
-              select: { id: true, name: true, handle: true, image: true },
-            },
-          },
-        }
-      : {}),
+    ...(hasInclude ? { include } : {}),
   });
 
-  return { items, page, pageSize, total, totalPages };
+  return { items: items as PostListItem[], page, pageSize, total, totalPages };
 }
 
 export function countPosts(filters: PostFilters = {}): Promise<number> {

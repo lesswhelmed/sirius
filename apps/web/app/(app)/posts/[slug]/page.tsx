@@ -201,7 +201,11 @@ export default async function PostDetailPage({
             lastSyncedAt: post.lastSyncedAt,
             originalDate: post.originalDate,
             projectId: post.projectId,
-            tags: post.tags.map((t) => ({ id: t.id, name: t.name })),
+            tags: post.tags.map((t) => ({
+              id: t.id,
+              name: t.name,
+              slug: t.slug,
+            })),
             categories: post.categories.map((c) => ({
               id: c.id,
               displayName: c.displayName,

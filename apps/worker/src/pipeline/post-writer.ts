@@ -316,11 +316,6 @@ export async function writePost(
     sightImages = pairImagesWithAlts(urls, parsed.frontmatter, parsed.title);
   }
 
-  const tagNames = dedupeByName(
-    Array.isArray(parsed.frontmatter.tags)
-      ? (parsed.frontmatter.tags as string[])
-      : []
-  );
   // Draft categories are slash-delimited paths (e.g. "lifestyle/beekeeping").
   // The flat Category table is labeled by LEAF segment only ("beekeeping"), both
   // so the fallback colophon reads sensibly AND so these rows match what the
@@ -332,6 +327,20 @@ export async function writePost(
       : []
     ).map((name) => name.split("/").pop() ?? name)
   );
+  // A post carries exactly ONE category. For user-attributed ingests assign-org
+  // later replaces this with the best EMBEDDING match; but bearer ingests (iOS
+  // Shortcuts) never reach that stage, so enforce the rule here too. Without an
+  // embedding to rank by, the primary is the model's first (most-representative)
+  // proposal; every surplus category is demoted to a tag so it stays surfaced
+  // and filterable.
+  const primaryCategory = categoryNames[0];
+  const demotedCategories = categoryNames.slice(1);
+  const tagNames = dedupeByName([
+    ...(Array.isArray(parsed.frontmatter.tags)
+      ? (parsed.frontmatter.tags as string[])
+      : []),
+    ...demotedCategories,
+  ]);
 
   const tagConnects: Prisma.TagCreateOrConnectWithoutPostsInput[] = tagNames.map(
     (name) => {
@@ -344,13 +353,18 @@ export async function writePost(
   );
 
   const categoryConnects: Prisma.CategoryCreateOrConnectWithoutPostsInput[] =
-    categoryNames.map((name) => {
-      const slug = slugifyTaxonomy(name);
-      return {
-        where: { name },
-        create: { name, displayName: titleCase(name), slug },
-      };
-    });
+    primaryCategory
+      ? [
+          {
+            where: { name: primaryCategory },
+            create: {
+              name: primaryCategory,
+              displayName: titleCase(primaryCategory),
+              slug: slugifyTaxonomy(primaryCategory),
+            },
+          },
+        ]
+      : [];
 
   const providerId = getProviderId(parsed.frontmatter);
   const sourceRecordId = getSourceRecordId(input, parsed.frontmatter);

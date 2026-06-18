@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import { getUserHandle } from "@repo/db";
 import { getSessionOrNull } from "../../../lib/session";
+import { PUBLIC_CATALOG_ENABLED } from "../../../lib/features";
 import { OwnerCatalog } from "./owner-catalog";
 import { PublicCatalog } from "./public-catalog";
 
@@ -8,6 +10,9 @@ import { PublicCatalog } from "./public-catalog";
 //  - signed-out: the public catalog (everyone's published posts)
 // The shared (public) chrome already swaps in the signed-in nav when a session
 // is present, so the page only needs to branch the body.
+//
+// While PUBLIC_CATALOG_ENABLED is false the signed-out body is gated: there is
+// no public, cross-user catalog, so anonymous visitors are sent to sign in.
 export default async function CatalogPage({
   searchParams,
 }: {
@@ -26,6 +31,10 @@ export default async function CatalogPage({
         searchParams={params}
       />
     );
+  }
+
+  if (!PUBLIC_CATALOG_ENABLED) {
+    redirect("/sign-in?next=/catalog");
   }
 
   const q = typeof params.q === "string" ? params.q.trim() : "";

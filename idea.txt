@@ -7,17 +7,17 @@ the following forms a full prompt in one shot and uses skills to reuse reach bet
 ### prompt pieces
 
 #### hard habits
-/workflow with beads /agent-mail
+/workflow with to-do list tracking (beads or not) /agent-mail
 /plugin-dev:skill-development (aka of this very prompt itself)
-/ralph-loop:ralph-loop figure out how to run roll and test it out, it doesnt auto progress like its supposed do and hung for me here in this session I just did: $insert details relevant eg cli code copied pasta
+/ralph-loop:ralph-loop or /loop figure out how to run roll and test it out, it doesnt auto progress like its supposed do and hung for me here in this session I just did: $insert details relevant eg cli code copied pasta
 /superpowers:brainstorming /superpowers:using-superpowers
-/workflow with beads /agent-mail
-IN NO WAY PIVOT, PLURALLIZE PARLLELIZATION
+IN NO WAY PIVOT, PLURALLIZE PARLLELIZATION streamline with blockers and dependencies for ensuring a successful workflow
 build a plan and then /ralph-loop:ralph-loop ralph loop the plan with integration into the superpowers
 
 ### fill in following from dynamic data surrounding project feature plan
 
  -[  ] blackbox testing skill plugin w/e
+ -[  ] frontend design for UI/UX of the app
  -[  ] persona precedents
  -[  ] plan mode or nah?
  -[  ] answer questions, (system prompt detail)

@@ -51,9 +51,6 @@ export default function MarketingLayout({
               ⁂
             </span>
             <nav className="flex items-center gap-4">
-              <Link href="/catalog" className="hover:text-[var(--color-accent)]">
-                Catalog
-              </Link>
               <Link href="/privacy" className="hover:text-[var(--color-accent)]">
                 Privacy
               </Link>
