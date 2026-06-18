@@ -904,9 +904,10 @@ const styles = StyleSheet.create({
   container: {
     padding: Sirius.space.xl,
     paddingTop: 64,
-    // Clear the floating native tab bar AND the pinned SubmitBar above it, so
-    // the last scroll content (on-device toggle) isn't hidden behind the bar.
-    paddingBottom: 200,
+    // Clear the floating native tab bar AND the pinned SubmitBar above it, with
+    // extra breathing room so the last scroll content (the on-device "Draft on
+    // device" toggle) sits clearly above the bar rather than tucked against it.
+    paddingBottom: 280,
     gap: Sirius.space.lg,
   },
   header: {
