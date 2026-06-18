@@ -114,9 +114,11 @@ export default function LibraryScreen() {
       items.filter((p) => {
         const categoryOk =
           !effectiveCategory || (p.categories ?? []).includes(effectiveCategory);
+        // OR / union: a post matches if it carries ANY selected tag, so adding
+        // tags widens the list. (`.every` here would be AND — match ALL.)
         const tagsOk =
           effectiveTags.length === 0 ||
-          effectiveTags.every((t) => (p.tags ?? []).includes(t));
+          effectiveTags.some((t) => (p.tags ?? []).includes(t));
         return categoryOk && tagsOk;
       }),
     [items, effectiveCategory, effectiveTags]

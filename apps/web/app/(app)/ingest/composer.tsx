@@ -18,6 +18,8 @@ import {
   type CaptureKindKey,
   classifyUrl,
   describeMaterial,
+  type AudioMaterial,
+  type DocumentMaterial,
   type ImageMaterial,
   type Material,
   MAX_URLS_PER_BATCH,
@@ -25,7 +27,17 @@ import {
   submitMaterials,
   trayTag,
   urlMaterialsFromText,
+  type VideoMaterial,
 } from "./materials";
+
+// File-backed materials that flow through the "Add details" sheet so each can
+// carry an optional note before staging. (url/repo/note collect notes in their
+// own sheets; these four are picked straight from the OS file picker.)
+type FileMaterial =
+  | ImageMaterial
+  | VideoMaterial
+  | AudioMaterial
+  | DocumentMaterial;
 
 // A material staged in the tray, with a stable id for keys + removal. Image
 // kinds also carry an object-URL preview that must be revoked on removal.
@@ -331,6 +343,9 @@ export function Composer() {
     "link" | "note"
   > | null>(null);
   const [draft, setDraft] = useState("");
+  // Optional note applied to every URL parsed from one link-sheet paste. The
+  // note kind needs none — its text already is the content.
+  const [linkNotes, setLinkNotes] = useState("");
   const [force, setForce] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [pills, setPills] = useState<StatusPill[]>([]);
@@ -347,6 +362,15 @@ export function Composer() {
   const [repoPreview, setRepoPreview] = useState<RepoPreview | null>(null);
   const [repoLoading, setRepoLoading] = useState(false);
   const [repoError, setRepoError] = useState<string | null>(null);
+  // "Add details" sheet: photos/video/document/audio are picked straight from
+  // the OS, so we hold them here (without notes) until the user confirms an
+  // optional note, then stage. One shared note per capture — a photo batch
+  // becomes one SIGHT post anyway.
+  const [pendingCapture, setPendingCapture] = useState<{
+    summary: string;
+    materials: FileMaterial[];
+  } | null>(null);
+  const [pendingNotes, setPendingNotes] = useState("");
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -432,8 +456,29 @@ export function Composer() {
     });
   }, []);
 
-  // Build file-backed materials from a picked FileList, filtering by the kind's
-  // expected family where it matters (images).
+  // Open the "Add details" sheet for freshly-picked file materials so the user
+  // can attach an optional note before they hit the tray.
+  const openPending = useCallback(
+    (summary: string, materials: FileMaterial[]) => {
+      if (materials.length === 0) return;
+      setPendingNotes("");
+      setPendingCapture({ summary, materials });
+    },
+    []
+  );
+
+  // Confirm the "Add details" sheet: stamp the shared note onto each pending
+  // material and stage them.
+  const confirmPending = useCallback(() => {
+    if (!pendingCapture) return;
+    const note = pendingNotes.trim() || undefined;
+    addToTray(pendingCapture.materials.map((m) => ({ ...m, notes: note })));
+    setPendingCapture(null);
+    setPendingNotes("");
+  }, [pendingCapture, pendingNotes, addToTray]);
+
+  // Build image materials from a picked FileList (filtering to the image family)
+  // and route them through the "Add details" sheet.
   const addImageFiles = useCallback(
     (incoming: FileList) => {
       const materials: ImageMaterial[] = [];
@@ -446,9 +491,14 @@ export function Composer() {
           type: file.type,
         });
       }
-      addToTray(materials);
+      openPending(
+        materials.length === 1
+          ? (materials[0]?.name ?? "1 photo")
+          : `${materials.length} photos`,
+        materials
+      );
     },
-    [addToTray]
+    [openPending]
   );
 
   function onCardPress(kind: CaptureKind) {
@@ -476,6 +526,7 @@ export function Composer() {
       case "link":
       case "note":
         setDraft("");
+        setLinkNotes("");
         setActiveKey(kind.key);
         return;
     }
@@ -490,7 +541,8 @@ export function Composer() {
         addPill("invalid", "no links · paste at least one URL");
         return;
       }
-      addToTray(materials);
+      const note = linkNotes.trim() || undefined;
+      addToTray(note ? materials.map((m) => ({ ...m, notes: note })) : materials);
       if (deduped > 0) {
         addPill(
           "deduped",
@@ -513,6 +565,7 @@ export function Composer() {
     }
     setActiveKey(null);
     setDraft("");
+    setLinkNotes("");
   }
 
   // ── Audio: in-browser recording via MediaRecorder ──────────────────────────
@@ -534,10 +587,10 @@ export function Composer() {
         });
         const name = `voice-memo-${Date.now()}.webm`;
         const file = new File([blob], name, { type: "audio/webm" });
-        addToTray([{ kind: "audio", file, name, type: "audio/webm" }]);
         recorderRef.current = null;
         setIsRecording(false);
         setAudioSheetOpen(false);
+        openPending(name, [{ kind: "audio", file, name, type: "audio/webm" }]);
       };
       recorderRef.current = recorder;
       recorder.start();
@@ -559,7 +612,8 @@ export function Composer() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    addToTray([
+    setAudioSheetOpen(false);
+    openPending(file.name, [
       {
         kind: "audio",
         file,
@@ -567,7 +621,6 @@ export function Composer() {
         type: file.type || "audio/mpeg",
       },
     ]);
-    setAudioSheetOpen(false);
   }
 
   // ── Repository: fetch the confirm-preview card, then stage ─────────────────
@@ -799,6 +852,14 @@ export function Composer() {
                 <span className="min-w-0 flex-1 truncate font-body text-[14px] text-[var(--fg-muted)]">
                   {describeMaterial(entry.material)}
                 </span>
+                {"notes" in entry.material && entry.material.notes ? (
+                  <span
+                    title={entry.material.notes}
+                    className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-sage)]"
+                  >
+                    ● note
+                  </span>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => removeFromTray(entry.uid)}
@@ -917,7 +978,7 @@ export function Composer() {
           const file = e.target.files?.[0];
           e.target.value = "";
           if (file) {
-            addToTray([
+            openPending(file.name, [
               {
                 kind: "video",
                 file,
@@ -939,7 +1000,7 @@ export function Composer() {
           const file = e.target.files?.[0];
           e.target.value = "";
           if (file) {
-            addToTray([
+            openPending(file.name, [
               {
                 kind: "document",
                 file,
@@ -981,6 +1042,20 @@ export function Composer() {
                 className="block w-full resize-y border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 font-body text-[16px] leading-[1.6] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)]"
               />
             </label>
+            {activeKey === "link" ? (
+              <label className="flex flex-col gap-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
+                  Notes (optional)
+                </span>
+                <textarea
+                  rows={2}
+                  value={linkNotes}
+                  onChange={(e) => setLinkNotes(e.target.value)}
+                  placeholder="What interests you about these links…"
+                  className="block w-full resize-y border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 font-body text-[15px] leading-[1.6] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)]"
+                />
+              </label>
+            ) : null}
             <button
               type="button"
               onClick={confirmForm}
@@ -1104,6 +1179,42 @@ export function Composer() {
             </>
           ) : null}
         </div>
+      </Sheet>
+
+      {/* Add-details sheet: attach an optional note to freshly-picked files
+          (photos/video/document/audio) before they hit the tray. */}
+      <Sheet
+        open={pendingCapture !== null}
+        title="Add details"
+        onClose={() => setPendingCapture(null)}
+      >
+        {pendingCapture ? (
+          <div className="flex flex-col gap-3">
+            <p className="font-display italic text-[16px] text-[var(--fg-muted)]">
+              {pendingCapture.summary}
+            </p>
+            <label className="flex flex-col gap-1.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
+                Notes (optional)
+              </span>
+              <textarea
+                rows={3}
+                value={pendingNotes}
+                autoFocus
+                onChange={(e) => setPendingNotes(e.target.value)}
+                placeholder="What interests you about this…"
+                className="block w-full resize-y border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 font-body text-[15px] leading-[1.6] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)]"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={confirmPending}
+              className="h-11 w-full border border-[var(--color-ink)] bg-[var(--color-ink)] font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--color-paper)] hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)]"
+            >
+              Add to tray
+            </button>
+          </div>
+        ) : null}
       </Sheet>
     </div>
   );

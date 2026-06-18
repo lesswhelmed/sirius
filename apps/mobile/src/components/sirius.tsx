@@ -3,7 +3,7 @@
 // screens without pulling in a styling library. Everything is built on plain
 // react-native + StyleSheet.create per the project's RN conventions.
 import { SymbolView } from "expo-symbols";
-import { forwardRef, type ReactNode, useEffect, useState } from "react";
+import { forwardRef, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -24,10 +24,16 @@ import {
   type ViewProps,
   type ViewStyle,
 } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SFSymbol } from "sf-symbols-typescript";
 
-import { Sirius } from "@/constants/theme";
+import { BottomTabInset, Sirius } from "@/constants/theme";
 
 // A multiline TextInput grows with its content. Left uncapped it eventually
 // fills (and overruns) the screen, shoving the action buttons behind the
@@ -496,6 +502,84 @@ export function TrayRow({
   );
 }
 
+// Pinned bottom action bar for the composer. The Submit button used to be the
+// last child of a long ScrollView (below the fold, dimmed when empty), so users
+// didn't realize submission existed. This anchors an always-visible tray summary
+// + Submit CTA just above the native tab bar (`BottomTabInset` + safe-area), so
+// the action is discoverable without scrolling. It hides while the keyboard is
+// up — main-screen text entry happens inside `Sheet` modals that render above
+// this anyway. Reuses `PrimaryButton` for the CTA (keeps busy/disabled styling).
+export function SubmitBar({
+  count,
+  busy,
+  onSubmit,
+  countLabel,
+}: {
+  count: number;
+  busy?: boolean;
+  onSubmit: () => void;
+  countLabel?: string;
+}) {
+  const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardVisible();
+  const empty = count === 0;
+
+  // Subtle emphasis pulse on the count whenever an item is added — quick scale
+  // bump, in keeping with the flat editorial motion language (no bounce).
+  const scale = useSharedValue(1);
+  const prevCount = useRef(count);
+  useEffect(() => {
+    if (count > prevCount.current) {
+      scale.value = withSequence(
+        withTiming(1.3, { duration: 120 }),
+        withTiming(1, { duration: 160 })
+      );
+    }
+    prevCount.current = count;
+  }, [count, scale]);
+  const countStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  if (keyboardVisible) {
+    return null;
+  }
+
+  return (
+    <View
+      style={[
+        styles.submitBar,
+        // Fill paper from the bar content all the way to the screen bottom so
+        // the area behind the floating tab bar isn't see-through to scroll
+        // content; the content row is pushed up to sit just above the tab bar.
+        { paddingBottom: BottomTabInset + insets.bottom + Sirius.space.md },
+      ]}
+    >
+      <View style={styles.submitBarSummary}>
+        <Eyebrow>In tray</Eyebrow>
+        {empty ? (
+          <Text style={styles.submitBarHint}>Nothing staged yet</Text>
+        ) : (
+          <Animated.Text
+            style={[styles.submitBarCount, countStyle]}
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={countLabel}
+          >
+            {count}
+          </Animated.Text>
+        )}
+      </View>
+      <PrimaryButton
+        label="Submit"
+        onPress={onSubmit}
+        busy={busy}
+        disabled={empty}
+        style={styles.submitBarButton}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Sirius.color.paper },
   header: {
@@ -639,6 +723,35 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   buttonDisabled: { opacity: 0.45 },
+  submitBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: Sirius.space.lg,
+    backgroundColor: Sirius.color.paper,
+    borderTopWidth: 1,
+    borderColor: Sirius.color.ruleStrong,
+    paddingHorizontal: Sirius.space.xl,
+    paddingTop: Sirius.space.md,
+  },
+  submitBarSummary: { gap: Sirius.space.xs },
+  submitBarHint: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 15,
+    fontStyle: "italic",
+    color: Sirius.color.inkMuted,
+  },
+  submitBarCount: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 30,
+    lineHeight: 32,
+    color: Sirius.color.accent,
+  },
+  submitBarButton: { paddingHorizontal: Sirius.space.xxl, minWidth: 150 },
   link: { fontSize: 15, fontWeight: "600" },
   linkPressed: { opacity: 0.6 },
   keyboardDoneBtn: {

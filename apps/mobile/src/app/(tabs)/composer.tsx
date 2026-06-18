@@ -31,6 +31,7 @@ import {
   PrimaryButton,
   Screen,
   Sheet,
+  SubmitBar,
   TextLink,
   Title,
   TrayRow,
@@ -49,16 +50,29 @@ import {
 import { isModelReady } from "@/lib/llm/engine";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
 import {
+  type AudioMaterial,
   describeMaterial,
+  type DocumentMaterial,
+  type ImageMaterial,
   type Material,
   MAX_URLS_PER_BATCH,
   submitMaterials,
   urlMaterialsFromText,
+  type VideoMaterial,
 } from "@/lib/materials";
 import { kickSync } from "@/lib/sync/engine";
 
 // A material staged in the tray, with a stable id for keys + removal.
 type StagedMaterial = { uid: string; material: Material };
+
+// File-backed materials picked straight from the OS (no sheet of their own).
+// They flow through the "Add details" sheet so each can carry an optional note
+// before staging — url/repo/note collect notes in their own sheets.
+type FileMaterial =
+  | ImageMaterial
+  | VideoMaterial
+  | AudioMaterial
+  | DocumentMaterial;
 
 const FORM_COPY: Record<
   Extract<CaptureKindKey, "link" | "note">,
@@ -91,6 +105,8 @@ export default function ComposerScreen() {
   const [tray, setTray] = useState<StagedMaterial[]>([]);
   const [activeKey, setActiveKey] = useState<CaptureKindKey | null>(null);
   const [draft, setDraft] = useState("");
+  // Optional note applied to every URL parsed from one link-sheet paste.
+  const [linkNotes, setLinkNotes] = useState("");
   const [busy, setBusy] = useState(false);
   // Focus picker: file a capture under a Project (mirrors the web composer).
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -107,6 +123,15 @@ export default function ComposerScreen() {
   const [repoPreview, setRepoPreview] = useState<RepoPreview | null>(null);
   const [repoLoading, setRepoLoading] = useState(false);
   const [repoError, setRepoError] = useState<string | null>(null);
+  // "Add details" sheet: photos/video/document/audio are picked straight from
+  // the OS, so we hold them here (without notes) until the user confirms an
+  // optional note, then stage. One shared note per capture — a photo batch
+  // becomes one SIGHT post anyway.
+  const [pendingCapture, setPendingCapture] = useState<{
+    summary: string;
+    materials: FileMaterial[];
+  } | null>(null);
+  const [pendingNotes, setPendingNotes] = useState("");
 
   // On-device curation: user's toggle plus whether the local model is actually
   // on disk (the /llm screen manages downloads).
@@ -153,6 +178,24 @@ export default function ComposerScreen() {
     setTray((prev) => prev.filter((entry) => entry.uid !== uid));
   }
 
+  // Open the "Add details" sheet for freshly-picked file materials so the user
+  // can attach an optional note before they hit the tray.
+  function openPending(summary: string, materials: FileMaterial[]) {
+    if (materials.length === 0) return;
+    setPendingNotes("");
+    setPendingCapture({ summary, materials });
+  }
+
+  // Confirm the "Add details" sheet: stamp the shared note onto each pending
+  // material and stage them.
+  function confirmPending() {
+    if (!pendingCapture) return;
+    const note = pendingNotes.trim() || undefined;
+    addToTray(pendingCapture.materials.map((m) => ({ ...m, notes: note })));
+    setPendingCapture(null);
+    setPendingNotes("");
+  }
+
   async function pickImages() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -169,13 +212,15 @@ export default function ComposerScreen() {
       selectionLimit: 8,
     });
     if (result.canceled) return;
-    addToTray(
-      result.assets.map((asset, i) => ({
-        kind: "image",
-        uri: asset.uri,
-        name: asset.fileName ?? `img-${i}.jpg`,
-        type: asset.mimeType ?? "image/jpeg",
-      }))
+    const materials: ImageMaterial[] = result.assets.map((asset, i) => ({
+      kind: "image",
+      uri: asset.uri,
+      name: asset.fileName ?? `img-${i}.jpg`,
+      type: asset.mimeType ?? "image/jpeg",
+    }));
+    openPending(
+      materials.length === 1 ? "1 photo" : `${materials.length} photos`,
+      materials
     );
   }
 
@@ -195,11 +240,12 @@ export default function ComposerScreen() {
     });
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0]!;
-    addToTray([
+    const name = asset.fileName ?? "video.mp4";
+    openPending(name, [
       {
         kind: "video",
         uri: asset.uri,
-        name: asset.fileName ?? "video.mp4",
+        name,
         type: asset.mimeType ?? "video/mp4",
       },
     ]);
@@ -216,7 +262,7 @@ export default function ComposerScreen() {
     });
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0]!;
-    addToTray([
+    openPending(asset.name, [
       {
         kind: "document",
         uri: asset.uri,
@@ -249,15 +295,16 @@ export default function ComposerScreen() {
     setIsRecording(false);
     const uri = audioRecorder.uri;
     if (!uri) return;
-    addToTray([
+    const name = `voice-memo-${Date.now()}.m4a`;
+    setAudioSheetOpen(false);
+    openPending(name, [
       {
         kind: "audio",
         uri,
-        name: `voice-memo-${Date.now()}.m4a`,
+        name,
         type: "audio/x-m4a",
       },
     ]);
-    setAudioSheetOpen(false);
   }
 
   async function pickAudioFile() {
@@ -274,7 +321,8 @@ export default function ComposerScreen() {
     });
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0]!;
-    addToTray([
+    setAudioSheetOpen(false);
+    openPending(asset.name, [
       {
         kind: "audio",
         uri: asset.uri,
@@ -282,7 +330,6 @@ export default function ComposerScreen() {
         type: asset.mimeType ?? "audio/mpeg",
       },
     ]);
-    setAudioSheetOpen(false);
   }
 
   function onCardPress(kind: CaptureKind) {
@@ -313,6 +360,7 @@ export default function ComposerScreen() {
     }
     // form kinds (link, note)
     setDraft("");
+    setLinkNotes("");
     setActiveKey(kind.key);
   }
 
@@ -365,7 +413,10 @@ export default function ComposerScreen() {
         Alert.alert("No links", "Paste at least one URL.");
         return;
       }
-      addToTray(materials);
+      const note = linkNotes.trim() || undefined;
+      addToTray(
+        note ? materials.map((m) => ({ ...m, notes: note })) : materials
+      );
       if (deduped > 0 || capped > 0) {
         const parts: string[] = [];
         if (deduped > 0)
@@ -383,6 +434,7 @@ export default function ComposerScreen() {
     }
     setActiveKey(null);
     setDraft("");
+    setLinkNotes("");
   }
 
   async function submit() {
@@ -565,7 +617,11 @@ export default function ComposerScreen() {
               {tray.map((entry) => (
                 <TrayRow
                   key={entry.uid}
-                  tag={trayTag(entry.material)}
+                  tag={
+                    "notes" in entry.material && entry.material.notes
+                      ? `${trayTag(entry.material)} ✎`
+                      : trayTag(entry.material)
+                  }
                   description={describeMaterial(entry.material)}
                   removeLabel={`Remove ${trayTag(entry.material).toLowerCase()}`}
                   onRemove={() => removeFromTray(entry.uid)}
@@ -618,15 +674,17 @@ export default function ComposerScreen() {
             </View>
           ) : null}
 
-          <PrimaryButton
-            label={tray.length === 0 ? "Add something to submit" : "Submit"}
-            onPress={submit}
-            busy={busy}
-            disabled={tray.length === 0}
-            style={styles.submit}
-          />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Pinned tray summary + Submit CTA, always visible above the tab bar so
+          submission is discoverable without scrolling to the bottom. */}
+      <SubmitBar
+        count={tray.length}
+        busy={busy}
+        onSubmit={submit}
+        countLabel={trayCountLabel}
+      />
 
       <Sheet
         visible={activeKey === "link" || activeKey === "note"}
@@ -646,6 +704,17 @@ export default function ComposerScreen() {
               value={draft}
               onChangeText={setDraft}
             />
+            {activeKey === "link" ? (
+              <Field
+                label="Notes (optional)"
+                style={styles.repoNotesInput}
+                placeholder="What interests you about these links…"
+                multiline
+                autoCapitalize="sentences"
+                value={linkNotes}
+                onChangeText={setLinkNotes}
+              />
+            ) : null}
             <KeyboardDoneButton style={styles.keyboardDone} />
             <PrimaryButton label="Add to tray" onPress={confirmForm} />
             <View style={styles.sheetCancel}>
@@ -746,6 +815,37 @@ export default function ComposerScreen() {
           />
         </View>
       </Sheet>
+
+      <Sheet
+        visible={pendingCapture !== null}
+        title="Add details"
+        onClose={() => setPendingCapture(null)}
+      >
+        {pendingCapture ? (
+          <>
+            <Text style={styles.pendingSummary}>{pendingCapture.summary}</Text>
+            <Field
+              label="Notes (optional)"
+              style={styles.repoNotesInput}
+              placeholder="What interests you about this…"
+              multiline
+              autoFocus
+              autoCapitalize="sentences"
+              value={pendingNotes}
+              onChangeText={setPendingNotes}
+            />
+            <KeyboardDoneButton style={styles.keyboardDone} />
+            <PrimaryButton label="Add to tray" onPress={confirmPending} />
+            <View style={styles.sheetCancel}>
+              <TextLink
+                label="Cancel"
+                tone={Sirius.color.inkMuted}
+                onPress={() => setPendingCapture(null)}
+              />
+            </View>
+          </>
+        ) : null}
+      </Sheet>
     </Screen>
   );
 }
@@ -804,8 +904,9 @@ const styles = StyleSheet.create({
   container: {
     padding: Sirius.space.xl,
     paddingTop: 64,
-    // Clear the floating native tab bar, same as library/queue.
-    paddingBottom: 120,
+    // Clear the floating native tab bar AND the pinned SubmitBar above it, so
+    // the last scroll content (on-device toggle) isn't hidden behind the bar.
+    paddingBottom: 200,
     gap: Sirius.space.lg,
   },
   header: {
@@ -872,6 +973,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   repoNotesInput: { minHeight: 64, textAlignVertical: "top", paddingTop: 12 },
+  pendingSummary: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 16,
+    fontStyle: "italic",
+    color: Sirius.color.inkMuted,
+    marginBottom: Sirius.space.sm,
+  },
   repoCard: {
     borderWidth: 1,
     borderColor: Sirius.color.rule,
@@ -936,7 +1044,6 @@ const styles = StyleSheet.create({
     color: Sirius.color.inkMuted,
     fontSize: 13,
   },
-  submit: { marginTop: Sirius.space.sm },
   focusPicker: { gap: Sirius.space.sm },
   focusScroll: { flexDirection: "row" },
   focusChip: {

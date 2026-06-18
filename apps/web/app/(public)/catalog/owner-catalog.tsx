@@ -63,7 +63,8 @@ export async function OwnerCatalog({
     typeof searchParams.status === "string" ? searchParams.status : null;
   const qParam =
     typeof searchParams.q === "string" ? searchParams.q : undefined;
-  // The tag param is a comma-joined list of slugs (multi-select, AND semantics).
+  // The tag param is a comma-joined list of slugs (multi-select, OR / union — a
+  // post matches if it carries any selected tag, so adding tags widens results).
   const tagParams =
     typeof searchParams.tag === "string"
       ? searchParams.tag
