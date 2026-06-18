@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +15,8 @@ import {
 } from "react-native";
 
 import {
+  Field,
+  KeyboardDoneButton,
   PageHeader,
   PrimaryButton,
   Screen,
@@ -30,12 +34,28 @@ import {
   submitMaterials,
 } from "@/lib/materials";
 
+// Apply the user's optional note to every shared material: stamp it onto the
+// file/url kinds that carry a `notes` field, and merge it into a shared note's
+// text (its text IS the content, so there's nowhere else to put it).
+function applyShareNote(materials: Material[], note: string | undefined): Material[] {
+  if (!note) return materials;
+  return materials.map((m) => {
+    if (m.kind === "note") {
+      return { ...m, text: `${m.text}\n\nAuthor's notes: ${note}` };
+    }
+    if (m.kind === "unsupported") return m;
+    return { ...m, notes: note };
+  });
+}
+
 export default function ShareIntentScreen() {
   const queryClient = useQueryClient();
   const { hasShareIntent, shareIntent, resetShareIntent } =
     useShareIntentContext();
   const { data: session, isPending } = useSession();
   const [busy, setBusy] = useState(false);
+  // One optional note applied to every shared item for the LLM to build on.
+  const [note, setNote] = useState("");
 
   const materials = useMemo<Material[]>(
     () => (hasShareIntent ? materialsFromShareIntent(shareIntent) : []),
@@ -53,7 +73,10 @@ export default function ShareIntentScreen() {
     setBusy(true);
     let errors: string[] = [];
     try {
-      const result = await submitMaterials(materials, { force: false });
+      const result = await submitMaterials(
+        applyShareNote(materials, note.trim() || undefined),
+        { force: false }
+      );
       errors = result.errors;
     } finally {
       setBusy(false);
@@ -110,55 +133,79 @@ export default function ShareIntentScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.container}>
-        <PageHeader
-          eyebrow="Shared with Sirius"
-          title="Queue this"
-          titleAccent="."
-          subtitle={`${submittable.length} item${
-            submittable.length === 1 ? "" : "s"
-          } ready to send to the worker.`}
-        />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.flex}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          <PageHeader
+            eyebrow="Shared with Sirius"
+            title="Queue this"
+            titleAccent="."
+            subtitle={`${submittable.length} item${
+              submittable.length === 1 ? "" : "s"
+            } ready to send to the worker.`}
+          />
 
-        <View style={styles.list}>
-          {materials.map((material, i) => (
-            <TrayRow
-              key={`${material.kind}:${describeMaterial(material)}:${i}`}
-              tag={trayTag(material)}
-              description={describeMaterial(material)}
-              leading={
-                material.kind === "image" ? (
-                  <Image
-                    source={{ uri: material.uri }}
-                    style={styles.thumb}
-                    contentFit="cover"
-                    transition={120}
-                  />
-                ) : undefined
-              }
+          <View style={styles.list}>
+            {materials.map((material, i) => (
+              <TrayRow
+                key={`${material.kind}:${describeMaterial(material)}:${i}`}
+                tag={trayTag(material)}
+                description={describeMaterial(material)}
+                leading={
+                  material.kind === "image" ? (
+                    <Image
+                      source={{ uri: material.uri }}
+                      style={styles.thumb}
+                      contentFit="cover"
+                      transition={120}
+                    />
+                  ) : undefined
+                }
+              />
+            ))}
+          </View>
+
+          {submittable.length > 0 ? (
+            <Field
+              label="Notes (optional)"
+              style={styles.noteInput}
+              placeholder="What interests you about this…"
+              multiline
+              autoCapitalize="sentences"
+              value={note}
+              onChangeText={setNote}
             />
-          ))}
-        </View>
+          ) : null}
+          <KeyboardDoneButton style={styles.keyboardDone} />
 
-        <PrimaryButton
-          label={submittable.length === 0 ? "Nothing to queue" : "Queue it"}
-          onPress={submit}
-          busy={busy}
-          disabled={submittable.length === 0}
-        />
+          <PrimaryButton
+            label={submittable.length === 0 ? "Nothing to queue" : "Queue it"}
+            onPress={submit}
+            busy={busy}
+            disabled={submittable.length === 0}
+          />
 
-        <TextLink
-          label="Cancel"
-          tone={Sirius.color.inkMuted}
-          onPress={dismiss}
-          disabled={busy}
-        />
-      </ScrollView>
+          <TextLink
+            label="Cancel"
+            tone={Sirius.color.inkMuted}
+            onPress={dismiss}
+            disabled={busy}
+          />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  noteInput: { minHeight: 80, textAlignVertical: "top", paddingTop: 12 },
+  keyboardDone: { alignSelf: "flex-end" },
   centered: { alignItems: "center", justifyContent: "center" },
   centeredPad: {
     justifyContent: "center",
