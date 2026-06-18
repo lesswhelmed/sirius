@@ -5,6 +5,8 @@
 import * as Network from "expo-network";
 import { AppState, type NativeEventSubscription } from "react-native";
 
+import { checkServerSession } from "@/lib/api";
+import { signOut } from "@/lib/auth-client";
 import { flushOutbox } from "@/lib/outbox";
 import { pullChanges } from "./changes-pull";
 import { connectSse, disconnectSse } from "./sse";
@@ -28,6 +30,23 @@ async function replayAndPull(reason: string): Promise<void> {
   }
 }
 
+// Foreground handler: a session can be revoked/expired server-side while the
+// app is backgrounded, yet the Expo client keeps showing the cached session, so
+// the app would sit on a dead session and only discover it via failing requests.
+// On foreground, confirm with the server FIRST. On an authoritative "none",
+// sign out so the route gate redirects to sign-in (and skip syncing with a dead
+// cookie). A transient "unknown" (offline) proceeds optimistically, exactly as
+// before — a flaky network must never sign the user out.
+async function revalidateThenSync(): Promise<void> {
+  const state = await checkServerSession();
+  if (state === "none") {
+    await signOut().catch(() => {});
+    return;
+  }
+  connectSse(); // re-open after a background disconnect (no-op if active)
+  void replayAndPull("foreground");
+}
+
 // Start the foreground sync loop. Idempotent.
 export function startSync(): void {
   if (started) return;
@@ -44,8 +63,7 @@ export function startSync(): void {
 
   appSub = AppState.addEventListener("change", (state) => {
     if (state === "active") {
-      connectSse(); // re-open after a background disconnect (no-op if active)
-      void replayAndPull("foreground");
+      void revalidateThenSync();
     } else if (state === "background") {
       // Don't hold a socket open while suspended; the background task and the
       // next foreground both re-sync.

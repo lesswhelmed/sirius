@@ -1,6 +1,7 @@
 import { FileSystemUploadType, uploadAsync } from "expo-file-system/legacy";
 
 import { authBaseURL, authClient, getSession, signOut } from "./auth-client";
+import { clearAuthStorage, inspectStoredCookie } from "./auth-recovery";
 
 type Json =
   | string
@@ -38,7 +39,7 @@ const BACKOFF_MAX_MS = 4000;
 
 // Single-flight session re-check shared by concurrent 401s, so N simultaneous
 // failures collapse into ONE server hit rather than N.
-let inFlightRecheck: Promise<boolean> | null = null;
+let inFlightState: Promise<SessionState> | null = null;
 // Latch: once signOut() has fired, further in-flight requests fail fast (throw
 // their own ApiError) without re-triggering signOut(). Reset on any 2xx or a
 // recovered session.
@@ -54,19 +55,46 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Force a server-side session check, bypassing the cookie cache. A successful
+// Probe the auth server with a BARE fetch — a raw fetch() bypasses the
+// better-auth client's cookie-attaching plugin, so it carries no stored cookie.
+// fetch() only rejects on a transport failure; any resolved response (even a
+// 401) means the server is reachable. Used to tell "the stored cookie is toxic"
+// (server reachable, but our cookie'd request died at the transport layer) from
+// "we're simply offline" (probe also fails).
+async function serverReachableWithoutCookie(): Promise<boolean> {
+  try {
+    await fetch(`${authBaseURL}/api/auth/get-session`, { method: "GET" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Tri-state result of a forced server session check. "none" is AUTHORITATIVE —
+// the server replied and there is no session, so callers may safely log out;
+// "unknown" is a transient failure (network error / thrown request) where we
+// must NOT log the user out, only back off and retry. Collapsing these two into
+// a single boolean (the old behavior) would log a user out on any flaky network.
+export type SessionState = "valid" | "none" | "unknown";
+
+// Force a server-side session check, bypassing the cookie cache. A "valid"
 // re-check refreshes the stored cookie so the next buildHeaders()/getCookie()
-// picks up the rotated value. Concurrent callers share one in-flight promise.
-function recheckSession(): Promise<boolean> {
-  if (!inFlightRecheck) {
-    inFlightRecheck = getSession({ query: { disableCookieCache: true } })
-      .then(({ data }) => data != null)
-      .catch(() => false)
+// picks up the rotated value. Concurrent callers (apiGet retries, the SSE
+// channel, foreground revalidation) share one in-flight promise.
+export function checkServerSession(): Promise<SessionState> {
+  if (!inFlightState) {
+    inFlightState = getSession({ query: { disableCookieCache: true } })
+      .then(({ data }): SessionState => (data != null ? "valid" : "none"))
+      .catch((): SessionState => "unknown")
       .finally(() => {
-        inFlightRecheck = null;
+        inFlightState = null;
       });
   }
-  return inFlightRecheck;
+  return inFlightState;
+}
+
+function recheckSession(): Promise<boolean> {
+  return checkServerSession().then((state) => state === "valid");
 }
 
 // Force a server-side session check (single-flight), refreshing the stored
@@ -82,6 +110,9 @@ export function refreshSession(): Promise<boolean> {
 // triggers the retry/logout policy; anything else propagates immediately. The
 // thunk must rebuild its own headers each call so a refreshed cookie is used.
 async function runWithAuthRetry<T>(perform: () => Promise<T>): Promise<T> {
+  // One-shot guard: a toxic stored cookie is cleared at most once per call so a
+  // failure that ISN'T the cookie can't spin this loop.
+  let triedCookieReset = false;
   for (let attempt = 0; ; attempt += 1) {
     try {
       const result = await perform();
@@ -92,6 +123,25 @@ async function runWithAuthRetry<T>(perform: () => Promise<T>): Promise<T> {
       const status =
         err instanceof ApiError ? err.status : undefined;
       if (status !== 401 && status !== 403) {
+        // A transport-level failure (no HTTP status — fetch threw) caused by a
+        // toxic persisted cookie poisoning the request headers (see
+        // plans/auth-is-broken-on-swift-noodle.md): the request never leaves the
+        // device, persists across relaunches, and only a storage wipe recovers.
+        // Recover ONLY when the stored cookie is actually suspicious — corrupt
+        // bytes, or abnormally large (a header-size failure) — so a normal
+        // transient blip with a valid cookie still behaves as before and never
+        // forces a surprise logout. Confirm with a bare, cookie-free probe that
+        // the server is reachable (else we're just offline → rethrow untouched),
+        // then clear the cookie once and retry so the request goes out clean.
+        if (status === undefined && !triedCookieReset) {
+          const cookie = inspectStoredCookie();
+          const suspicious = cookie.toxic || cookie.len > 4096;
+          if (suspicious && (await serverReachableWithoutCookie())) {
+            triedCookieReset = true;
+            await clearAuthStorage("api-transport-failure");
+            continue;
+          }
+        }
         throw err;
       }
       // Another concurrent request already drove us through logout; fail fast.

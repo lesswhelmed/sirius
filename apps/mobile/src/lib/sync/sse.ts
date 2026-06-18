@@ -9,8 +9,8 @@
 // can rotate) and uses exponential backoff + jitter.
 import EventSource from "react-native-sse";
 
-import { refreshSession } from "@/lib/api";
-import { authBaseURL, authClient } from "@/lib/auth-client";
+import { checkServerSession } from "@/lib/api";
+import { authBaseURL, authClient, signOut } from "@/lib/auth-client";
 import { pullChanges } from "./changes-pull";
 
 const STREAM_PATH = "/api/app/posts/stream";
@@ -58,11 +58,22 @@ async function open(): Promise<void> {
   // that rotated server-side), force a single-flight session re-check first so
   // getCookie() below returns the refreshed token. Without this the stream just
   // reconnects with the same stale cookie and 401-loops. EventSource gives us no
-  // status code, so we can't tell a 401 from any other drop — refreshing on
+  // status code, so we can't tell a 401 from any other drop — re-checking on
   // every reconnect is cheap (single-flight, shared with apiGet) and harmless.
+  //
+  // If that check is AUTHORITATIVELY "none" (server replied: no session), stop
+  // reconnecting with a dead cookie and clear local auth so the gate routes to
+  // sign-in instead of looping forever. A transient "unknown" (network) result
+  // falls through to the normal backoff reconnect so a flaky network never logs
+  // the user out.
   if (attempts > 0) {
-    await refreshSession();
+    const state = await checkServerSession();
     if (!active) return; // disconnected while awaiting the recheck
+    if (state === "none") {
+      disconnectSse();
+      void signOut().catch(() => {});
+      return;
+    }
   }
   const cookie = authClient.getCookie();
   if (!cookie) {
