@@ -18,6 +18,7 @@
 // dropped — fail-open to prose — so the same prompt+parse approach is what
 // works across both versions.)
 import {
+  buildVoiceInstruction,
   type DraftEnvelope,
   PostDraftSchema,
   type SightDraftEnvelope,
@@ -114,9 +115,9 @@ const NOTE_JSON_INSTRUCTIONS = [
   "}",
 ].join("\n");
 
-function buildNotePrompt(notes: string): string {
+function buildNotePrompt(notes: string, voiceBlock: string): string {
   const today = new Date().toISOString().slice(0, 10);
-  return [
+  const lines = [
     "You are drafting a single post for a personal blog.",
     `Today's date: ${today}.`,
     "Voice: first-person, observational, concrete. 80-300 words.",
@@ -125,9 +126,12 @@ function buildNotePrompt(notes: string): string {
     "Compose a short BLOG entry from the author's notes:",
     "",
     notes.trim(),
-    "",
-    NOTE_JSON_INSTRUCTIONS,
-  ].join("\n");
+  ];
+  if (voiceBlock) {
+    lines.push(voiceBlock);
+  }
+  lines.push("", NOTE_JSON_INSTRUCTIONS);
+  return lines.join("\n");
 }
 
 // Returns true when the curation toggle is on AND the selected model is on
@@ -178,7 +182,10 @@ export async function draftNotePost(
             PostDraftSchema,
             generateText({
               model,
-              prompt: buildNotePrompt(notes),
+              prompt: buildNotePrompt(
+                notes,
+                buildVoiceInstruction(settings.voiceProfile),
+              ),
               temperature: 0.7,
               abortSignal: controller.signal,
             }),
@@ -206,7 +213,11 @@ export async function draftNotePost(
 // from the worker's buildUrlStructuringPrompt so an on-device URL draft reads
 // like a Gemini one. The extract comes from /api/app/extract (de-identified);
 // the author's notes only join here, on-device.
-function buildUrlPrompt(summary: string, notes: string): string {
+function buildUrlPrompt(
+  summary: string,
+  notes: string,
+  voiceBlock: string,
+): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
     "You are drafting a single FINDING post for a personal blog from a pre-fetched URL summary.",
@@ -220,6 +231,9 @@ function buildUrlPrompt(summary: string, notes: string): string {
   ];
   if (notes.trim()) {
     lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
+  }
+  if (voiceBlock) {
+    lines.push(voiceBlock);
   }
   lines.push("", NOTE_JSON_INSTRUCTIONS);
   return lines.join("\n");
@@ -250,7 +264,11 @@ export async function draftUrlPost(
             PostDraftSchema,
             generateText({
               model,
-              prompt: buildUrlPrompt(summary, notes),
+              prompt: buildUrlPrompt(
+                summary,
+                notes,
+                buildVoiceInstruction(settings.voiceProfile),
+              ),
               temperature: 0.7,
               abortSignal: controller.signal,
             }),
@@ -287,7 +305,11 @@ const SIGHT_JSON_INSTRUCTIONS = [
   "}",
 ].join("\n");
 
-function buildSightPrompt(imageCount: number, notes: string): string {
+function buildSightPrompt(
+  imageCount: number,
+  notes: string,
+  voiceBlock: string,
+): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
     "You are drafting a single post for a personal blog.",
@@ -299,6 +321,9 @@ function buildSightPrompt(imageCount: number, notes: string): string {
   ];
   if (notes.trim()) {
     lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
+  }
+  if (voiceBlock) {
+    lines.push(voiceBlock);
   }
   lines.push("", SIGHT_JSON_INSTRUCTIONS);
   return lines.join("\n");
@@ -336,6 +361,7 @@ export async function draftSightPost(
     if (imageUris.length === 0 || !(await canDraftSightOnDevice())) {
       return null;
     }
+    const settings = await getLlmSettings();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
     try {
@@ -357,7 +383,11 @@ export async function draftSightPost(
                   content: [
                     {
                       type: "text",
-                      text: buildSightPrompt(imageUris.length, notes),
+                      text: buildSightPrompt(
+                        imageUris.length,
+                        notes,
+                        buildVoiceInstruction(settings.voiceProfile),
+                      ),
                     },
                     ...imageUris.map((uri) => ({
                       type: "file" as const,

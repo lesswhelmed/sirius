@@ -16,11 +16,15 @@ export type LlmSettings = {
   onDeviceCuration: boolean;
   // Which registry model chat + curation use.
   modelId: string;
+  // Cached copy of the user's server-side author voice, so on-device drafting
+  // can apply it offline. Synced from /api/app/me/voice; null when unset.
+  voiceProfile: string | null;
 };
 
 const DEFAULTS: LlmSettings = {
   onDeviceCuration: false,
   modelId: DEFAULT_TEXT_MODEL_ID,
+  voiceProfile: null,
 };
 
 const SETTINGS_PATH = `${documentDirectory}llm-settings.json`;
@@ -40,6 +44,8 @@ export async function getLlmSettings(): Promise<LlmSettings> {
         typeof parsed.modelId === "string" && parsed.modelId.length > 0
           ? parsed.modelId
           : DEFAULTS.modelId,
+      voiceProfile:
+        typeof parsed.voiceProfile === "string" ? parsed.voiceProfile : null,
     };
   } catch {
     // Missing or corrupt file — fall back to defaults (curation off).
