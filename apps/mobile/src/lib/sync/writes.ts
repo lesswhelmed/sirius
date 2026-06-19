@@ -9,7 +9,7 @@
 // the server generates the content, so there's nothing to show locally until it
 // syncs. That keeps the local store honest about what it actually knows.
 import type { DraftEnvelope, SightDraftEnvelope } from "@repo/ingest-draft";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "expo-crypto";
 
 import { db } from "@/lib/db/client";
@@ -105,4 +105,22 @@ export async function deleteLocalDraft(localId: string): Promise<void> {
   await db
     .delete(posts)
     .where(and(eq(posts.localId, localId), eq(posts.syncState, "local_draft")));
+}
+
+/**
+ * Mark an optimistic row failed by localId, whether it is still a local_draft
+ * or already linked to a pending submission. Used when the backing upload is
+ * discarded before the batch could complete. Never clobbers a row that already
+ * reconciled to `synced` or was tombstoned.
+ */
+export async function markPostFailedByLocalId(localId: string): Promise<void> {
+  await db
+    .update(posts)
+    .set({ syncState: "failed", updatedAt: new Date() })
+    .where(
+      and(
+        eq(posts.localId, localId),
+        inArray(posts.syncState, ["local_draft", "pending"]),
+      ),
+    );
 }

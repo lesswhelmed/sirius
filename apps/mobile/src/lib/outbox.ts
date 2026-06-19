@@ -30,7 +30,7 @@ import { ApiError, apiPostJson, uploadFile } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { type PendingRow, pendingSubmissions } from "@/lib/db/schema";
 import type { SubmitOk } from "@/lib/ingest-submit";
-import { linkSubmission } from "@/lib/sync/writes";
+import { linkSubmission, markPostFailedByLocalId } from "@/lib/sync/writes";
 
 // App-private root for staged binary copies. One subdir per staged/queued file
 // (`outbox/<id>/<filename>`), so deleting the subdir removes the whole copy.
@@ -251,6 +251,18 @@ export async function discardSubmission(id: string): Promise<void> {
     .limit(1);
   if (row) await discardStagedCopy(row.localFilePath);
   await db.delete(pendingSubmissions).where(eq(pendingSubmissions.id, id));
+  // If this was the LAST live row of an image batch, the worker can never write
+  // the post (it needs all totalCount rows), so the optimistic SIGHT card would
+  // hang `pending` forever — fail it. No-op for non-batch rows (no linked post).
+  if (row?.batchId) {
+    const siblings = await db
+      .select({ id: pendingSubmissions.id })
+      .from(pendingSubmissions)
+      .where(eq(pendingSubmissions.batchId, row.batchId));
+    if (siblings.length === 0) {
+      await markPostFailedByLocalId(row.localId);
+    }
+  }
 }
 
 // Once per launch: delete `outbox/<id>/` dirs that no pending row references.
@@ -271,7 +283,7 @@ async function sweepOrphanUploadsOnce(): Promise<void> {
     const liveDirs = new Set(
       rows
         .map((r) => r.localFilePath)
-        .filter((p): p is string => Boolean(p))
+        .filter((p): p is string => p != null && p.startsWith(`${OUTBOX_DIR}/`))
         .map((p) => p.slice(`${OUTBOX_DIR}/`.length).split("/")[0]),
     );
     for (const dir of dirs) {
