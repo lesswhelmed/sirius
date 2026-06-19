@@ -21,6 +21,7 @@ export const SCREENS = {
   queue: "/product/screens/03-queue.png",
   tree: "/product/screens/04-tree.png",
   post: "/product/screens/05-post-detail.png",
+  explore: "/product/screens/06-explore.png",
 } as const;
 
 // The hero carousel sequence — a genuine capture→keep arc, so the roman folios
@@ -47,12 +48,18 @@ export const SCREEN_SLIDES = [
   },
   {
     folio: "IV",
+    label: "Explore",
+    src: SCREENS.explore,
+    alt: "The Observatory — your space mapped by meaning",
+  },
+  {
+    folio: "V",
     label: "Publish",
     src: SCREENS.catalog,
     alt: "Your catalog of kept entries",
   },
   {
-    folio: "V",
+    folio: "VI",
     label: "In flight",
     src: SCREENS.queue,
     alt: "The live queue as captures process",

@@ -181,10 +181,18 @@ async function getPreparedModel(id: string): Promise<PreparedModel> {
     await releaseModel();
     const model: PreparedModel =
       spec.capability === "embedding"
-        ? // n_ctx 2048 (the lib default) covers a query and most post bodies;
-          // longer posts are truncated to the window when embedded.
+        ? // nomic-embed is a non-causal ENCODER: llama.cpp asserts
+          // `n_ubatch >= n_tokens` (llama-context.cpp encode) because an encoder
+          // can't split a sequence across micro-batches. The lib default n_ubatch
+          // is 512, but build-index embeds up to MAX_EMBED_CHARS (4000) of text —
+          // any post past ~512 tokens overruns it. In the optimized build the
+          // assert is compiled out, so instead of erroring it segfaults in batch
+          // allocation (EXC_BAD_ACCESS in llama_batch_allocr::init). Size n_ctx +
+          // both batch dims to 4096 so a whole 4000-char input (tokens <= chars)
+          // always fits one ubatch; nomic-embed-v1.5 supports long context, so
+          // this is within spec.
           llama.textEmbeddingModel(getModelPath(spec.hfPath), {
-            contextParams: { n_ctx: 2048 },
+            contextParams: { n_ctx: 4096, n_batch: 4096, n_ubatch: 4096 },
           })
         : llama.languageModel(getModelPath(spec.hfPath), {
             ...(spec.projectorHfPath
