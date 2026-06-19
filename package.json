@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "//postinstall": "Belt-and-suspenders for the on-device AI native artifacts: trustedDependencies lets bun run llama.rn's own postinstall, but bun SKIPS it when the package is restored from cache or forced via overrides (the exact case that left 0.12.4 with no xcframework). Running the downloader from the ROOT package (not gated like deps) guarantees it fires every install; it's idempotent + cache-backed (~instant when present). verify:native-ai still hard-asserts the result, so a failure here fails the build loudly. The download script resolves its own package root via __dirname, so cwd doesn't matter.",
-    "postinstall": "[ -f node_modules/llama.rn/install/download-native-artifacts.js ] && node node_modules/llama.rn/install/download-native-artifacts.js || true; node scripts/ensure-autolinking-commander.mjs || true",
+    "postinstall": "[ -f node_modules/llama.rn/install/download-native-artifacts.js ] && node node_modules/llama.rn/install/download-native-artifacts.js || true; node scripts/fix-bun-hoisting.mjs || true",
     "build": "turbo run build",
     "mobile:run:ios": "bun --cwd=apps/mobile ios",
     "dev:wireless:host": "bash scripts/dev-wireless-host.sh",
