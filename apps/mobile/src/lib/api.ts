@@ -78,9 +78,10 @@ async function serverReachableWithoutCookie(): Promise<boolean> {
 export type SessionState = "valid" | "none" | "unknown";
 
 // Force a server-side session check, bypassing the cookie cache. A "valid"
-// re-check refreshes the stored cookie so the next buildHeaders()/getCookie()
-// picks up the rotated value. Concurrent callers (apiGet retries, the SSE
-// channel, foreground revalidation) share one in-flight promise.
+// re-check refreshes the stored cookie so the next `$fetch` (whose expo plugin
+// attaches the cookie via getCookie()) picks up the rotated value. Concurrent
+// callers (apiGet retries, the SSE channel, foreground revalidation) share one
+// in-flight promise.
 export function checkServerSession(): Promise<SessionState> {
   if (!inFlightState) {
     inFlightState = getSession({ query: { disableCookieCache: true } })
@@ -183,26 +184,39 @@ async function runWithAuthRetry<T>(perform: () => Promise<T>): Promise<T> {
   }
 }
 
-function buildHeaders(extra?: HeadersInit): Headers {
-  const headers = new Headers(extra);
-  const cookie = authClient.getCookie();
-  if (cookie) {
-    headers.set("Cookie", cookie);
-  }
-  return headers;
-}
+// Result of an `authClient.$fetch` call (it returns `{ data, error }` rather than
+// throwing). The error object carries the HTTP `status`/`statusText` merged with the
+// parsed JSON error body — so the server's `{ "error": "unauthorized" }` surfaces as
+// `error.error`.
+type FetchResult<T> = {
+  data: T | null;
+  error:
+    | null
+    | { status?: number; statusText?: string; message?: string; error?: unknown };
+};
 
-async function parseResponse<T>(res: Response): Promise<T> {
-  const text = await res.text();
-  const body = text ? (JSON.parse(text) as unknown) : null;
-  if (!res.ok) {
+// Map a `$fetch` result into the same contract the raw-fetch helpers used to expose:
+// return the parsed body, or throw an `ApiError` carrying the HTTP `status` + a message
+// (callers depend on `.status` — e.g. outbox's 4xx-permanent check, composer's
+// `instanceof ApiError`). A result with NO HTTP status is a transport-level failure
+// (the request never completed) — throw a plain `Error` (status undefined) so
+// `runWithAuthRetry`'s toxic-cookie/transport recovery path still engages.
+function unwrap<T>(result: FetchResult<T>): T {
+  if (result.error) {
+    const status =
+      typeof result.error.status === "number" && result.error.status >= 100
+        ? result.error.status
+        : undefined;
     const message =
-      body && typeof body === "object" && "error" in body
-        ? String((body as { error: unknown }).error)
-        : `request failed (${res.status})`;
-    throw new ApiError(res.status, body, message);
+      (typeof result.error.error === "string" && result.error.error) ||
+      result.error.message ||
+      result.error.statusText ||
+      `request failed (${status ?? "network"})`;
+    if (status === undefined) throw new Error(message);
+    throw new ApiError(status, result.error, message);
   }
-  return body as T;
+  // better-fetch yields "" for an empty/204 body; normalize to null (the old behavior).
+  return (result.data === "" ? null : result.data) as T;
 }
 
 function toUrl(path: string): string {
@@ -222,17 +236,22 @@ export function resolveMediaUrl(
   return src;
 }
 
+// All app API calls route through `authClient.$fetch` so the @better-auth/expo plugin's
+// fetch hooks apply uniformly: they set `credentials: "omit"` and attach the stored
+// session cookie via `getCookie()` (so React Native's shared NSURLSession cookie jar can
+// never inject a STALE cookie and 401 us — the bug a raw `fetch` had), and persist any
+// rotated `Set-Cookie`. This is the same path `useSession`/`getSession`/`signOut` use, so
+// the two can no longer disagree about auth.
 export async function apiGet<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
   return runWithAuthRetry(async () => {
-    const res = await fetch(toUrl(path), {
-      ...init,
+    const result = (await authClient.$fetch(toUrl(path), {
       method: "GET",
-      headers: buildHeaders(init?.headers),
-    });
-    return parseResponse<T>(res);
+      signal: init?.signal ?? undefined,
+    })) as FetchResult<T>;
+    return unwrap<T>(result);
   });
 }
 
@@ -242,21 +261,19 @@ export async function apiPostJson<T>(
   init?: RequestInit
 ): Promise<T> {
   return runWithAuthRetry(async () => {
-    const headers = buildHeaders(init?.headers);
-    headers.set("Content-Type", "application/json");
-    const res = await fetch(toUrl(path), {
-      ...init,
+    // `$fetch` JSON-stringifies an object body and sets Content-Type automatically.
+    const result = (await authClient.$fetch(toUrl(path), {
       method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-    return parseResponse<T>(res);
+      body,
+      signal: init?.signal ?? undefined,
+    })) as FetchResult<T>;
+    return unwrap<T>(result);
   });
 }
 
-// Generic non-GET JSON request reusing the same header/cookie + parse path as
+// Generic non-GET JSON request reusing the same `$fetch` + unwrap path as
 // apiGet/apiPostJson. Used for PATCH/DELETE against the projects API. DELETE
-// responses may be empty — parseResponse already tolerates a null body.
+// responses may be empty — unwrap normalizes an empty body to null.
 export async function apiSend<T>(
   path: string,
   method: "PATCH" | "DELETE" | "PUT",
@@ -264,17 +281,12 @@ export async function apiSend<T>(
   init?: RequestInit
 ): Promise<T> {
   return runWithAuthRetry(async () => {
-    const headers = buildHeaders(init?.headers);
-    if (body !== undefined) {
-      headers.set("Content-Type", "application/json");
-    }
-    const res = await fetch(toUrl(path), {
-      ...init,
+    const result = (await authClient.$fetch(toUrl(path), {
       method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    return parseResponse<T>(res);
+      body: body !== undefined ? body : undefined,
+      signal: init?.signal ?? undefined,
+    })) as FetchResult<T>;
+    return unwrap<T>(result);
   });
 }
 

@@ -36,7 +36,23 @@ Then edit `.env.production` and replace every `<...>` placeholder:
 
 1. **DNS** — point `lesswhelmed.com` A record at `172.239.45.200`.
 
-2. **Directories**
+2. **System packages (ffmpeg)** — the worker shells out to `ffmpeg` to extract a
+   poster frame from uploaded videos (`apps/worker/src/pipeline/video-thumbnail.ts`).
+   It degrades gracefully without it (video thumbnails are simply skipped), so this
+   is not strictly required, but install it so video posts get covers:
+
+   ```sh
+   ssh -i ~/.ssh/id_copt_dev_v1 deploy@172.239.45.200 "\
+     sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
+     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ffmpeg && \
+     ffmpeg -version | head -1"
+   ```
+
+   `deploy.sh` also ensures ffmpeg on every run (idempotent — it only touches apt
+   when ffmpeg is missing), so a fresh host is covered by the first deploy too. If
+   ffmpeg lives somewhere off `PATH`, set `FFMPEG_PATH=/abs/path/to/ffmpeg` in `.env`.
+
+3. **Directories**
 
    ```sh
    ssh -i ~/.ssh/id_copt_dev_v1 deploy@172.239.45.200 "\
@@ -45,7 +61,7 @@ Then edit `.env.production` and replace every `<...>` placeholder:
               /home/deploy/logs"
    ```
 
-3. **Postgres database/user** (run on the server as the postgres superuser).
+4. **Postgres database/user** (run on the server as the postgres superuser).
    Use a strong password matching the one in `DATABASE_URL`.
 
    ```sh
@@ -60,14 +76,14 @@ Then edit `.env.production` and replace every `<...>` placeholder:
    Prisma migrations run as this user via `bun run db:migrate:deploy` during
    deploy, so ownership of the `sirius` database is sufficient.
 
-4. **Clone the repo**
+5. **Clone the repo**
 
    ```sh
    ssh -i ~/.ssh/id_copt_dev_v1 deploy@172.239.45.200 "\
      cd /home/deploy/apps && git clone <repo-url> sirius"
    ```
 
-5. **Server `.env`** — copy your filled-in local `.env.production` to the
+6. **Server `.env`** — copy your filled-in local `.env.production` to the
    server as the app `.env`:
 
    ```sh
@@ -80,7 +96,7 @@ Then edit `.env.production` and replace every `<...>` placeholder:
    `SIGHT_IMAGE_DIR=/home/deploy/apps/sirius/apps/web/public/sight`,
    `SOCIAL_IMAGE_DIR=/home/deploy/apps/sirius/apps/web/public/social`.
 
-6. **Caddy site block** — the canonical config is version-controlled at
+7. **Caddy site block** — the canonical config is version-controlled at
    [`infra/caddy/Caddyfile`](infra/caddy/Caddyfile) (apply instructions in
    [`infra/caddy/README.md`](infra/caddy/README.md)). Copy it to
    `/etc/caddy/Caddyfile`.
@@ -104,7 +120,7 @@ Then edit `.env.production` and replace every `<...>` placeholder:
    sudo systemctl reload caddy
    ```
 
-7. **First deploy** (on the server, starts both PM2 processes):
+8. **First deploy** (on the server, starts both PM2 processes):
 
    ```sh
    ssh -i ~/.ssh/id_copt_dev_v1 deploy@172.239.45.200 \
@@ -120,10 +136,11 @@ From your local checkout, after committing to `main`:
 bun run deploy
 ```
 
-This pushes the branch, runs `./deploy.sh` on the server (pull → install →
-prisma generate → migrate → build into `.next-builds/<id>` → symlink
+This pushes the branch, runs `./deploy.sh` on the server (ensure ffmpeg → pull →
+install → prisma generate → migrate → build into `.next-builds/<id>` → symlink
 `current` → PM2 reload → `pm2 save` → prune to 3 builds → `pm2 status`), then verifies
-`https://lesswhelmed.com` returns HTTP 200.
+`https://lesswhelmed.com` returns HTTP 200. The ffmpeg step is idempotent — it
+only touches apt when ffmpeg is missing (see "System packages" below).
 
 ## Pre-deploy local checks
 

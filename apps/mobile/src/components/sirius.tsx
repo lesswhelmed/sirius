@@ -137,7 +137,7 @@ export function StatusPip({
 }
 
 const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
-  function Field({ label, style, multiline, ...rest }, ref) {
+  function Field({ label, style, multiline, accessibilityLabel, ...rest }, ref) {
     // Multiline inputs have no return-key dismiss on iOS; screens pair them with
     // a <KeyboardDoneButton/> near the submit control (see useKeyboardVisible).
     return (
@@ -149,6 +149,10 @@ const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
           placeholderTextColor={Sirius.color.inkSubtle}
           selectionColor={Sirius.color.accent}
           multiline={multiline}
+          // Associate the visible label with the input so VoiceOver announces it
+          // (the label <Text> alone is not programmatically linked). Falls back to
+          // the placeholder when there's no label. Callers can still override.
+          accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
           {...rest}
         />
       </View>
@@ -164,6 +168,7 @@ export { Field };
 export function PasswordField({
   label,
   style,
+  accessibilityLabel,
   ...rest
 }: Omit<TextInputProps, "secureTextEntry"> & { label?: string }) {
   const [hidden, setHidden] = useState(true);
@@ -176,6 +181,7 @@ export function PasswordField({
           placeholderTextColor={Sirius.color.inkSubtle}
           selectionColor={Sirius.color.accent}
           secureTextEntry={hidden}
+          accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
           {...rest}
         />
         <Pressable
@@ -246,7 +252,10 @@ export function KeyboardDoneButton({
       onPress={() => Keyboard.dismiss()}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel="Hide keyboard"
+      // Accessible name must contain the visible text (WCAG 2.5.3 Label in Name)
+      // so Voice Control "tap Done" works; the hint carries the description.
+      accessibilityLabel={label}
+      accessibilityHint="Dismisses the keyboard"
       style={({ pressed }) => [
         styles.keyboardDoneBtn,
         pressed && styles.linkPressed,

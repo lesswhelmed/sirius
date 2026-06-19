@@ -411,6 +411,7 @@ function Chat({
             onChangeText={setInput}
             placeholder="Say something…"
             placeholderTextColor={Sirius.color.inkSubtle}
+            accessibilityLabel="Message"
             multiline
             editable={!busy}
           />

@@ -701,6 +701,11 @@ export default function ComposerScreen() {
               autoFocus
               autoCapitalize={activeKey === "link" ? "none" : "sentences"}
               autoCorrect={activeKey !== "link"}
+              // Link mode takes URLs (one per line) → URL keyboard + content type
+              // for the right key layout and paste/autofill affordances. Note mode
+              // is prose, so leave it on the default keyboard.
+              keyboardType={activeKey === "link" ? "url" : "default"}
+              textContentType={activeKey === "link" ? "URL" : "none"}
               value={draft}
               onChangeText={setDraft}
             />

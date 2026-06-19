@@ -18,6 +18,27 @@ WEB_BUILDS_DIR="apps/web/.next-builds"
 DEPLOY_ID="$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
 KEEP_BUILDS=3
 
+# The worker extracts video poster frames via ffmpeg (apps/worker/src/pipeline/
+# video-thumbnail.ts). It degrades gracefully when ffmpeg is absent, so a failed
+# install here is a WARNING, not a hard stop — never let an optional dep break a
+# deploy. Idempotent + safe: skips apt entirely when ffmpeg is already present,
+# and uses `sudo -n` so a host without passwordless sudo warns instead of hanging.
+echo "==> ensure system deps (ffmpeg)"
+if command -v ffmpeg >/dev/null 2>&1; then
+  echo "    ffmpeg present: $(ffmpeg -version 2>/dev/null | head -1)"
+elif sudo -n true 2>/dev/null; then
+  echo "    ffmpeg missing — installing via apt..."
+  if sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq \
+     && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ffmpeg; then
+    echo "    installed: $(ffmpeg -version 2>/dev/null | head -1)"
+  else
+    echo "    WARNING: ffmpeg install failed; video thumbnails will be skipped" >&2
+  fi
+else
+  echo "    WARNING: ffmpeg missing and no passwordless sudo — install manually:" >&2
+  echo "             sudo apt-get install -y ffmpeg   (or set FFMPEG_PATH in .env)" >&2
+fi
+
 echo "==> git pull"
 git pull --ff-only origin main
 
