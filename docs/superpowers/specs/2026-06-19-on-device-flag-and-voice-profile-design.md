@@ -142,11 +142,14 @@ Append `buildVoiceInstruction(voice)` **after** each builder's existing structur
 
 ### Web UI (`apps/web`)
 
-- A "Your voice" card on the existing `(app)/settings` page:
+- A "Your voice" card added to the existing `(app)/settings` page (which currently holds
+  only the archive/data-export section). We add the card to that page rather than building
+  the multi-tab settings nav shown in the mockup — the sidebar in the mockup is visual
+  reference only; placement follows the current single-page settings structure.
   - Editable textarea bound to `voiceProfile` (char counter, 2000 cap).
   - A collapsible **generator** block: the static copy-paste prompt (run it in
     ChatGPT/Claude) + a paste-back field; saving stores the result.
-- Visual/UX designed with **Stitch** (desktop), matched to the app's existing theme.
+- Visual/UX designed with **Stitch** (desktop) — see UI reference below.
 
 ### Mobile UI (`apps/mobile`)
 
@@ -157,8 +160,9 @@ Append `buildVoiceInstruction(voice)` **after** each builder's existing structur
 
 ### The static generator prompt (shipped string, web + mobile)
 
-A single shared constant, e.g. in `packages/ingest-draft` or a small shared module, used
-by both web and mobile so the copy is identical. Intent: the user pastes it into their
+A single shared constant `VOICE_GENERATOR_PROMPT`, exported from
+`packages/ingest-draft/src/voice.ts` (alongside the injection helpers), used by both web
+and mobile so the copy is identical. Intent: the user pastes it into their
 daily chatbot, answers nothing, and gets back an enthusiastic, specific description of how
 they communicate — which they paste back and save. Draft copy:
 
@@ -195,6 +199,23 @@ fans out (via a Workflow) across independent tracks, then an adversarial verify 
 6. Mobile Settings "Your voice" UI + local voice cache (Stitch-designed).
 7. Verify: type-check, lint, real-run validation, reviewer asserts injection can't escape
    prose.
+
+## UI reference (Stitch)
+
+Designed in the Stitch project `Sirius — Voice Profile Settings`
+(`projects/12769273467087141201`) with the **"Quietude Editorial"** design system:
+warm paper surface `#fbf9f8`, charcoal primary `#2c3131`, muted sage accent, Source
+Serif 4 headings + Inter UI, hairline dividers, low/no shadow.
+
+- Mobile "Your voice" section: `assets/voice-mobile.png` — header + subtitle, textarea
+  with `0 / 2000` counter, full-width Save, collapsible "Not sure what to write? Generate
+  it" card.
+- Web "Your voice" card: `assets/voice-web.png` — card header + subtitle, textarea with
+  counter, Save + "Saved" status, inset "Generate your voice" panel (copy-prompt block +
+  paste-result + Apply).
+
+These are visual targets; final components use the apps' existing UI primitives
+(`@repo/ui`, mobile native components) styled to match.
 
 ## Open questions
 
