@@ -13,7 +13,11 @@ import { type ModelMessage, stepCountIs, streamText } from "ai";
 
 import { modelBusyBy, withPreparedModel } from "@/lib/llm/engine";
 
-import { createAskTools, postsByCategoriesLocal } from "./tools";
+import {
+  createAskTools,
+  listCategoriesLocal,
+  postsByCategoriesLocal,
+} from "./tools";
 
 // Firm 3-step routing. Small on-device models under-call tools, so the steps are
 // explicit; the host also FORCES the first list_categories call (prepareStep) and
@@ -62,11 +66,11 @@ export function answerFromPosts(args: {
 export type AskPhase = "deciding" | "waiting" | "searching" | "answering";
 
 // The full "ask my posts" turn: one streamText tool loop on the chat model.
-//   - prepareStep forces list_categories on step 0 (kills the "answer from memory
-//     without ever looking" failure small models fall into).
-//   - the model then calls get_posts_by_categories and writes a grounded answer.
-//   - fallback: if it streamed no answer AND captured no posts, fetch every
-//     category's posts (capped) and do one grounded pass so we never silently fail.
+//   - the model calls list_categories, then get_posts_by_categories, then writes a
+//     grounded answer (auto tool choice — llama.rn rejects a forced toolChoice).
+//   - fallback: if it streamed no answer AND captured no posts (model skipped the
+//     tools), fetch every category's posts (capped) and do one grounded pass so we
+//     never silently fail.
 export async function askMyPosts(args: {
   chatModelId: string;
   messages: ModelMessage[];
@@ -93,11 +97,6 @@ export async function askMyPosts(args: {
       stopWhen: stepCountIs(4),
       temperature: 0.4,
       abortSignal: args.signal,
-      // Always look before answering.
-      prepareStep: ({ stepNumber }) =>
-        stepNumber === 0
-          ? { toolChoice: { type: "tool", toolName: "list_categories" } }
-          : {},
       onStepFinish: ({ toolCalls }) => {
         if (toolCalls.some((c) => c.toolName === "get_posts_by_categories")) {
           args.onPhase?.("searching");
@@ -115,13 +114,8 @@ export async function askMyPosts(args: {
     // Deterministic fallback: the model neither retrieved nor answered. Pull a
     // capped spread across all categories and do one grounded pass.
     if (!answered && captured.length === 0) {
-      const cats = (await tools.list_categories.execute?.(
-        {},
-        { toolCallId: "fallback", messages: [] },
-      )) as { categories: { name: string }[] } | undefined;
-      const posts = await postsByCategoriesLocal(
-        (cats?.categories ?? []).map((c) => c.name),
-      );
+      const cats = await listCategoriesLocal();
+      const posts = await postsByCategoriesLocal(cats.map((c) => c.name));
       captured = posts;
       const { textStream } = streamResearchAnswer({
         llm: model,
