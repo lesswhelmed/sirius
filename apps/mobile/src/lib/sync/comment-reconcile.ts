@@ -66,29 +66,7 @@ export async function reconcileCommentUpsert(
     updatedAt: serverUpdatedAt,
   };
 
-  // TEMP DEBUG
-  console.warn(
-    "[debug comment-reconcile] undefined keys:",
-    JSON.stringify(
-      Object.entries({
-        ...mirrored,
-        localId: "x",
-        createdAt: comment.createdAt,
-        rawComment: comment,
-      })
-        .filter(([, v]) => v === undefined)
-        .map(([k]) => k),
-    ),
-    "rawKeys:",
-    JSON.stringify(
-      Object.entries(comment as Record<string, unknown>)
-        .filter(([, v]) => v === undefined)
-        .map(([k]) => k),
-    ),
-  );
-
   if (existing) {
-    console.warn("[debug] taking UPDATE branch, existing.localId:", existing.localId);
     // Last-writer-wins: never clobber an already-synced row with an older,
     // out-of-order delivery. Optimistic (local_draft/pending) rows are always
     // overwritten by the first server truth.
@@ -99,41 +77,20 @@ export async function reconcileCommentUpsert(
     ) {
       return;
     }
-    try {
-      await db
-        .update(comments)
-        .set(mirrored)
-        .where(eq(comments.localId, existing.localId));
-    } catch (e) {
-      console.warn("[debug] UPDATE FAILED. existing.localId:", existing.localId, "type:", typeof existing.localId);
-      throw e;
-    }
+    await db
+      .update(comments)
+      .set(mirrored)
+      .where(eq(comments.localId, existing.localId));
     return;
   }
-  console.warn("[debug] taking INSERT branch");
 
   // Brand-new comment (created on another device, or pulled before any local
   // optimistic row existed).
-  const newRow = {
+  await db.insert(comments).values({
     localId: randomUUID(),
     createdAt: new Date(comment.createdAt),
     ...mirrored,
-  };
-  try {
-    await db.insert(comments).values(newRow);
-  } catch (e) {
-    console.warn(
-      "[debug comment-insert FAILED] newRow:",
-      JSON.stringify(newRow, (_k, v) => (v === undefined ? "__UNDEFINED__" : v)),
-      "undefinedKeys:",
-      JSON.stringify(
-        Object.entries(newRow)
-          .filter(([, v]) => v === undefined)
-          .map(([k]) => k),
-      ),
-    );
-    throw e;
-  }
+  });
 }
 
 // A deleted (tombstoned) server comment. Keep the row as a tombstone so
@@ -143,14 +100,8 @@ export async function applyCommentTombstone(
   deletedAt: string,
 ): Promise<void> {
   const ts = new Date(deletedAt);
-  console.warn("[debug] applyCommentTombstone serverId:", serverId, "deletedAt:", deletedAt);
-  try {
-    await db
-      .update(comments)
-      .set({ syncState: "tombstone", serverUpdatedAt: ts, updatedAt: ts })
-      .where(eq(comments.serverId, serverId));
-  } catch (e) {
-    console.warn("[debug] TOMBSTONE UPDATE FAILED serverId:", serverId);
-    throw e;
-  }
+  await db
+    .update(comments)
+    .set({ syncState: "tombstone", serverUpdatedAt: ts, updatedAt: ts })
+    .where(eq(comments.serverId, serverId));
 }

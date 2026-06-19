@@ -27,10 +27,20 @@ async function getSince(): Promise<string> {
 }
 
 async function setSince(value: string): Promise<void> {
+  // The cursor MUST bind as a SQLite TEXT value. better-fetch (authClient.$fetch)
+  // revives ISO-8601 date strings in the JSON response into `Date` OBJECTS, so
+  // `result.nextCursor` — though typed `string` — arrives as a Date at runtime.
+  // expo-sqlite cannot bind a Date (no case in bindStatementParam →
+  // InvalidConvertibleException), which threw uncaught here and stalled the cursor
+  // forever. The per-row reconcile writes survived because their Dates land on
+  // timestamp_ms / json columns whose drizzle mappers coerce them; the syncMeta
+  // `value` text column has no such mapper, so coerce explicitly.
+  const raw: unknown = value;
+  const text = raw instanceof Date ? raw.toISOString() : String(raw);
   await db
     .insert(syncMeta)
-    .values({ key: SINCE_KEY, value })
-    .onConflictDoUpdate({ target: syncMeta.key, set: { value } });
+    .values({ key: SINCE_KEY, value: text })
+    .onConflictDoUpdate({ target: syncMeta.key, set: { value: text } });
 }
 
 let pulling: Promise<void> | null = null;
