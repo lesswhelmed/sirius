@@ -56,6 +56,10 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Tree</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="list.bullet.indent" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="settings">
+        <NativeTabs.Trigger.Label>Account</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="person.crop.circle" />
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }

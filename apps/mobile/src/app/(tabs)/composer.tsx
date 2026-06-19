@@ -131,6 +131,10 @@ export default function ComposerScreen() {
     materials: FileMaterial[];
   } | null>(null);
   const [pendingNotes, setPendingNotes] = useState("");
+  // In-tray note editing: edit a staged item's note (or a note item's text)
+  // before submitting. Holds the uid being edited + the working draft.
+  const [editingUid, setEditingUid] = useState<string | null>(null);
+  const [editNote, setEditNote] = useState("");
 
   // On-device curation: user's toggle plus whether the local model is actually
   // on disk (the /llm screen manages downloads).
@@ -193,6 +197,42 @@ export default function ComposerScreen() {
     addToTray(pendingCapture.materials.map((m) => ({ ...m, notes: note })));
     setPendingCapture(null);
     setPendingNotes("");
+  }
+
+  // Open the in-tray note editor for a staged item, seeding the draft from its
+  // current note (or, for a plain note material, its text).
+  function openEdit(uid: string) {
+    const entry = tray.find((e) => e.uid === uid);
+    if (!entry) return;
+    const m = entry.material;
+    const current =
+      m.kind === "note" ? m.text : "notes" in m ? (m.notes ?? "") : "";
+    setEditNote(current);
+    setEditingUid(uid);
+  }
+
+  // Save the edited note back onto the staged material. For note materials the
+  // edit replaces the body text; for everything else it's the optional note
+  // (cleared to undefined when emptied, which drops the ✎ marker).
+  function confirmEdit() {
+    if (!editingUid) return;
+    const trimmed = editNote.trim();
+    setTray((prev) =>
+      prev.map((entry) => {
+        if (entry.uid !== editingUid) return entry;
+        const m = entry.material;
+        if (m.kind === "note") {
+          if (!trimmed) return entry; // guard: a note can't be empty
+          return { ...entry, material: { ...m, text: trimmed } };
+        }
+        return {
+          ...entry,
+          material: { ...m, notes: trimmed || undefined },
+        };
+      })
+    );
+    setEditingUid(null);
+    setEditNote("");
   }
 
   async function pickImages() {
@@ -610,6 +650,8 @@ export default function ComposerScreen() {
                       : trayTag(entry.material)
                   }
                   description={describeMaterial(entry.material)}
+                  onEdit={() => openEdit(entry.uid)}
+                  editLabel={`Edit ${trayTag(entry.material).toLowerCase()} note`}
                   removeLabel={`Remove ${trayTag(entry.material).toLowerCase()}`}
                   onRemove={() => removeFromTray(entry.uid)}
                   leading={
@@ -837,6 +879,54 @@ export default function ComposerScreen() {
             </View>
           </>
         ) : null}
+      </Sheet>
+
+      <Sheet
+        visible={editingUid !== null}
+        title="Edit note"
+        onClose={() => setEditingUid(null)}
+      >
+        {(() => {
+          const entry = editingUid
+            ? tray.find((e) => e.uid === editingUid)
+            : null;
+          if (!entry) return null;
+          const isNoteKind = entry.material.kind === "note";
+          return (
+            <>
+              <Text style={styles.pendingSummary}>
+                {describeMaterial(entry.material)}
+              </Text>
+              <Field
+                label="Note"
+                style={styles.repoNotesInput}
+                placeholder={
+                  isNoteKind
+                    ? "Anything to remember…"
+                    : "What interests you about this…"
+                }
+                multiline
+                autoFocus
+                autoCapitalize="sentences"
+                value={editNote}
+                onChangeText={setEditNote}
+              />
+              <KeyboardDoneButton style={styles.keyboardDone} />
+              <PrimaryButton
+                label="Save"
+                onPress={confirmEdit}
+                disabled={isNoteKind && editNote.trim().length === 0}
+              />
+              <View style={styles.sheetCancel}>
+                <TextLink
+                  label="Cancel"
+                  tone={Sirius.color.inkMuted}
+                  onPress={() => setEditingUid(null)}
+                />
+              </View>
+            </>
+          );
+        })()}
       </Sheet>
     </Screen>
   );

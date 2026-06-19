@@ -384,8 +384,9 @@ export function SecondaryButton({
   busy,
   disabled,
   style,
+  symbol,
   ...rest
-}: ButtonProps) {
+}: ButtonProps & { symbol?: SFSymbol }) {
   const isDisabled = Boolean(disabled || busy);
   return (
     <Pressable
@@ -403,7 +404,19 @@ export function SecondaryButton({
       {busy ? (
         <ActivityIndicator color={Sirius.color.accent} />
       ) : (
-        <Text style={styles.secondaryButtonText}>{label}</Text>
+        <View style={styles.secondaryButtonContent}>
+          {symbol ? (
+            <SymbolView
+              name={symbol}
+              size={20}
+              weight="medium"
+              tintColor={Sirius.color.accent}
+              // Android/web have no SF Symbols; the label alone carries meaning.
+              fallback={<></>}
+            />
+          ) : null}
+          <Text style={styles.secondaryButtonText}>{label}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -546,16 +559,20 @@ export function Sheet({
 }
 
 // One staged item in the composer/share tray: a mono kind tag, a one-line
-// description, an optional leading thumbnail, and a remove control.
+// description, an optional leading thumbnail, and edit + remove controls.
 export function TrayRow({
   tag,
   description,
+  onEdit,
+  editLabel,
   onRemove,
   removeLabel,
   leading,
 }: {
   tag: string;
   description: string;
+  onEdit?: () => void;
+  editLabel?: string;
   onRemove?: () => void;
   removeLabel?: string;
   leading?: ReactNode;
@@ -569,19 +586,37 @@ export function TrayRow({
           {description}
         </Text>
       </View>
-      {onRemove ? (
-        <Pressable
-          onPress={onRemove}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel={removeLabel ?? "Remove item"}
-          style={({ pressed }) => [
-            styles.trayRemove,
-            pressed && styles.linkPressed,
-          ]}
-        >
-          <Text style={styles.trayRemoveText}>×</Text>
-        </Pressable>
+      {onEdit || onRemove ? (
+        <View style={styles.trayActions}>
+          {onEdit ? (
+            <Pressable
+              onPress={onEdit}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={editLabel ?? "Edit note"}
+              style={({ pressed }) => [
+                styles.trayEdit,
+                pressed && styles.linkPressed,
+              ]}
+            >
+              <Text style={styles.trayEditText}>✎</Text>
+            </Pressable>
+          ) : null}
+          {onRemove ? (
+            <Pressable
+              onPress={onRemove}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={removeLabel ?? "Remove item"}
+              style={({ pressed }) => [
+                styles.trayRemove,
+                pressed && styles.linkPressed,
+              ]}
+            >
+              <Text style={styles.trayRemoveText}>×</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );
@@ -801,6 +836,11 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   secondaryButtonPressed: { backgroundColor: Sirius.color.accentSoft },
+  secondaryButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.sm,
+  },
   secondaryButtonText: {
     color: Sirius.color.accent,
     fontSize: 16,
@@ -925,6 +965,22 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: Sirius.color.ink,
     fontFamily: Sirius.font.serif,
+  },
+  trayActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  trayEdit: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trayEditText: {
+    fontSize: 18,
+    lineHeight: 22,
+    color: Sirius.color.inkMuted,
+    fontWeight: "600",
   },
   trayRemove: {
     width: 44,

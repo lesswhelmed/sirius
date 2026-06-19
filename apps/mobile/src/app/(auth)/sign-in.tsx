@@ -189,6 +189,9 @@ export default function SignInScreen() {
 
   const showBiometric = enrolled && bioType !== "none";
   const bioButtonLabel = `Sign in with ${biometricLabel(bioType)}`;
+  // The SF Symbol matching the device modality, shown on the button (iOS only;
+  // Android/web fall back to the label alone — see SecondaryButton).
+  const bioSymbol = bioType === "touch" ? "touchid" : "faceid";
 
   return (
     <Screen>
@@ -216,6 +219,7 @@ export default function SignInScreen() {
             <View style={styles.biometricBlock}>
               <SecondaryButton
                 label={bioButtonLabel}
+                symbol={bioSymbol}
                 busy={bioBusy}
                 disabled={busy}
                 onPress={handleBiometricSignIn}
