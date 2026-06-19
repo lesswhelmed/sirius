@@ -7,6 +7,7 @@
 //      PostDraftSchema object.
 
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { buildVoiceInstruction } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig, getYouTubeModel } from "../../lib/ai-config";
 import {
@@ -288,7 +289,11 @@ function buildMergePrompt(
   return lines.join("\n");
 }
 
-function buildStructuringPrompt(summary: string, notes: string): string {
+function buildStructuringPrompt(
+  summary: string,
+  notes: string,
+  voiceBlock: string,
+): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
     "You are drafting a single FINDING post for a personal blog from a pre-gathered YouTube evidence summary.",
@@ -303,12 +308,16 @@ function buildStructuringPrompt(summary: string, notes: string): string {
   if (notes.trim()) {
     lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
   }
+  if (voiceBlock) {
+    lines.push(voiceBlock);
+  }
   return lines.join("\n");
 }
 
 export type YouTubeRunOptions = {
   url: string;
   notes: string;
+  voiceProfile?: string | null;
 };
 
 export type YouTubeRunResult = {
@@ -494,7 +503,11 @@ export async function runYouTubeGemini(
   const { output } = await generateText({
     model: textModel,
     temperature: config.temperature,
-    prompt: buildStructuringPrompt(evidenceSummary, options.notes),
+    prompt: buildStructuringPrompt(
+      evidenceSummary,
+      options.notes,
+      buildVoiceInstruction(options.voiceProfile),
+    ),
     output: Output.object({ schema: PostDraftSchema }),
   });
 

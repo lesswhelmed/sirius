@@ -10,7 +10,7 @@ import {
   parseGitHubUrl,
   type RepoEvidence,
 } from "@repo/github-ingest";
-import { PostDraftSchema } from "@repo/ingest-draft";
+import { buildVoiceInstruction, PostDraftSchema } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig } from "../../lib/ai-config";
 import { type PostDraft, toGeminiOutput } from "../gemini-runner";
@@ -19,6 +19,7 @@ import type { GeminiOutput } from "../types";
 export type GitHubRunOptions = {
   url: string;
   notes: string;
+  voiceProfile?: string | null;
 };
 
 export type GitHubRunResult = {
@@ -32,6 +33,7 @@ export type GitHubRunResult = {
 export function buildGitHubPrompt(
   evidence: RepoEvidence,
   notes: string,
+  voiceBlock: string,
 ): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
@@ -74,6 +76,9 @@ export function buildGitHubPrompt(
   if (notes.trim()) {
     lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
   }
+  if (voiceBlock) {
+    lines.push(voiceBlock);
+  }
   return lines.join("\n");
 }
 
@@ -94,7 +99,11 @@ export async function runGitHubGemini(
   const { output } = await generateText({
     model,
     temperature: config.temperature,
-    prompt: buildGitHubPrompt(evidence, options.notes),
+    prompt: buildGitHubPrompt(
+      evidence,
+      options.notes,
+      buildVoiceInstruction(options.voiceProfile),
+    ),
     output: Output.object({ schema: PostDraftSchema }),
   });
 

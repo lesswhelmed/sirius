@@ -29,6 +29,10 @@ export type PipelineInput =
       draft?: unknown;
       submittedById: string | null;
       projectId: string | null;
+      // Optional pre-resolved author voice. Currently the worker resolves this
+      // itself from submittedById in runGemini, but the field is here so callers
+      // can pass it explicitly if already loaded.
+      voiceProfile?: string | null;
     }
   | {
       kind: "note";
@@ -40,6 +44,7 @@ export type PipelineInput =
       draft?: unknown;
       submittedById: string | null;
       projectId: string | null;
+      voiceProfile?: string | null;
     }
   | {
       kind: "image";
@@ -51,6 +56,7 @@ export type PipelineInput =
       images: StagedImage[];
       submittedById: string | null;
       projectId: string | null;
+      voiceProfile?: string | null;
     }
   | {
       // Single-file reference-only kinds. The worker feeds the staged file to
@@ -64,6 +70,7 @@ export type PipelineInput =
       notes: string;
       submittedById: string | null;
       projectId: string | null;
+      voiceProfile?: string | null;
     };
 
 export type GeminiOutput = {

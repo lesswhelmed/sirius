@@ -12,10 +12,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { PostType } from "@repo/db";
+import { getVoiceProfile } from "@repo/db";
 import { extractUrlContext } from "@repo/extraction";
 import { parseGitHubUrl } from "@repo/github-ingest";
 import type { PostDraft } from "@repo/ingest-draft";
-import { PostDraftSchema, SightDraftSchema } from "@repo/ingest-draft";
+import {
+  buildVoiceInstruction,
+  PostDraftSchema,
+  SightDraftSchema,
+} from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig } from "../lib/ai-config";
 import { parseInstagramUrl } from "../lib/instagram-url";
@@ -59,7 +64,7 @@ function slugify(input: string): string {
   );
 }
 
-function buildPrompt(input: PipelineInput): string {
+function buildPrompt(input: PipelineInput, voiceBlock: string): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
     "You are drafting a single post for a personal blog.",
@@ -109,10 +114,17 @@ function buildPrompt(input: PipelineInput): string {
       lines.push("", `Author's notes (verbatim): ${input.notes.trim()}`);
     }
   }
+  if (voiceBlock) {
+    lines.push(voiceBlock);
+  }
   return lines.join("\n");
 }
 
-function buildUrlStructuringPrompt(summary: string, notes: string): string {
+function buildUrlStructuringPrompt(
+  summary: string,
+  notes: string,
+  voiceBlock: string,
+): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
     "You are drafting a single FINDING post for a personal blog from a pre-fetched URL summary.",
@@ -127,6 +139,9 @@ function buildUrlStructuringPrompt(summary: string, notes: string): string {
   ];
   if (notes.trim()) {
     lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
+  }
+  if (voiceBlock) {
+    lines.push(voiceBlock);
   }
   return lines.join("\n");
 }
@@ -192,6 +207,11 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
   const model = google(config.model);
 
+  const voiceProfile = input.submittedById
+    ? await getVoiceProfile(input.submittedById)
+    : null;
+  const voiceBlock = buildVoiceInstruction(voiceProfile);
+
   if (input.kind === "url") {
     const githubUrls = input.urls.filter((u) => parseGitHubUrl(u));
     const nonGithubUrls = input.urls.filter((u) => !parseGitHubUrl(u));
@@ -202,6 +222,7 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
         const result = await runGitHubGemini({
           url: githubUrls[0]!,
           notes: input.notes,
+          voiceProfile,
         });
         if (result) {
           return result.output;
@@ -240,6 +261,7 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
         const result = await runYouTubeGemini({
           url: youtubeUrls[0]!,
           notes: input.notes,
+          voiceProfile,
         });
         if (result) {
           return result.output;
@@ -291,13 +313,13 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
     const { output } = await generateText({
       model,
       temperature: config.temperature,
-      prompt: buildUrlStructuringPrompt(summary, input.notes),
+      prompt: buildUrlStructuringPrompt(summary, input.notes, voiceBlock),
       output: Output.object({ schema: PostDraftSchema }),
     });
     return toGeminiOutput(output, "FINDING", { originalUrl: input.urls[0] });
   }
 
-  const prompt = buildPrompt(input);
+  const prompt = buildPrompt(input, voiceBlock);
 
   if (input.kind === "image") {
     const imageParts = input.images.map(loadImagePart);
