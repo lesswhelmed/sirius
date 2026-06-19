@@ -10,17 +10,17 @@ import { cosineSim } from "./cosine";
 import type { ScoredPost, SearchPorts } from "./ports";
 
 export interface SearchOptions {
-	// Max posts to return. Default 6 — enough to ground an answer, few enough to fit
-	// a small on-device model's context.
-	topK?: number;
-	// Drop matches below this cosine score so a query with no real match returns
-	// nothing (and the model says "I don't know") instead of citing noise.
-	minScore?: number;
-	// Prefix prepended to the query before embedding, for models trained with
-	// asymmetric task instructions (e.g. nomic-embed's "search_query: "). Must pair
-	// with the document-side prefix used when the index was built. Empty by default.
-	queryPrefix?: string;
-	abortSignal?: AbortSignal;
+  // Max posts to return. Default 6 — enough to ground an answer, few enough to fit
+  // a small on-device model's context.
+  topK?: number;
+  // Drop matches below this cosine score so a query with no real match returns
+  // nothing (and the model says "I don't know") instead of citing noise.
+  minScore?: number;
+  // Prefix prepended to the query before embedding, for models trained with
+  // asymmetric task instructions (e.g. nomic-embed's "search_query: "). Must pair
+  // with the document-side prefix used when the index was built. Empty by default.
+  queryPrefix?: string;
+  abortSignal?: AbortSignal;
 }
 
 const DEFAULT_TOP_K = 6;
@@ -30,39 +30,39 @@ const DEFAULT_MIN_SCORE = 0.25;
 // by minScore and sorted best-first. Returns [] when the index is empty or nothing
 // clears the threshold.
 export async function searchPosts(
-	ports: SearchPorts,
-	query: string,
-	opts: SearchOptions = {},
+  ports: SearchPorts,
+  query: string,
+  opts: SearchOptions = {},
 ): Promise<ScoredPost[]> {
-	const topK = opts.topK ?? DEFAULT_TOP_K;
-	const minScore = opts.minScore ?? DEFAULT_MIN_SCORE;
+  const topK = opts.topK ?? DEFAULT_TOP_K;
+  const minScore = opts.minScore ?? DEFAULT_MIN_SCORE;
 
-	const trimmed = query.trim();
-	if (!trimmed) {
-		return [];
-	}
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return [];
+  }
 
-	const stored = await ports.store.allVectors(ports.embeddingModelId);
-	if (stored.length === 0) {
-		return [];
-	}
+  const stored = await ports.store.allVectors(ports.embeddingModelId);
+  if (stored.length === 0) {
+    return [];
+  }
 
-	const { embedding } = await embed({
-		model: ports.embeddingModel,
-		value: `${opts.queryPrefix ?? ""}${trimmed}`,
-		abortSignal: opts.abortSignal,
-	});
-	const queryVec = embedding;
+  const { embedding } = await embed({
+    model: ports.embeddingModel,
+    value: `${opts.queryPrefix ?? ""}${trimmed}`,
+    abortSignal: opts.abortSignal,
+  });
+  const queryVec = embedding;
 
-	return stored
-		.map((row) => ({
-			serverId: row.serverId,
-			slug: row.slug,
-			title: row.title,
-			excerpt: row.excerpt,
-			score: cosineSim(queryVec, row.vector),
-		}))
-		.filter((p) => p.score >= minScore)
-		.sort((a, b) => b.score - a.score)
-		.slice(0, topK);
+  return stored
+    .map((row) => ({
+      serverId: row.serverId,
+      slug: row.slug,
+      title: row.title,
+      excerpt: row.excerpt,
+      score: cosineSim(queryVec, row.vector),
+    }))
+    .filter((p) => p.score >= minScore)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
 }

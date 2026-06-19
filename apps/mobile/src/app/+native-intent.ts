@@ -7,17 +7,17 @@
 import { getShareExtensionKey } from "expo-share-intent";
 
 export function redirectSystemPath({
-	path,
+  path,
 }: {
-	path: string;
-	initial: boolean;
+  path: string;
+  initial: boolean;
 }): string {
-	try {
-		if (path.includes(`dataUrl=${getShareExtensionKey()}`)) {
-			return "/shareintent";
-		}
-		return path;
-	} catch {
-		return "/";
-	}
+  try {
+    if (path.includes(`dataUrl=${getShareExtensionKey()}`)) {
+      return "/shareintent";
+    }
+    return path;
+  } catch {
+    return "/";
+  }
 }

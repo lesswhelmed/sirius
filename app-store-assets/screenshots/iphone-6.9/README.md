@@ -9,13 +9,13 @@ no 6.5" or iPad set is needed (the app sets no `supportsTablet`).
   100% battery) via `simctl status_bar override`.
 - **Captured:** 2026-06-15 from a signed-in session against the local dev stack.
 
-| Order | File | Screen |
-|------:|------|--------|
-| 1 | `01-capture.png` | Capture — pick what to add (Link, Repository, Note, Photos, Video, Document, Audio) |
-| 2 | `02-catalog.png` | Catalog — your library of drafted/published posts |
-| 3 | `03-queue.png` | Queue — captures moving pending → processing → done |
-| 4 | `04-tree.png` | Tree — the taxonomy/Observatory outline by category & focus |
-| 5 | `05-post-detail.png` | A drafted post — hero image, title, tags, source, body |
+| Order | File                 | Screen                                                                              |
+| ----: | -------------------- | ----------------------------------------------------------------------------------- |
+|     1 | `01-capture.png`     | Capture — pick what to add (Link, Repository, Note, Photos, Video, Document, Audio) |
+|     2 | `02-catalog.png`     | Catalog — your library of drafted/published posts                                   |
+|     3 | `03-queue.png`       | Queue — captures moving pending → processing → done                                 |
+|     4 | `04-tree.png`        | Tree — the taxonomy/Observatory outline by category & focus                         |
+|     5 | `05-post-detail.png` | A drafted post — hero image, title, tags, source, body                              |
 
 Apple requires at least 1 screenshot; 3–5 is the sweet spot. Upload in the order above.
 

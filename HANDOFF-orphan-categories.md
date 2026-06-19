@@ -55,7 +55,7 @@ The pipeline runs `writePost` then `assignOrg` (`apps/worker/src/pipeline/pipeli
    **unlinks every prior link**, including the path-named rows from step 1, which
    then have zero posts and are never deleted.
 
-The `categories.ts` header comment already documents the *intended* reconcile
+The `categories.ts` header comment already documents the _intended_ reconcile
 ("post-writer creates these from the raw model output; the category resolver
 later reconciles ... to the CANONICAL leaf names") — leaving orphans is an
 unintended side effect of that seam, not a deliberate design.
@@ -90,7 +90,7 @@ common case and the residual synonym case respectively):
    inside the same non-fatal try/catch. This is **safe**: a flat `Category` only
    exists to label posts, and a row always has ≥1 post the instant it's created
    (writePost's `connectOrCreate` creates+links atomically), so a 0-post row can
-   only arise *after* an unlink. It also self-heals the synonym case (when the
+   only arise _after_ an unlink. It also self-heals the synonym case (when the
    resolver canonicalizes `beekeeping` → an existing `apiculture` node, writePost's
    `beekeeping` row would orphan; the prune removes it).
 
@@ -117,7 +117,7 @@ common case and the residual synonym case respectively):
   for `completed`, and assert the count delta equals exactly the number of NEW
   canonical leaf categories on that post (0 if all reused) — **no path-named
   rows**. There is a ready DB-probe pattern: `cd apps/worker && bun -e "import
-  {prisma} from '@repo/db'; ..."`.
+{prisma} from '@repo/db'; ..."`.
 
 ## Constraints / guardrails (from the repo owner)
 

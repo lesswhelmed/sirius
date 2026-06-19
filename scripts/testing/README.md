@@ -10,16 +10,16 @@ script fail; renames of buttons, fields, or routes should.
 Each one does a single thing, prints what it learned to stdout, and exits
 non-zero on failure.
 
-| Script | Contract |
-| --- | --- |
-| `bootstrap-user.sh` | Ensure the configured `$TEST_EMAIL` user exists and is `emailVerified=true`. Idempotent. |
-| `signin.sh` | Leave the shared browser session authenticated. No-op if already signed in. |
-| `submit-url.sh <URL>` | Push one URL through the composer. Prints the new `IngestSubmission.id`. |
-| `wait-completed.sh <id> [timeout_s]` | Block on DB polling until the row reaches a terminal state. Prints `completed:<slug>` or exits non-zero. |
-| `verify-post.sh <slug>` | Assert the resulting Post is reachable via `/library` and `/posts/<slug>`. |
-| `e2e.sh [URL]` | The five above, chained. |
-| `scoping-audit.sh` | Cross-user data-isolation guardrail. Seeds two A-owned marker rows, signs in as user **B**, asserts B sees none of A's rows via `/api/app/queue` + `/api/app/posts` and gets 404 on A's post + export. Needs `TEST_EMAIL_B`/`TEST_PASSWORD_B`. See `docs/SECURITY-data-scoping.md`. |
-| `teardown.sh [--delete-user]` | Close the browser; optionally drop the test user (FK-cascades). |
+| Script                               | Contract                                                                                                                                                                                                                                                                            |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bootstrap-user.sh`                  | Ensure the configured `$TEST_EMAIL` user exists and is `emailVerified=true`. Idempotent.                                                                                                                                                                                            |
+| `signin.sh`                          | Leave the shared browser session authenticated. No-op if already signed in.                                                                                                                                                                                                         |
+| `submit-url.sh <URL>`                | Push one URL through the composer. Prints the new `IngestSubmission.id`.                                                                                                                                                                                                            |
+| `wait-completed.sh <id> [timeout_s]` | Block on DB polling until the row reaches a terminal state. Prints `completed:<slug>` or exits non-zero.                                                                                                                                                                            |
+| `verify-post.sh <slug>`              | Assert the resulting Post is reachable via `/library` and `/posts/<slug>`.                                                                                                                                                                                                          |
+| `e2e.sh [URL]`                       | The five above, chained.                                                                                                                                                                                                                                                            |
+| `scoping-audit.sh`                   | Cross-user data-isolation guardrail. Seeds two A-owned marker rows, signs in as user **B**, asserts B sees none of A's rows via `/api/app/queue` + `/api/app/posts` and gets 404 on A's post + export. Needs `TEST_EMAIL_B`/`TEST_PASSWORD_B`. See `docs/SECURITY-data-scoping.md`. |
+| `teardown.sh [--delete-user]`        | Close the browser; optionally drop the test user (FK-cascades).                                                                                                                                                                                                                     |
 
 ## Invariants
 
@@ -34,7 +34,7 @@ non-zero on failure.
    did it complete? did a Post land?) goes through `psql_q` against the row —
    so a UI redesign doesn't break the tests.
 4. **The worker must be running.** Submissions move `pending → processing →
-   completed` because the worker daemon polls. `bun dev` from the repo root
+completed` because the worker daemon polls. `bun dev` from the repo root
    covers it; `wait-completed.sh` times out if the worker is dead.
 
 ## What's stable, what's fragile
@@ -92,14 +92,14 @@ require_cmd agent-browser psql   # whatever the script needs
 
 Helpers in `_lib.sh`:
 
-| Helper | Use |
-| --- | --- |
-| `ab ...` | `agent-browser` wrapper bound to `$TEST_SESSION`. |
-| `ab_wait ...` | `agent-browser`'s `wait` (element / text / load condition). |
-| `ab_wait_url <sub> [timeout]` | Poll for a URL substring. Safe after navigation has already completed. |
-| `psql_q "..."` | Query `DATABASE_URL` with the Prisma `schema=` param stripped. Tab-separated, no header. |
-| `log "..."` | Timestamped output. |
-| `require_cmd <bin>...` | Fail fast if a binary is missing. |
+| Helper                        | Use                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `ab ...`                      | `agent-browser` wrapper bound to `$TEST_SESSION`.                                        |
+| `ab_wait ...`                 | `agent-browser`'s `wait` (element / text / load condition).                              |
+| `ab_wait_url <sub> [timeout]` | Poll for a URL substring. Safe after navigation has already completed.                   |
+| `psql_q "..."`                | Query `DATABASE_URL` with the Prisma `schema=` param stripped. Tab-separated, no header. |
+| `log "..."`                   | Timestamped output.                                                                      |
+| `require_cmd <bin>...`        | Fail fast if a binary is missing.                                                        |
 
 ## Why `bootstrap-user.sh` flips `emailVerified` directly
 

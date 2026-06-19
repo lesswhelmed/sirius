@@ -23,103 +23,103 @@
 import { deleteOrphanCategories, prisma } from "@repo/db";
 
 async function main(): Promise<void> {
-	// 1. Seed analysis facets.
-	const seed = await prisma.categoryEmbedding.deleteMany({
-		where: { source: "seed" },
-	});
-	console.log(`removed ${seed.count} seed CategoryEmbedding row(s)`);
+  // 1. Seed analysis facets.
+  const seed = await prisma.categoryEmbedding.deleteMany({
+    where: { source: "seed" },
+  });
+  console.log(`removed ${seed.count} seed CategoryEmbedding row(s)`);
 
-	// 2. Stale matches: any PostCategoryMatch.path with no surviving CategoryEmbedding.
-	const remaining = await prisma.categoryEmbedding.findMany({
-		select: { path: true, parentPath: true, source: true },
-	});
-	const livePaths = new Set(remaining.map((c) => c.path));
-	const matchPaths = await prisma.postCategoryMatch.findMany({
-		select: { path: true },
-		distinct: ["path"],
-	});
-	const stalePaths = matchPaths
-		.map((m) => m.path)
-		.filter((p) => !livePaths.has(p));
-	let staleMatches = 0;
-	if (stalePaths.length > 0) {
-		const res = await prisma.postCategoryMatch.deleteMany({
-			where: { path: { in: stalePaths } },
-		});
-		staleMatches = res.count;
-	}
-	console.log(
-		`removed ${staleMatches} stale PostCategoryMatch row(s) across ${stalePaths.length} dead path(s)`,
-	);
+  // 2. Stale matches: any PostCategoryMatch.path with no surviving CategoryEmbedding.
+  const remaining = await prisma.categoryEmbedding.findMany({
+    select: { path: true, parentPath: true, source: true },
+  });
+  const livePaths = new Set(remaining.map((c) => c.path));
+  const matchPaths = await prisma.postCategoryMatch.findMany({
+    select: { path: true },
+    distinct: ["path"],
+  });
+  const stalePaths = matchPaths
+    .map((m) => m.path)
+    .filter((p) => !livePaths.has(p));
+  let staleMatches = 0;
+  if (stalePaths.length > 0) {
+    const res = await prisma.postCategoryMatch.deleteMany({
+      where: { path: { in: stalePaths } },
+    });
+    staleMatches = res.count;
+  }
+  console.log(
+    `removed ${staleMatches} stale PostCategoryMatch row(s) across ${stalePaths.length} dead path(s)`,
+  );
 
-	// 3. Empty dynamic topics: keep only nodes some post links to, plus their
-	// ancestors (walk parentPath up — same shape as getEmbeddingSceneRows).
-	const byPath = new Map(remaining.map((c) => [c.path, c]));
-	const linkedPaths = await prisma.postCategoryMatch.findMany({
-		select: { path: true },
-		distinct: ["path"],
-	});
-	const keep = new Set<string>();
-	for (const { path } of linkedPaths) {
-		let p: string | null = path;
-		while (p && !keep.has(p)) {
-			keep.add(p);
-			p = byPath.get(p)?.parentPath ?? null;
-		}
-	}
-	const emptyDynamic = remaining
-		.filter((c) => c.source === "dynamic" && !keep.has(c.path))
-		.map((c) => c.path);
-	let emptyDynamicRemoved = 0;
-	if (emptyDynamic.length > 0) {
-		const res = await prisma.categoryEmbedding.deleteMany({
-			where: { path: { in: emptyDynamic } },
-		});
-		emptyDynamicRemoved = res.count;
-	}
-	console.log(
-		`removed ${emptyDynamicRemoved} empty dynamic CategoryEmbedding row(s)`,
-	);
+  // 3. Empty dynamic topics: keep only nodes some post links to, plus their
+  // ancestors (walk parentPath up — same shape as getEmbeddingSceneRows).
+  const byPath = new Map(remaining.map((c) => [c.path, c]));
+  const linkedPaths = await prisma.postCategoryMatch.findMany({
+    select: { path: true },
+    distinct: ["path"],
+  });
+  const keep = new Set<string>();
+  for (const { path } of linkedPaths) {
+    let p: string | null = path;
+    while (p && !keep.has(p)) {
+      keep.add(p);
+      p = byPath.get(p)?.parentPath ?? null;
+    }
+  }
+  const emptyDynamic = remaining
+    .filter((c) => c.source === "dynamic" && !keep.has(c.path))
+    .map((c) => c.path);
+  let emptyDynamicRemoved = 0;
+  if (emptyDynamic.length > 0) {
+    const res = await prisma.categoryEmbedding.deleteMany({
+      where: { path: { in: emptyDynamic } },
+    });
+    emptyDynamicRemoved = res.count;
+  }
+  console.log(
+    `removed ${emptyDynamicRemoved} empty dynamic CategoryEmbedding row(s)`,
+  );
 
-	// 4. Orphan flat Category labels.
-	const orphans = await deleteOrphanCategories();
-	console.log(`removed ${orphans} orphan flat Category row(s)`);
+  // 4. Orphan flat Category labels.
+  const orphans = await deleteOrphanCategories();
+  console.log(`removed ${orphans} orphan flat Category row(s)`);
 
-	// Final invariants — eyeball PASS/FAIL.
-	const seedLeft = await prisma.categoryEmbedding.count({
-		where: { source: "seed" },
-	});
-	console.log(
-		`${seedLeft === 0 ? "PASS" : "FAIL"}  no seed CategoryEmbedding rows remain (${seedLeft})`,
-	);
+  // Final invariants — eyeball PASS/FAIL.
+  const seedLeft = await prisma.categoryEmbedding.count({
+    where: { source: "seed" },
+  });
+  console.log(
+    `${seedLeft === 0 ? "PASS" : "FAIL"}  no seed CategoryEmbedding rows remain (${seedLeft})`,
+  );
 
-	const allLive = new Set(
-		(await prisma.categoryEmbedding.findMany({ select: { path: true } })).map(
-			(c) => c.path,
-		),
-	);
-	const danglingMatch = (
-		await prisma.postCategoryMatch.findMany({
-			select: { path: true },
-			distinct: ["path"],
-		})
-	).filter((m) => !allLive.has(m.path));
-	console.log(
-		`${danglingMatch.length === 0 ? "PASS" : "FAIL"}  no PostCategoryMatch points at a missing category (${danglingMatch.length})`,
-	);
+  const allLive = new Set(
+    (await prisma.categoryEmbedding.findMany({ select: { path: true } })).map(
+      (c) => c.path,
+    ),
+  );
+  const danglingMatch = (
+    await prisma.postCategoryMatch.findMany({
+      select: { path: true },
+      distinct: ["path"],
+    })
+  ).filter((m) => !allLive.has(m.path));
+  console.log(
+    `${danglingMatch.length === 0 ? "PASS" : "FAIL"}  no PostCategoryMatch points at a missing category (${danglingMatch.length})`,
+  );
 
-	const orphanLeft = await prisma.category.count({
-		where: { posts: { none: {} } },
-	});
-	console.log(
-		`${orphanLeft === 0 ? "PASS" : "FAIL"}  no orphan flat Category rows remain (${orphanLeft})`,
-	);
+  const orphanLeft = await prisma.category.count({
+    where: { posts: { none: {} } },
+  });
+  console.log(
+    `${orphanLeft === 0 ? "PASS" : "FAIL"}  no orphan flat Category rows remain (${orphanLeft})`,
+  );
 }
 
 main()
-	.then(() => prisma.$disconnect())
-	.then(() => process.exit(0))
-	.catch((err) => {
-		console.error("[purge-filler-categories] failed:", err);
-		process.exit(1);
-	});
+  .then(() => prisma.$disconnect())
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error("[purge-filler-categories] failed:", err);
+    process.exit(1);
+  });

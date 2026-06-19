@@ -45,7 +45,6 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-1
 
 ## Detected environment (pinned)
 
-
 | Tool                  | Version (this repo)                  | Source                                       |
 | --------------------- | ------------------------------------ | -------------------------------------------- |
 | Expo SDK              | `56.0.11`                            | `apps/mobile/package.json`, root `overrides` |
@@ -55,7 +54,6 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-1
 | Node (build)          | `22.12.0`                            | `eas.json` build profiles                    |
 | Bun                   | `1.3.14`                             | root `packageManager`                        |
 | iOS deployment target | Expo SDK 56 default (not overridden) | `app.json`                                   |
-
 
 ---
 
@@ -80,7 +78,6 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-1
 
 ## 2. App identity
 
-
 | Field                                          | Value                                                                                  |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------- |
 | App name                                       | **Sirius AI**                                                                          |
@@ -89,7 +86,6 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-1
 | Marketing version (CFBundleShortVersionString) | `1.0.0` (`app.json` → `version`)                                                       |
 | Build number (CFBundleVersion)                 | **EAS-managed** (`appVersionSource: remote`, `autoIncrement: true`) — latest is **24** |
 | Runtime version                                | `fingerprint` policy (OTA updates only reach matching native builds)                   |
-
 
 **Version policy:** never edit `buildNumber` by hand — EAS owns it. To ship a feature
 release, bump `version` (e.g. `1.0.1`) in `app.json`; EAS auto-increments the build number.
@@ -138,11 +134,11 @@ bunx eas-cli build --profile production --platform ios
 
 **Common failure modes:**
 
-- *Dirty tree* → "requireCommit" error. Commit/stash and retry.
-- *"Configure expo-updates" phase error* (seen 2026-06) → usually a duplicate `llama.rn`
-native module. See `HANDOFF-ios-build-failure.md`. Builds #22–24 succeeded, so this is
-currently resolved — don't pre-emptively change the `llama.rn`/provider pinning.
-- *Credential errors* → shouldn't happen (managed by EAS); if so, `bunx eas-cli credentials`.
+- _Dirty tree_ → "requireCommit" error. Commit/stash and retry.
+- _"Configure expo-updates" phase error_ (seen 2026-06) → usually a duplicate `llama.rn`
+  native module. See `HANDOFF-ios-build-failure.md`. Builds #22–24 succeeded, so this is
+  currently resolved — don't pre-emptively change the `llama.rn`/provider pinning.
+- _Credential errors_ → shouldn't happen (managed by EAS); if so, `bunx eas-cli credentials`.
 
 ---
 
@@ -286,7 +282,7 @@ https://lesswhelmed.com/privacy
 ```
 
 - **Category:** Primary **Productivity**, Secondary **Lifestyle**
-*(alternatives: Shopping, or Reference — Productivity fits the catalog/inventory workflow best)*
+  _(alternatives: Shopping, or Reference — Productivity fits the catalog/inventory workflow best)_
 
 - [ ] All metadata fields filled, no placeholder text
 
@@ -301,14 +297,14 @@ iPhones — you do **not** need 6.5", and you do **not** need iPad (the app sets
 - **Exact pixel size:** **1320 × 2868** portrait (also accepted for the 6.9" slot: 1290×2796).
 - **Count:** 3–10 per localization (Apple requires at least 1; aim for 3–5 strong ones).
 - **Captured for you** into `app-store-assets/screenshots/iphone-6.9/` from an
-iPhone 17 Pro Max simulator (6.9", native 1320×2868). See the manifest in that folder.
+  iPhone 17 Pro Max simulator (6.9", native 1320×2868). See the manifest in that folder.
 
 Do / don't:
 
 - ✅ Real in-app screens, clean status bar, portrait.
 - ✅ You may add a marketing frame/caption, but raw screenshots are accepted as-is.
 - ❌ No device bezels that misrepresent the UI, no placeholder/lorem content, no other
- platforms' chrome.
+  platforms' chrome.
 
 - [ ] Upload the PNGs from `app-store-assets/screenshots/iphone-6.9/` to the 6.9" slot
 
@@ -329,7 +325,6 @@ Fill App Store Connect → **App Privacy** to match what the app actually collec
 with `apps/web/app/(public)/privacy/page.tsx`). Sirius does **not** track and shows no ATT
 prompt → answer **"No"** to tracking.
 
-
 | Data type                                     | Collected? | Linked to user? | Purpose           | Tracking? |
 | --------------------------------------------- | ---------- | --------------- | ----------------- | --------- |
 | Contact Info — Email address                  | Yes        | Yes             | App Functionality | No        |
@@ -338,7 +333,6 @@ prompt → answer **"No"** to tracking.
 | User Content — Other (URLs, notes, posts)     | Yes        | Yes             | App Functionality | No        |
 | Identifiers — User ID                         | Yes        | Yes             | App Functionality | No        |
 | Usage Data — Product Interaction (post views) | Yes        | Yes             | Analytics         | No        |
-
 
 - Diagnostics/Crash data: **not collected** (no crash SDK configured).
 - Third-party advertising / data "sold": **No**.
@@ -411,17 +405,17 @@ Sirius requires an account. Sign in with the demo credentials provided in the Us
 
 - **Review timeline:** typically 24–48 hours; first submissions can take longer.
 - **If rejected:** read the Resolution Center message, fix the specific issue, reply or
-resubmit. Most rejections are metadata/demo-account/privacy issues, not the binary.
+  resubmit. Most rejections are metadata/demo-account/privacy issues, not the binary.
 - **Releasing:** if you chose Manual release, click **Release** once "Pending Developer
-Release."
+  Release."
 - **Shipping updates:**
-  - *JS-only change* (no native deps changed) → **EAS Update** (OTA), no re-review:
+  - _JS-only change_ (no native deps changed) → **EAS Update** (OTA), no re-review:
     ```sh
     cd apps/mobile && bunx eas-cli update --branch production
     ```
     (Only reaches builds with a matching native fingerprint.)
-  - *Native change or App Store metadata change* → bump `version`, new
-  `eas build --profile production --platform ios`, `eas submit`, new review.
+  - _Native change or App Store metadata change_ → bump `version`, new
+    `eas build --profile production --platform ios`, `eas submit`, new review.
 
 ---
 
@@ -437,4 +431,3 @@ No app behavior/feature code was changed.
 ```
 
 ```
-

@@ -15,20 +15,20 @@ import { rateLimit } from "../../../../lib/rate-limit";
 import { getSessionOrNull } from "../../../../lib/session";
 
 function jsonError(
-	status: number,
-	error: string,
-	extra?: Record<string, unknown>,
+  status: number,
+  error: string,
+  extra?: Record<string, unknown>,
 ) {
-	return Response.json({ error, ...extra }, { status });
+  return Response.json({ error, ...extra }, { status });
 }
 
 function log(
-	level: "info" | "warn",
-	msg: string,
-	extra?: Record<string, unknown>,
+  level: "info" | "warn",
+  msg: string,
+  extra?: Record<string, unknown>,
 ) {
-	const payload = extra ? ` ${JSON.stringify(extra)}` : "";
-	console.log(`[app/extract] [${level}] ${msg}${payload}`);
+  const payload = extra ? ` ${JSON.stringify(extra)}` : "";
+  console.log(`[app/extract] [${level}] ${msg}${payload}`);
 }
 
 // Per-user and global ceilings (fixed 5-minute windows). Extraction costs a
@@ -38,106 +38,106 @@ const GLOBAL_MAX = 60;
 const WINDOW_MS = 5 * 60 * 1000;
 
 const PRIVATE_HOST =
-	/^(localhost|.*\.local|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|0\.0\.0\.0|\[?::1\]?)$/i;
+  /^(localhost|.*\.local|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|0\.0\.0\.0|\[?::1\]?)$/i;
 
 const bodySchema = z.object({
-	urls: z.array(z.string()).min(1).max(3),
+  urls: z.array(z.string()).min(1).max(3),
 });
 
 function validateUrls(urls: string[]): string | null {
-	for (const raw of urls) {
-		let parsed: URL;
-		try {
-			parsed = new URL(raw);
-		} catch {
-			return `not a valid URL: ${truncate(raw)}`;
-		}
-		if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-			return "only http(s) URLs are supported";
-		}
-		if (PRIVATE_HOST.test(parsed.hostname)) {
-			return "private and loopback hosts are not supported";
-		}
-	}
-	return null;
+  for (const raw of urls) {
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      return `not a valid URL: ${truncate(raw)}`;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return "only http(s) URLs are supported";
+    }
+    if (PRIVATE_HOST.test(parsed.hostname)) {
+      return "private and loopback hosts are not supported";
+    }
+  }
+  return null;
 }
 
 function truncate(value: string): string {
-	return value.length > 60 ? `${value.slice(0, 60)}…` : value;
+  return value.length > 60 ? `${value.slice(0, 60)}…` : value;
 }
 
 export async function POST(request: Request) {
-	const session = await getSessionOrNull();
-	if (!session) {
-		log("warn", "unauthorized");
-		return jsonError(401, "unauthorized");
-	}
+  const session = await getSessionOrNull();
+  if (!session) {
+    log("warn", "unauthorized");
+    return jsonError(401, "unauthorized");
+  }
 
-	// Abuse damping only — the key never leaves process memory (see contract).
-	const perUser = rateLimit(
-		`extract:${session.user.id}`,
-		PER_USER_MAX,
-		WINDOW_MS,
-	);
-	if (!perUser.ok) {
-		log("warn", "rate-limited", {
-			scope: "user",
-			retryAfterMs: perUser.retryAfterMs,
-		});
-		return jsonError(429, "rate limited", {
-			retryAfterMs: perUser.retryAfterMs,
-		});
-	}
-	const global = rateLimit("extract:global", GLOBAL_MAX, WINDOW_MS);
-	if (!global.ok) {
-		log("warn", "rate-limited", {
-			scope: "global",
-			retryAfterMs: global.retryAfterMs,
-		});
-		return jsonError(429, "rate limited", {
-			retryAfterMs: global.retryAfterMs,
-		});
-	}
+  // Abuse damping only — the key never leaves process memory (see contract).
+  const perUser = rateLimit(
+    `extract:${session.user.id}`,
+    PER_USER_MAX,
+    WINDOW_MS,
+  );
+  if (!perUser.ok) {
+    log("warn", "rate-limited", {
+      scope: "user",
+      retryAfterMs: perUser.retryAfterMs,
+    });
+    return jsonError(429, "rate limited", {
+      retryAfterMs: perUser.retryAfterMs,
+    });
+  }
+  const global = rateLimit("extract:global", GLOBAL_MAX, WINDOW_MS);
+  if (!global.ok) {
+    log("warn", "rate-limited", {
+      scope: "global",
+      retryAfterMs: global.retryAfterMs,
+    });
+    return jsonError(429, "rate limited", {
+      retryAfterMs: global.retryAfterMs,
+    });
+  }
 
-	let raw: unknown;
-	try {
-		raw = await request.json();
-	} catch {
-		return jsonError(400, "invalid JSON body");
-	}
-	const parsed = bodySchema.safeParse(raw);
-	if (!parsed.success) {
-		return jsonError(400, "expected { urls: string[] } with 1-3 entries");
-	}
-	const invalid = validateUrls(parsed.data.urls);
-	if (invalid) {
-		return jsonError(400, invalid);
-	}
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    return jsonError(400, "invalid JSON body");
+  }
+  const parsed = bodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return jsonError(400, "expected { urls: string[] } with 1-3 entries");
+  }
+  const invalid = validateUrls(parsed.data.urls);
+  if (invalid) {
+    return jsonError(400, invalid);
+  }
 
-	const apiKey = process.env.GEMINI_API_KEY;
-	if (!apiKey) {
-		log("warn", "missing-api-key");
-		return jsonError(503, "extraction unavailable");
-	}
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    log("warn", "missing-api-key");
+    return jsonError(503, "extraction unavailable");
+  }
 
-	const start = Date.now();
-	try {
-		const { summary } = await extractUrlContext({
-			urls: parsed.data.urls,
-			apiKey,
-		});
-		// Deliberately log only shape/latency — never URLs, user, or content.
-		log("info", "extracted", {
-			count: parsed.data.urls.length,
-			ms: Date.now() - start,
-			chars: summary.length,
-		});
-		return Response.json({ summary });
-	} catch (err) {
-		log("warn", "extraction-failed", {
-			ms: Date.now() - start,
-			error: err instanceof Error ? err.name : "unknown",
-		});
-		return jsonError(502, "extraction failed");
-	}
+  const start = Date.now();
+  try {
+    const { summary } = await extractUrlContext({
+      urls: parsed.data.urls,
+      apiKey,
+    });
+    // Deliberately log only shape/latency — never URLs, user, or content.
+    log("info", "extracted", {
+      count: parsed.data.urls.length,
+      ms: Date.now() - start,
+      chars: summary.length,
+    });
+    return Response.json({ summary });
+  } catch (err) {
+    log("warn", "extraction-failed", {
+      ms: Date.now() - start,
+      error: err instanceof Error ? err.name : "unknown",
+    });
+    return jsonError(502, "extraction failed");
+  }
 }

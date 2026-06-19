@@ -9,13 +9,13 @@ the 6.5" slot triggers "The dimensions of one or more screenshots are wrong.")
 - **Source:** downscaled from the 6.9" captures in `../iphone-6.9` (1320 × 2868). The
   aspect ratios differ by ~0.4%, so the scaling is visually imperceptible.
 
-| Order | File | Screen |
-|------:|------|--------|
-| 1 | `01-capture.png` | Capture — pick what to add (Link, Repository, Note, Photos, Video, Document, Audio) |
-| 2 | `02-catalog.png` | Catalog — your library of drafted/published posts |
-| 3 | `03-queue.png` | Queue — captures moving pending → processing → done |
-| 4 | `04-tree.png` | Tree — the taxonomy/Observatory outline by category & focus |
-| 5 | `05-post-detail.png` | A drafted post — hero image, title, tags, source, body |
+| Order | File                 | Screen                                                                              |
+| ----: | -------------------- | ----------------------------------------------------------------------------------- |
+|     1 | `01-capture.png`     | Capture — pick what to add (Link, Repository, Note, Photos, Video, Document, Audio) |
+|     2 | `02-catalog.png`     | Catalog — your library of drafted/published posts                                   |
+|     3 | `03-queue.png`       | Queue — captures moving pending → processing → done                                 |
+|     4 | `04-tree.png`        | Tree — the taxonomy/Observatory outline by category & focus                         |
+|     5 | `05-post-detail.png` | A drafted post — hero image, title, tags, source, body                              |
 
 ## Regenerate from the 6.9" set
 

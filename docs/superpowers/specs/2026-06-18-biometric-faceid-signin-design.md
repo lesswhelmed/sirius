@@ -15,6 +15,7 @@ App: `apps/mobile` (Expo SDK 56, RN 0.85 New Architecture / Fabric, better-auth 
 ## Root cause of the autofill bug
 
 Controlled `TextInput` (value + onChangeText) under the iOS New Architecture (Fabric):
+
 - Fabric can **recycle** the native input node after Password Autofill, after which it stops
   propagating value updates — the field renders empty. (React Native issue
   [#53050](https://github.com/facebook/react-native/issues/53050).)
@@ -33,6 +34,7 @@ Controlled `TextInput` (value + onChangeText) under the iOS New Architecture (Fa
 ## Scope
 
 In scope:
+
 - `expo-local-authentication` install + config plugin.
 - New `src/lib/biometric-auth.ts` vault module.
 - Sign-in screen: "Sign in with Face ID" path + post-login enable prompt + invalidation guard.
@@ -41,6 +43,7 @@ In scope:
 - Autofill resilience fix on the auth screens.
 
 Out of scope (YAGNI):
+
 - App-lock / foreground re-auth gate.
 - Android-specific tuning (code is Android-safe via capability guards, but iOS is the
   verified target).
@@ -63,6 +66,7 @@ Out of scope (YAGNI):
 Single-purpose vault. Keys mirror the `siriusapp` storage prefix convention used elsewhere.
 
 Public surface:
+
 - `getBiometricCapability(): Promise<{ available: boolean; type: 'face' | 'touch' | 'none' }>`
   — `hasHardwareAsync()` && `isEnrolledAsync()`; `type` from `supportedAuthenticationTypesAsync()`
   for correct "Face ID" vs "Touch ID" labeling.
@@ -111,6 +115,7 @@ is used only for capability detection + labeling, never for a second prompt.
 
 Do **not** change the shared `Field` (used widely as a controlled input). Instead, on the
 auth screens convert the email/password inputs to the **uncontrolled ref pattern**:
+
 - `defaultValue` + capture the native value into a `ref` via **both** `onChangeText` and
   `onEndEditing` (the latter still carries the final native text when `onChangeText` was
   skipped by the recycling bug). Read the refs at submit.
@@ -133,6 +138,7 @@ reflects whatever autofill / the user entered.
 ## Verification (no test runner exists in this repo)
 
 Manual checklist on a dev-client build (FaceID requires a dev build, not Expo Go — already used):
+
 - Simulator: **Features → Face ID → Enrolled**, then Matching / Non-matching Face to exercise
   success, cancel, and fail.
 - Enable at login → kill app → relaunch → "Sign in with Face ID" succeeds.
@@ -143,10 +149,12 @@ Manual checklist on a dev-client build (FaceID requires a dev build, not Expo Go
 ## Files
 
 New:
+
 - `apps/mobile/src/lib/biometric-auth.ts`
 - `apps/mobile/src/app/settings.tsx`
 
 Modified:
+
 - `apps/mobile/app.json` (add `expo-local-authentication` plugin)
 - `apps/mobile/package.json` (add dependency)
 - `apps/mobile/src/app/(auth)/sign-in.tsx` (Face ID button, enable prompt, autofill fix)

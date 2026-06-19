@@ -28,14 +28,14 @@ const MAX_EMBED_CHARS = 4000;
 const CHUNK_SIZE = 16;
 
 export interface IndexProgress {
-	done: number;
-	total: number;
+  done: number;
+  total: number;
 }
 
 function embedText(title: string, body: string): string {
-	// Document-side task prefix (pairs with the query prefix in ask.ts), then the
-	// post text capped to the model's window.
-	return `${EMBEDDING_DOC_PREFIX}${`${title}\n${body}`.slice(0, MAX_EMBED_CHARS)}`;
+  // Document-side task prefix (pairs with the query prefix in ask.ts), then the
+  // post text capped to the model's window.
+  return `${EMBEDDING_DOC_PREFIX}${`${title}\n${body}`.slice(0, MAX_EMBED_CHARS)}`;
 }
 
 let building: Promise<IndexProgress> | null = null;
@@ -46,80 +46,80 @@ let building: Promise<IndexProgress> | null = null;
  * Returns the count embedded this run and the total that needed work.
  */
 export function buildPostIndex(opts?: {
-	onProgress?: (p: IndexProgress) => void;
-	signal?: AbortSignal;
+  onProgress?: (p: IndexProgress) => void;
+  signal?: AbortSignal;
 }): Promise<IndexProgress> {
-	if (building) return building;
-	building = (async () => {
-		// Candidate posts: synced (have a serverId) and not tombstoned.
-		const rows = await db
-			.select({
-				serverId: posts.serverId,
-				title: posts.title,
-				body: posts.body,
-			})
-			.from(posts)
-			.where(and(isNotNull(posts.serverId), ne(posts.syncState, "tombstone")));
+  if (building) return building;
+  building = (async () => {
+    // Candidate posts: synced (have a serverId) and not tombstoned.
+    const rows = await db
+      .select({
+        serverId: posts.serverId,
+        title: posts.title,
+        body: posts.body,
+      })
+      .from(posts)
+      .where(and(isNotNull(posts.serverId), ne(posts.syncState, "tombstone")));
 
-		const candidates = rows
-			.filter((r): r is { serverId: string; title: string; body: string } =>
-				Boolean(r.serverId),
-			)
-			.map((r) => ({
-				serverId: r.serverId,
-				title: r.title,
-				body: r.body,
-				hash: contentHash(r.title, r.body),
-			}));
+    const candidates = rows
+      .filter((r): r is { serverId: string; title: string; body: string } =>
+        Boolean(r.serverId),
+      )
+      .map((r) => ({
+        serverId: r.serverId,
+        title: r.title,
+        body: r.body,
+        hash: contentHash(r.title, r.body),
+      }));
 
-		const byId = new Map(candidates.map((c) => [c.serverId, c]));
-		const staleIds = await sqliteVectorStore.missing(
-			candidates.map((c) => ({ serverId: c.serverId, contentHash: c.hash })),
-			EMBEDDING_MODEL_ID,
-		);
+    const byId = new Map(candidates.map((c) => [c.serverId, c]));
+    const staleIds = await sqliteVectorStore.missing(
+      candidates.map((c) => ({ serverId: c.serverId, contentHash: c.hash })),
+      EMBEDDING_MODEL_ID,
+    );
 
-		const total = staleIds.length;
-		let done = 0;
-		opts?.onProgress?.({ done, total });
+    const total = staleIds.length;
+    let done = 0;
+    opts?.onProgress?.({ done, total });
 
-		for (let i = 0; i < staleIds.length; i += CHUNK_SIZE) {
-			if (opts?.signal?.aborted) break;
-			const chunk = staleIds.slice(i, i + CHUNK_SIZE);
-			const items = chunk
-				.map((id) => byId.get(id))
-				.filter((c): c is NonNullable<typeof c> => Boolean(c));
-			if (items.length === 0) continue;
+    for (let i = 0; i < staleIds.length; i += CHUNK_SIZE) {
+      if (opts?.signal?.aborted) break;
+      const chunk = staleIds.slice(i, i + CHUNK_SIZE);
+      const items = chunk
+        .map((id) => byId.get(id))
+        .filter((c): c is NonNullable<typeof c> => Boolean(c));
+      if (items.length === 0) continue;
 
-			const { embeddings } = await withEmbeddingModel(
-				EMBEDDING_MODEL_ID,
-				"embed-index",
-				(model) =>
-					embedMany({
-						model,
-						values: items.map((c) => embedText(c.title, c.body)),
-						abortSignal: opts?.signal,
-					}),
-			);
+      const { embeddings } = await withEmbeddingModel(
+        EMBEDDING_MODEL_ID,
+        "embed-index",
+        (model) =>
+          embedMany({
+            model,
+            values: items.map((c) => embedText(c.title, c.body)),
+            abortSignal: opts?.signal,
+          }),
+      );
 
-			await sqliteVectorStore.upsert(
-				items.map((c, idx) => ({
-					serverId: c.serverId,
-					vector: Float32Array.from(embeddings[idx]!),
-					dim: embeddings[idx]!.length,
-					contentHash: c.hash,
-				})),
-				EMBEDDING_MODEL_ID,
-			);
+      await sqliteVectorStore.upsert(
+        items.map((c, idx) => ({
+          serverId: c.serverId,
+          vector: Float32Array.from(embeddings[idx]!),
+          dim: embeddings[idx]!.length,
+          contentHash: c.hash,
+        })),
+        EMBEDDING_MODEL_ID,
+      );
 
-			done += items.length;
-			opts?.onProgress?.({ done, total });
-		}
+      done += items.length;
+      opts?.onProgress?.({ done, total });
+    }
 
-		return { done, total };
-	})().finally(() => {
-		building = null;
-	});
-	return building;
+    return { done, total };
+  })().finally(() => {
+    building = null;
+  });
+  return building;
 }
 
 /**
@@ -129,6 +129,6 @@ export function buildPostIndex(opts?: {
  * Errors are swallowed: a failed background embed must never break sync.
  */
 export async function triggerReindexIfReady(): Promise<void> {
-	if (!(await isModelReady(EMBEDDING_MODEL_ID))) return;
-	void buildPostIndex().catch(() => {});
+  if (!(await isModelReady(EMBEDDING_MODEL_ID))) return;
+  void buildPostIndex().catch(() => {});
 }

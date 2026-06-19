@@ -19,14 +19,14 @@ publish what you choose._
 
 ## Locked decisions
 
-| Decision        | Choice                                                                      |
-| --------------- | --------------------------------------------------------------------------- |
-| Route           | New `app/(marketing)/product/` rendered at **`/product`**, own minimal layout |
-| Front door      | Root `/` redirects **signed-out → `/product`**, **signed-in → `/ingest`**    |
-| Deliverable     | A page in the Next.js web app (not a standalone deck), fully SEO-equipped     |
-| Video           | Real iOS-simulator screen recording, **captioned + self-produced voiceover**  |
-| Voiceover       | Generated locally with macOS `say -o` → ffmpeg, **no human recording needed** |
-| Selling points  | **Both** punchy hooks AND a detailed feature→benefit→proof table              |
+| Decision       | Choice                                                                        |
+| -------------- | ----------------------------------------------------------------------------- |
+| Route          | New `app/(marketing)/product/` rendered at **`/product`**, own minimal layout |
+| Front door     | Root `/` redirects **signed-out → `/product`**, **signed-in → `/ingest`**     |
+| Deliverable    | A page in the Next.js web app (not a standalone deck), fully SEO-equipped     |
+| Video          | Real iOS-simulator screen recording, **captioned + self-produced voiceover**  |
+| Voiceover      | Generated locally with macOS `say -o` → ffmpeg, **no human recording needed** |
+| Selling points | **Both** punchy hooks AND a detailed feature→benefit→proof table              |
 
 ## Visual language (match exactly — already in `apps/web/app/tailwind.css`)
 
@@ -149,6 +149,7 @@ page) and woven into the page copy.
 ## File manifest
 
 **Create**
+
 - `app/(marketing)/layout.tsx`
 - `app/(marketing)/product/page.tsx`
 - `app/(marketing)/product/_sections/{hero,flow,features,selling-points,privacy-note,cta}.tsx`
@@ -161,6 +162,7 @@ page) and woven into the page copy.
 - `docs/marketing/selling-points.md`
 
 **Modify**
+
 - `app/layout.tsx` — add `metadataBase`, refresh title/description.
 - `app/page.tsx` — signed-out redirect → `/product`.
 

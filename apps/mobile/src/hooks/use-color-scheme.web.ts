@@ -9,17 +9,17 @@ const emptySubscribe = () => () => {};
  * client snapshot (true) after hydration — without a setState-in-effect.
  */
 export function useColorScheme() {
-	const hasHydrated = useSyncExternalStore(
-		emptySubscribe,
-		() => true,
-		() => false,
-	);
+  const hasHydrated = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
-	const colorScheme = useRNColorScheme();
+  const colorScheme = useRNColorScheme();
 
-	if (hasHydrated) {
-		return colorScheme;
-	}
+  if (hasHydrated) {
+    return colorScheme;
+  }
 
-	return "light";
+  return "light";
 }

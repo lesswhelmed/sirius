@@ -60,6 +60,7 @@ model Post {
   hlexiconEntries HlexiconEntry[] @relation("PostToHlexicon")
   savedBy         SavedPost[]     @relation("PostSaves")
   views           PostView[]      @relation("PostViews")
+  comments        Comment[]       @relation("PostComments")
 
   // prevent cross-provider slug collisions
   @@unique([providerId, slug])
@@ -313,6 +314,39 @@ model PostView {
   @@index([postId, viewerId])
 }
 
+// A comment on a post. Owner-scoped today (only the post owner comments on their
+// own posts), but the shape is deliberately agent-ready: authorKind distinguishes
+// a human (USER, authorId set) from a future AI responder (AGENT, authorId null +
+// agentName label), so a Gemini reply can drop into the same thread with no
+// migration. Soft-deleted via status="tombstone" (not a hard delete) so the
+// change propagates through the same updatedAt delta feed the mobile mirror uses
+// for posts (listCommentsChangedSince mirrors listPostsChangedSince).
+model Comment {
+  id         String            @id @default(cuid())
+  postId     String
+  post       Post              @relation("PostComments", fields: [postId], references: [id], onDelete: Cascade)
+  authorKind CommentAuthorKind @default(USER)
+  // Null when authorKind=AGENT (no user row) or the human author deleted their
+  // account (SetNull). USER comments always carry it at write time.
+  authorId   String?
+  author     User?             @relation("UserComments", fields: [authorId], references: [id], onDelete: SetNull)
+  agentName  String? // display label for AGENT authors (e.g. "Gemini"); null for USER
+  body       String
+  status     String            @default("active") // "active" | "tombstone"
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  deletedAt  DateTime?
+
+  @@index([postId, createdAt])
+  @@index([authorId])
+  @@index([updatedAt]) // delta since-cursor scans (listCommentsChangedSince)
+}
+
+enum CommentAuthorKind {
+  USER
+  AGENT
+}
+
 model TagEmbedding {
   id             String   @id @default(cuid())
   name           String   @unique
@@ -361,6 +395,7 @@ model User {
   aspirations Aspiration[]       @relation("UserAspirations")
   projects    Project[]          @relation("UserProjects")
   archiveRequests ArchiveRequest[] @relation("UserArchiveRequests")
+  comments    Comment[]          @relation("UserComments")
 
   @@index([email])
   @@index([handle])

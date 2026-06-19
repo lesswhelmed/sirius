@@ -25,7 +25,7 @@ Corollaries:
 
 ## How scoping is enforced (reuse these — don't re-invent)
 
-### 1. Owner id is a *required* parameter on private list helpers
+### 1. Owner id is a _required_ parameter on private list helpers
 
 `@repo/db` helpers that back the cockpit take the owner id as a **required**
 positional arg, so a caller physically cannot forget to scope:
@@ -67,7 +67,7 @@ reading must never grant write/management rights.
 
 `CategoryEmbedding` is a **global** table (no `ownerId`): a fixed `seed`
 analysis-facet taxonomy plus `dynamic` topic nodes grown from content at ingest.
-A dynamic node can exist only because *another* user ingested that topic, so the
+A dynamic node can exist only because _another_ user ingested that topic, so the
 scene must not show the raw global set. `getEmbeddingSceneRows(ownerId)` keeps
 only the category nodes the owner's **own** posts match (via their
 `categoryMatches`), walked up `parentPath` to the root so the tree stays

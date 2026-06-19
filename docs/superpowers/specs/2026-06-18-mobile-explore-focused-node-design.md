@@ -20,7 +20,7 @@ never talk, so there's no easy, spatial way to wander your taxonomy and "see wha
 A third **"Explore"** mode in the Tree tab: a single taxonomy node **in focus** that the
 user flips through **left/right between siblings**, paired with a **3D constellation hero**
 whose camera flies to the focused node and pulses it oxblood. Both surfaces are driven by
-the *same* `useSceneSelection` state so they can never disagree.
+the _same_ `useSceneSelection` state so they can never disagree.
 
 No backend changes — every `SceneNode` already carries a PCA `position: [x,y,z]`, and
 `@repo/embedding-scene` already exposes the hierarchy (`categoryChildren`), posts

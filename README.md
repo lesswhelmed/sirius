@@ -30,7 +30,7 @@ opening pull requests.
 | 🤖 **Schema-validated AI** | Vercel AI SDK + Gemini with `Output.object(zod)` — no manual JSON parsing      |
 | 🔀 **Input-aware routing** | URL → `url_context`, Instagram → Apify, YouTube → transcript, images → gallery |
 | 🗄️ **Direct-to-Postgres**  | No PRs, no MDX commits — the worker upserts `Post` rows the web app reads      |
-| 📱 **Web + mobile**        | Next.js cockpit/catalog and an Expo client sharing one Better Auth instance |
+| 📱 **Web + mobile**        | Next.js cockpit/catalog and an Expo client sharing one Better Auth instance    |
 
 ---
 

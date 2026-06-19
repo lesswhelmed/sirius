@@ -13,16 +13,16 @@
 import { deleteOrphanCategories } from "@repo/db";
 
 async function main(): Promise<void> {
-	const removed = await deleteOrphanCategories();
-	console.log(
-		`cleanup complete: removed ${removed} orphan categor${removed === 1 ? "y" : "ies"}`,
-	);
+  const removed = await deleteOrphanCategories();
+  console.log(
+    `cleanup complete: removed ${removed} orphan categor${removed === 1 ? "y" : "ies"}`,
+  );
 }
 
 main().then(
-	() => process.exit(0),
-	(err) => {
-		console.error(err);
-		process.exit(1);
-	},
+  () => process.exit(0),
+  (err) => {
+    console.error(err);
+    process.exit(1);
+  },
 );

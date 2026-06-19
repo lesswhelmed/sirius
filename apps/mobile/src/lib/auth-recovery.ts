@@ -28,11 +28,11 @@ const MAX_CHUNKS = 16;
 // the native fetch fail — flag a stored value that contains them so a reset can
 // be attributed to a genuinely corrupt cookie.
 function valueLooksToxic(raw: string): boolean {
-	for (let i = 0; i < raw.length; i += 1) {
-		const code = raw.charCodeAt(i);
-		if (code < 0x20 || code >= 0x7f) return true;
-	}
-	return false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const code = raw.charCodeAt(i);
+    if (code < 0x20 || code >= 0x7f) return true;
+  }
+  return false;
 }
 
 export type AuthCookieDiag = { len: number; toxic: boolean };
@@ -40,13 +40,13 @@ export type AuthCookieDiag = { len: number; toxic: boolean };
 // Synchronous peek at the raw stored cookie (SecureStore.getItem is sync, the
 // same call the Expo client uses). Never throws.
 export function inspectStoredCookie(): AuthCookieDiag {
-	let raw = "";
-	try {
-		raw = SecureStore.getItem(COOKIE_KEY) ?? "";
-	} catch {
-		raw = "";
-	}
-	return { len: raw.length, toxic: valueLooksToxic(raw) };
+  let raw = "";
+  try {
+    raw = SecureStore.getItem(COOKIE_KEY) ?? "";
+  } catch {
+    raw = "";
+  }
+  return { len: raw.length, toxic: valueLooksToxic(raw) };
 }
 
 // Neutralize the persisted auth cookie + cached session. Setting the base key to
@@ -56,39 +56,39 @@ export function inspectStoredCookie(): AuthCookieDiag {
 // cleared so the next sign-in screen can confirm a corrupt cookie was the cause
 // (TestFlight builds have no console). Never throws.
 export async function clearAuthStorage(reason: string): Promise<void> {
-	const diag = inspectStoredCookie();
-	const ops: Promise<unknown>[] = [
-		SecureStore.setItemAsync(COOKIE_KEY, "{}").catch(() => {}),
-		SecureStore.setItemAsync(SESSION_KEY, "{}").catch(() => {}),
-		SecureStore.setItemAsync(
-			DIAG_KEY,
-			JSON.stringify({ reason, len: diag.len, toxic: diag.toxic }),
-		).catch(() => {}),
-	];
-	for (let i = 0; i < MAX_CHUNKS; i += 1) {
-		ops.push(SecureStore.deleteItemAsync(`${COOKIE_KEY}.${i}`).catch(() => {}));
-		ops.push(
-			SecureStore.deleteItemAsync(`${SESSION_KEY}.${i}`).catch(() => {}),
-		);
-	}
-	await Promise.all(ops);
+  const diag = inspectStoredCookie();
+  const ops: Promise<unknown>[] = [
+    SecureStore.setItemAsync(COOKIE_KEY, "{}").catch(() => {}),
+    SecureStore.setItemAsync(SESSION_KEY, "{}").catch(() => {}),
+    SecureStore.setItemAsync(
+      DIAG_KEY,
+      JSON.stringify({ reason, len: diag.len, toxic: diag.toxic }),
+    ).catch(() => {}),
+  ];
+  for (let i = 0; i < MAX_CHUNKS; i += 1) {
+    ops.push(SecureStore.deleteItemAsync(`${COOKIE_KEY}.${i}`).catch(() => {}));
+    ops.push(
+      SecureStore.deleteItemAsync(`${SESSION_KEY}.${i}`).catch(() => {}),
+    );
+  }
+  await Promise.all(ops);
 }
 
 export type AuthRecoveryBreadcrumb = {
-	reason: string;
-	len: number;
-	toxic: boolean;
+  reason: string;
+  len: number;
+  toxic: boolean;
 };
 
 // Read (and clear) the last recovery breadcrumb, if any. Used by the sign-in
 // screen to surface a one-time "we reset a corrupted session" confirmation.
 export function takeRecoveryBreadcrumb(): AuthRecoveryBreadcrumb | null {
-	try {
-		const raw = SecureStore.getItem(DIAG_KEY);
-		if (!raw) return null;
-		void SecureStore.deleteItemAsync(DIAG_KEY).catch(() => {});
-		return JSON.parse(raw) as AuthRecoveryBreadcrumb;
-	} catch {
-		return null;
-	}
+  try {
+    const raw = SecureStore.getItem(DIAG_KEY);
+    if (!raw) return null;
+    void SecureStore.deleteItemAsync(DIAG_KEY).catch(() => {});
+    return JSON.parse(raw) as AuthRecoveryBreadcrumb;
+  } catch {
+    return null;
+  }
 }

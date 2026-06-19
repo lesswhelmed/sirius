@@ -13,22 +13,22 @@ import { type SearchOptions, searchPosts } from "./search";
 export const POST_SEARCH_TOOL_NAME = "search_posts";
 
 export function createPostSearchTool(
-	ports: SearchPorts,
-	defaults: Pick<SearchOptions, "topK" | "minScore"> = {},
+  ports: SearchPorts,
+  defaults: Pick<SearchOptions, "topK" | "minScore"> = {},
 ) {
-	return tool({
-		description:
-			"Search the user's own saved posts by meaning (semantic similarity) and " +
-			"return the most relevant ones. Call this whenever answering needs anything " +
-			"from the user's library. Returns posts with a title, excerpt, slug, and a " +
-			"relevance score.",
-		inputSchema: PostSearchInputSchema,
-		execute: async ({ query, topK }): Promise<{ posts: ScoredPost[] }> => {
-			const posts = await searchPosts(ports, query, {
-				topK: topK ?? defaults.topK,
-				minScore: defaults.minScore,
-			});
-			return { posts };
-		},
-	});
+  return tool({
+    description:
+      "Search the user's own saved posts by meaning (semantic similarity) and " +
+      "return the most relevant ones. Call this whenever answering needs anything " +
+      "from the user's library. Returns posts with a title, excerpt, slug, and a " +
+      "relevance score.",
+    inputSchema: PostSearchInputSchema,
+    execute: async ({ query, topK }): Promise<{ posts: ScoredPost[] }> => {
+      const posts = await searchPosts(ports, query, {
+        topK: topK ?? defaults.topK,
+        minScore: defaults.minScore,
+      });
+      return { posts };
+    },
+  });
 }

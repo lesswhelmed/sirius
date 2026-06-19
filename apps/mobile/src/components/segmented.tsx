@@ -19,108 +19,108 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Sirius } from "@/constants/theme";
 
 type SegmentedContextValue<T extends string> = {
-	value: T;
-	onChange: (value: T) => void;
+  value: T;
+  onChange: (value: T) => void;
 };
 
 // One context instance, loosened to `string` at the boundary — each call site
 // keeps its own literal union via the generic props below.
 const SegmentedContext = createContext<SegmentedContextValue<string> | null>(
-	null,
+  null,
 );
 
 export function SegmentedControl<T extends string>({
-	value,
-	onChange,
-	children,
+  value,
+  onChange,
+  children,
 }: {
-	value: T;
-	onChange: (value: T) => void;
-	children: ReactNode;
+  value: T;
+  onChange: (value: T) => void;
+  children: ReactNode;
 }) {
-	return (
-		<SegmentedContext.Provider
-			value={{ value, onChange: onChange as (v: string) => void }}
-		>
-			<View style={styles.track} accessibilityRole="tablist">
-				{children}
-			</View>
-		</SegmentedContext.Provider>
-	);
+  return (
+    <SegmentedContext.Provider
+      value={{ value, onChange: onChange as (v: string) => void }}
+    >
+      <View style={styles.track} accessibilityRole="tablist">
+        {children}
+      </View>
+    </SegmentedContext.Provider>
+  );
 }
 
 export function Segment<T extends string>({
-	value,
-	label,
-	count,
+  value,
+  label,
+  count,
 }: {
-	value: T;
-	label: string;
-	count?: number;
+  value: T;
+  label: string;
+  count?: number;
 }) {
-	const ctx = useContext(SegmentedContext);
-	if (!ctx) {
-		throw new Error("<Segment> must be rendered inside <SegmentedControl>");
-	}
-	const active = ctx.value === value;
-	return (
-		<Pressable
-			onPress={() => ctx.onChange(value)}
-			accessibilityRole="tab"
-			accessibilityLabel={count != null ? `${label}, ${count}` : label}
-			accessibilityState={{ selected: active }}
-			style={({ pressed }) => [
-				styles.segment,
-				active && styles.segmentActive,
-				pressed && !active && styles.segmentPressed,
-			]}
-		>
-			<Text style={[styles.label, active && styles.labelActive]}>{label}</Text>
-			{count != null ? (
-				<Text style={[styles.count, active && styles.countActive]}>
-					{count}
-				</Text>
-			) : null}
-		</Pressable>
-	);
+  const ctx = useContext(SegmentedContext);
+  if (!ctx) {
+    throw new Error("<Segment> must be rendered inside <SegmentedControl>");
+  }
+  const active = ctx.value === value;
+  return (
+    <Pressable
+      onPress={() => ctx.onChange(value)}
+      accessibilityRole="tab"
+      accessibilityLabel={count != null ? `${label}, ${count}` : label}
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => [
+        styles.segment,
+        active && styles.segmentActive,
+        pressed && !active && styles.segmentPressed,
+      ]}
+    >
+      <Text style={[styles.label, active && styles.labelActive]}>{label}</Text>
+      {count != null ? (
+        <Text style={[styles.count, active && styles.countActive]}>
+          {count}
+        </Text>
+      ) : null}
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({
-	track: {
-		flexDirection: "row",
-		borderWidth: 1,
-		borderColor: Sirius.color.ruleStrong,
-		borderRadius: Sirius.radius.none,
-		backgroundColor: Sirius.color.paper,
-	},
-	segment: {
-		flex: 1,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: Sirius.space.sm,
-		paddingVertical: 11,
-		paddingHorizontal: Sirius.space.md,
-		minHeight: 44,
-	},
-	// The active fill bleeds to the track edge; the divider between segments is
-	// the track's own border showing through the inactive segment's transparency.
-	segmentActive: { backgroundColor: Sirius.color.accent },
-	segmentPressed: { backgroundColor: Sirius.color.accentSoft },
-	label: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 11,
-		letterSpacing: 1.6,
-		textTransform: "uppercase",
-		color: Sirius.color.inkMuted,
-	},
-	labelActive: { color: Sirius.color.onAccent },
-	count: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 10,
-		letterSpacing: 0.5,
-		color: Sirius.color.inkSubtle,
-		fontVariant: ["tabular-nums"],
-	},
-	countActive: { color: Sirius.color.onAccent, opacity: 0.85 },
+  track: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: Sirius.color.ruleStrong,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paper,
+  },
+  segment: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Sirius.space.sm,
+    paddingVertical: 11,
+    paddingHorizontal: Sirius.space.md,
+    minHeight: 44,
+  },
+  // The active fill bleeds to the track edge; the divider between segments is
+  // the track's own border showing through the inactive segment's transparency.
+  segmentActive: { backgroundColor: Sirius.color.accent },
+  segmentPressed: { backgroundColor: Sirius.color.accentSoft },
+  label: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
+  },
+  labelActive: { color: Sirius.color.onAccent },
+  count: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: Sirius.color.inkSubtle,
+    fontVariant: ["tabular-nums"],
+  },
+  countActive: { color: Sirius.color.onAccent, opacity: 0.85 },
 });

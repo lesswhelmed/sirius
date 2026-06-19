@@ -11,7 +11,14 @@
 import { eq } from "drizzle-orm";
 
 import { db } from "./client";
-import { pendingSubmissions, posts, postVectors, syncMeta } from "./schema";
+import {
+  comments,
+  pendingComments,
+  pendingSubmissions,
+  posts,
+  postVectors,
+  syncMeta,
+} from "./schema";
 
 // Stored in syncMeta (itself wiped by clearLocalStore, then re-written) so the
 // owner check survives app restarts without a separate storage layer.
@@ -25,26 +32,28 @@ const OWNER_KEY = "owner.user_id";
  * "ask my posts" search could surface account A's vectors (a privacy leak).
  */
 export async function clearLocalStore(): Promise<void> {
-	await db.delete(posts);
-	await db.delete(pendingSubmissions);
-	await db.delete(postVectors);
-	await db.delete(syncMeta);
+  await db.delete(posts);
+  await db.delete(pendingSubmissions);
+  await db.delete(comments);
+  await db.delete(pendingComments);
+  await db.delete(postVectors);
+  await db.delete(syncMeta);
 }
 
 async function readOwner(): Promise<string | null> {
-	const [row] = await db
-		.select()
-		.from(syncMeta)
-		.where(eq(syncMeta.key, OWNER_KEY))
-		.limit(1);
-	return row?.value ?? null;
+  const [row] = await db
+    .select()
+    .from(syncMeta)
+    .where(eq(syncMeta.key, OWNER_KEY))
+    .limit(1);
+  return row?.value ?? null;
 }
 
 async function writeOwner(userId: string): Promise<void> {
-	await db
-		.insert(syncMeta)
-		.values({ key: OWNER_KEY, value: userId })
-		.onConflictDoUpdate({ target: syncMeta.key, set: { value: userId } });
+  await db
+    .insert(syncMeta)
+    .values({ key: OWNER_KEY, value: userId })
+    .onConflictDoUpdate({ target: syncMeta.key, set: { value: userId } });
 }
 
 /**
@@ -55,9 +64,9 @@ async function writeOwner(userId: string): Promise<void> {
  * harmless empty wipe on the very first login.
  */
 export async function ensureLocalOwner(userId: string): Promise<void> {
-	const prev = await readOwner();
-	if (prev === userId) return;
-	// clearLocalStore also drops the old owner row, so re-establish it after.
-	await clearLocalStore();
-	await writeOwner(userId);
+  const prev = await readOwner();
+  if (prev === userId) return;
+  // clearLocalStore also drops the old owner row, so re-establish it after.
+  await clearLocalStore();
+  await writeOwner(userId);
 }

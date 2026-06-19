@@ -6,17 +6,17 @@
 
 ## Intro
 
-The vision is to turn lesswhelmed from an information *processor* into a proactive partner
+The vision is to turn lesswhelmed from an information _processor_ into a proactive partner
 that understands a user's aspirations and **turns information into action, insight, and
 peace of mind**. The four phases are: (1) Aspiration Core — teach the system the user's
 goals; (2) Universal Collector — ingest from anywhere; (3) Insight Engine — synthesize the
 pool into opportunity; (4) Automation Engine — close the loop and act on the user's behalf.
 
-A surprising amount of the *foundation* is already shipped. The producer/consumer ingest
+A surprising amount of the _foundation_ is already shipped. The producer/consumer ingest
 queue (`IngestSubmission` → worker `pipeline/pipeline.ts`) already drafts posts with Gemini,
 and the **auto-org** stage (`apps/worker/src/pipeline/classification/assign-org.ts`) already
 embeds, classifies against a user-grown taxonomy and the user's Projects, and auto-creates
-Aspiration/Project rows. What is mostly *missing* is the **proactive, user-facing surface**:
+Aspiration/Project rows. What is mostly _missing_ is the **proactive, user-facing surface**:
 intake questions, a briefing/opportunity dashboard, cross-content synthesis, and automations.
 The honest summary: Phase 1 is ~70% built (data model + auto-org done, intake/UX gaps),
 Phase 2 is ~90% built (multi-format ingest done; social/email/OCR gaps), Phase 3 is ~40%
@@ -143,12 +143,12 @@ built (on-device "ask my posts" + Tree taxonomy exist; no dashboard/synthesis), 
 - **No "Daily Briefing".** Nothing summarizes the last 24h of captures against top projects.
   Grep confirms no briefing/digest surface in `apps/web` or `apps/worker`.
 - **No "Connect the Dots" cross-content synthesis.** We compute post↔category and
-  post↔project similarity, but nothing surfaces *post↔post* hidden relationships
+  post↔project similarity, but nothing surfaces _post↔post_ hidden relationships
   ("this new article supports a note from last month").
 - **Research is mobile-only and query-driven, not server-side or proactive.**
-  `@repo/research-agent`'s `runResearchAgent`/web WebLLM path is noted as a *future* host;
+  `@repo/research-agent`'s `runResearchAgent`/web WebLLM path is noted as a _future_ host;
   there is no server-side research endpoint, and no synthesized **report** output (summaries
-  + key quotes + source links) — only a streamed chat answer.
+  - key quotes + source links) — only a streamed chat answer.
 
 ### Next
 
@@ -208,7 +208,7 @@ Each step unblocks the next; later phases reuse earlier primitives.
 
 1. **Phase 1 — Intake Questions + onboarding.** The vision's "primary AI-training mechanism."
    `IntakeQuestion`/`IngestAnswer` models + suggested questions feed richer signal into the
-   *already-built* `assignOrg`. Unblocks better classification everywhere downstream.
+   _already-built_ `assignOrg`. Unblocks better classification everywhere downstream.
 2. **Phase 2 — close capture gaps** (email-to-ingest, X/LinkedIn, explicit OCR, doc parsing).
    Independent of #1 and parallelizable; each widens the pool the Insight/Automation engines
    draw from. OCR/doc parsing is a prerequisite for those captures to be searchable in #4.

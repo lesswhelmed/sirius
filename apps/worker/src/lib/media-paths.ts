@@ -12,11 +12,11 @@ import { resolve } from "node:path";
 // SIGHT_IMAGE_DIR (must be an absolute path so PM2 / Docker / systemd can
 // target a different docroot without changing cwd assumptions).
 export function resolveSightDir(): string {
-	const override = process.env.SIGHT_IMAGE_DIR?.trim();
-	if (override) {
-		return override;
-	}
-	return resolve(process.cwd(), "..", "web", "public", "sight");
+  const override = process.env.SIGHT_IMAGE_DIR?.trim();
+  if (override) {
+    return override;
+  }
+  return resolve(process.cwd(), "..", "web", "public", "sight");
 }
 
 // Cover images for URL/social ingests (e.g. Instagram) and auto-generated
@@ -24,15 +24,15 @@ export function resolveSightDir(): string {
 // This is essential for Instagram: its CDN URLs are signed and expire within
 // days, so we must download the bytes once at ingestion rather than hot-link them.
 export function resolveSocialDir(): string {
-	const override = process.env.SOCIAL_IMAGE_DIR?.trim();
-	if (override) {
-		return override;
-	}
-	return resolve(process.cwd(), "..", "web", "public", "social");
+  const override = process.env.SOCIAL_IMAGE_DIR?.trim();
+  if (override) {
+    return override;
+  }
+  return resolve(process.cwd(), "..", "web", "public", "social");
 }
 
 export function ensureDir(dir: string): void {
-	if (!existsSync(dir)) {
-		mkdirSync(dir, { recursive: true });
-	}
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
 }

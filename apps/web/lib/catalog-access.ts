@@ -9,11 +9,11 @@ import { redirect } from "next/navigation";
 // /sign-in page is a client form that does not auto-bounce an authenticated
 // user, so routing them there would dead-end them on a login screen.
 export function denyCatalogAccess(
-	viewerId: string | null,
-	fromPath: string,
+  viewerId: string | null,
+  fromPath: string,
 ): never {
-	if (viewerId) {
-		redirect("/catalog");
-	}
-	redirect(`/sign-in?next=${encodeURIComponent(fromPath)}`);
+  if (viewerId) {
+    redirect("/catalog");
+  }
+  redirect(`/sign-in?next=${encodeURIComponent(fromPath)}`);
 }

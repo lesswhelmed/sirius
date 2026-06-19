@@ -8,44 +8,44 @@
 import { readRepoDigest } from "@repo/github-ingest/digest";
 
 export function RepoChip({
-	providerId,
-	contentDigest,
-	className,
+  providerId,
+  contentDigest,
+  className,
 }: {
-	providerId: string | null | undefined;
-	contentDigest: unknown;
-	className?: string;
+  providerId: string | null | undefined;
+  contentDigest: unknown;
+  className?: string;
 }) {
-	const digest = readRepoDigest(providerId, contentDigest);
-	if (!digest) {
-		return null;
-	}
-	const parts: string[] = [];
-	if (digest.stars !== null) {
-		parts.push(`★ ${digest.stars.toLocaleString()}`);
-	}
-	if (digest.primaryLanguage) {
-		parts.push(digest.primaryLanguage);
-	}
-	if (digest.license) {
-		parts.push(digest.license);
-	}
+  const digest = readRepoDigest(providerId, contentDigest);
+  if (!digest) {
+    return null;
+  }
+  const parts: string[] = [];
+  if (digest.stars !== null) {
+    parts.push(`★ ${digest.stars.toLocaleString()}`);
+  }
+  if (digest.primaryLanguage) {
+    parts.push(digest.primaryLanguage);
+  }
+  if (digest.license) {
+    parts.push(digest.license);
+  }
 
-	return (
-		<span
-			className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-muted)] ${className ?? ""}`}
-			aria-label={`GitHub repository — ${parts.join(", ")}`}
-		>
-			{parts.map((part, i) => (
-				<span key={part} className="inline-flex items-center gap-1.5">
-					{i > 0 ? (
-						<span aria-hidden="true" className="text-[var(--fg-faint)]">
-							·
-						</span>
-					) : null}
-					{part}
-				</span>
-			))}
-		</span>
-	);
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-muted)] ${className ?? ""}`}
+      aria-label={`GitHub repository — ${parts.join(", ")}`}
+    >
+      {parts.map((part, i) => (
+        <span key={part} className="inline-flex items-center gap-1.5">
+          {i > 0 ? (
+            <span aria-hidden="true" className="text-[var(--fg-faint)]">
+              ·
+            </span>
+          ) : null}
+          {part}
+        </span>
+      ))}
+    </span>
+  );
 }

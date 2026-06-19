@@ -28,12 +28,12 @@ friend.
 
 ## The four decisions (locked for this vision)
 
-| Decision        | Choice                                                              |
-| --------------- | ------------------------------------------------------------------ |
-| Relationship    | **Circles** — named groups you sort people into                     |
-| Consent         | **Connection first** — mutual accept, _then_ you can sort/share     |
-| What's shared   | **Post + its sources** — the bundle, not just the polished text     |
-| Recipient view  | **Shared-with-me feed only** — kept separate from their own content |
+| Decision       | Choice                                                              |
+| -------------- | ------------------------------------------------------------------- |
+| Relationship   | **Circles** — named groups you sort people into                     |
+| Consent        | **Connection first** — mutual accept, _then_ you can sort/share     |
+| What's shared  | **Post + its sources** — the bundle, not just the polished text     |
+| Recipient view | **Shared-with-me feed only** — kept separate from their own content |
 
 ## Guardrails (what this is NOT)
 

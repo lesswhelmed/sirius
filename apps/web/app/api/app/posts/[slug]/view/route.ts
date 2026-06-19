@@ -5,22 +5,22 @@ import { getSessionOrNull } from "../../../../../../lib/session";
 // optional (anonymous views allowed). Owner self-views are skipped so authors
 // don't inflate their own counts.
 export async function POST(
-	_request: Request,
-	{ params }: { params: Promise<{ slug: string }> },
+  _request: Request,
+  { params }: { params: Promise<{ slug: string }> },
 ) {
-	const { slug } = await params;
-	const post = await findPostAttributionBySlug(slug);
-	if (!post) {
-		return new Response(null, { status: 404 });
-	}
+  const { slug } = await params;
+  const post = await findPostAttributionBySlug(slug);
+  if (!post) {
+    return new Response(null, { status: 404 });
+  }
 
-	const session = await getSessionOrNull();
-	const viewerId = session?.user.id ?? null;
+  const session = await getSessionOrNull();
+  const viewerId = session?.user.id ?? null;
 
-	if (viewerId && post.submittedById && viewerId === post.submittedById) {
-		return new Response(null, { status: 204 }); // owner view — don't record
-	}
+  if (viewerId && post.submittedById && viewerId === post.submittedById) {
+    return new Response(null, { status: 204 }); // owner view — don't record
+  }
 
-	await recordPostView(post.id, viewerId);
-	return new Response(null, { status: 204 });
+  await recordPostView(post.id, viewerId);
+  return new Response(null, { status: 204 });
 }

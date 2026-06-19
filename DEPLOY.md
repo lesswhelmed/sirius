@@ -7,14 +7,14 @@ reverse-proxies `lesswhelmed.com` to the web app's localhost port.
 
 ## Production identity
 
-| Property | Value |
-| --- | --- |
-| Domain | `lesswhelmed.com` |
-| Server | `172.239.45.200` (SSH user `deploy`, key `~/.ssh/id_copt_dev_v1`) |
-| App dir | `/home/deploy/apps/sirius` |
-| Data dir | `/home/deploy/data/sirius` |
-| Web port | `3003` (3000=copt-dev, 6940=botanical-bros are taken) |
-| PM2 procs | `sirius-web`, `sirius-worker` |
+| Property  | Value                                                             |
+| --------- | ----------------------------------------------------------------- |
+| Domain    | `lesswhelmed.com`                                                 |
+| Server    | `172.239.45.200` (SSH user `deploy`, key `~/.ssh/id_copt_dev_v1`) |
+| App dir   | `/home/deploy/apps/sirius`                                        |
+| Data dir  | `/home/deploy/data/sirius`                                        |
+| Web port  | `3003` (3000=copt-dev, 6940=botanical-bros are taken)             |
+| PM2 procs | `sirius-web`, `sirius-worker`                                     |
 
 Redis is present on the server but **not used** by this app — the ingest queue
 is Postgres-backed (`IngestSubmission`). No Redis configuration is required.
@@ -193,6 +193,7 @@ bun --cwd apps/mobile update:prod     # OTA JS push after a native release
 ```
 
 Remaining store prerequisites:
+
 - iOS: backfill `submit.production.ios.ascAppId` in `apps/mobile/eas.json` after
   the first `eas submit` creates the App Store Connect record.
 - Android: add the untracked `apps/mobile/google-play-service-account.json`.

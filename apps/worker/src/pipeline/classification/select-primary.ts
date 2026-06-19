@@ -15,28 +15,28 @@
 // The minimal shape both CategoryMatch (classify.ts) and ResolvedTopic
 // (resolve-categories.ts) satisfy.
 export interface PrimaryCandidate {
-	path: string;
-	name: string;
-	score: number;
+  path: string;
+  name: string;
+  score: number;
 }
 
 // Returns the primary, or null when there are neither cosine matches nor
 // resolved topics (the post links to no category — caller writes none).
 export function selectPrimaryCategory(
-	categories: PrimaryCandidate[],
-	topics: PrimaryCandidate[],
+  categories: PrimaryCandidate[],
+  topics: PrimaryCandidate[],
 ): PrimaryCandidate | null {
-	// Cosine matches are directly comparable; take the highest-scoring rather than
-	// trusting upstream sort order.
-	let best: PrimaryCandidate | null = null;
-	for (const c of categories) {
-		if (!best || c.score > best.score) {
-			best = c;
-		}
-	}
-	if (best) {
-		return best;
-	}
-	// No match cleared the floor — anchor on the model's primary proposal.
-	return topics[0] ?? null;
+  // Cosine matches are directly comparable; take the highest-scoring rather than
+  // trusting upstream sort order.
+  let best: PrimaryCandidate | null = null;
+  for (const c of categories) {
+    if (!best || c.score > best.score) {
+      best = c;
+    }
+  }
+  if (best) {
+    return best;
+  }
+  // No match cleared the floor — anchor on the model's primary proposal.
+  return topics[0] ?? null;
 }

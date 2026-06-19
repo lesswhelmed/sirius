@@ -19,7 +19,7 @@ const JPEG_QUALITY = 82;
 export const HEIC_EXTENSIONS = new Set(["heic", "heif"]);
 
 export function isHeicExtension(ext: string): boolean {
-	return HEIC_EXTENSIONS.has(ext.toLowerCase());
+  return HEIC_EXTENSIONS.has(ext.toLowerCase());
 }
 
 // Decodes HEIC/HEIF bytes to an optimized JPEG. Throws on undecodable input —
@@ -28,24 +28,24 @@ export function isHeicExtension(ext: string): boolean {
 // container's rotation during decode, so the JPEG is already upright; we strip
 // any residual EXIF orientation via sharp's default normalization.
 export async function heicToJpeg(bytes: Uint8Array): Promise<Buffer> {
-	// heic-convert/heic-decode internally do `String.fromCharCode(...buf.slice())`,
-	// so the input MUST be an iterable typed array (Uint8Array/Buffer) — a bare
-	// ArrayBuffer throws "Spread syntax requires ...iterable". The @types declare
-	// ArrayBufferLike, which is wrong, hence the cast. Buffer.from copies into a
-	// zero-offset, exact-length view.
-	const input = Buffer.from(bytes);
-	const decoded = await convert({
-		buffer: input as unknown as ArrayBufferLike,
-		format: "JPEG",
-		quality: JPEG_QUALITY / 100,
-	});
-	return sharp(Buffer.from(decoded))
-		.resize({
-			width: MAX_EDGE,
-			height: MAX_EDGE,
-			fit: "inside",
-			withoutEnlargement: true,
-		})
-		.jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
-		.toBuffer();
+  // heic-convert/heic-decode internally do `String.fromCharCode(...buf.slice())`,
+  // so the input MUST be an iterable typed array (Uint8Array/Buffer) — a bare
+  // ArrayBuffer throws "Spread syntax requires ...iterable". The @types declare
+  // ArrayBufferLike, which is wrong, hence the cast. Buffer.from copies into a
+  // zero-offset, exact-length view.
+  const input = Buffer.from(bytes);
+  const decoded = await convert({
+    buffer: input as unknown as ArrayBufferLike,
+    format: "JPEG",
+    quality: JPEG_QUALITY / 100,
+  });
+  return sharp(Buffer.from(decoded))
+    .resize({
+      width: MAX_EDGE,
+      height: MAX_EDGE,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
+    .toBuffer();
 }

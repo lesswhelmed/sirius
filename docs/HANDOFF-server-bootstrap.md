@@ -20,7 +20,7 @@ call each other directly — they share one Postgres DB (the `IngestSubmission` 
 
 ## Hard rules (read first — violating these is worse than stopping)
 
-1. **Never invent secrets or API keys.** You may *generate* the random ones
+1. **Never invent secrets or API keys.** You may _generate_ the random ones
    (`BETTER_AUTH_SECRET`, `INGEST_TOKEN`, `REVALIDATE_TOKEN`) with `openssl`. You may
    **not** guess or fabricate `GEMINI_API_KEY`, `RESEND_API_KEY`, the Postgres
    password, `APIFY_TOKEN`, or `YOUTUBE_DATA_API_KEY`. If you don't have a real value,
@@ -38,16 +38,16 @@ call each other directly — they share one Postgres DB (the `IngestSubmission` 
 
 ## Target layout (must match — other apps on this box depend on these being taken)
 
-| Property | Value |
-| --- | --- |
-| Domain | `lesswhelmed.com` |
-| App checkout | `/home/deploy/apps/sirius` |
-| Data dir | `/home/deploy/data/sirius` (ingest staging) |
-| Logs | `/home/deploy/logs` |
-| Web port | `3003` (3000 = copt-dev, 6940 = botanical-bros are already used) |
-| PM2 procs | `sirius-web`, `sirius-worker` (defined in `ecosystem.config.cjs`) |
-| DB | Postgres database `sirius`, owner role `sirius` |
-| Package manager | `bun@1.3.14` |
+| Property        | Value                                                             |
+| --------------- | ----------------------------------------------------------------- |
+| Domain          | `lesswhelmed.com`                                                 |
+| App checkout    | `/home/deploy/apps/sirius`                                        |
+| Data dir        | `/home/deploy/data/sirius` (ingest staging)                       |
+| Logs            | `/home/deploy/logs`                                               |
+| Web port        | `3003` (3000 = copt-dev, 6940 = botanical-bros are already used)  |
+| PM2 procs       | `sirius-web`, `sirius-worker` (defined in `ecosystem.config.cjs`) |
+| DB              | Postgres database `sirius`, owner role `sirius`                   |
+| Package manager | `bun@1.3.14`                                                      |
 
 Redis exists on this box but **this app does not use it** — the queue is Postgres-backed.
 The worker has **no HTTP surface**; it's purely the queue consumer.
@@ -55,6 +55,7 @@ The worker has **no HTTP surface**; it's purely the queue consumer.
 ## Steps
 
 ### 0. Preflight
+
 - Confirm you're on room 225 and are (or can `sudo -u`) the `deploy` user.
 - Confirm the toolchain: `bun --version` (expect `1.3.14`), `pm2 -v`, `caddy version`,
   `psql --version`, `git --version`. If any is missing, **stop and ask** — provisioning
@@ -64,6 +65,7 @@ The worker has **no HTTP surface**; it's purely the queue consumer.
   public-URL verification at the end will fail until DNS is repointed — surface that.
 
 ### 1. Directories
+
 ```sh
 mkdir -p /home/deploy/apps/sirius \
          /home/deploy/data/sirius/ingest-staging \
@@ -71,8 +73,10 @@ mkdir -p /home/deploy/apps/sirius \
 ```
 
 ### 2. Postgres database + role
+
 Pick a strong password (or use the one the human gives you for `DATABASE_URL`). The two
 must match.
+
 ```sh
 sudo -u postgres psql <<'SQL'
 CREATE USER sirius WITH PASSWORD '<password>';
@@ -80,10 +84,12 @@ CREATE DATABASE sirius OWNER sirius;
 GRANT ALL PRIVILEGES ON DATABASE sirius TO sirius;
 SQL
 ```
+
 Migrations run later as this role via `bun run db:migrate:deploy`; owning the `sirius`
 DB is sufficient.
 
 ### 3. Clone the repo
+
 ```sh
 cd /home/deploy/apps
 git clone <repo-url> sirius   # ask the human for the repo URL if you don't have it
@@ -92,6 +98,7 @@ git checkout main
 ```
 
 ### 4. Server `.env` (repo root: `/home/deploy/apps/sirius/.env`)
+
 All apps read this single root `.env`. Start from `.env.example`. Generate the random
 secrets yourself; **ask the human** for every real API key / the DB password. Production
 values that differ from the example:
@@ -104,6 +111,7 @@ openssl rand -hex 32      # -> REVALIDATE_TOKEN
 ```
 
 Required keys (production values):
+
 ```env
 DATABASE_URL=postgresql://sirius:<password>@localhost:5432/sirius
 BETTER_AUTH_SECRET=<generated>
@@ -122,13 +130,16 @@ INGEST_STAGING_DIR=/home/deploy/data/sirius/ingest-staging
 SIGHT_IMAGE_DIR=/home/deploy/apps/sirius/apps/web/public/sight
 SOCIAL_IMAGE_DIR=/home/deploy/apps/sirius/apps/web/public/social
 ```
+
 Optional (only if the human wants those ingest branches): `APIFY_TOKEN` (Instagram,
 paid), `YOUTUBE_DATA_API_KEY` (YouTube works without it via transcript fallback).
 
 Verify the file has no remaining `<...>` placeholders before deploying.
 
 ### 5. Caddy site block
+
 Add to `/etc/caddy/Caddyfile` (don't disturb other apps' blocks):
+
 ```caddyfile
 lesswhelmed.com {
     reverse_proxy 127.0.0.1:3003 {
@@ -150,7 +161,9 @@ lesswhelmed.com {
     encode gzip zstd
 }
 ```
+
 Then:
+
 ```sh
 sudo caddy fmt --overwrite /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile
@@ -158,11 +171,13 @@ sudo systemctl reload caddy
 ```
 
 ### 6. First deploy
+
 `deploy.sh` is the single deploy path — it runs: `git pull` → `bun install
 --frozen-lockfile` → `db:generate` (Prisma client; gitignored, **must** run) →
 `db:migrate:deploy` → `bun run build` into `apps/web/.next-builds/<id>` → symlink
 `.next-builds/current` → `pm2 startOrReload ecosystem.config.cjs` → `pm2 save` → prune
 to 3 builds → `pm2 status`.
+
 ```sh
 cd /home/deploy/apps/sirius
 ./deploy.sh
@@ -171,6 +186,7 @@ pm2 startup     # if PM2 isn't already set to resurrect on boot; run the cmd it 
 ```
 
 ### 7. Verify (do not report success until all pass)
+
 ```sh
 pm2 status                         # sirius-web AND sirius-worker both "online"
 curl -sI http://127.0.0.1:3003     # web responds locally
@@ -178,12 +194,14 @@ curl -sI https://lesswhelmed.com   # public TLS + HTTP 200 (needs DNS pointing h
 pm2 logs sirius-web --lines 80     # no boot crash loop
 pm2 logs sirius-worker --lines 80  # worker polling, no DB connection error
 ```
+
 End-to-end smoke test: sign up a user (confirm the Resend verification email arrives),
 then submit a note or URL via the web composer and confirm the `IngestSubmission` row
 moves `pending → processing → completed` (`bun run db:studio`, or query the table) and a
 post appears in the catalog.
 
 ## Done criteria
+
 - `pm2 status` shows `sirius-web` and `sirius-worker` both **online** and stable (not
   restart-looping).
 - `https://lesswhelmed.com` returns **200** over TLS (or, if DNS isn't repointed yet,
@@ -193,6 +211,7 @@ post appears in the catalog.
   step where you had to stop and ask** (with the exact blocker).
 
 ## If you get stuck
+
 Stop and report. Include: the failing command, its full output, and which step. Do not
 substitute a different approach to "make it work." Re-running `./deploy.sh` is allowed;
 inventing new infrastructure is not.

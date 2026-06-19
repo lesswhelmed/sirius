@@ -3,79 +3,79 @@
 import type { IngestSubmission, PostType } from "@repo/db";
 
 export type IngestKind =
-	| "url"
-	| "image"
-	| "note"
-	| "video"
-	| "audio"
-	| "document";
+  | "url"
+  | "image"
+  | "note"
+  | "video"
+  | "audio"
+  | "document";
 
 export type StagedImage = {
-	submissionId: string;
-	index: number;
-	stagedFilePath: string;
-	extension: string;
+  submissionId: string;
+  index: number;
+  stagedFilePath: string;
+  extension: string;
 };
 
 export type PipelineInput =
-	| {
-			kind: "url";
-			submission: IngestSubmission;
-			urls: string[];
-			notes: string;
-			force: boolean;
-			// Optional client-supplied draft envelope (single-url extraction/
-			// generation split only). Untrusted — draft-runner.ts re-validates.
-			draft?: unknown;
-			submittedById: string | null;
-			projectId: string | null;
-	  }
-	| {
-			kind: "note";
-			submission: IngestSubmission;
-			notes: string;
-			// Optional client-supplied draft envelope (on-device LLM), persisted in
-			// the submission payload. `unknown` on purpose: stored JSON is never
-			// trusted — draft-runner.ts re-validates with DraftEnvelopeSchema.
-			draft?: unknown;
-			submittedById: string | null;
-			projectId: string | null;
-	  }
-	| {
-			kind: "image";
-			submissions: IngestSubmission[];
-			batchId: string;
-			notes: string;
-			// Same as note.draft, validated against SightDraftEnvelopeSchema.
-			draft?: unknown;
-			images: StagedImage[];
-			submittedById: string | null;
-			projectId: string | null;
-	  }
-	| {
-			// Single-file reference-only kinds. The worker feeds the staged file to
-			// Gemini for understanding but does NOT store or serve the bytes — the
-			// generated Post body is text-only (summary/transcript). No media copy.
-			kind: "video" | "audio" | "document";
-			submission: IngestSubmission;
-			stagedFilePath: string;
-			mimeType: string;
-			extension: string;
-			notes: string;
-			submittedById: string | null;
-			projectId: string | null;
-	  };
+  | {
+      kind: "url";
+      submission: IngestSubmission;
+      urls: string[];
+      notes: string;
+      force: boolean;
+      // Optional client-supplied draft envelope (single-url extraction/
+      // generation split only). Untrusted — draft-runner.ts re-validates.
+      draft?: unknown;
+      submittedById: string | null;
+      projectId: string | null;
+    }
+  | {
+      kind: "note";
+      submission: IngestSubmission;
+      notes: string;
+      // Optional client-supplied draft envelope (on-device LLM), persisted in
+      // the submission payload. `unknown` on purpose: stored JSON is never
+      // trusted — draft-runner.ts re-validates with DraftEnvelopeSchema.
+      draft?: unknown;
+      submittedById: string | null;
+      projectId: string | null;
+    }
+  | {
+      kind: "image";
+      submissions: IngestSubmission[];
+      batchId: string;
+      notes: string;
+      // Same as note.draft, validated against SightDraftEnvelopeSchema.
+      draft?: unknown;
+      images: StagedImage[];
+      submittedById: string | null;
+      projectId: string | null;
+    }
+  | {
+      // Single-file reference-only kinds. The worker feeds the staged file to
+      // Gemini for understanding but does NOT store or serve the bytes — the
+      // generated Post body is text-only (summary/transcript). No media copy.
+      kind: "video" | "audio" | "document";
+      submission: IngestSubmission;
+      stagedFilePath: string;
+      mimeType: string;
+      extension: string;
+      notes: string;
+      submittedById: string | null;
+      projectId: string | null;
+    };
 
 export type GeminiOutput = {
-	slug: string;
-	title: string;
-	type: PostType;
-	body: string;
-	frontmatter: Record<string, unknown>;
-	rawMdx: string;
+  slug: string;
+  title: string;
+  type: PostType;
+  body: string;
+  frontmatter: Record<string, unknown>;
+  rawMdx: string;
 };
 
 export type PipelineResult = {
-	postSlug: string;
-	postId: string;
+  postSlug: string;
+  postId: string;
 };

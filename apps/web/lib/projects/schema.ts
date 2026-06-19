@@ -4,29 +4,29 @@
 import { z } from "zod";
 
 export const aspirationCreateSchema = z.object({
-	title: z.string().trim().min(1, "title required").max(120),
-	description: z.string().trim().max(2000).optional(),
+  title: z.string().trim().min(1, "title required").max(120),
+  description: z.string().trim().max(2000).optional(),
 });
 
 export const aspirationUpdateSchema = aspirationCreateSchema.partial();
 
 export const projectCreateSchema = z.object({
-	title: z.string().trim().min(1, "title required").max(120),
-	description: z.string().trim().max(2000).optional(),
-	aspirationId: z.string().min(1).nullable().optional(),
+  title: z.string().trim().min(1, "title required").max(120),
+  description: z.string().trim().max(2000).optional(),
+  aspirationId: z.string().min(1).nullable().optional(),
 });
 
 export const projectUpdateSchema = projectCreateSchema.partial().extend({
-	status: z.enum(["active", "archived"]).optional(),
+  status: z.enum(["active", "archived"]).optional(),
 });
 
 export const assignSchema = z.object({
-	projectId: z.string().min(1).nullable(),
+  projectId: z.string().min(1).nullable(),
 });
 
 export const projectMergeSchema = z.object({
-	fromId: z.string().min(1),
-	toId: z.string().min(1),
+  fromId: z.string().min(1),
+  toId: z.string().min(1),
 });
 
 export type AspirationCreateInput = z.infer<typeof aspirationCreateSchema>;

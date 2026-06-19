@@ -4,38 +4,38 @@
 // react-native + StyleSheet.create per the project's RN conventions.
 import { SymbolView } from "expo-symbols";
 import {
-	forwardRef,
-	type ReactNode,
-	useEffect,
-	useImperativeHandle,
-	useRef,
-	useState,
+  forwardRef,
+  type ReactNode,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
 } from "react";
 import {
-	ActivityIndicator,
-	Dimensions,
-	Keyboard,
-	KeyboardAvoidingView,
-	Modal,
-	Platform,
-	Pressable,
-	type PressableProps,
-	ScrollView,
-	type StyleProp,
-	StyleSheet,
-	Text,
-	TextInput,
-	type TextInputProps,
-	type TextProps,
-	View,
-	type ViewProps,
-	type ViewStyle,
+  ActivityIndicator,
+  Dimensions,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  type PressableProps,
+  ScrollView,
+  type StyleProp,
+  StyleSheet,
+  Text,
+  TextInput,
+  type TextInputProps,
+  type TextProps,
+  View,
+  type ViewProps,
+  type ViewStyle,
 } from "react-native";
 import Animated, {
-	useAnimatedStyle,
-	useSharedValue,
-	withSequence,
-	withTiming,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SFSymbol } from "sf-symbols-typescript";
@@ -50,123 +50,123 @@ const MULTILINE_MAX_HEIGHT = Math.round(Dimensions.get("window").height * 0.4);
 
 // Full-bleed paper background. Screens layer their own padding on top.
 export function Screen({ style, ...rest }: ViewProps) {
-	return <View style={[styles.screen, style]} {...rest} />;
+  return <View style={[styles.screen, style]} {...rest} />;
 }
 
 // Mono uppercase eyebrow/folio label — the recurring "Section II — Catalogue"
 // motif from the web header.
 export function Eyebrow({ style, ...rest }: TextProps) {
-	return <Text style={[styles.eyebrow, style]} {...rest} />;
+  return <Text style={[styles.eyebrow, style]} {...rest} />;
 }
 
 // Large editorial serif title. `accent` renders a trailing oxblood glyph
 // (comma/period) like the web headings.
 export function Title({
-	children,
-	accent,
-	style,
-	...rest
+  children,
+  accent,
+  style,
+  ...rest
 }: TextProps & { accent?: string }) {
-	return (
-		<Text style={[styles.title, style]} {...rest}>
-			{children}
-			{accent ? <Text style={styles.titleAccent}>{accent}</Text> : null}
-		</Text>
-	);
+  return (
+    <Text style={[styles.title, style]} {...rest}>
+      {children}
+      {accent ? <Text style={styles.titleAccent}>{accent}</Text> : null}
+    </Text>
+  );
 }
 
 export function PageHeader({
-	eyebrow,
-	title,
-	titleAccent,
-	subtitle,
-	count,
-	countLabel,
+  eyebrow,
+  title,
+  titleAccent,
+  subtitle,
+  count,
+  countLabel,
 }: {
-	eyebrow?: string;
-	title: string;
-	titleAccent?: string;
-	subtitle?: string;
-	count?: number | string;
-	countLabel?: string;
+  eyebrow?: string;
+  title: string;
+  titleAccent?: string;
+  subtitle?: string;
+  count?: number | string;
+  countLabel?: string;
 }) {
-	return (
-		<View style={styles.header}>
-			<View style={styles.headerMain}>
-				{eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
-				<Title accent={titleAccent}>{title}</Title>
-				{subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-			</View>
-			{count !== undefined ? (
-				<View style={styles.headerCount}>
-					<Text style={styles.countValue}>{count}</Text>
-					{countLabel ? (
-						<Text style={styles.countLabel}>{countLabel}</Text>
-					) : null}
-				</View>
-			) : null}
-		</View>
-	);
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerMain}>
+        {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
+        <Title accent={titleAccent}>{title}</Title>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      </View>
+      {count !== undefined ? (
+        <View style={styles.headerCount}>
+          <Text style={styles.countValue}>{count}</Text>
+          {countLabel ? (
+            <Text style={styles.countLabel}>{countLabel}</Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 // Secondary / metadata text in muted ink.
 export function MetaText({ style, ...rest }: TextProps) {
-	return <Text style={[styles.meta, style]} {...rest} />;
+  return <Text style={[styles.meta, style]} {...rest} />;
 }
 
 // Mono uppercase tag, e.g. a post kind. `tone` overrides the color.
 export function KindLabel({
-	tone,
-	style,
-	...rest
+  tone,
+  style,
+  ...rest
 }: TextProps & { tone?: string }) {
-	return (
-		<Text
-			style={[styles.kind, tone ? { color: tone } : null, style]}
-			{...rest}
-		/>
-	);
+  return (
+    <Text
+      style={[styles.kind, tone ? { color: tone } : null, style]}
+      {...rest}
+    />
+  );
 }
 
 // A small colored dot + uppercase status label, mirroring the web StatusPip.
 export function StatusPip({ label, color }: { label: string; color: string }) {
-	return (
-		<View style={styles.pipRow}>
-			<View style={[styles.pipDot, { backgroundColor: color }]} />
-			<Text style={styles.pipLabel}>{label}</Text>
-		</View>
-	);
+  return (
+    <View style={styles.pipRow}>
+      <View style={[styles.pipDot, { backgroundColor: color }]} />
+      <Text style={styles.pipLabel}>{label}</Text>
+    </View>
+  );
 }
 
 const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
-	function Field(
-		{ label, style, multiline, accessibilityLabel, ...rest },
-		ref,
-	) {
-		// Multiline inputs have no return-key dismiss on iOS; screens pair them with
-		// a <KeyboardDoneButton/> near the submit control (see useKeyboardVisible).
-		return (
-			<View style={styles.field}>
-				{label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
-				<TextInput
-					ref={ref}
-					style={[
-						styles.input,
-						multiline ? styles.inputMultiline : null,
-						style,
-					]}
-					placeholderTextColor={Sirius.color.inkSubtle}
-					selectionColor={Sirius.color.accent}
-					multiline={multiline}
-					// Associate the visible label with the input so VoiceOver announces it
-					// (the label <Text> alone is not programmatically linked). Falls back to
-					// the placeholder when there's no label. Callers can still override.
-					accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
-					{...rest}
-				/>
-			</View>
-		);
-	},
+  function Field(
+    { label, style, multiline, accessibilityLabel, ...rest },
+    ref,
+  ) {
+    // Multiline inputs have no return-key dismiss on iOS; screens pair them with
+    // a <KeyboardDoneButton/> near the submit control (see useKeyboardVisible).
+    return (
+      <View style={styles.field}>
+        {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
+        <TextInput
+          ref={ref}
+          style={[
+            styles.input,
+            multiline ? styles.inputMultiline : null,
+            style,
+          ]}
+          placeholderTextColor={Sirius.color.inkSubtle}
+          selectionColor={Sirius.color.accent}
+          multiline={multiline}
+          // Associate the visible label with the input so VoiceOver announces it
+          // (the label <Text> alone is not programmatically linked). Falls back to
+          // the placeholder when there's no label. Callers can still override.
+          accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
+          {...rest}
+        />
+      </View>
+    );
+  },
 );
 
 export { Field };
@@ -175,56 +175,56 @@ export { Field };
 // label + bordered input, but owns its own `secureTextEntry` state and reserves
 // space on the right for the toggle control.
 export function PasswordField({
-	label,
-	style,
-	accessibilityLabel,
-	...rest
+  label,
+  style,
+  accessibilityLabel,
+  ...rest
 }: Omit<TextInputProps, "secureTextEntry"> & { label?: string }) {
-	const [hidden, setHidden] = useState(true);
-	return (
-		<View style={styles.field}>
-			{label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
-			<View style={styles.passwordRow}>
-				<TextInput
-					style={[styles.input, styles.passwordInput, style]}
-					placeholderTextColor={Sirius.color.inkSubtle}
-					selectionColor={Sirius.color.accent}
-					secureTextEntry={hidden}
-					accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
-					{...rest}
-				/>
-				<Pressable
-					onPress={() => setHidden((h) => !h)}
-					hitSlop={10}
-					accessibilityRole="button"
-					accessibilityLabel={hidden ? "Show password" : "Hide password"}
-					style={({ pressed }) => [
-						styles.passwordToggle,
-						pressed && styles.linkPressed,
-					]}
-				>
-					<SymbolView
-						name={hidden ? "eye" : "eye.slash"}
-						size={20}
-						weight="regular"
-						tintColor={Sirius.color.inkMuted}
-						fallback={
-							<Text style={styles.passwordToggleGlyph}>
-								{hidden ? "Show" : "Hide"}
-							</Text>
-						}
-					/>
-				</Pressable>
-			</View>
-		</View>
-	);
+  const [hidden, setHidden] = useState(true);
+  return (
+    <View style={styles.field}>
+      {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
+      <View style={styles.passwordRow}>
+        <TextInput
+          style={[styles.input, styles.passwordInput, style]}
+          placeholderTextColor={Sirius.color.inkSubtle}
+          selectionColor={Sirius.color.accent}
+          secureTextEntry={hidden}
+          accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
+          {...rest}
+        />
+        <Pressable
+          onPress={() => setHidden((h) => !h)}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={hidden ? "Show password" : "Hide password"}
+          style={({ pressed }) => [
+            styles.passwordToggle,
+            pressed && styles.linkPressed,
+          ]}
+        >
+          <SymbolView
+            name={hidden ? "eye" : "eye.slash"}
+            size={20}
+            weight="regular"
+            tintColor={Sirius.color.inkMuted}
+            fallback={
+              <Text style={styles.passwordToggleGlyph}>
+                {hidden ? "Show" : "Hide"}
+              </Text>
+            }
+          />
+        </Pressable>
+      </View>
+    </View>
+  );
 }
 
 // Imperative handle for an <AuthField/>: read the current text, focus, or clear.
 export type AuthFieldHandle = {
-	value: () => string;
-	focus: () => void;
-	clear: () => void;
+  value: () => string;
+  focus: () => void;
+  clear: () => void;
 };
 
 // An UNCONTROLLED text field for the auth screens. Why not the controlled
@@ -237,75 +237,75 @@ export type AuthFieldHandle = {
 // latter still carries the final native text when onChangeText was skipped), and
 // the parent reads it at submit through the handle. Do NOT pass a `value` prop.
 export const AuthField = forwardRef<
-	AuthFieldHandle,
-	Omit<TextInputProps, "value"> & { label?: string }
+  AuthFieldHandle,
+  Omit<TextInputProps, "value"> & { label?: string }
 >(function AuthField(
-	{
-		label,
-		style,
-		accessibilityLabel,
-		defaultValue,
-		onChangeText,
-		onEndEditing,
-		...rest
-	},
-	ref,
+  {
+    label,
+    style,
+    accessibilityLabel,
+    defaultValue,
+    onChangeText,
+    onEndEditing,
+    ...rest
+  },
+  ref,
 ) {
-	const inputRef = useRef<TextInput>(null);
-	const valueRef = useRef<string>(defaultValue ?? "");
-	useImperativeHandle(
-		ref,
-		() => ({
-			value: () => valueRef.current,
-			focus: () => inputRef.current?.focus(),
-			clear: () => {
-				valueRef.current = "";
-				inputRef.current?.clear();
-			},
-		}),
-		[],
-	);
-	return (
-		<View style={styles.field}>
-			{label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
-			<TextInput
-				ref={inputRef}
-				style={[styles.input, style]}
-				placeholderTextColor={Sirius.color.inkSubtle}
-				selectionColor={Sirius.color.accent}
-				defaultValue={defaultValue}
-				accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
-				onChangeText={(text) => {
-					valueRef.current = text;
-					onChangeText?.(text);
-				}}
-				onEndEditing={(event) => {
-					valueRef.current = event.nativeEvent.text;
-					onEndEditing?.(event);
-				}}
-				{...rest}
-			/>
-		</View>
-	);
+  const inputRef = useRef<TextInput>(null);
+  const valueRef = useRef<string>(defaultValue ?? "");
+  useImperativeHandle(
+    ref,
+    () => ({
+      value: () => valueRef.current,
+      focus: () => inputRef.current?.focus(),
+      clear: () => {
+        valueRef.current = "";
+        inputRef.current?.clear();
+      },
+    }),
+    [],
+  );
+  return (
+    <View style={styles.field}>
+      {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
+      <TextInput
+        ref={inputRef}
+        style={[styles.input, style]}
+        placeholderTextColor={Sirius.color.inkSubtle}
+        selectionColor={Sirius.color.accent}
+        defaultValue={defaultValue}
+        accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
+        onChangeText={(text) => {
+          valueRef.current = text;
+          onChangeText?.(text);
+        }}
+        onEndEditing={(event) => {
+          valueRef.current = event.nativeEvent.text;
+          onEndEditing?.(event);
+        }}
+        {...rest}
+      />
+    </View>
+  );
 });
 
 // Tracks soft-keyboard visibility. The one reliable primitive for "is the
 // keyboard up" — drives <KeyboardDoneButton/> and any keyboard-aware layout.
 export function useKeyboardVisible(): boolean {
-	const [visible, setVisible] = useState(false);
-	useEffect(() => {
-		const show = Keyboard.addListener("keyboardDidShow", () =>
-			setVisible(true),
-		);
-		const hide = Keyboard.addListener("keyboardDidHide", () =>
-			setVisible(false),
-		);
-		return () => {
-			show.remove();
-			hide.remove();
-		};
-	}, []);
-	return visible;
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () =>
+      setVisible(true),
+    );
+    const hide = Keyboard.addListener("keyboardDidHide", () =>
+      setVisible(false),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return visible;
 }
 
 // Reusable keyboard-dismiss button. iOS multiline TextInputs have no return-key
@@ -315,131 +315,131 @@ export function useKeyboardVisible(): boolean {
 // the keyboard is up (iOS; Android has a system dismiss) and calls
 // Keyboard.dismiss(). Caller owns placement via `style`.
 export function KeyboardDoneButton({
-	label = "Done",
-	style,
+  label = "Done",
+  style,
 }: {
-	label?: string;
-	style?: StyleProp<ViewStyle>;
+  label?: string;
+  style?: StyleProp<ViewStyle>;
 }) {
-	const visible = useKeyboardVisible();
-	if (Platform.OS !== "ios" || !visible) {
-		return null;
-	}
-	return (
-		<Pressable
-			onPress={() => Keyboard.dismiss()}
-			hitSlop={8}
-			accessibilityRole="button"
-			// Accessible name must contain the visible text (WCAG 2.5.3 Label in Name)
-			// so Voice Control "tap Done" works; the hint carries the description.
-			accessibilityLabel={label}
-			accessibilityHint="Dismisses the keyboard"
-			style={({ pressed }) => [
-				styles.keyboardDoneBtn,
-				pressed && styles.linkPressed,
-				style,
-			]}
-		>
-			<Text style={styles.keyboardDoneBtnText}>{label}</Text>
-		</Pressable>
-	);
+  const visible = useKeyboardVisible();
+  if (Platform.OS !== "ios" || !visible) {
+    return null;
+  }
+  return (
+    <Pressable
+      onPress={() => Keyboard.dismiss()}
+      hitSlop={8}
+      accessibilityRole="button"
+      // Accessible name must contain the visible text (WCAG 2.5.3 Label in Name)
+      // so Voice Control "tap Done" works; the hint carries the description.
+      accessibilityLabel={label}
+      accessibilityHint="Dismisses the keyboard"
+      style={({ pressed }) => [
+        styles.keyboardDoneBtn,
+        pressed && styles.linkPressed,
+        style,
+      ]}
+    >
+      <Text style={styles.keyboardDoneBtnText}>{label}</Text>
+    </Pressable>
+  );
 }
 
 type ButtonProps = Omit<PressableProps, "children" | "style"> & {
-	label: string;
-	busy?: boolean;
-	style?: StyleProp<ViewStyle>;
+  label: string;
+  busy?: boolean;
+  style?: StyleProp<ViewStyle>;
 };
 
 export function PrimaryButton({
-	label,
-	busy,
-	disabled,
-	style,
-	...rest
+  label,
+  busy,
+  disabled,
+  style,
+  ...rest
 }: ButtonProps) {
-	const isDisabled = Boolean(disabled || busy);
-	return (
-		<Pressable
-			accessibilityRole="button"
-			accessibilityState={{ disabled: isDisabled, busy }}
-			disabled={isDisabled}
-			style={({ pressed }) => [
-				styles.primaryButton,
-				isDisabled && styles.buttonDisabled,
-				pressed && !isDisabled && styles.primaryButtonPressed,
-				style,
-			]}
-			{...rest}
-		>
-			{busy ? (
-				<ActivityIndicator color={Sirius.color.onAccent} />
-			) : (
-				<Text style={styles.primaryButtonText}>{label}</Text>
-			)}
-		</Pressable>
-	);
+  const isDisabled = Boolean(disabled || busy);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled, busy }}
+      disabled={isDisabled}
+      style={({ pressed }) => [
+        styles.primaryButton,
+        isDisabled && styles.buttonDisabled,
+        pressed && !isDisabled && styles.primaryButtonPressed,
+        style,
+      ]}
+      {...rest}
+    >
+      {busy ? (
+        <ActivityIndicator color={Sirius.color.onAccent} />
+      ) : (
+        <Text style={styles.primaryButtonText}>{label}</Text>
+      )}
+    </Pressable>
+  );
 }
 
 export function SecondaryButton({
-	label,
-	busy,
-	disabled,
-	style,
-	symbol,
-	...rest
+  label,
+  busy,
+  disabled,
+  style,
+  symbol,
+  ...rest
 }: ButtonProps & { symbol?: SFSymbol }) {
-	const isDisabled = Boolean(disabled || busy);
-	return (
-		<Pressable
-			accessibilityRole="button"
-			accessibilityState={{ disabled: isDisabled, busy }}
-			disabled={isDisabled}
-			style={({ pressed }) => [
-				styles.secondaryButton,
-				isDisabled && styles.buttonDisabled,
-				pressed && !isDisabled && styles.secondaryButtonPressed,
-				style,
-			]}
-			{...rest}
-		>
-			{busy ? (
-				<ActivityIndicator color={Sirius.color.accent} />
-			) : (
-				<View style={styles.secondaryButtonContent}>
-					{symbol ? (
-						<SymbolView
-							name={symbol}
-							size={20}
-							weight="medium"
-							tintColor={Sirius.color.accent}
-							// Android/web have no SF Symbols; the label alone carries meaning.
-							fallback={<></>}
-						/>
-					) : null}
-					<Text style={styles.secondaryButtonText}>{label}</Text>
-				</View>
-			)}
-		</Pressable>
-	);
+  const isDisabled = Boolean(disabled || busy);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled, busy }}
+      disabled={isDisabled}
+      style={({ pressed }) => [
+        styles.secondaryButton,
+        isDisabled && styles.buttonDisabled,
+        pressed && !isDisabled && styles.secondaryButtonPressed,
+        style,
+      ]}
+      {...rest}
+    >
+      {busy ? (
+        <ActivityIndicator color={Sirius.color.accent} />
+      ) : (
+        <View style={styles.secondaryButtonContent}>
+          {symbol ? (
+            <SymbolView
+              name={symbol}
+              size={20}
+              weight="medium"
+              tintColor={Sirius.color.accent}
+              // Android/web have no SF Symbols; the label alone carries meaning.
+              fallback={<></>}
+            />
+          ) : null}
+          <Text style={styles.secondaryButtonText}>{label}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
 }
 
 // A bordered text link/button used in footers ("Sign out", "Create account").
 export function TextLink({
-	label,
-	tone = Sirius.color.accent,
-	...rest
+  label,
+  tone = Sirius.color.accent,
+  ...rest
 }: Omit<PressableProps, "children"> & { label: string; tone?: string }) {
-	return (
-		<Pressable
-			accessibilityRole="button"
-			hitSlop={12}
-			style={({ pressed }) => [pressed && styles.linkPressed]}
-			{...rest}
-		>
-			<Text style={[styles.link, { color: tone }]}>{label}</Text>
-		</Pressable>
-	);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      hitSlop={12}
+      style={({ pressed }) => [pressed && styles.linkPressed]}
+      {...rest}
+    >
+      <Text style={[styles.link, { color: tone }]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 // A square tappable card for the composer's capture grid: an SF-symbol icon
@@ -447,181 +447,181 @@ export function TextLink({
 // is the Android/web text fallback for the symbol. `active` highlights the card
 // whose input sheet is currently open.
 export function ActionCard({
-	label,
-	symbol,
-	glyph,
-	active,
-	style,
-	accessibilityHint,
-	...rest
+  label,
+  symbol,
+  glyph,
+  active,
+  style,
+  accessibilityHint,
+  ...rest
 }: Omit<PressableProps, "children" | "style"> & {
-	label: string;
-	symbol: SFSymbol;
-	glyph: string;
-	active?: boolean;
-	style?: StyleProp<ViewStyle>;
+  label: string;
+  symbol: SFSymbol;
+  glyph: string;
+  active?: boolean;
+  style?: StyleProp<ViewStyle>;
 }) {
-	return (
-		<Pressable
-			accessibilityRole="button"
-			accessibilityLabel={label}
-			accessibilityHint={accessibilityHint}
-			accessibilityState={{ selected: active }}
-			style={({ pressed }) => [
-				styles.actionCard,
-				active && styles.actionCardActive,
-				pressed && styles.actionCardPressed,
-				style,
-			]}
-			{...rest}
-		>
-			<SymbolView
-				name={symbol}
-				size={26}
-				weight="regular"
-				tintColor={active ? Sirius.color.accent : Sirius.color.ink}
-				fallback={
-					<Text
-						style={[
-							styles.actionGlyph,
-							active && { color: Sirius.color.accent },
-						]}
-						accessibilityElementsHidden
-					>
-						{glyph}
-					</Text>
-				}
-			/>
-			<Text style={[styles.actionLabel, active && styles.actionLabelActive]}>
-				{label}
-			</Text>
-		</Pressable>
-	);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => [
+        styles.actionCard,
+        active && styles.actionCardActive,
+        pressed && styles.actionCardPressed,
+        style,
+      ]}
+      {...rest}
+    >
+      <SymbolView
+        name={symbol}
+        size={26}
+        weight="regular"
+        tintColor={active ? Sirius.color.accent : Sirius.color.ink}
+        fallback={
+          <Text
+            style={[
+              styles.actionGlyph,
+              active && { color: Sirius.color.accent },
+            ]}
+            accessibilityElementsHidden
+          >
+            {glyph}
+          </Text>
+        }
+      />
+      <Text style={[styles.actionLabel, active && styles.actionLabelActive]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
 }
 
 // A bottom modal sheet that hosts a single capture kind's input form. Tapping
 // the scrim or the OS back gesture dismisses it.
 export function Sheet({
-	visible,
-	title,
-	onClose,
-	children,
+  visible,
+  title,
+  onClose,
+  children,
 }: {
-	visible: boolean;
-	title?: string;
-	onClose: () => void;
-	children: ReactNode;
+  visible: boolean;
+  title?: string;
+  onClose: () => void;
+  children: ReactNode;
 }) {
-	const insets = useSafeAreaInsets();
-	return (
-		<Modal
-			visible={visible}
-			transparent
-			animationType="slide"
-			onRequestClose={onClose}
-		>
-			<KeyboardAvoidingView
-				style={{ flex: 1 }}
-				behavior={Platform.OS === "ios" ? "padding" : "height"}
-			>
-				<Pressable
-					style={styles.sheetScrim}
-					accessibilityRole="button"
-					accessibilityLabel="Close"
-					onPress={onClose}
-				/>
-				<View
-					style={[
-						styles.sheet,
-						{ paddingBottom: Sirius.space.xl + insets.bottom },
-					]}
-				>
-					<View style={styles.sheetHandle} />
-					{title ? (
-						<Eyebrow accessibilityRole="header" style={styles.sheetTitle}>
-							{title}
-						</Eyebrow>
-					) : null}
-					{/* Scrollable body so a tall input (or any overflow) can never push
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <Pressable
+          style={styles.sheetScrim}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          onPress={onClose}
+        />
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: Sirius.space.xl + insets.bottom },
+          ]}
+        >
+          <View style={styles.sheetHandle} />
+          {title ? (
+            <Eyebrow accessibilityRole="header" style={styles.sheetTitle}>
+              {title}
+            </Eyebrow>
+          ) : null}
+          {/* Scrollable body so a tall input (or any overflow) can never push
               the action buttons off-screen — everything stays reachable even
               with the keyboard up. */}
-					<ScrollView
-						style={styles.sheetBody}
-						contentContainerStyle={styles.sheetBodyContent}
-						keyboardShouldPersistTaps="handled"
-						showsVerticalScrollIndicator={false}
-						bounces={false}
-					>
-						{children}
-					</ScrollView>
-				</View>
-			</KeyboardAvoidingView>
-		</Modal>
-	);
+          <ScrollView
+            style={styles.sheetBody}
+            contentContainerStyle={styles.sheetBodyContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {children}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 }
 
 // One staged item in the composer/share tray: a mono kind tag, a one-line
 // description, an optional leading thumbnail, and edit + remove controls.
 export function TrayRow({
-	tag,
-	description,
-	onEdit,
-	editLabel,
-	onRemove,
-	removeLabel,
-	leading,
+  tag,
+  description,
+  onEdit,
+  editLabel,
+  onRemove,
+  removeLabel,
+  leading,
 }: {
-	tag: string;
-	description: string;
-	onEdit?: () => void;
-	editLabel?: string;
-	onRemove?: () => void;
-	removeLabel?: string;
-	leading?: ReactNode;
+  tag: string;
+  description: string;
+  onEdit?: () => void;
+  editLabel?: string;
+  onRemove?: () => void;
+  removeLabel?: string;
+  leading?: ReactNode;
 }) {
-	return (
-		<View style={styles.trayRow}>
-			{leading}
-			<View style={styles.trayText}>
-				<KindLabel tone={Sirius.color.accent}>{tag}</KindLabel>
-				<Text style={styles.trayDescription} numberOfLines={2}>
-					{description}
-				</Text>
-			</View>
-			{onEdit || onRemove ? (
-				<View style={styles.trayActions}>
-					{onEdit ? (
-						<Pressable
-							onPress={onEdit}
-							hitSlop={12}
-							accessibilityRole="button"
-							accessibilityLabel={editLabel ?? "Edit note"}
-							style={({ pressed }) => [
-								styles.trayEdit,
-								pressed && styles.linkPressed,
-							]}
-						>
-							<Text style={styles.trayEditText}>✎</Text>
-						</Pressable>
-					) : null}
-					{onRemove ? (
-						<Pressable
-							onPress={onRemove}
-							hitSlop={12}
-							accessibilityRole="button"
-							accessibilityLabel={removeLabel ?? "Remove item"}
-							style={({ pressed }) => [
-								styles.trayRemove,
-								pressed && styles.linkPressed,
-							]}
-						>
-							<Text style={styles.trayRemoveText}>×</Text>
-						</Pressable>
-					) : null}
-				</View>
-			) : null}
-		</View>
-	);
+  return (
+    <View style={styles.trayRow}>
+      {leading}
+      <View style={styles.trayText}>
+        <KindLabel tone={Sirius.color.accent}>{tag}</KindLabel>
+        <Text style={styles.trayDescription} numberOfLines={2}>
+          {description}
+        </Text>
+      </View>
+      {onEdit || onRemove ? (
+        <View style={styles.trayActions}>
+          {onEdit ? (
+            <Pressable
+              onPress={onEdit}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={editLabel ?? "Edit note"}
+              style={({ pressed }) => [
+                styles.trayEdit,
+                pressed && styles.linkPressed,
+              ]}
+            >
+              <Text style={styles.trayEditText}>✎</Text>
+            </Pressable>
+          ) : null}
+          {onRemove ? (
+            <Pressable
+              onPress={onRemove}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={removeLabel ?? "Remove item"}
+              style={({ pressed }) => [
+                styles.trayRemove,
+                pressed && styles.linkPressed,
+              ]}
+            >
+              <Text style={styles.trayRemoveText}>×</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 // Pinned bottom action bar for the composer. The Submit button used to be the
@@ -632,368 +632,368 @@ export function TrayRow({
 // up — main-screen text entry happens inside `Sheet` modals that render above
 // this anyway. Reuses `PrimaryButton` for the CTA (keeps busy/disabled styling).
 export function SubmitBar({
-	count,
-	busy,
-	onSubmit,
-	countLabel,
+  count,
+  busy,
+  onSubmit,
+  countLabel,
 }: {
-	count: number;
-	busy?: boolean;
-	onSubmit: () => void;
-	countLabel?: string;
+  count: number;
+  busy?: boolean;
+  onSubmit: () => void;
+  countLabel?: string;
 }) {
-	const insets = useSafeAreaInsets();
-	const keyboardVisible = useKeyboardVisible();
-	const empty = count === 0;
+  const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardVisible();
+  const empty = count === 0;
 
-	// Subtle emphasis pulse on the count whenever an item is added — quick scale
-	// bump, in keeping with the flat editorial motion language (no bounce).
-	const scale = useSharedValue(1);
-	const prevCount = useRef(count);
-	useEffect(() => {
-		if (count > prevCount.current) {
-			scale.value = withSequence(
-				withTiming(1.3, { duration: 120 }),
-				withTiming(1, { duration: 160 }),
-			);
-		}
-		prevCount.current = count;
-	}, [count, scale]);
-	const countStyle = useAnimatedStyle(() => ({
-		transform: [{ scale: scale.value }],
-	}));
+  // Subtle emphasis pulse on the count whenever an item is added — quick scale
+  // bump, in keeping with the flat editorial motion language (no bounce).
+  const scale = useSharedValue(1);
+  const prevCount = useRef(count);
+  useEffect(() => {
+    if (count > prevCount.current) {
+      scale.value = withSequence(
+        withTiming(1.3, { duration: 120 }),
+        withTiming(1, { duration: 160 }),
+      );
+    }
+    prevCount.current = count;
+  }, [count, scale]);
+  const countStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
-	if (keyboardVisible) {
-		return null;
-	}
+  if (keyboardVisible) {
+    return null;
+  }
 
-	return (
-		<View
-			style={[
-				styles.submitBar,
-				// Fill paper from the bar content all the way to the screen bottom so
-				// the area behind the floating tab bar isn't see-through to scroll
-				// content; the content row is pushed up to sit just above the tab bar.
-				{ paddingBottom: BottomTabInset + insets.bottom + Sirius.space.md },
-			]}
-		>
-			<View style={styles.submitBarSummary}>
-				<Eyebrow>In tray</Eyebrow>
-				{empty ? (
-					<Text style={styles.submitBarHint}>Nothing staged yet</Text>
-				) : (
-					<Animated.Text
-						style={[styles.submitBarCount, countStyle]}
-						accessibilityLiveRegion="polite"
-						accessibilityLabel={countLabel}
-					>
-						{count}
-					</Animated.Text>
-				)}
-			</View>
-			<PrimaryButton
-				label="Submit"
-				onPress={onSubmit}
-				busy={busy}
-				disabled={empty}
-				style={styles.submitBarButton}
-			/>
-		</View>
-	);
+  return (
+    <View
+      style={[
+        styles.submitBar,
+        // Fill paper from the bar content all the way to the screen bottom so
+        // the area behind the floating tab bar isn't see-through to scroll
+        // content; the content row is pushed up to sit just above the tab bar.
+        { paddingBottom: BottomTabInset + insets.bottom + Sirius.space.md },
+      ]}
+    >
+      <View style={styles.submitBarSummary}>
+        <Eyebrow>In tray</Eyebrow>
+        {empty ? (
+          <Text style={styles.submitBarHint}>Nothing staged yet</Text>
+        ) : (
+          <Animated.Text
+            style={[styles.submitBarCount, countStyle]}
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={countLabel}
+          >
+            {count}
+          </Animated.Text>
+        )}
+      </View>
+      <PrimaryButton
+        label="Submit"
+        onPress={onSubmit}
+        busy={busy}
+        disabled={empty}
+        style={styles.submitBarButton}
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-	screen: { flex: 1, backgroundColor: Sirius.color.paper },
-	header: {
-		flexDirection: "row",
-		alignItems: "flex-end",
-		justifyContent: "space-between",
-		gap: Sirius.space.lg,
-	},
-	headerMain: { flex: 1, gap: Sirius.space.xs },
-	eyebrow: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 10,
-		letterSpacing: 2,
-		textTransform: "uppercase",
-		color: Sirius.color.inkSubtle,
-	},
-	title: {
-		fontFamily: Sirius.font.serif,
-		fontSize: 40,
-		lineHeight: 42,
-		letterSpacing: -0.5,
-		color: Sirius.color.ink,
-	},
-	titleAccent: { color: Sirius.color.accent },
-	subtitle: {
-		marginTop: Sirius.space.sm,
-		fontFamily: Sirius.font.serif,
-		fontSize: 17,
-		lineHeight: 23,
-		color: Sirius.color.inkMuted,
-	},
-	headerCount: { alignItems: "flex-end" },
-	countValue: {
-		fontFamily: Sirius.font.serif,
-		fontSize: 34,
-		lineHeight: 36,
-		color: Sirius.color.accent,
-	},
-	countLabel: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 10,
-		letterSpacing: 2,
-		textTransform: "uppercase",
-		color: Sirius.color.inkSubtle,
-	},
-	meta: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 12,
-		color: Sirius.color.inkMuted,
-	},
-	kind: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 10,
-		letterSpacing: 1.8,
-		textTransform: "uppercase",
-		color: Sirius.color.inkMuted,
-	},
-	pipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-	pipDot: { width: 7, height: 7, borderRadius: Sirius.radius.pill },
-	pipLabel: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 10,
-		letterSpacing: 1.6,
-		textTransform: "uppercase",
-		color: Sirius.color.inkMuted,
-	},
-	field: { gap: 6 },
-	fieldLabel: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 11,
-		fontWeight: "600",
-		letterSpacing: 1.2,
-		textTransform: "uppercase",
-		color: Sirius.color.inkMuted,
-	},
-	input: {
-		borderWidth: 1,
-		borderColor: Sirius.color.ruleStrong,
-		borderRadius: Sirius.radius.none,
-		backgroundColor: Sirius.color.paperRaised,
-		paddingHorizontal: 14,
-		paddingVertical: 13,
-		fontSize: 16,
-		color: Sirius.color.ink,
-		minHeight: 48,
-	},
-	inputMultiline: {
-		maxHeight: MULTILINE_MAX_HEIGHT,
-		textAlignVertical: "top",
-		paddingTop: 12,
-	},
-	passwordRow: { position: "relative", justifyContent: "center" },
-	passwordInput: { paddingRight: 60 },
-	passwordToggle: {
-		position: "absolute",
-		right: 0,
-		top: 0,
-		bottom: 0,
-		paddingHorizontal: 14,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	passwordToggleGlyph: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 11,
-		letterSpacing: 1,
-		textTransform: "uppercase",
-		color: Sirius.color.inkMuted,
-	},
-	primaryButton: {
-		backgroundColor: Sirius.color.accent,
-		borderRadius: Sirius.radius.none,
-		paddingVertical: 15,
-		paddingHorizontal: 20,
-		alignItems: "center",
-		justifyContent: "center",
-		minHeight: 50,
-	},
-	primaryButtonPressed: { backgroundColor: Sirius.color.accentDeep },
-	primaryButtonText: {
-		color: Sirius.color.onAccent,
-		fontSize: 16,
-		fontWeight: "600",
-		letterSpacing: 0.3,
-	},
-	secondaryButton: {
-		borderWidth: 1,
-		borderColor: Sirius.color.accent,
-		borderRadius: Sirius.radius.none,
-		paddingVertical: 14,
-		paddingHorizontal: 20,
-		alignItems: "center",
-		justifyContent: "center",
-		minHeight: 48,
-	},
-	secondaryButtonPressed: { backgroundColor: Sirius.color.accentSoft },
-	secondaryButtonContent: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: Sirius.space.sm,
-	},
-	secondaryButtonText: {
-		color: Sirius.color.accent,
-		fontSize: 16,
-		fontWeight: "600",
-		letterSpacing: 0.3,
-	},
-	buttonDisabled: { opacity: 0.45 },
-	submitBar: {
-		position: "absolute",
-		left: 0,
-		right: 0,
-		bottom: 0,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: Sirius.space.lg,
-		backgroundColor: Sirius.color.paper,
-		borderTopWidth: 1,
-		borderColor: Sirius.color.ruleStrong,
-		paddingHorizontal: Sirius.space.xl,
-		paddingTop: Sirius.space.md,
-	},
-	submitBarSummary: { gap: Sirius.space.xs },
-	submitBarHint: {
-		fontFamily: Sirius.font.serif,
-		fontSize: 15,
-		fontStyle: "italic",
-		color: Sirius.color.inkMuted,
-	},
-	submitBarCount: {
-		fontFamily: Sirius.font.serif,
-		fontSize: 30,
-		lineHeight: 32,
-		color: Sirius.color.accent,
-	},
-	submitBarButton: { paddingHorizontal: Sirius.space.xxl, minWidth: 150 },
-	link: { fontSize: 15, fontWeight: "600" },
-	linkPressed: { opacity: 0.6 },
-	keyboardDoneBtn: {
-		alignItems: "center",
-		justifyContent: "center",
-		backgroundColor: Sirius.color.paperRaised,
-		borderRadius: 10,
-		paddingVertical: 10,
-		paddingHorizontal: 16,
-	},
-	keyboardDoneBtnText: {
-		color: Sirius.color.accent,
-		fontSize: 14,
-		fontWeight: "600",
-	},
-	actionCard: {
-		flex: 1,
-		minHeight: 104,
-		borderWidth: 1,
-		borderColor: Sirius.color.rule,
-		borderRadius: Sirius.radius.none,
-		backgroundColor: Sirius.color.paperRaised,
-		alignItems: "center",
-		justifyContent: "center",
-		gap: Sirius.space.sm,
-		paddingVertical: Sirius.space.lg,
-	},
-	actionCardActive: {
-		borderColor: Sirius.color.accent,
-		backgroundColor: Sirius.color.accentSoft,
-	},
-	actionCardPressed: { backgroundColor: Sirius.color.paperSunken },
-	actionGlyph: {
-		fontSize: 26,
-		lineHeight: 30,
-		color: Sirius.color.ink,
-		fontFamily: Sirius.font.serif,
-	},
-	actionLabel: {
-		fontFamily: Sirius.font.mono,
-		fontSize: 11,
-		letterSpacing: 1.4,
-		textTransform: "uppercase",
-		color: Sirius.color.inkMuted,
-	},
-	actionLabelActive: { color: Sirius.color.accent },
-	sheetScrim: {
-		flex: 1,
-		backgroundColor: "rgba(28,22,18,0.4)",
-	},
-	sheet: {
-		backgroundColor: Sirius.color.paper,
-		borderTopWidth: 1,
-		borderColor: Sirius.color.ruleStrong,
-		paddingHorizontal: Sirius.space.xl,
-		paddingTop: Sirius.space.md,
-		gap: Sirius.space.lg,
-		// Never let the sheet swallow the whole screen: leave a tappable scrim gap
-		// at the top (the requested top margin) so there's always a way out.
-		maxHeight: "88%",
-	},
-	sheetBody: { flexShrink: 1 },
-	sheetBodyContent: { gap: Sirius.space.lg },
-	sheetHandle: {
-		alignSelf: "center",
-		width: 44,
-		height: 4,
-		borderRadius: Sirius.radius.pill,
-		backgroundColor: Sirius.color.inkFaint,
-	},
-	sheetTitle: { marginTop: Sirius.space.xs },
-	trayRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: Sirius.space.md,
-		borderWidth: 1,
-		borderColor: Sirius.color.rule,
-		borderRadius: Sirius.radius.none,
-		backgroundColor: Sirius.color.paperRaised,
-		paddingVertical: Sirius.space.sm,
-		paddingHorizontal: Sirius.space.md,
-	},
-	trayText: { flex: 1, gap: 3 },
-	trayDescription: {
-		fontSize: 15,
-		fontWeight: "500",
-		color: Sirius.color.ink,
-		fontFamily: Sirius.font.serif,
-	},
-	trayActions: {
-		flexDirection: "row",
-		alignItems: "center",
-	},
-	trayEdit: {
-		width: 44,
-		height: 44,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	trayEditText: {
-		fontSize: 18,
-		lineHeight: 22,
-		color: Sirius.color.inkMuted,
-		fontWeight: "600",
-	},
-	trayRemove: {
-		width: 44,
-		height: 44,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	trayRemoveText: {
-		fontSize: 22,
-		lineHeight: 24,
-		color: Sirius.color.inkMuted,
-		fontWeight: "600",
-	},
+  screen: { flex: 1, backgroundColor: Sirius.color.paper },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: Sirius.space.lg,
+  },
+  headerMain: { flex: 1, gap: Sirius.space.xs },
+  eyebrow: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 10,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    color: Sirius.color.inkSubtle,
+  },
+  title: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 40,
+    lineHeight: 42,
+    letterSpacing: -0.5,
+    color: Sirius.color.ink,
+  },
+  titleAccent: { color: Sirius.color.accent },
+  subtitle: {
+    marginTop: Sirius.space.sm,
+    fontFamily: Sirius.font.serif,
+    fontSize: 17,
+    lineHeight: 23,
+    color: Sirius.color.inkMuted,
+  },
+  headerCount: { alignItems: "flex-end" },
+  countValue: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 34,
+    lineHeight: 36,
+    color: Sirius.color.accent,
+  },
+  countLabel: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 10,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    color: Sirius.color.inkSubtle,
+  },
+  meta: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 12,
+    color: Sirius.color.inkMuted,
+  },
+  kind: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 10,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
+  },
+  pipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  pipDot: { width: 7, height: 7, borderRadius: Sirius.radius.pill },
+  pipLabel: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
+  },
+  field: { gap: 6 },
+  fieldLabel: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: Sirius.color.ruleStrong,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperRaised,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 16,
+    color: Sirius.color.ink,
+    minHeight: 48,
+  },
+  inputMultiline: {
+    maxHeight: MULTILINE_MAX_HEIGHT,
+    textAlignVertical: "top",
+    paddingTop: 12,
+  },
+  passwordRow: { position: "relative", justifyContent: "center" },
+  passwordInput: { paddingRight: 60 },
+  passwordToggle: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  passwordToggleGlyph: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
+  },
+  primaryButton: {
+    backgroundColor: Sirius.color.accent,
+    borderRadius: Sirius.radius.none,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 50,
+  },
+  primaryButtonPressed: { backgroundColor: Sirius.color.accentDeep },
+  primaryButtonText: {
+    color: Sirius.color.onAccent,
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: Sirius.color.accent,
+    borderRadius: Sirius.radius.none,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 48,
+  },
+  secondaryButtonPressed: { backgroundColor: Sirius.color.accentSoft },
+  secondaryButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.sm,
+  },
+  secondaryButtonText: {
+    color: Sirius.color.accent,
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  buttonDisabled: { opacity: 0.45 },
+  submitBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: Sirius.space.lg,
+    backgroundColor: Sirius.color.paper,
+    borderTopWidth: 1,
+    borderColor: Sirius.color.ruleStrong,
+    paddingHorizontal: Sirius.space.xl,
+    paddingTop: Sirius.space.md,
+  },
+  submitBarSummary: { gap: Sirius.space.xs },
+  submitBarHint: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 15,
+    fontStyle: "italic",
+    color: Sirius.color.inkMuted,
+  },
+  submitBarCount: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 30,
+    lineHeight: 32,
+    color: Sirius.color.accent,
+  },
+  submitBarButton: { paddingHorizontal: Sirius.space.xxl, minWidth: 150 },
+  link: { fontSize: 15, fontWeight: "600" },
+  linkPressed: { opacity: 0.6 },
+  keyboardDoneBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Sirius.color.paperRaised,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  keyboardDoneBtnText: {
+    color: Sirius.color.accent,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  actionCard: {
+    flex: 1,
+    minHeight: 104,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperRaised,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Sirius.space.sm,
+    paddingVertical: Sirius.space.lg,
+  },
+  actionCardActive: {
+    borderColor: Sirius.color.accent,
+    backgroundColor: Sirius.color.accentSoft,
+  },
+  actionCardPressed: { backgroundColor: Sirius.color.paperSunken },
+  actionGlyph: {
+    fontSize: 26,
+    lineHeight: 30,
+    color: Sirius.color.ink,
+    fontFamily: Sirius.font.serif,
+  },
+  actionLabel: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
+  },
+  actionLabelActive: { color: Sirius.color.accent },
+  sheetScrim: {
+    flex: 1,
+    backgroundColor: "rgba(28,22,18,0.4)",
+  },
+  sheet: {
+    backgroundColor: Sirius.color.paper,
+    borderTopWidth: 1,
+    borderColor: Sirius.color.ruleStrong,
+    paddingHorizontal: Sirius.space.xl,
+    paddingTop: Sirius.space.md,
+    gap: Sirius.space.lg,
+    // Never let the sheet swallow the whole screen: leave a tappable scrim gap
+    // at the top (the requested top margin) so there's always a way out.
+    maxHeight: "88%",
+  },
+  sheetBody: { flexShrink: 1 },
+  sheetBodyContent: { gap: Sirius.space.lg },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 4,
+    borderRadius: Sirius.radius.pill,
+    backgroundColor: Sirius.color.inkFaint,
+  },
+  sheetTitle: { marginTop: Sirius.space.xs },
+  trayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.md,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperRaised,
+    paddingVertical: Sirius.space.sm,
+    paddingHorizontal: Sirius.space.md,
+  },
+  trayText: { flex: 1, gap: 3 },
+  trayDescription: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: Sirius.color.ink,
+    fontFamily: Sirius.font.serif,
+  },
+  trayActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  trayEdit: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trayEditText: {
+    fontSize: 18,
+    lineHeight: 22,
+    color: Sirius.color.inkMuted,
+    fontWeight: "600",
+  },
+  trayRemove: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trayRemoveText: {
+    fontSize: 22,
+    lineHeight: 24,
+    color: Sirius.color.inkMuted,
+    fontWeight: "600",
+  },
 });

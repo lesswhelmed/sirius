@@ -6,9 +6,9 @@
 // caller in gemini-runner.ts falls back to the generic url_context path.
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import {
-	fetchRepoEvidence,
-	parseGitHubUrl,
-	type RepoEvidence,
+  fetchRepoEvidence,
+  parseGitHubUrl,
+  type RepoEvidence,
 } from "@repo/github-ingest";
 import { PostDraftSchema } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
@@ -17,113 +17,113 @@ import { type PostDraft, toGeminiOutput } from "../gemini-runner";
 import type { GeminiOutput } from "../types";
 
 export type GitHubRunOptions = {
-	url: string;
-	notes: string;
+  url: string;
+  notes: string;
 };
 
 export type GitHubRunResult = {
-	output: GeminiOutput;
-	evidence: RepoEvidence;
+  output: GeminiOutput;
+  evidence: RepoEvidence;
 };
 
 // Exported for unit testing — the prompt is the worker's one durable, pure
 // transformation of the evidence (the generateText call around it isn't unit
 // testable without a live model).
 export function buildGitHubPrompt(
-	evidence: RepoEvidence,
-	notes: string,
+  evidence: RepoEvidence,
+  notes: string,
 ): string {
-	const today = new Date().toISOString().slice(0, 10);
-	const lines = [
-		"You are drafting a single FINDING post for a personal blog about a GitHub repository.",
-		`Today's date: ${today}.`,
-		"Voice: first-person, observational, concrete. 120-320 words.",
-		"No marketing copy. No 'Here is' preambles. Write prose, not a file listing — you may name key files inline but do not paste large code blocks or code fences in the body.",
-		"Describe what the project is, the problem it solves, how it's built (language/stack), and anything notable about its structure or approach. Ground every claim in the evidence below — do not invent features.",
-		"Categories: 1-3 broad->narrow slash paths (e.g. 'software/developer-tools'); reuse common broad top-level fields, don't invent near-duplicates.",
-		"",
-		`Repository: ${evidence.owner}/${evidence.repo}`,
-	];
-	if (evidence.description) {
-		lines.push(`Description: ${evidence.description}`);
-	}
-	if (evidence.primaryLanguage || evidence.languages.length > 0) {
-		lines.push(
-			`Primary language: ${evidence.primaryLanguage ?? "unknown"}; Languages: ${
-				evidence.languages.join(", ") || "unknown"
-			}`,
-		);
-	}
-	lines.push(
-		`Stars: ${evidence.stars}; License: ${evidence.license ?? "none"}; Topics: ${
-			evidence.topics.join(", ") || "none"
-		}`,
-	);
-	if (evidence.pushedAt) {
-		lines.push(`Last pushed: ${evidence.pushedAt}`);
-	}
-	if (evidence.readme) {
-		lines.push("", "README:", evidence.readme.trim());
-	}
-	if (evidence.keyFiles.length > 0) {
-		lines.push("", "Key files (path, then content):");
-		for (const file of evidence.keyFiles) {
-			lines.push(`--- ${file.path} ---`, file.content.trim());
-		}
-	}
-	if (notes.trim()) {
-		lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
-	}
-	return lines.join("\n");
+  const today = new Date().toISOString().slice(0, 10);
+  const lines = [
+    "You are drafting a single FINDING post for a personal blog about a GitHub repository.",
+    `Today's date: ${today}.`,
+    "Voice: first-person, observational, concrete. 120-320 words.",
+    "No marketing copy. No 'Here is' preambles. Write prose, not a file listing — you may name key files inline but do not paste large code blocks or code fences in the body.",
+    "Describe what the project is, the problem it solves, how it's built (language/stack), and anything notable about its structure or approach. Ground every claim in the evidence below — do not invent features.",
+    "Categories: 1-3 broad->narrow slash paths (e.g. 'software/developer-tools'); reuse common broad top-level fields, don't invent near-duplicates.",
+    "",
+    `Repository: ${evidence.owner}/${evidence.repo}`,
+  ];
+  if (evidence.description) {
+    lines.push(`Description: ${evidence.description}`);
+  }
+  if (evidence.primaryLanguage || evidence.languages.length > 0) {
+    lines.push(
+      `Primary language: ${evidence.primaryLanguage ?? "unknown"}; Languages: ${
+        evidence.languages.join(", ") || "unknown"
+      }`,
+    );
+  }
+  lines.push(
+    `Stars: ${evidence.stars}; License: ${evidence.license ?? "none"}; Topics: ${
+      evidence.topics.join(", ") || "none"
+    }`,
+  );
+  if (evidence.pushedAt) {
+    lines.push(`Last pushed: ${evidence.pushedAt}`);
+  }
+  if (evidence.readme) {
+    lines.push("", "README:", evidence.readme.trim());
+  }
+  if (evidence.keyFiles.length > 0) {
+    lines.push("", "Key files (path, then content):");
+    for (const file of evidence.keyFiles) {
+      lines.push(`--- ${file.path} ---`, file.content.trim());
+    }
+  }
+  if (notes.trim()) {
+    lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
+  }
+  return lines.join("\n");
 }
 
 export async function runGitHubGemini(
-	options: GitHubRunOptions,
+  options: GitHubRunOptions,
 ): Promise<GitHubRunResult | null> {
-	const ref = parseGitHubUrl(options.url);
-	if (!ref) {
-		return null;
-	}
+  const ref = parseGitHubUrl(options.url);
+  if (!ref) {
+    return null;
+  }
 
-	const evidence = await fetchRepoEvidence(ref);
+  const evidence = await fetchRepoEvidence(ref);
 
-	const config = getAIConfig();
-	const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
-	const model = google(config.model);
+  const config = getAIConfig();
+  const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
+  const model = google(config.model);
 
-	const { output } = await generateText({
-		model,
-		temperature: config.temperature,
-		prompt: buildGitHubPrompt(evidence, options.notes),
-		output: Output.object({ schema: PostDraftSchema }),
-	});
+  const { output } = await generateText({
+    model,
+    temperature: config.temperature,
+    prompt: buildGitHubPrompt(evidence, options.notes),
+    output: Output.object({ schema: PostDraftSchema }),
+  });
 
-	// Deterministic, collision-resistant slug from the repo identity rather than
-	// the model's free-form title.
-	const draft: PostDraft = {
-		...output,
-		slug: `gh-${evidence.owner}-${evidence.repo}`.toLowerCase(),
-	};
+  // Deterministic, collision-resistant slug from the repo identity rather than
+  // the model's free-form title.
+  const draft: PostDraft = {
+    ...output,
+    slug: `gh-${evidence.owner}-${evidence.repo}`.toLowerCase(),
+  };
 
-	const result = toGeminiOutput(draft, "FINDING", {
-		originalUrl: ref.canonicalUrl,
-	});
-	// Provider provenance + a structured digest the post writer persists as
-	// first-class columns (providerId, sourceRecordId, contentDigest) so the UI
-	// can render a repo chip without re-fetching GitHub.
-	result.frontmatter.provider_id = "github";
-	result.frontmatter.source_record_id = `${evidence.owner}/${evidence.repo}`;
-	result.frontmatter.content_digest = {
-		stars: evidence.stars,
-		primaryLanguage: evidence.primaryLanguage,
-		languages: evidence.languages,
-		topics: evidence.topics,
-		license: evidence.license,
-		defaultBranch: evidence.defaultBranch,
-		pushedAt: evidence.pushedAt,
-		htmlUrl: evidence.htmlUrl,
-		fileCount: evidence.keyFiles.length,
-	} as Record<string, unknown>;
+  const result = toGeminiOutput(draft, "FINDING", {
+    originalUrl: ref.canonicalUrl,
+  });
+  // Provider provenance + a structured digest the post writer persists as
+  // first-class columns (providerId, sourceRecordId, contentDigest) so the UI
+  // can render a repo chip without re-fetching GitHub.
+  result.frontmatter.provider_id = "github";
+  result.frontmatter.source_record_id = `${evidence.owner}/${evidence.repo}`;
+  result.frontmatter.content_digest = {
+    stars: evidence.stars,
+    primaryLanguage: evidence.primaryLanguage,
+    languages: evidence.languages,
+    topics: evidence.topics,
+    license: evidence.license,
+    defaultBranch: evidence.defaultBranch,
+    pushedAt: evidence.pushedAt,
+    htmlUrl: evidence.htmlUrl,
+    fileCount: evidence.keyFiles.length,
+  } as Record<string, unknown>;
 
-	return { output: result, evidence };
+  return { output: result, evidence };
 }

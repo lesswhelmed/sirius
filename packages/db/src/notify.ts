@@ -16,14 +16,14 @@ import { Client } from "pg";
 export const POSTS_CHANNEL = "posts_channel";
 
 export type PostChangeNotification = {
-	op: "upsert" | "delete";
-	postId: string;
-	slug: string;
-	// The post's owner (submittedById). Null for bearer-token ingest with no
-	// attribution; the SSE route drops those since the mirror is owner-scoped.
-	ownerId: string | null;
-	sourceRecordId: string | null;
-	updatedAt: string; // ISO
+  op: "upsert" | "delete";
+  postId: string;
+  slug: string;
+  // The post's owner (submittedById). Null for bearer-token ingest with no
+  // attribution; the SSE route drops those since the mirror is owner-scoped.
+  ownerId: string | null;
+  sourceRecordId: string | null;
+  updatedAt: string; // ISO
 };
 
 /**
@@ -34,16 +34,53 @@ export type PostChangeNotification = {
  * connection per call is fine.
  */
 export async function notifyPostChanged(
-	payload: PostChangeNotification,
+  payload: PostChangeNotification,
 ): Promise<void> {
-	const client = new Client({ connectionString: process.env.DATABASE_URL });
-	try {
-		await client.connect();
-		await client.query("SELECT pg_notify($1, $2)", [
-			POSTS_CHANNEL,
-			JSON.stringify(payload),
-		]);
-	} finally {
-		await client.end();
-	}
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  try {
+    await client.connect();
+    await client.query("SELECT pg_notify($1, $2)", [
+      POSTS_CHANNEL,
+      JSON.stringify(payload),
+    ]);
+  } finally {
+    await client.end();
+  }
+}
+
+// Comments ride their own channel but the same nudge contract: the SSE route
+// LISTENs both POSTS_CHANNEL and COMMENTS_CHANNEL and relays an owner-scoped
+// `change` event for either. The device reacts to any nudge by pulling both the
+// post and comment delta feeds, so comment writes reach connected clients in
+// realtime exactly like post writes.
+export const COMMENTS_CHANNEL = "comments_channel";
+
+export type CommentChangeNotification = {
+  op: "upsert" | "delete";
+  commentId: string;
+  postId: string;
+  // The owning post's submittedById. The SSE route drops events whose ownerId
+  // isn't the connected user, keeping the mirror owner-scoped.
+  ownerId: string | null;
+  updatedAt: string; // ISO
+};
+
+/**
+ * Emit a comment-change notification. Mirror of notifyPostChanged: short-lived
+ * connection, parameterized pg_notify, best-effort (callers catch so a notify
+ * failure never fails the comment write that triggered it).
+ */
+export async function notifyCommentChanged(
+  payload: CommentChangeNotification,
+): Promise<void> {
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  try {
+    await client.connect();
+    await client.query("SELECT pg_notify($1, $2)", [
+      COMMENTS_CHANNEL,
+      JSON.stringify(payload),
+    ]);
+  } finally {
+    await client.end();
+  }
 }

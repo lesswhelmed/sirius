@@ -48,7 +48,7 @@ looked logged-in but a feature failed with `unauthorized`.
 ## Root cause (proven)
 
 The device's **persisted session cookie had gone stale and the server was rejecting
-it** on every *live* authenticated API call (`401 {"error":"unauthorized"}`), but the
+it** on every _live_ authenticated API call (`401 {"error":"unauthorized"}`), but the
 app stayed "logged in" off a **cached session**, so the user saw an inline error
 instead of a re-login prompt.
 

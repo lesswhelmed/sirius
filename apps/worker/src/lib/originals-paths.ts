@@ -9,17 +9,17 @@ import { resolve } from "node:path";
 export { ensureDir } from "./media-paths";
 
 export function resolveOriginalsDir(): string {
-	const override = process.env.ORIGINALS_DIR?.trim();
-	if (override) {
-		return override;
-	}
-	return resolve(process.cwd(), "..", "..", "private-uploads", "originals");
+  const override = process.env.ORIGINALS_DIR?.trim();
+  if (override) {
+    return override;
+  }
+  return resolve(process.cwd(), "..", "..", "private-uploads", "originals");
 }
 
 export function resolveArchivesDir(): string {
-	const override = process.env.ARCHIVES_DIR?.trim();
-	if (override) {
-		return override;
-	}
-	return resolve(process.cwd(), "..", "..", "private-uploads", "archives");
+  const override = process.env.ARCHIVES_DIR?.trim();
+  if (override) {
+    return override;
+  }
+  return resolve(process.cwd(), "..", "..", "private-uploads", "archives");
 }

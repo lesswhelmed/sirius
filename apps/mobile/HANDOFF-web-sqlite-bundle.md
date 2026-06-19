@@ -16,6 +16,7 @@ None of these files exist:
 ```
 
 Import stack (why web pulls in expo-sqlite):
+
 ```
 apps/mobile/src/app/_layout.tsx
  → @/lib/db/client            (apps/mobile/src/lib/db/client.ts)
@@ -87,5 +88,7 @@ bunx expo export --platform web   # one-shot web bundle; should complete with no
 (Or trigger a web bundle against the running Metro on :8081.) Also confirm you did
 **not** regress the iOS bundle: `bunx expo export --platform ios` should still
 succeed. Do not commit anything — report the diff and the verification output back.
+
 ```
+
 ```

@@ -5,11 +5,11 @@
 // keyed by user (so an archive build is one directory walk) then submission (so
 // a batch's images group together and deletion is a single recursive rm).
 import {
-	copyFileSync,
-	renameSync,
-	rmSync,
-	statSync,
-	unlinkSync,
+  copyFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
 } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import { ensureDir, resolveOriginalsDir } from "./originals-paths";
@@ -21,36 +21,36 @@ import { ensureDir, resolveOriginalsDir } from "./originals-paths";
 // allowlist, so this is defense-in-depth against a future caller threading
 // client-controlled input into the originals store.
 function safeSegment(filename: string): string {
-	const cleaned = basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
-	// basename("") === "" and a name of all-dots collapses to nothing useful.
-	return cleaned && cleaned !== "." && cleaned !== ".." ? cleaned : "original";
+  const cleaned = basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
+  // basename("") === "" and a name of all-dots collapses to nothing useful.
+  return cleaned && cleaned !== "." && cleaned !== ".." ? cleaned : "original";
 }
 
 export function originalsOwnerBucket(submittedById: string | null): string {
-	return submittedById ?? "_anon";
+  return submittedById ?? "_anon";
 }
 
 export function submissionOriginalsDir(
-	submittedById: string | null,
-	submissionId: string,
+  submittedById: string | null,
+  submissionId: string,
 ): string {
-	return join(
-		resolveOriginalsDir(),
-		originalsOwnerBucket(submittedById),
-		submissionId,
-	);
+  return join(
+    resolveOriginalsDir(),
+    originalsOwnerBucket(submittedById),
+    submissionId,
+  );
 }
 
 export interface RetainOriginalInput {
-	submittedById: string | null;
-	submissionId: string;
-	stagedFilePath: string;
-	filename: string;
+  submittedById: string | null;
+  submissionId: string;
+  stagedFilePath: string;
+  filename: string;
 }
 
 export interface RetainedOriginal {
-	path: string;
-	sizeBytes: number;
+  path: string;
+  sizeBytes: number;
 }
 
 // Moves staged → originals dir. Uses rename (atomic, fast) with a copy+unlink
@@ -58,45 +58,45 @@ export interface RetainedOriginal {
 // (EXDEV — likely in prod where staging is /tmp and originals is on the data
 // volume). Returns the destination path + size.
 export function retainOriginal(input: RetainOriginalInput): RetainedOriginal {
-	const destDir = submissionOriginalsDir(
-		input.submittedById,
-		input.submissionId,
-	);
-	ensureDir(destDir);
-	const dest = join(destDir, safeSegment(input.filename));
-	// Defense in depth: never let a computed dest escape its submission dir.
-	if (
-		resolve(dest) !== resolve(destDir) &&
-		!resolve(dest).startsWith(resolve(destDir) + sep)
-	) {
-		throw new Error(
-			`retainOriginal: refusing path outside originals dir: ${input.filename}`,
-		);
-	}
-	try {
-		renameSync(input.stagedFilePath, dest);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException)?.code === "EXDEV") {
-			copyFileSync(input.stagedFilePath, dest);
-			unlinkSync(input.stagedFilePath);
-		} else {
-			throw error;
-		}
-	}
-	return { path: dest, sizeBytes: statSync(dest).size };
+  const destDir = submissionOriginalsDir(
+    input.submittedById,
+    input.submissionId,
+  );
+  ensureDir(destDir);
+  const dest = join(destDir, safeSegment(input.filename));
+  // Defense in depth: never let a computed dest escape its submission dir.
+  if (
+    resolve(dest) !== resolve(destDir) &&
+    !resolve(dest).startsWith(resolve(destDir) + sep)
+  ) {
+    throw new Error(
+      `retainOriginal: refusing path outside originals dir: ${input.filename}`,
+    );
+  }
+  try {
+    renameSync(input.stagedFilePath, dest);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "EXDEV") {
+      copyFileSync(input.stagedFilePath, dest);
+      unlinkSync(input.stagedFilePath);
+    } else {
+      throw error;
+    }
+  }
+  return { path: dest, sizeBytes: statSync(dest).size };
 }
 
 // Best-effort removal of a submission's retained dir (called on post delete).
 export function removeRetainedForSubmission(
-	submittedById: string | null,
-	submissionId: string,
+  submittedById: string | null,
+  submissionId: string,
 ): void {
-	try {
-		rmSync(submissionOriginalsDir(submittedById, submissionId), {
-			recursive: true,
-			force: true,
-		});
-	} catch {
-		// best-effort; a missing dir is fine (pre-feature posts have no originals)
-	}
+  try {
+    rmSync(submissionOriginalsDir(submittedById, submissionId), {
+      recursive: true,
+      force: true,
+    });
+  } catch {
+    // best-effort; a missing dir is fine (pre-feature posts have no originals)
+  }
 }

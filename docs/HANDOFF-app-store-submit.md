@@ -79,7 +79,7 @@ Connect web UI: app metadata, screenshots, privacy details, app icon/category, a
 ## If the build ERRORS
 
 The two dev-client builds on 2026-06-11 errored in the "Configure expo-updates" phase —
-that was the `development` profile, unrelated to `production`. If *this* production build
+that was the `development` profile, unrelated to `production`. If _this_ production build
 errors, open the build logs URL above, read the failing phase, and fix at the source
 (don't work around it) — then re-run Step 1's `eas build` command. Ask before changing
 build config.

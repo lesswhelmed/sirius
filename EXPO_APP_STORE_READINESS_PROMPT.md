@@ -7,6 +7,7 @@ through every remaining step to ship the app — assuming they have an Apple Dev
 account but NOTHING else verified.
 
 ## Operating rules (do not violate)
+
 1. **Validate, never assume.** "Basic setup" is NOT confirmed. For every prerequisite
    (Expo SDK version, EAS CLI, bundle identifier, signing, app.json/app.config keys,
    icons, privacy strings, etc.) you must actually inspect the repo and report the real
@@ -21,7 +22,9 @@ account but NOTHING else verified.
    `eas-cli`, React Native, Xcode/iOS deployment target). No generic "latest" hand-waving.
 
 ## Phase 0 — Discover & validate current state (do this first, report findings)
+
 Inspect and report actual values for each:
+
 - `package.json` — Expo SDK version, react-native version, scripts; `eas-cli` availability.
 - `app.json` / `app.config.(js|ts)` — `name`, `slug`, `version`, `ios.bundleIdentifier`,
   `ios.buildNumber`, `ios.supportsTablet`, `orientation`, `icon`, `splash`,
@@ -46,6 +49,7 @@ Inspect and report actual values for each:
 Output a **readiness table**: item | required for submission? | current state | action needed.
 
 ## Phase 1 — Write `APP_STORE_SUBMISSION.md`
+
 Structure it so a non-expert can follow it top to bottom. Include:
 
 1. **Prerequisites checklist** — Apple Developer Program membership (paid), Apple Team ID,
@@ -56,7 +60,7 @@ Structure it so a non-expert can follow it top to bottom. Include:
 3. **Create the app record in App Store Connect** — register the bundle ID, create the app,
    set primary language, SKU, category, content rights, age rating questionnaire.
 4. **Build for production with EAS** — exact commands (`eas build --platform ios --profile
-   production`), credential flow, what to expect, common failure modes + fixes.
+production`), credential flow, what to expect, common failure modes + fixes.
 5. **Submit the build** — `eas submit --platform ios` (preferred) and the manual
    Transporter alternative; how to attach the build to App Store Connect.
 6. **TestFlight** — internal vs external testing, beta review, when it's required.
@@ -79,6 +83,7 @@ Structure it so a non-expert can follow it top to bottom. Include:
     ship updates / OTA updates (EAS Update) vs new binary submissions.
 
 ## Output format
+
 - One markdown file: `APP_STORE_SUBMISSION.md`.
 - Use checkboxes (`- [ ]`) for every actionable step so the user can track progress.
 - Every command in a copyable code block, pinned to detected versions.

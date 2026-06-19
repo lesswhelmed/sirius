@@ -13,6 +13,7 @@
 **Verification policy (repo rule):** there is NO test runner in this repo. Every task verifies with `bun run check-types`, `bun run lint`, and (where stated) a smoke script under `apps/worker/scripts/` or manual `bun run db:studio`. Never claim tests pass.
 
 **Source-of-truth references:**
+
 - Embedding client: `apps/worker/src/lib/embeddings.ts` (embedContent, queryPrefix, embeddingHash)
 - Classifier: `packages/db/src/classify.ts` (classifyContent, CategoryMatch)
 - Auto-org stage: `apps/worker/src/pipeline/classification/assign-org.ts`
@@ -26,6 +27,7 @@
 ### Task 1: Schema — PostEmbedding + PostCategoryMatch + DB helpers
 
 **Files:**
+
 - Modify: `packages/db/prisma/schema.prisma`
 - Modify: `packages/db/src/embeddings.ts`
 - Modify: `packages/db/src/index.ts`
@@ -83,10 +85,12 @@ Add back-relations inside `model Post` (next to the existing `project` relation 
 - [ ] **Step 2: Migrate + generate**
 
 Run (prisma directly inside the package — turbo/bun mangle `--name`):
+
 ```bash
 cd packages/db && bunx prisma migrate dev --name add_post_embedding_linkage && cd ../..
 bun run db:generate
 ```
+
 Expected: migration applies, client regenerates.
 
 - [ ] **Step 3: Add helpers to `packages/db/src/embeddings.ts`**
@@ -107,7 +111,7 @@ export interface UpsertPostEmbeddingInput {
 // Idempotent by postId; re-embeds overwrite (embeddingHash lets callers skip
 // unchanged content before calling).
 export async function upsertPostEmbedding(
-  input: UpsertPostEmbeddingInput
+  input: UpsertPostEmbeddingInput,
 ): Promise<PostEmbedding> {
   const { postId, ...rest } = input;
   return prisma.postEmbedding.upsert({
@@ -120,7 +124,7 @@ export async function upsertPostEmbedding(
 // Replace the post's category linkage with the latest classify result.
 export async function replacePostCategoryMatches(
   postId: string,
-  matches: { path: string; score: number }[]
+  matches: { path: string; score: number }[],
 ): Promise<void> {
   await prisma.$transaction([
     prisma.postCategoryMatch.deleteMany({ where: { postId } }),
@@ -142,7 +146,7 @@ export interface EmbeddingSceneRows {
 }
 
 export async function getEmbeddingSceneRows(
-  ownerId: string
+  ownerId: string,
 ): Promise<EmbeddingSceneRows> {
   const [categories, projects, postRows] = await Promise.all([
     prisma.categoryEmbedding.findMany({ orderBy: { path: "asc" } }),
@@ -175,11 +179,23 @@ export async function getEmbeddingSceneRows(
 
 // Owner's posts not yet embedded — drives the backfill script.
 export async function listPostsNeedingEmbedding(limit = 50): Promise<
-  { id: string; slug: string; title: string; content: string; submittedById: string | null }[]
+  {
+    id: string;
+    slug: string;
+    title: string;
+    content: string;
+    submittedById: string | null;
+  }[]
 > {
   return prisma.post.findMany({
     where: { submittedById: { not: null }, embedding: { is: null } },
-    select: { id: true, slug: true, title: true, content: true, submittedById: true },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      content: true,
+      submittedById: true,
+    },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit,
   });
@@ -204,6 +220,7 @@ git add packages/db && git commit -m "feat(db): PostEmbedding + PostCategoryMatc
 ### Task 2: Worker — persist content embeddings + matches; backfill script
 
 **Files:**
+
 - Modify: `apps/worker/src/pipeline/classification/assign-org.ts`
 - Create: `apps/worker/scripts/backfill-post-embeddings.ts`
 
@@ -291,7 +308,11 @@ import {
   getEmbeddingDimensionality,
   getEmbeddingModel,
 } from "../src/lib/ai-config";
-import { embedContent, embeddingHash, queryPrefix } from "../src/lib/embeddings";
+import {
+  embedContent,
+  embeddingHash,
+  queryPrefix,
+} from "../src/lib/embeddings";
 import { buildRetrievalText } from "../src/pipeline/classification/prep";
 
 async function main(): Promise<void> {
@@ -305,9 +326,12 @@ async function main(): Promise<void> {
     if (batch.length === 0) break;
     for (const post of batch) {
       const retrievalText = buildRetrievalText(post.title, post.content);
-      const embedding = await embedContent([{ text: queryPrefix(retrievalText) }], {
-        dimensionality,
-      });
+      const embedding = await embedContent(
+        [{ text: queryPrefix(retrievalText) }],
+        {
+          dimensionality,
+        },
+      );
       await upsertPostEmbedding({
         postId: post.id,
         ownerId: post.submittedById,
@@ -326,7 +350,7 @@ async function main(): Promise<void> {
         });
         await replacePostCategoryMatches(
           post.id,
-          categories.map((c) => ({ path: c.path, score: c.score }))
+          categories.map((c) => ({ path: c.path, score: c.score })),
         );
       }
       total += 1;
@@ -341,7 +365,7 @@ main().then(
   (err) => {
     console.error(err);
     process.exit(1);
-  }
+  },
 );
 ```
 
@@ -352,6 +376,7 @@ bun run check-types && bun run lint
 # with DATABASE_URL + GEMINI_API_KEY set:
 bun run apps/worker/scripts/backfill-post-embeddings.ts
 ```
+
 Expected: each pre-existing user post logs one `embedded <slug>` line; re-run prints `backfill complete: 0 post(s) embedded`. Confirm rows in `bun run db:studio` (PostEmbedding, PostCategoryMatch).
 
 ```bash
@@ -363,6 +388,7 @@ git add apps/worker && git commit -m "feat(worker): persist post embeddings + ca
 ### Task 3: `@repo/embedding-scene` — shared types, PCA, scene builder
 
 **Files:**
+
 - Create: `packages/embedding-scene/package.json`
 - Create: `packages/embedding-scene/tsconfig.json`
 - Create: `packages/embedding-scene/eslint.config.mjs`
@@ -375,6 +401,7 @@ Independent of Tasks 1–2 (pure functions; types align by convention).
 - [ ] **Step 1: Package scaffolding**
 
 `packages/embedding-scene/package.json`:
+
 ```json
 {
   "name": "@repo/embedding-scene",
@@ -495,12 +522,15 @@ export function projectTo3d(vectors: number[][]): [number, number, number][] {
   }
 
   const points = X.map(
-    (row) => components.map((comp) => dot(row, comp)) as [number, number, number]
+    (row) =>
+      components.map((comp) => dot(row, comp)) as [number, number, number],
   );
   let maxAbs = 1e-9;
-  for (const p of points) for (const x of p) maxAbs = Math.max(maxAbs, Math.abs(x));
+  for (const p of points)
+    for (const x of p) maxAbs = Math.max(maxAbs, Math.abs(x));
   return points.map(
-    (p) => p.map((x) => (x / maxAbs) * SCENE_RADIUS) as [number, number, number]
+    (p) =>
+      p.map((x) => (x / maxAbs) * SCENE_RADIUS) as [number, number, number],
   );
 }
 ```
@@ -555,8 +585,12 @@ export function buildScene(rows: SceneInputRows): EmbeddingScene {
     if (c > (counts.get(dimensionality) ?? 0)) dimensionality = d;
   }
 
-  const categories = rows.categories.filter((r) => r.dimensionality === dimensionality);
-  const projects = rows.projects.filter((r) => r.dimensionality === dimensionality);
+  const categories = rows.categories.filter(
+    (r) => r.dimensionality === dimensionality,
+  );
+  const projects = rows.projects.filter(
+    (r) => r.dimensionality === dimensionality,
+  );
   const posts = rows.posts.filter((r) => r.dimensionality === dimensionality);
 
   const vectors = [
@@ -610,12 +644,23 @@ export function buildScene(rows: SceneInputRows): EmbeddingScene {
     }
     for (const m of p.matches) {
       if (ids.has(m.path)) {
-        edges.push({ from: p.postId, to: m.path, kind: "match", weight: m.score });
+        edges.push({
+          from: p.postId,
+          to: m.path,
+          kind: "match",
+          weight: m.score,
+        });
       }
     }
   }
 
-  return { nodes, edges, modelVersion: rows.modelVersion, dimensionality, generatedAt: rows.generatedAt };
+  return {
+    nodes,
+    edges,
+    modelVersion: rows.modelVersion,
+    dimensionality,
+    generatedAt: rows.generatedAt,
+  };
 }
 ```
 
@@ -632,6 +677,7 @@ git add packages/embedding-scene bun.lock && git commit -m "feat(scene): @repo/e
 ### Task 4: Web API — `GET /api/app/embedding-scene`
 
 **Files:**
+
 - Create: `apps/web/app/api/app/embedding-scene/route.ts`
 - Modify: `apps/web/package.json` (add `"@repo/embedding-scene": "*"` to dependencies)
 
@@ -689,6 +735,7 @@ export async function GET() {
 ```bash
 bun run check-types && bun run lint
 ```
+
 Manual: with dev server running and a signed-in session, `https://sirius.localhost/api/app/embedding-scene` returns `{ nodes: [...], edges: [...] }` with finite positions (spot-check no `null`/NaN).
 
 ```bash
@@ -700,6 +747,7 @@ git add apps/web && git commit -m "feat(web): embedding-scene API route"
 ### Task 5: Shared R3F scene components (`@repo/embedding-scene/react`)
 
 **Files:**
+
 - Create: `packages/embedding-scene/src/react/space-scene.tsx`
 - Create: `packages/embedding-scene/src/react/use-scene-selection.ts`
 
@@ -724,7 +772,7 @@ export function useSceneSelection(scene: EmbeddingScene): SceneSelection {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const byId = useMemo(
     () => new Map(scene.nodes.map((n) => [n.id, n])),
-    [scene.nodes]
+    [scene.nodes],
   );
   const neighborIds = useMemo(() => {
     const out = new Set<string>();
@@ -789,12 +837,19 @@ function EdgeLines({
       verts.push(...a, ...b);
     }
     const geo = new BufferGeometry();
-    geo.setAttribute("position", new BufferAttribute(new Float32Array(verts), 3));
+    geo.setAttribute(
+      "position",
+      new BufferAttribute(new Float32Array(verts), 3),
+    );
     return geo;
   }, [scene, kind]);
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial color={new Color(EDGE_COLOR[kind])} transparent opacity={0.45} />
+      <lineBasicMaterial
+        color={new Color(EDGE_COLOR[kind])}
+        transparent
+        opacity={0.45}
+      />
     </lineSegments>
   );
 }
@@ -806,7 +861,12 @@ export interface SpaceSceneProps {
   onSelect: (id: string | null) => void;
 }
 
-export function SpaceScene({ scene, selectedId, neighborIds, onSelect }: SpaceSceneProps) {
+export function SpaceScene({
+  scene,
+  selectedId,
+  neighborIds,
+  onSelect,
+}: SpaceSceneProps) {
   return (
     <group>
       <ambientLight intensity={0.8} />
@@ -826,7 +886,9 @@ export function SpaceScene({ scene, selectedId, neighborIds, onSelect }: SpaceSc
               onSelect(active ? null : node.id);
             }}
           >
-            <sphereGeometry args={[NODE_RADIUS[node.kind] * (active ? 1.8 : 1), 16, 16]} />
+            <sphereGeometry
+              args={[NODE_RADIUS[node.kind] * (active ? 1.8 : 1), 16, 16]}
+            />
             <meshStandardMaterial
               color={NODE_COLOR[node.kind]}
               emissive={active || neighbor ? NODE_COLOR[node.kind] : "#000000"}
@@ -856,6 +918,7 @@ git add packages/embedding-scene && git commit -m "feat(scene): shared R3F Space
 ### Task 6: Web — `/space` page + queue assigned-focus chip
 
 **Files:**
+
 - Create: `apps/web/app/(app)/space/page.tsx`
 - Create: `apps/web/app/(app)/space/space-view.tsx`
 - Modify: `apps/web/package.json` (deps: `three`, `@react-three/fiber`, `@react-three/drei`, `@types/three`)
@@ -927,7 +990,9 @@ import { SpaceScene } from "@repo/embedding-scene/react/space-scene";
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
 
 // Build the taxonomy tree (category nodes only) for the side panel.
-function categoryChildren(scene: EmbeddingScene): Map<string | null, SceneNode[]> {
+function categoryChildren(
+  scene: EmbeddingScene,
+): Map<string | null, SceneNode[]> {
   const children = new Map<string | null, SceneNode[]>();
   for (const n of scene.nodes) {
     if (n.kind !== "category") continue;
@@ -994,7 +1059,10 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
         />
       </aside>
       <div className="relative min-w-0 flex-1">
-        <Canvas camera={{ position: [0, 4, 18], fov: 50 }} onPointerMissed={() => select(null)}>
+        <Canvas
+          camera={{ position: [0, 4, 18], fov: 50 }}
+          onPointerMissed={() => select(null)}
+        >
           <SpaceScene
             scene={scene}
             selectedId={selected?.id ?? null}
@@ -1005,7 +1073,9 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
         </Canvas>
         {selected ? (
           <div className="absolute bottom-3 left-3 max-w-sm rounded border border-[var(--border,#333)] bg-[var(--bg,#111)]/90 p-3 text-[13px]">
-            <span className="uppercase tracking-wide opacity-60">{selected.kind}</span>
+            <span className="uppercase tracking-wide opacity-60">
+              {selected.kind}
+            </span>
             <p className="font-semibold">{selected.label}</p>
             {selected.slug ? (
               <a className="underline" href={`/listing/${selected.slug}`}>
@@ -1025,13 +1095,20 @@ Styling note: match the app's existing editorial tokens — before finalizing, r
 - [ ] **Step 4: Queue chip (UX-review fix — auto-assignment is currently invisible)**
 
 `packages/db/src/ingest.ts` `listSubmissions` already returns `IngestSubmission` rows which now carry `projectId` after auto-org. In the queue UI (`apps/web/app/(app)/queue/live.tsx`), completed rows show `resultPostSlug` via `primaryLabel`. Add a small "filed → <project title>" chip:
+
 1. Extend the queue page's server data load to include a `projectId → title` map (add `listProjectTitles(ownerId): Promise<Record<string, string>>` to `packages/db/src/posts.ts`? No — projects live in their own helper; add to the existing projects helper file and export it: `const rows = await prisma.project.findMany({ where: { ownerId }, select: { id: true, title: true } }); return Object.fromEntries(rows.map(r => [r.id, r.title]))`).
 2. Pass the map into the `live.tsx` client component as a prop, and next to the status label for completed rows render:
+
 ```tsx
-{item.projectId && projectTitles[item.projectId] ? (
-  <span className="ml-2 text-[12px] opacity-70">→ {projectTitles[item.projectId]}</span>
-) : null}
+{
+  item.projectId && projectTitles[item.projectId] ? (
+    <span className="ml-2 text-[12px] opacity-70">
+      → {projectTitles[item.projectId]}
+    </span>
+  ) : null;
+}
 ```
+
 Follow the file's existing class/token style.
 
 - [ ] **Step 5: Verify + commit**
@@ -1039,6 +1116,7 @@ Follow the file's existing class/token style.
 ```bash
 bun run check-types && bun run lint
 ```
+
 Manual: `bun run dev`, sign in, visit `https://sirius.localhost/space` — spheres render, orbit works, clicking a node highlights neighbors and shows the overlay; tree panel selects the same nodes. Queue shows `→ <Project>` on auto-filed completed rows.
 
 ```bash
@@ -1050,6 +1128,7 @@ git add apps/web packages/db && git commit -m "feat(web): /space 3D embedding vi
 ### Task 7: Mobile — Space screen (Expo)
 
 **Files:**
+
 - Create: `apps/mobile/src/app/space.tsx`
 - Modify: `apps/mobile/package.json` (deps: `three@^0.182.0`, `@react-three/fiber@^9.3.0`, `expo-gl@~56.0.0`, `@repo/embedding-scene": "*"`; devDependency `@types/three@^0.182.0`)
 
@@ -1080,7 +1159,14 @@ function OrbitRig({ yaw, pitch }: { yaw: number; pitch: number }) {
   const x = radius * Math.cos(pitch) * Math.sin(yaw);
   const y = radius * Math.sin(pitch);
   const z = radius * Math.cos(pitch) * Math.cos(yaw);
-  return <perspectiveCamera makeDefault position={[x, y, z]} fov={50} onUpdate={(c) => c.lookAt(0, 0, 0)} />;
+  return (
+    <perspectiveCamera
+      makeDefault
+      position={[x, y, z]}
+      fov={50}
+      onUpdate={(c) => c.lookAt(0, 0, 0)}
+    />
+  );
 }
 
 export default function SpaceScreen() {
@@ -1094,7 +1180,9 @@ export default function SpaceScreen() {
   useEffect(() => {
     apiGet<EmbeddingScene>("/api/app/embedding-scene")
       .then(setScene)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : "failed to load"));
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : "failed to load"),
+      );
   }, []);
 
   const pan = useRef(
@@ -1108,7 +1196,7 @@ export default function SpaceScreen() {
           pitch: Math.min(1.4, Math.max(-1.4, pitch + g.vy * 0.05)),
         });
       },
-    })
+    }),
   ).current;
 
   // Hook needs a scene; render gate first.
@@ -1126,7 +1214,14 @@ export default function SpaceScreen() {
       </View>
     );
   }
-  return <LoadedSpace scene={scene} orbit={orbit} panHandlers={pan.panHandlers} onOpenPost={(slug) => router.push(`/post/${slug}`)} />;
+  return (
+    <LoadedSpace
+      scene={scene}
+      orbit={orbit}
+      panHandlers={pan.panHandlers}
+      onOpenPost={(slug) => router.push(`/post/${slug}`)}
+    />
+  );
 }
 
 function LoadedSpace({
@@ -1198,6 +1293,7 @@ const styles = StyleSheet.create({
 bun run check-types && bun run lint
 bun --cwd apps/mobile ios   # manual: open Space screen in the simulator
 ```
+
 Expected: scene renders in the simulator (requires `bun run dev:proxy` once per boot + web dev server running), pan orbits, tapping a post sphere shows the overlay; "open post" navigates.
 
 ```bash
@@ -1209,6 +1305,7 @@ git add apps/mobile bun.lock && git commit -m "feat(mobile): 3D embedding space 
 ### Task 8: Smoke script, docs, PR update
 
 **Files:**
+
 - Create: `apps/worker/scripts/smoke-scene.ts`
 - Modify: `README.md` (one short section), `.beads/` (br sync)
 
@@ -1235,23 +1332,35 @@ async function main(): Promise<void> {
     select: { ownerId: true },
   });
   if (!anyPost?.ownerId) {
-    console.log("SKIP  no owner with post embeddings — run backfill-post-embeddings first");
+    console.log(
+      "SKIP  no owner with post embeddings — run backfill-post-embeddings first",
+    );
     return;
   }
   const rows = await getEmbeddingSceneRows(anyPost.ownerId);
   const scene = buildScene({
     categories: rows.categories.map((c) => ({
-      path: c.path, name: c.name, parentPath: c.parentPath, depth: c.depth,
-      embedding: c.embedding, dimensionality: c.dimensionality,
+      path: c.path,
+      name: c.name,
+      parentPath: c.parentPath,
+      depth: c.depth,
+      embedding: c.embedding,
+      dimensionality: c.dimensionality,
     })),
     projects: rows.projects.map((p) => ({
-      projectId: p.projectId, title: p.project.title,
-      embedding: p.embedding, dimensionality: p.dimensionality,
+      projectId: p.projectId,
+      title: p.project.title,
+      embedding: p.embedding,
+      dimensionality: p.dimensionality,
     })),
     posts: rows.posts.map((p) => ({
-      postId: p.postId, slug: p.post.slug, title: p.post.title,
-      projectId: p.post.projectId, embedding: p.embedding,
-      dimensionality: p.dimensionality, matches: p.matches,
+      postId: p.postId,
+      slug: p.post.slug,
+      title: p.post.title,
+      projectId: p.post.projectId,
+      embedding: p.embedding,
+      dimensionality: p.dimensionality,
+      matches: p.matches,
     })),
     modelVersion: rows.categories[0]?.modelVersion ?? "unknown",
     generatedAt: new Date().toISOString(),
@@ -1260,20 +1369,28 @@ async function main(): Promise<void> {
   let ok = true;
   ok = check(`nodes > 0 (${scene.nodes.length})`, scene.nodes.length > 0) && ok;
   ok = check(`edges > 0 (${scene.edges.length})`, scene.edges.length > 0) && ok;
-  ok = check(
-    "all positions finite",
-    scene.nodes.every((n) => n.position.every(Number.isFinite))
-  ) && ok;
-  ok = check(
-    "taxonomy edges connect known nodes",
-    scene.edges.every(
-      (e) =>
-        scene.nodes.some((n) => n.id === e.from) &&
-        scene.nodes.some((n) => n.id === e.to)
-    )
-  ) && ok;
-  const spread = new Set(scene.nodes.map((n) => n.position.map((x) => x.toFixed(2)).join(",")));
-  ok = check(`positions are spread (unique ${spread.size}/${scene.nodes.length})`, spread.size > scene.nodes.length / 2) && ok;
+  ok =
+    check(
+      "all positions finite",
+      scene.nodes.every((n) => n.position.every(Number.isFinite)),
+    ) && ok;
+  ok =
+    check(
+      "taxonomy edges connect known nodes",
+      scene.edges.every(
+        (e) =>
+          scene.nodes.some((n) => n.id === e.from) &&
+          scene.nodes.some((n) => n.id === e.to),
+      ),
+    ) && ok;
+  const spread = new Set(
+    scene.nodes.map((n) => n.position.map((x) => x.toFixed(2)).join(",")),
+  );
+  ok =
+    check(
+      `positions are spread (unique ${spread.size}/${scene.nodes.length})`,
+      spread.size > scene.nodes.length / 2,
+    ) && ok;
   if (!ok) process.exitCode = 1;
 }
 
@@ -1293,7 +1410,9 @@ br sync --flush-only
 git add .beads README.md apps/worker && git commit -m "chore: embedding-space smoke script, docs, beads sync"
 git push
 ```
+
 The branch PR (#2) updates automatically; add a PR comment summarizing the new epic's scope:
+
 ```bash
 gh pr comment 2 --body "Follow-up epic landed on this branch: 3D embedding space (web /space + mobile Space screen) backed by persisted PostEmbedding/PostCategoryMatch linkage and shared @repo/embedding-scene (deterministic PCA + R3F scene)."
 ```

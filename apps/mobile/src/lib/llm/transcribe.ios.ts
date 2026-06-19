@@ -11,12 +11,12 @@ import { experimental_transcribe } from "ai";
 import { readAsStringAsync } from "expo-file-system/legacy";
 
 function deviceLanguage(): string {
-	try {
-		const locale = new Intl.DateTimeFormat().resolvedOptions().locale;
-		return locale.split("-")[0] || "en";
-	} catch {
-		return "en";
-	}
+  try {
+    const locale = new Intl.DateTimeFormat().resolvedOptions().locale;
+    return locale.split("-")[0] || "en";
+  } catch {
+    return "en";
+  }
 }
 
 // Downloads the language assets SpeechAnalyzer needs (no-op if present).
@@ -24,41 +24,41 @@ function deviceLanguage(): string {
 // the dev bench uses it; production paths get the automatic on-first-use
 // download either way.
 export async function prepareTranscription(): Promise<boolean> {
-	try {
-		await AppleTranscription.prepare(deviceLanguage());
-		return true;
-	} catch (err) {
-		console.warn(
-			`[llm] transcription prepare failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		return false;
-	}
+  try {
+    await AppleTranscription.prepare(deviceLanguage());
+    return true;
+  } catch (err) {
+    console.warn(
+      `[llm] transcription prepare failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
 }
 
 export async function canTranscribeOnDevice(): Promise<boolean> {
-	try {
-		return AppleTranscription.isAvailable(deviceLanguage());
-	} catch {
-		return false;
-	}
+  try {
+    return AppleTranscription.isAvailable(deviceLanguage());
+  } catch {
+    return false;
+  }
 }
 
 export async function transcribeAudio(uri: string): Promise<string | null> {
-	try {
-		if (!AppleTranscription.isAvailable(deviceLanguage())) {
-			return null;
-		}
-		const audio = await readAsStringAsync(uri, { encoding: "base64" });
-		const result = await experimental_transcribe({
-			model: apple.transcriptionModel({ language: deviceLanguage() }),
-			audio,
-		});
-		const text = result.text.trim();
-		return text.length > 0 ? text : null;
-	} catch (err) {
-		console.warn(
-			`[llm] on-device transcription failed, falling back to upload: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		return null;
-	}
+  try {
+    if (!AppleTranscription.isAvailable(deviceLanguage())) {
+      return null;
+    }
+    const audio = await readAsStringAsync(uri, { encoding: "base64" });
+    const result = await experimental_transcribe({
+      model: apple.transcriptionModel({ language: deviceLanguage() }),
+      audio,
+    });
+    const text = result.text.trim();
+    return text.length > 0 ? text : null;
+  } catch (err) {
+    console.warn(
+      `[llm] on-device transcription failed, falling back to upload: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
 }

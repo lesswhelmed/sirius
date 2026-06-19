@@ -22,90 +22,90 @@ const COVER_WIDTH = 1200;
 const DEFAULT_SEEK_SECONDS = 1;
 
 function ffmpegBin(): string {
-	// Allow an override for hosts where ffmpeg isn't on PATH; default to the bare
-	// command so PATH resolution (incl. /opt/homebrew/bin locally) applies.
-	return process.env.FFMPEG_PATH?.trim() || "ffmpeg";
+  // Allow an override for hosts where ffmpeg isn't on PATH; default to the bare
+  // command so PATH resolution (incl. /opt/homebrew/bin locally) applies.
+  return process.env.FFMPEG_PATH?.trim() || "ffmpeg";
 }
 
 // Output filename keyed off the post slug, matching the cover conventions in
 // image-generator.ts / post-writer.ts (`<slug>.<ext>` under public/social).
 function thumbnailFilename(slug: string): string {
-	return `${slug}.jpg`;
+  return `${slug}.jpg`;
 }
 
 // Runs ffmpeg to grab one JPEG frame. Returns true on success (exit 0 and the
 // file exists with bytes), false otherwise. Catches the "ffmpeg not found"
 // spawn error so a host without ffmpeg degrades gracefully.
 async function runFfmpeg(
-	sourcePath: string,
-	destPath: string,
+  sourcePath: string,
+  destPath: string,
 ): Promise<boolean> {
-	try {
-		const proc = Bun.spawn(
-			[
-				ffmpegBin(),
-				"-y",
-				"-ss",
-				String(DEFAULT_SEEK_SECONDS),
-				"-i",
-				sourcePath,
-				"-frames:v",
-				"1",
-				"-vf",
-				`scale=${COVER_WIDTH}:-2`,
-				"-q:v",
-				"3",
-				destPath,
-			],
-			{ stdout: "pipe", stderr: "pipe" },
-		);
-		const exitCode = await proc.exited;
-		if (exitCode !== 0) {
-			const stderr = await new Response(proc.stderr).text();
-			console.warn(
-				`[video-thumbnail] ffmpeg exited ${exitCode} for ${sourcePath}: ${stderr.slice(-500)}`,
-			);
-			return false;
-		}
-		// -ss past a short clip's end can exit 0 yet produce nothing; verify bytes.
-		if (!existsSync(destPath) || statSync(destPath).size === 0) {
-			console.warn(
-				`[video-thumbnail] ffmpeg produced no frame for ${sourcePath} (clip shorter than seek?)`,
-			);
-			return false;
-		}
-		return true;
-	} catch (err) {
-		// ENOENT here = ffmpeg not installed on this host. Degrade gracefully.
-		console.warn(
-			`[video-thumbnail] ffmpeg unavailable or failed for ${sourcePath}:`,
-			err instanceof Error ? err.message : String(err),
-		);
-		return false;
-	}
+  try {
+    const proc = Bun.spawn(
+      [
+        ffmpegBin(),
+        "-y",
+        "-ss",
+        String(DEFAULT_SEEK_SECONDS),
+        "-i",
+        sourcePath,
+        "-frames:v",
+        "1",
+        "-vf",
+        `scale=${COVER_WIDTH}:-2`,
+        "-q:v",
+        "3",
+        destPath,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      console.warn(
+        `[video-thumbnail] ffmpeg exited ${exitCode} for ${sourcePath}: ${stderr.slice(-500)}`,
+      );
+      return false;
+    }
+    // -ss past a short clip's end can exit 0 yet produce nothing; verify bytes.
+    if (!existsSync(destPath) || statSync(destPath).size === 0) {
+      console.warn(
+        `[video-thumbnail] ffmpeg produced no frame for ${sourcePath} (clip shorter than seek?)`,
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    // ENOENT here = ffmpeg not installed on this host. Degrade gracefully.
+    console.warn(
+      `[video-thumbnail] ffmpeg unavailable or failed for ${sourcePath}:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
 }
 
 // Generates a cover thumbnail from a staged/retained video file and writes it to
 // public/social/<slug>.jpg. Returns the served path (/social/<slug>.jpg) on
 // success, or null on any failure (missing source, missing ffmpeg, bad clip).
 export async function generateVideoThumbnail(args: {
-	slug: string;
-	sourcePath: string;
+  slug: string;
+  sourcePath: string;
 }): Promise<string | null> {
-	const { slug, sourcePath } = args;
-	if (!sourcePath || !existsSync(sourcePath)) {
-		console.warn(
-			`[video-thumbnail] source video missing for ${slug}: ${sourcePath}`,
-		);
-		return null;
-	}
-	const dir = resolveSocialDir();
-	ensureDir(dir);
-	const filename = thumbnailFilename(slug);
-	const destPath = join(dir, filename);
-	const ok = await runFfmpeg(sourcePath, destPath);
-	if (!ok) {
-		return null;
-	}
-	return `/social/${filename}`;
+  const { slug, sourcePath } = args;
+  if (!sourcePath || !existsSync(sourcePath)) {
+    console.warn(
+      `[video-thumbnail] source video missing for ${slug}: ${sourcePath}`,
+    );
+    return null;
+  }
+  const dir = resolveSocialDir();
+  ensureDir(dir);
+  const filename = thumbnailFilename(slug);
+  const destPath = join(dir, filename);
+  const ok = await runFfmpeg(sourcePath, destPath);
+  if (!ok) {
+    return null;
+  }
+  return `/social/${filename}`;
 }

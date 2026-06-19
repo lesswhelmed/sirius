@@ -16,7 +16,7 @@ the test.
 - iOS Simulator booted; the dev build of **`dev.copt.sirius`** installed (Sirius scheme `siriusapp`).
 - `bun run dev` running from repo root (web on :3000 via portless `https://sirius.local`,
   Metro on :8081, **and the worker daemon** — submissions only move `pending → processing →
-  completed` because the worker polls; check `ps aux | grep "src/index.ts"`).
+completed` because the worker polls; check `ps aux | grep "src/index.ts"`).
 - `psql` on `PATH`; repo `.env` populated (`DATABASE_URL`, `DEV_LOGIN_PASSWORD`, `GEMINI_API_KEY`).
 - Dev user signed in (`saleebmina@icloud.com` / `$DEV_LOGIN_PASSWORD`), userId
   `OJGsrO3g3QY33Oaj6B59KhHbEQ6p4cGS`.
@@ -53,7 +53,7 @@ UID_DEV=OJGsrO3g3QY33Oaj6B59KhHbEQ6p4cGS
    2026-06-19 every input is reachable this way: `Field`/`PasswordField` set
    `accessibilityLabel` from their visible label (falling back to the placeholder), and the
    keyboard-dismiss button's accessible name now matches its visible "Done" text.
-2. **`@eN` refs** from a *fresh* `snapshot -i` — great for one-shot actions in a sequence, but
+2. **`@eN` refs** from a _fresh_ `snapshot -i` — great for one-shot actions in a sequence, but
    regenerated every snapshot, so never reuse a ref across re-snapshots.
 3. **Coordinates** — last resort only. Get rects from `snapshot -i -c --json` (each node has
    `rect:{x,y,width,height}`; center = `x+width/2, y+height/2`).
@@ -69,7 +69,7 @@ UID_DEV=OJGsrO3g3QY33Oaj6B59KhHbEQ6p4cGS
 - **Don't blur the keyboard by tapping a "neutral" coordinate.** On short sheets that
   coordinate lands on the **Close** button and discards the sheet. Dismiss with the app's
   button: `agent-device press 'label="Done"'`, or `agent-device keyboard dismiss`. Submit
-  buttons live *below* the keyboard, so dismiss first.
+  buttons live _below_ the keyboard, so dismiss first.
 - **Submit auto-navigates to the Queue tab.** After `Submit`, the app switches to Queue
   (handy: you can read the new row's status there). Re-tap `label="Capture"` for the next item.
 - **Relaunch dance.** `agent-device open … --relaunch` may land on the expo-dev-client
@@ -84,69 +84,77 @@ UID_DEV=OJGsrO3g3QY33Oaj6B59KhHbEQ6p4cGS
 ## Critical-path coverage
 
 ### Auth (run last — disrupts the session)
-| Case | Steps | Assert | Status |
-| --- | --- | --- | --- |
-| Sign-in (happy) | fill email field + password field → `label="Sign in"` | lands on Catalog; `session` row inserted | ✅ |
-| Sign-in (invalid) | wrong password → `Sign in` | inline "Invalid email or password"; no new session | ⏳ |
-| Sign-out | Capture → `label="Sign out"` | redirects to Sign in screen | ✅ 2026-06-18 (NOTE: inline Sign-out link being relocated out of the composer 2026-06-19 — re-point selector when it lands) |
-| Forced-logout | `q "DELETE FROM session WHERE \"userId\"='$UID_DEV'"`, trigger any authed call | redirects to Sign in (not stranded) — see [[mobile-unauthorized-stale-cookie]] | ✅ |
-| Session persistence | relaunch app | stays signed in (cookie in SecureStore) | ✅ |
-| Sign-up | (auth) Create account → name/email/password → submit | `verify-pending`; user row created; flip `emailVerified=true` in DB to finish | ⏳ |
-| Forgot-password | (auth) Forgot password → email → submit | confirmation UI; Resend send (testing mode may reject non-sender) | ⏳ |
+
+| Case                | Steps                                                                          | Assert                                                                         | Status                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Sign-in (happy)     | fill email field + password field → `label="Sign in"`                          | lands on Catalog; `session` row inserted                                       | ✅                                                                                                                          |
+| Sign-in (invalid)   | wrong password → `Sign in`                                                     | inline "Invalid email or password"; no new session                             | ⏳                                                                                                                          |
+| Sign-out            | Capture → `label="Sign out"`                                                   | redirects to Sign in screen                                                    | ✅ 2026-06-18 (NOTE: inline Sign-out link being relocated out of the composer 2026-06-19 — re-point selector when it lands) |
+| Forced-logout       | `q "DELETE FROM session WHERE \"userId\"='$UID_DEV'"`, trigger any authed call | redirects to Sign in (not stranded) — see [[mobile-unauthorized-stale-cookie]] | ✅                                                                                                                          |
+| Session persistence | relaunch app                                                                   | stays signed in (cookie in SecureStore)                                        | ✅                                                                                                                          |
+| Sign-up             | (auth) Create account → name/email/password → submit                           | `verify-pending`; user row created; flip `emailVerified=true` in DB to finish  | ⏳                                                                                                                          |
+| Forgot-password     | (auth) Forgot password → email → submit                                        | confirmation UI; Resend send (testing mode may reject non-sender)              | ⏳                                                                                                                          |
 
 ### Capture / ingest
-| Type | Verified steps | Assert | Status |
-| --- | --- | --- | --- |
-| **Link** | Capture → `label="Link"` → fill `label="URLs (one per line)"` `https://example.com` → `label="Done"` → `label="Add to tray"` → `label="Submit"` | `IngestSubmission` kind=url → **completed**; Post "… — Finding" | ✅ (`cmqk5xh1m…` → "The quiet minimalism of example.com") |
-| **Note** | Capture → `label="Note"` → fill `label="Note"` → *re-foreground* → `label="Add to tray"` → `label="Submit"` | kind=note → **completed**; Post "… — Dispatch" | ✅ (`cmqk6djfv…` → "Testing the Mobile Ingestion Pipeline") |
-| **Repository** | Capture → `label="Repository"` → fill `label="GitHub repository URL"` → `label="Fetch preview"` → preview card → `label="Add to tray"` → `label="Submit"` | preview = `POST /api/app/github/preview`; kind=url → completed | ◑ preview ✅ (colinhacks/zod ★43,006); final add-to-tray flaky under keyboard |
-| **Photos** | Capture → `label="Photos"` → system PHPicker → select → `Add to tray` → `Submit` | kind=image batch → SIGHT post | ⏳ / 🚧 native picker |
-| **Video** | Capture → `label="Video"` → PHPicker → select | kind=video → completed/failed terminal | ⏳ / 🚧 |
-| **Document** | Capture → `label="Document"` → Files picker | kind=document | ⏳ / 🚧 |
-| **Audio** | Capture → `label="Audio"` → `Record voice memo`/`Pick audio file` | kind=audio | ⏳ (in-app recorder is drivable) |
-| Focus picker | Capture → `label="Focus: <name>"` before submit | submission `projectId` set | ⏳ |
-| On-device AI link | Capture → `label="On-device AI →"` | navigates to `/llm` | ⏳ |
+
+| Type              | Verified steps                                                                                                                                            | Assert                                                          | Status                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Link**          | Capture → `label="Link"` → fill `label="URLs (one per line)"` `https://example.com` → `label="Done"` → `label="Add to tray"` → `label="Submit"`           | `IngestSubmission` kind=url → **completed**; Post "… — Finding" | ✅ (`cmqk5xh1m…` → "The quiet minimalism of example.com")                     |
+| **Note**          | Capture → `label="Note"` → fill `label="Note"` → _re-foreground_ → `label="Add to tray"` → `label="Submit"`                                               | kind=note → **completed**; Post "… — Dispatch"                  | ✅ (`cmqk6djfv…` → "Testing the Mobile Ingestion Pipeline")                   |
+| **Repository**    | Capture → `label="Repository"` → fill `label="GitHub repository URL"` → `label="Fetch preview"` → preview card → `label="Add to tray"` → `label="Submit"` | preview = `POST /api/app/github/preview`; kind=url → completed  | ◑ preview ✅ (colinhacks/zod ★43,006); final add-to-tray flaky under keyboard |
+| **Photos**        | Capture → `label="Photos"` → system PHPicker → select → `Add to tray` → `Submit`                                                                          | kind=image batch → SIGHT post                                   | ⏳ / 🚧 native picker                                                         |
+| **Video**         | Capture → `label="Video"` → PHPicker → select                                                                                                             | kind=video → completed/failed terminal                          | ⏳ / 🚧                                                                       |
+| **Document**      | Capture → `label="Document"` → Files picker                                                                                                               | kind=document                                                   | ⏳ / 🚧                                                                       |
+| **Audio**         | Capture → `label="Audio"` → `Record voice memo`/`Pick audio file`                                                                                         | kind=audio                                                      | ⏳ (in-app recorder is drivable)                                              |
+| Focus picker      | Capture → `label="Focus: <name>"` before submit                                                                                                           | submission `projectId` set                                      | ⏳                                                                            |
+| On-device AI link | Capture → `label="On-device AI →"`                                                                                                                        | navigates to `/llm`                                             | ⏳                                                                            |
 
 DB assertion after a submit:
+
 ```sh
 q "SELECT id,kind,status FROM \"IngestSubmission\" WHERE \"submittedById\"='$UID_DEV' AND \"createdAt\">now()-interval '5 min' ORDER BY \"createdAt\" DESC;"
 ```
 
 ### Catalog ✅ (read paths)
-| Case | Steps | Assert | Status |
-| --- | --- | --- | --- |
-| Library list | `label="Catalog"` | renders local-mirror posts + "N ON FILE" | ✅ (count 11→13 after 2 ingests) |
-| Category facets | facet chips ("Software Development, 6" …) | render from scene | ✅ visible |
-| Remote post detail | tap a post row | `/post/[slug]` via `GET /api/app/posts/[slug]`; title/type/tags render | ✅ ("The quiet minimalism…") |
-| Local post detail | tap a draft/local post | `/post/local/[localId]` from SQLite | ⏳ |
-| Delete post | post detail → Delete (or `DELETE /api/app/posts/[slug]`) | post + source rows + submission cascade-removed | ✅ (cleanup of 2 test posts → 200, rows gone) |
-| Source / notes | post detail → Source / Notes | `/source`, `/notes` | ⏳ |
-| Space (3D) | Catalog → `label="Enter the space →"` | `/space` scene renders nodes | ✅ (scene rendered) |
+
+| Case               | Steps                                                    | Assert                                                                 | Status                                        |
+| ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------- |
+| Library list       | `label="Catalog"`                                        | renders local-mirror posts + "N ON FILE"                               | ✅ (count 11→13 after 2 ingests)              |
+| Category facets    | facet chips ("Software Development, 6" …)                | render from scene                                                      | ✅ visible                                    |
+| Remote post detail | tap a post row                                           | `/post/[slug]` via `GET /api/app/posts/[slug]`; title/type/tags render | ✅ ("The quiet minimalism…")                  |
+| Local post detail  | tap a draft/local post                                   | `/post/local/[localId]` from SQLite                                    | ⏳                                            |
+| Delete post        | post detail → Delete (or `DELETE /api/app/posts/[slug]`) | post + source rows + submission cascade-removed                        | ✅ (cleanup of 2 test posts → 200, rows gone) |
+| Source / notes     | post detail → Source / Notes                             | `/source`, `/notes`                                                    | ⏳                                            |
+| Space (3D)         | Catalog → `label="Enter the space →"`                    | `/space` scene renders nodes                                           | ✅ (scene rendered)                           |
 
 ### Queue ◑
-| Case | Steps | Assert | Status |
-| --- | --- | --- | --- |
-| List + statuses | `label="Queue"` | rows with URL/IMAGE + PENDING/PROCESSING/COMPLETED/FAILED | ✅ (saw URL example.com PROCESSING) |
-| Auto-refetch (5 s) | wait on Queue | status advances without manual refresh | ◑ (rows advanced to completed) |
-| Pull-to-refresh | swipe down on Queue | refetch | ⏳ |
-| Retry | failed row → `label="Retry"` | re-enqueues | ⏳ |
+
+| Case               | Steps                        | Assert                                                    | Status                              |
+| ------------------ | ---------------------------- | --------------------------------------------------------- | ----------------------------------- |
+| List + statuses    | `label="Queue"`              | rows with URL/IMAGE + PENDING/PROCESSING/COMPLETED/FAILED | ✅ (saw URL example.com PROCESSING) |
+| Auto-refetch (5 s) | wait on Queue                | status advances without manual refresh                    | ◑ (rows advanced to completed)      |
+| Pull-to-refresh    | swipe down on Queue          | refetch                                                   | ⏳                                  |
+| Retry              | failed row → `label="Retry"` | re-enqueues                                               | ⏳                                  |
 
 ### Tree ⏳
-| Case | Steps | Assert |
-| --- | --- | --- |
-| Outline | `label="Tree"` | taxonomy outline renders (`GET /api/app/embedding-scene`) |
-| Focus areas | "Focus areas" section | projects listed |
-| Drill-in | tap a node | `/tree/[...node]` Index of posts |
+
+| Case        | Steps                 | Assert                                                    |
+| ----------- | --------------------- | --------------------------------------------------------- |
+| Outline     | `label="Tree"`        | taxonomy outline renders (`GET /api/app/embedding-scene`) |
+| Focus areas | "Focus areas" section | projects listed                                           |
+| Drill-in    | tap a node            | `/tree/[...node]` Index of posts                          |
 
 ### On-device AI ⏳
-| Case | Steps | Assert |
-| --- | --- | --- |
-| LLM screen | Capture → `On-device AI →` | model status/download UI (`/llm`) |
-| Draft bench | `/llm-test` | on-device draft generated (llama.rn) — see [[llama-rn-structured-output]] |
+
+| Case        | Steps                      | Assert                                                                    |
+| ----------- | -------------------------- | ------------------------------------------------------------------------- |
+| LLM screen  | Capture → `On-device AI →` | model status/download UI (`/llm`)                                         |
+| Draft bench | `/llm-test`                | on-device draft generated (llama.rn) — see [[llama-rn-structured-output]] |
 
 ## Teardown / cleanup
 
 Delete test posts + submissions created during a run (keep the user):
+
 ```sh
 q "DELETE FROM \"IngestSubmission\" WHERE \"submittedById\"='$UID_DEV' AND \"createdAt\">'<run-start>';"
 # delete resulting Posts via the app (DELETE /api/app/posts/[slug]) or by slug in DB.

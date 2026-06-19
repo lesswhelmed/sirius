@@ -4,23 +4,23 @@
 // setting: whether THIS device drafts locally depends on whether THIS device
 // downloaded a model.
 import {
-	documentDirectory,
-	readAsStringAsync,
-	writeAsStringAsync,
+  documentDirectory,
+  readAsStringAsync,
+  writeAsStringAsync,
 } from "expo-file-system/legacy";
 
 import { DEFAULT_TEXT_MODEL_ID } from "./models";
 
 export type LlmSettings = {
-	// Master switch for drafting posts on device before submitting.
-	onDeviceCuration: boolean;
-	// Which registry model chat + curation use.
-	modelId: string;
+  // Master switch for drafting posts on device before submitting.
+  onDeviceCuration: boolean;
+  // Which registry model chat + curation use.
+  modelId: string;
 };
 
 const DEFAULTS: LlmSettings = {
-	onDeviceCuration: false,
-	modelId: DEFAULT_TEXT_MODEL_ID,
+  onDeviceCuration: false,
+  modelId: DEFAULT_TEXT_MODEL_ID,
 };
 
 const SETTINGS_PATH = `${documentDirectory}llm-settings.json`;
@@ -28,36 +28,36 @@ const SETTINGS_PATH = `${documentDirectory}llm-settings.json`;
 let cache: LlmSettings | null = null;
 
 export async function getLlmSettings(): Promise<LlmSettings> {
-	if (cache) {
-		return cache;
-	}
-	try {
-		const raw = await readAsStringAsync(SETTINGS_PATH);
-		const parsed = JSON.parse(raw) as Partial<LlmSettings>;
-		cache = {
-			onDeviceCuration: parsed.onDeviceCuration === true,
-			modelId:
-				typeof parsed.modelId === "string" && parsed.modelId.length > 0
-					? parsed.modelId
-					: DEFAULTS.modelId,
-		};
-	} catch {
-		// Missing or corrupt file — fall back to defaults (curation off).
-		cache = { ...DEFAULTS };
-	}
-	return cache;
+  if (cache) {
+    return cache;
+  }
+  try {
+    const raw = await readAsStringAsync(SETTINGS_PATH);
+    const parsed = JSON.parse(raw) as Partial<LlmSettings>;
+    cache = {
+      onDeviceCuration: parsed.onDeviceCuration === true,
+      modelId:
+        typeof parsed.modelId === "string" && parsed.modelId.length > 0
+          ? parsed.modelId
+          : DEFAULTS.modelId,
+    };
+  } catch {
+    // Missing or corrupt file — fall back to defaults (curation off).
+    cache = { ...DEFAULTS };
+  }
+  return cache;
 }
 
 export async function updateLlmSettings(
-	patch: Partial<LlmSettings>,
+  patch: Partial<LlmSettings>,
 ): Promise<LlmSettings> {
-	const current = await getLlmSettings();
-	const next = { ...current, ...patch };
-	cache = next;
-	try {
-		await writeAsStringAsync(SETTINGS_PATH, JSON.stringify(next));
-	} catch {
-		// Persistence is best-effort; the in-memory value still applies this session.
-	}
-	return next;
+  const current = await getLlmSettings();
+  const next = { ...current, ...patch };
+  cache = next;
+  try {
+    await writeAsStringAsync(SETTINGS_PATH, JSON.stringify(next));
+  } catch {
+    // Persistence is best-effort; the in-memory value still applies this session.
+  }
+  return next;
 }
