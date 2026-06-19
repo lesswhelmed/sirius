@@ -1,7 +1,8 @@
-import { listArchiveRequests } from "@repo/db";
+import { getVoiceProfile, listArchiveRequests } from "@repo/db";
 import { DateDisplay } from "../../../lib/date-display";
 import { requireSession } from "../../../lib/session";
 import { RequestArchiveButton } from "./request-archive-button";
+import { VoiceSection } from "./voice-section";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Queued",
@@ -14,6 +15,7 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function SettingsPage() {
   const session = await requireSession("/settings");
   const requests = await listArchiveRequests(session.user.id);
+  const voiceProfile = await getVoiceProfile(session.user.id);
   const now = Date.now();
 
   return (
@@ -28,6 +30,13 @@ export default async function SettingsPage() {
       </header>
 
       <div className="hairline-t mt-7 space-y-4 pt-6">
+        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+          Your voice
+        </p>
+        <VoiceSection initialVoice={voiceProfile ?? ""} />
+      </div>
+
+      <div className="hairline-t mt-8 space-y-4 pt-6">
         <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
           Data retention
         </p>
