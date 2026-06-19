@@ -7,6 +7,7 @@
 // post; a URL submit may yield 0 local posts until the server drafts it).
 // Keeping them apart keeps each table's invariants clean and stops a
 // `useLiveQuery` over `posts` from re-rendering on every replay attempt bump.
+import type { ScoredPost } from "@repo/research-agent";
 import { sql } from "drizzle-orm";
 import {
   blob,
@@ -287,6 +288,63 @@ export const pendingComments = sqliteTable(
 
 export type PendingCommentRow = typeof pendingComments.$inferSelect;
 export type NewPendingCommentRow = typeof pendingComments.$inferInsert;
+
+/**
+ * On-device LLM chat history — a saved conversation thread on the `/llm` screen.
+ *
+ * LOCAL-ONLY by design: unlike `posts`/`comments` there is NO `serverId`,
+ * `syncState`, outbox, or sync-engine involvement — these rows never leave the
+ * device, which keeps the screen's promise ("Nothing you type here leaves the
+ * phone."). They are still owner-scoped: `clearLocalStore()` (owner.ts) wipes
+ * them on account switch so account B can never read account A's chats.
+ *
+ * `title` is derived from the first user message (null → "New chat"). `mode` is
+ * the last selected mode ("ask" | "chat"), restored when the thread reopens.
+ * `updatedAt` (bumped on every new message) both orders the thread list and
+ * picks the most-recent conversation to restore on return.
+ */
+export const chatConversations = sqliteTable(
+  "chat_conversations",
+  {
+    id: text("id").primaryKey(), // crypto.randomUUID()
+    title: text("title"), // first user message (truncated); null until set
+    mode: text("mode").$type<"ask" | "chat">().notNull().default("ask"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("chat_conversations_updated_at_idx").on(t.updatedAt)],
+);
+
+export type ChatConversationRow = typeof chatConversations.$inferSelect;
+export type NewChatConversationRow = typeof chatConversations.$inferInsert;
+
+/**
+ * One message in a `chatConversations` thread. `sourcesJson` persists the
+ * Ask-mode cited posts (the `ScoredPost[]` rendered as tappable Sources) so they
+ * survive a reload; null for chat-mode / user messages. `createdAt` orders
+ * messages within the thread. No FK enforcement (expo-sqlite has FKs off by
+ * default) — `deleteConversation` cascades manually.
+ */
+export const chatMessages = sqliteTable(
+  "chat_messages",
+  {
+    id: text("id").primaryKey(), // crypto.randomUUID()
+    conversationId: text("conversation_id").notNull(), // → chatConversations.id
+    role: text("role").$type<"user" | "assistant">().notNull(),
+    content: text("content").notNull().default(""),
+    sourcesJson: text("sources_json", { mode: "json" }).$type<
+      ScoredPost[] | null
+    >(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    index("chat_messages_conversation_id_idx").on(t.conversationId),
+    index("chat_messages_created_at_idx").on(t.createdAt),
+  ],
+);
+
+export type ChatMessageRow = typeof chatMessages.$inferSelect;
+export type NewChatMessageRow = typeof chatMessages.$inferInsert;
 
 /**
  * Small key/value table for sync bookkeeping — the delta `since` cursors (max

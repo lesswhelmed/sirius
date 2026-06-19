@@ -12,6 +12,8 @@ import { eq } from "drizzle-orm";
 
 import { db } from "./client";
 import {
+  chatConversations,
+  chatMessages,
   comments,
   pendingComments,
   pendingSubmissions,
@@ -26,10 +28,13 @@ const OWNER_KEY = "owner.user_id";
 
 /**
  * Delete every row in the local mirror: posts, the outbox, the on-device
- * semantic-search vectors, and all sync bookkeeping (including the delta `since`
- * cursor and the owner key). Used on account switch so the next user starts from
- * a clean, empty store. Wiping post_vectors is mandatory — otherwise account B's
- * "ask my posts" search could surface account A's vectors (a privacy leak).
+ * semantic-search vectors, the on-device LLM chat history, and all sync
+ * bookkeeping (including the delta `since` cursor and the owner key). Used on
+ * account switch so the next user starts from a clean, empty store. Wiping
+ * post_vectors is mandatory — otherwise account B's "ask my posts" search could
+ * surface account A's vectors (a privacy leak). Wiping the chat tables is
+ * mandatory for the same reason — they are local-only (never synced), so this
+ * is the ONLY thing that stops account B from reading account A's conversations.
  */
 export async function clearLocalStore(): Promise<void> {
   await db.delete(posts);
@@ -37,6 +42,8 @@ export async function clearLocalStore(): Promise<void> {
   await db.delete(comments);
   await db.delete(pendingComments);
   await db.delete(postVectors);
+  await db.delete(chatMessages);
+  await db.delete(chatConversations);
   await db.delete(syncMeta);
 }
 

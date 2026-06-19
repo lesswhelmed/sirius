@@ -6,11 +6,14 @@
 import type { ScoredPost } from "@repo/research-agent";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { streamText } from "ai";
-import { router } from "expo-router";
-import { useRef, useState } from "react";
+import { asc, desc, eq } from "drizzle-orm";
+import { useLiveQuery } from "drizzle-orm/expo-sqlite";
+import { router, Stack } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -28,6 +31,15 @@ import {
   TextLink,
 } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
+import {
+  appendMessage,
+  createConversation,
+  deleteConversation,
+  getMostRecentConversationId,
+  setConversationMode,
+} from "@/lib/db/chat";
+import { db } from "@/lib/db/client";
+import { chatConversations, chatMessages } from "@/lib/db/schema";
 import {
   checkNativeBridge,
   describeLlmError,
@@ -66,7 +78,9 @@ export default function LlmScreen() {
       <Screen style={styles.container}>
         <View style={styles.downloadCard}>
           <MetaText style={styles.cardEyebrow}>Local model</MetaText>
-          <Text style={styles.modelName}>On-device drafting isn&apos;t available.</Text>
+          <Text style={styles.modelName}>
+            On-device drafting isn&apos;t available.
+          </Text>
           <Text style={styles.modelDetail}>
             On-device AI is turned off in this build. Your captures are drafted
             by the server instead.
@@ -344,11 +358,21 @@ function Chat({
   modelId: string;
   modelLabel: string;
 }) {
+  // The active thread; null = no conversation yet (empty state). A thread is
+  // created lazily on the first send. Conversations + messages live in local
+  // SQLite, so leaving and returning to this screen restores where you were
+  // instead of resetting to empty.
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [mode, setMode] = useState<ChatMode>("ask");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<BusyState>(null);
   const [error, setError] = useState<string | null>(null);
+  // The in-flight assistant answer, held in component state so we write to
+  // SQLite once per completed turn instead of once per streamed token (which
+  // would thrash the DB and the live query). Persisted on completion; the live
+  // query then renders the committed row.
+  const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [chatsOpen, setChatsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   // This screen sits under a native nav header, so the KeyboardAvoidingView has
   // to offset by exactly that header's height (safe-area top inset + the iOS
@@ -362,6 +386,77 @@ function Chat({
   // documents arrive pre-embedded via post sync. So ask mode is always available;
   // the only requirement is the chat model the outer screen already gated on.
 
+  // Restore the most recent conversation (and its last mode) once on mount.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    void (async () => {
+      const id = await getMostRecentConversationId();
+      if (id) {
+        setConversationId(id);
+        await loadConversationMode(id);
+      }
+    })();
+  }, []);
+
+  // Messages for the active conversation — the source of truth, kept in sync
+  // with the DB by useLiveQuery. An empty conversationId matches no rows.
+  const { data: messageRows } = useLiveQuery(
+    db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.conversationId, conversationId ?? ""))
+      .orderBy(asc(chatMessages.createdAt)),
+    [conversationId],
+  );
+
+  // Persisted turns + the in-flight streaming bubble (only while generating).
+  const messages: ChatMessage[] = useMemo(() => {
+    const base: ChatMessage[] = (messageRows ?? []).map((r) => ({
+      role: r.role,
+      content: r.content,
+      sources: r.sourcesJson ?? undefined,
+    }));
+    if (busy && streamingText !== null) {
+      base.push({ role: "assistant", content: streamingText });
+    }
+    return base;
+  }, [messageRows, busy, streamingText]);
+
+  async function loadConversationMode(id: string) {
+    const [row] = await db
+      .select({ mode: chatConversations.mode })
+      .from(chatConversations)
+      .where(eq(chatConversations.id, id))
+      .limit(1);
+    if (row?.mode) setMode(row.mode);
+  }
+
+  const onChangeMode = (m: ChatMode) => {
+    setMode(m);
+    if (conversationId) void setConversationMode(conversationId, m);
+  };
+
+  const newChat = () => {
+    if (busy) return;
+    setConversationId(null);
+    setError(null);
+  };
+
+  const selectConversation = (id: string) => {
+    setConversationId(id);
+    setChatsOpen(false);
+    setError(null);
+    void loadConversationMode(id);
+  };
+
+  // Removing the open thread drops us back to the empty state.
+  const handleDeleteConversation = (id: string) => {
+    if (id === conversationId) setConversationId(null);
+    void deleteConversation(id);
+  };
+
   const send = async () => {
     const text = input.trim();
     if (!text || busy) {
@@ -369,16 +464,25 @@ function Chat({
     }
     setInput("");
     setError(null);
-    const history: ChatMessage[] = [
-      ...messages,
-      { role: "user", content: text },
+
+    // Ensure a thread exists (lazy create on the first message of a new chat).
+    let convoId = conversationId;
+    if (!convoId) {
+      convoId = await createConversation(mode);
+      setConversationId(convoId);
+    }
+
+    // History for the model = the already-persisted turns + this new one.
+    const modelMessages = [
+      ...(messageRows ?? []).map((m) => ({ role: m.role, content: m.content })),
+      { role: "user" as const, content: text },
     ];
-    setMessages([...history, { role: "assistant", content: "" }]);
-    // Strip UI-only fields (sources) before handing the history to the model.
-    const modelMessages = history.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+
+    // Persist the user turn up front so the question survives an app kill
+    // mid-generation (the assistant turn is written when the stream finishes).
+    await appendMessage(convoId, { role: "user", content: text });
+    setStreamingText("");
+
     try {
       if (mode === "ask") {
         // Qwen-driven router: the chat model parses the question and decides
@@ -403,18 +507,17 @@ function Chat({
           onDelta: (delta) => {
             assistant += delta;
             setBusy("generating");
-            setMessages([
-              ...history,
-              { role: "assistant", content: assistant },
-            ]);
+            setStreamingText(assistant);
           },
         });
-        setMessages([
-          ...history,
-          { role: "assistant", content: assistant, sources },
-        ]);
+        await appendMessage(convoId, {
+          role: "assistant",
+          content: assistant,
+          sources,
+        });
       } else {
         setBusy(modelBusyBy() === "draft" ? "waiting" : "preparing");
+        let assistant = "";
         await withPreparedModel(modelId, "chat", async (model) => {
           setBusy("generating");
           const { textStream } = streamText({
@@ -422,122 +525,247 @@ function Chat({
             messages: modelMessages,
             temperature: 0.7,
           });
-          let assistant = "";
           for await (const delta of textStream) {
             assistant += delta;
-            setMessages([
-              ...history,
-              { role: "assistant", content: assistant },
-            ]);
+            setStreamingText(assistant);
           }
+        });
+        await appendMessage(convoId, {
+          role: "assistant",
+          content: assistant,
         });
       }
     } catch (err) {
       setError(describeLlmError(err));
-      setMessages(history);
     } finally {
       setBusy(null);
+      setStreamingText(null);
     }
   };
 
   return (
-    <Screen style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
-      >
-        <ModeToggle mode={mode} onChange={setMode} disabled={Boolean(busy)} />
-        <ScrollView
-          ref={scrollRef}
-          style={styles.flex}
-          contentContainerStyle={styles.messages}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() =>
-            scrollRef.current?.scrollToEnd({ animated: true })
-          }
-        >
-          {messages.length === 0 ? (
-            <View style={styles.empty}>
-              <MetaText style={styles.cardEyebrow}>{modelLabel}</MetaText>
-              <Text style={styles.modelDetail}>
-                {mode === "ask"
-                  ? "Ask anything about your own posts. Answers are grounded in your library and link back to the sources — all on this device."
-                  : "Running locally on this device. Nothing you type here leaves the phone."}
-              </Text>
-              <TranscriptionAssets />
-              {__DEV__ ? (
-                <TextLink
-                  label="Draft test bench →"
-                  onPress={() => router.push("/llm-test")}
-                />
-              ) : null}
-            </View>
-          ) : (
-            messages.map((m, i) => (
-              <View key={i} style={styles.msgGroup}>
-                <View
+    <>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <View style={styles.headerBtns}>
+              <Pressable
+                onPress={newChat}
+                disabled={Boolean(busy)}
+                accessibilityRole="button"
+                accessibilityLabel="New chat"
+                hitSlop={8}
+              >
+                <Text
                   style={[
-                    styles.bubble,
-                    m.role === "user" ? styles.bubbleUser : styles.bubbleModel,
+                    styles.headerAction,
+                    busy ? styles.headerActionDisabled : null,
                   ]}
                 >
-                  <Text
-                    style={
-                      m.role === "user"
-                        ? styles.bubbleUserText
-                        : styles.bubbleText
-                    }
-                  >
-                    {m.content || busyPlaceholder(busy)}
-                  </Text>
-                </View>
-                {m.sources && m.sources.length > 0 ? (
-                  <Sources posts={m.sources} />
+                  New
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setChatsOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Chats"
+                hitSlop={8}
+              >
+                <Text style={styles.headerAction}>Chats</Text>
+              </Pressable>
+            </View>
+          ),
+        }}
+      />
+      <Screen style={styles.container}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
+        >
+          <ModeToggle
+            mode={mode}
+            onChange={onChangeMode}
+            disabled={Boolean(busy)}
+          />
+          <ScrollView
+            ref={scrollRef}
+            style={styles.flex}
+            contentContainerStyle={styles.messages}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+            onContentSizeChange={() =>
+              scrollRef.current?.scrollToEnd({ animated: true })
+            }
+          >
+            {messages.length === 0 ? (
+              <View style={styles.empty}>
+                <MetaText style={styles.cardEyebrow}>{modelLabel}</MetaText>
+                <Text style={styles.modelDetail}>
+                  {mode === "ask"
+                    ? "Ask anything about your own posts. Answers are grounded in your library and link back to the sources — all on this device."
+                    : "Running locally on this device. Nothing you type here leaves the phone."}
+                </Text>
+                <TranscriptionAssets />
+                {__DEV__ ? (
+                  <TextLink
+                    label="Draft test bench →"
+                    onPress={() => router.push("/llm-test")}
+                  />
                 ) : null}
+              </View>
+            ) : (
+              messages.map((m, i) => (
+                <View key={i} style={styles.msgGroup}>
+                  <View
+                    style={[
+                      styles.bubble,
+                      m.role === "user"
+                        ? styles.bubbleUser
+                        : styles.bubbleModel,
+                    ]}
+                  >
+                    <Text
+                      style={
+                        m.role === "user"
+                          ? styles.bubbleUserText
+                          : styles.bubbleText
+                      }
+                    >
+                      {m.content || busyPlaceholder(busy)}
+                    </Text>
+                  </View>
+                  {m.sources && m.sources.length > 0 ? (
+                    <Sources posts={m.sources} />
+                  ) : null}
+                </View>
+              ))
+            )}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+          </ScrollView>
+          <View
+            style={[
+              styles.inputRow,
+              { paddingBottom: Math.max(insets.bottom, 8) },
+            ]}
+          >
+            <TextInput
+              style={styles.input}
+              value={input}
+              onChangeText={setInput}
+              placeholder={
+                mode === "ask" ? "Ask about your posts…" : "Say something…"
+              }
+              placeholderTextColor={Sirius.color.inkSubtle}
+              accessibilityLabel="Message"
+              multiline
+              editable={!busy}
+            />
+            {/* Right column: the shared "Done" dismiss button stacked directly
+              above Send (renders only while the keyboard is up). */}
+            <View style={styles.sendCol}>
+              <KeyboardDoneButton />
+              <Pressable
+                style={[styles.sendBtn, busy ? styles.sendBtnDisabled : null]}
+                onPress={send}
+                disabled={Boolean(busy)}
+              >
+                {busy ? (
+                  <ActivityIndicator size="small" color={Sirius.color.paper} />
+                ) : (
+                  <Text style={styles.sendLabel}>Send</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Screen>
+      <ChatsModal
+        visible={chatsOpen}
+        activeId={conversationId}
+        onSelect={selectConversation}
+        onDelete={handleDeleteConversation}
+        onClose={() => setChatsOpen(false)}
+      />
+    </>
+  );
+}
+
+// The saved conversation threads — opened from the header "Chats" button. Tap a
+// row to switch threads, Delete to remove one (and all its messages). Backed by
+// a live query so the list stays in sync as titles/timestamps change.
+function ChatsModal({
+  visible,
+  activeId,
+  onSelect,
+  onDelete,
+  onClose,
+}: {
+  visible: boolean;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  const { data: convos } = useLiveQuery(
+    db
+      .select()
+      .from(chatConversations)
+      .orderBy(desc(chatConversations.updatedAt)),
+  );
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <Screen style={styles.container}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Chats</Text>
+          <Pressable onPress={onClose} accessibilityLabel="Close" hitSlop={8}>
+            <Text style={styles.headerAction}>Done</Text>
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={styles.cardStack}>
+          {(convos ?? []).length === 0 ? (
+            <Text style={styles.modelDetail}>No conversations yet.</Text>
+          ) : (
+            (convos ?? []).map((c) => (
+              <View
+                key={c.id}
+                style={[
+                  styles.chatRow,
+                  c.id === activeId ? styles.chatRowActive : null,
+                ]}
+              >
+                <Pressable
+                  style={styles.flex}
+                  onPress={() => onSelect(c.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${c.title ?? "New chat"}`}
+                >
+                  <Text style={styles.chatRowTitle} numberOfLines={1}>
+                    {c.title ?? "New chat"}
+                  </Text>
+                  <MetaText>
+                    {c.mode === "ask" ? "Ask my posts" : "Chat"}
+                  </MetaText>
+                </Pressable>
+                <Pressable
+                  onPress={() => onDelete(c.id)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete ${c.title ?? "chat"}`}
+                >
+                  <Text style={styles.deleteAction}>Delete</Text>
+                </Pressable>
               </View>
             ))
           )}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
         </ScrollView>
-        <View
-          style={[
-            styles.inputRow,
-            { paddingBottom: Math.max(insets.bottom, 8) },
-          ]}
-        >
-          <TextInput
-            style={styles.input}
-            value={input}
-            onChangeText={setInput}
-            placeholder={
-              mode === "ask" ? "Ask about your posts…" : "Say something…"
-            }
-            placeholderTextColor={Sirius.color.inkSubtle}
-            accessibilityLabel="Message"
-            multiline
-            editable={!busy}
-          />
-          {/* Right column: the shared "Done" dismiss button stacked directly
-              above Send (renders only while the keyboard is up). */}
-          <View style={styles.sendCol}>
-            <KeyboardDoneButton />
-            <Pressable
-              style={[styles.sendBtn, busy ? styles.sendBtnDisabled : null]}
-              onPress={send}
-              disabled={Boolean(busy)}
-            >
-              {busy ? (
-                <ActivityIndicator size="small" color={Sirius.color.paper} />
-              ) : (
-                <Text style={styles.sendLabel}>Send</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Screen>
+      </Screen>
+    </Modal>
   );
 }
 
@@ -736,4 +964,30 @@ const styles = StyleSheet.create({
   // both stretch to the same width so they read as a pair.
   sendCol: { alignItems: "stretch", gap: 6 },
   error: { color: "#a33", fontSize: 13, marginTop: 8 },
+  // Header actions (New chat / Chats) + the Chats thread-list modal.
+  headerBtns: { flexDirection: "row", gap: 16, paddingRight: 4 },
+  headerAction: { color: Sirius.color.ink, fontSize: 16, fontWeight: "600" },
+  headerActionDisabled: { opacity: 0.4 },
+  modalHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: 12,
+  },
+  modalTitle: {
+    color: Sirius.color.ink,
+    fontFamily: Sirius.font.serif,
+    fontSize: 22,
+  },
+  chatRow: {
+    alignItems: "center",
+    backgroundColor: Sirius.color.paperRaised,
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: 12,
+    padding: 14,
+  },
+  chatRowActive: { borderColor: Sirius.color.ink, borderWidth: 1 },
+  chatRowTitle: { color: Sirius.color.ink, fontSize: 15, fontWeight: "600" },
+  deleteAction: { color: "#a33", fontSize: 13, fontWeight: "600" },
 });
