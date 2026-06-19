@@ -1,6 +1,6 @@
 import type { IngestSubmission } from "@repo/db";
 import { useQuery } from "@tanstack/react-query";
-import { asc, eq } from "drizzle-orm";
+import { asc, inArray } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { useCallback, useState } from "react";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/components/sirius";
 import { Sirius, SubmissionStatusPip } from "@/constants/theme";
 import { apiGet } from "@/lib/api";
+import { discardSubmission, requeueSubmission } from "@/lib/outbox";
 import { db } from "@/lib/db/client";
 import { type PendingRow, pendingSubmissions } from "@/lib/db/schema";
 import { kickSync } from "@/lib/sync/engine";
@@ -72,11 +73,16 @@ export default function QueueScreen() {
     db
       .select()
       .from(pendingSubmissions)
-      .where(eq(pendingSubmissions.status, "queued"))
+      .where(
+        inArray(pendingSubmissions.status, ["queued", "in_flight", "failed"]),
+      )
       .orderBy(asc(pendingSubmissions.createdAt)),
   );
   const pending = pendingRows ?? [];
-  const pendingHead = pending[0];
+  const waiting = pending.filter(
+    (r) => r.status === "queued" || r.status === "in_flight",
+  );
+  const failed = pending.filter((r) => r.status === "failed");
 
   const sendNow = useCallback(() => {
     kickSync("manual");
@@ -130,24 +136,57 @@ export default function QueueScreen() {
               titleAccent="."
               subtitle="Submissions move pending → processing → done."
             />
-            {pending.length > 0 ? (
+            {waiting.length > 0 ? (
               <View style={styles.outboxBanner}>
                 <View style={styles.outboxRow}>
                   <StatusPip
-                    label="queued on device"
+                    label={
+                      waiting.some((r) => r.status === "in_flight")
+                        ? "uploading"
+                        : "queued on device"
+                    }
                     color={Sirius.color.inkSubtle}
                   />
                   <Text style={styles.outboxText}>
-                    {pending.length} note
-                    {pending.length === 1 ? "" : "s"} waiting for a connection.
+                    {waiting.length} item{waiting.length === 1 ? "" : "s"}{" "}
+                    {waiting.some((r) => r.status === "in_flight")
+                      ? "uploading…"
+                      : "waiting for a connection."}
                   </Text>
                   <TextLink label="Send now →" onPress={sendNow} />
                 </View>
-                {pendingHead && pendingHead.attempts > 0 ? (
+                {waiting[0] && waiting[0].attempts > 0 ? (
                   <Text style={styles.outboxStatus}>
-                    {describeOutboxStatus(pendingHead)}
+                    {describeOutboxStatus(waiting[0])}
                   </Text>
                 ) : null}
+              </View>
+            ) : null}
+            {failed.length > 0 ? (
+              <View style={styles.failedBanner}>
+                {failed.map((row) => (
+                  <View key={row.id} style={styles.failedRow}>
+                    <View style={styles.rowText}>
+                      <StatusPip label="failed" color={Sirius.color.accent} />
+                      <Text style={styles.outboxStatus} numberOfLines={1}>
+                        {row.lastError ?? "upload failed"}
+                      </Text>
+                    </View>
+                    <TextLink
+                      label="Requeue →"
+                      onPress={() => {
+                        void requeueSubmission(row.id).then(() =>
+                          kickSync("manual"),
+                        );
+                      }}
+                    />
+                    <TextLink
+                      label="Discard"
+                      tone={Sirius.color.inkMuted}
+                      onPress={() => void discardSubmission(row.id)}
+                    />
+                  </View>
+                ))}
               </View>
             ) : null}
           </View>
@@ -247,4 +286,17 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   errorBody: { color: Sirius.color.inkMuted, textAlign: "center" },
+  failedBanner: {
+    backgroundColor: Sirius.color.paperRaised,
+    borderRadius: 8,
+    gap: Sirius.space.sm,
+    marginTop: Sirius.space.md,
+    paddingHorizontal: Sirius.space.md,
+    paddingVertical: Sirius.space.sm,
+  },
+  failedRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: Sirius.space.sm,
+  },
 });
