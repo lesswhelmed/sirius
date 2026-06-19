@@ -20,6 +20,7 @@ import {
   TextLink,
   Title,
 } from "@/components/sirius";
+import { VoiceSection } from "@/components/voice-section";
 import { Sirius } from "@/constants/theme";
 import { signIn, signOut, useSession } from "@/lib/auth-client";
 import {
@@ -134,6 +135,12 @@ export default function SettingsScreen() {
             <Row label="Email" value={email || "—"} />
             {handle ? <Row label="Handle" value={`@${handle}`} /> : null}
           </View>
+        </View>
+
+        {/* Your voice — NOT gated by the on-device flag; voice applies to
+            server drafting too. */}
+        <View style={styles.section}>
+          <VoiceSection />
         </View>
 
         {/* Security */}
