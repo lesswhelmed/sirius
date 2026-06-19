@@ -29,6 +29,7 @@ import {
 } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import { canDraftOnDevice } from "@/lib/llm/curate";
+import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import {
   ASK_FLOW_FIXTURE,
   DRAFT_FIXTURES,
@@ -48,14 +49,15 @@ import {
 } from "@/lib/llm/transcribe";
 
 export default function LlmTestScreen() {
-  if (!__DEV__) {
+  if (!__DEV__ || !ON_DEVICE_AI_ENABLED) {
     return (
       <Screen style={styles.centered}>
         <Text style={styles.dim}>Dev builds only.</Text>
       </Screen>
     );
   }
-  // Hook rules are satisfied: __DEV__ is constant for the life of the bundle.
+  // Hook rules are satisfied: __DEV__ and the on-device flag are both constant
+  // for the life of the bundle.
   return <Bench />;
 }
 

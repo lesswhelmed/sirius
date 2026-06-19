@@ -23,6 +23,7 @@ import {
   draftSightPost,
   draftUrlPost,
 } from "@/lib/llm/curate";
+import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { canTranscribeOnDevice, transcribeAudio } from "@/lib/llm/transcribe";
 import { enqueueOutbox } from "@/lib/outbox";
 import {
@@ -280,6 +281,7 @@ const urlHandler: MaterialHandler<"url"> = {
     // deploys without /api/app/extract, rate limits, Android model quirks,
     // or a bad extract can only ever cost the old behavior, never an error.
     const draftLocally =
+      ON_DEVICE_AI_ENABLED &&
       ctx.onDeviceCuration === true &&
       materials.length > 0 &&
       (await canDraftOnDevice());
@@ -352,6 +354,7 @@ const noteHandler: MaterialHandler<"note"> = {
     let queued = 0;
     // Resolve once per batch: model readiness doesn't change mid-submit.
     const draftLocally =
+      ON_DEVICE_AI_ENABLED &&
       ctx.onDeviceCuration === true &&
       materials.length > 0 &&
       (await canDraftOnDevice());
@@ -407,12 +410,13 @@ const imageHandler: MaterialHandler<"image"> = {
     }));
     // SIGHT drafting on device (vision model). The bytes still upload — the
     // web app serves them — only the worker's Gemini stage is skipped.
-    const sightDraft = ctx.onDeviceCuration
-      ? await draftSightPost(
-          inputs.map((i) => i.uri),
-          notes,
-        )
-      : null;
+    const sightDraft =
+      ON_DEVICE_AI_ENABLED && ctx.onDeviceCuration
+        ? await draftSightPost(
+            inputs.map((i) => i.uri),
+            notes,
+          )
+        : null;
     // Optimistic SIGHT row rendered from the local photo URIs + on-device draft;
     // reconciliation swaps in the served gallery URLs once the worker writes the
     // post (sourceRecordId === "batch:<batchId>").

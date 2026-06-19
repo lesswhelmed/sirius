@@ -47,10 +47,18 @@ export function pullCommentChanges(): Promise<void> {
         `/api/app/comments/changes?${qs.toString()}`,
       );
       for (const change of result.changes) {
-        if (change.op === "upsert") {
-          await reconcileCommentUpsert(change.comment);
-        } else {
-          await applyCommentTombstone(change.id, change.deletedAt);
+        // Isolate per-row failures so one malformed change can't abort the whole
+        // page (which would stall the cursor). Log + skip; reconcile is an
+        // idempotent upsert-by-serverId and the cursor still advances.
+        try {
+          if (change.op === "upsert") {
+            await reconcileCommentUpsert(change.comment);
+          } else {
+            await applyCommentTombstone(change.id, change.deletedAt);
+          }
+        } catch (err) {
+          const id = change.op === "upsert" ? change.comment.id : change.id;
+          console.warn(`[sync] skipped comment change ${id}`, err);
         }
       }
       if (result.nextCursor) {

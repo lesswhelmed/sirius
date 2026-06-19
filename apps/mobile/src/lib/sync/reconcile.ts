@@ -8,40 +8,7 @@ import { randomUUID } from "expo-crypto";
 
 import { db } from "@/lib/db/client";
 import { type PostImage, type PostRow, posts } from "@/lib/db/schema";
-import { sqliteVectorStore } from "@/lib/research/vector-store";
 import type { PostDelta } from "./events";
-
-// Mirror the post's server-computed (gemini) embedding into the on-device
-// post_vectors index, tagged with its vector space (`model:dim`) so "ask my
-// posts" ranks a query — embedded server-side in the same space — only against
-// same-space documents. Posts the worker hasn't embedded yet (embedding null)
-// are skipped; their vector simply arrives on a later delta. Tombstones need no
-// removal: allVectors already excludes posts whose sync_state is tombstone.
-async function mirrorPostVector(post: PostDelta): Promise<void> {
-  if (
-    !post.embedding ||
-    post.embedding.length === 0 ||
-    !post.embeddingModel ||
-    !post.embeddingDim
-  ) {
-    return;
-  }
-  const embeddingModelId = `${post.embeddingModel}:${post.embeddingDim}`;
-  await sqliteVectorStore.upsert(
-    [
-      {
-        serverId: post.id,
-        vector: Float32Array.from(post.embedding),
-        dim: post.embeddingDim,
-        // Tracks the server vector identity for this post. (missing() is unused
-        // now that documents are not embedded on-device; the upsert REPLACEs
-        // regardless, so this is just provenance.)
-        contentHash: post.updatedAt,
-      },
-    ],
-    embeddingModelId,
-  );
-}
 
 function normalizeImages(images: unknown): PostImage[] | null {
   if (!Array.isArray(images)) return null;
@@ -92,19 +59,23 @@ export async function reconcileUpsert(post: PostDelta): Promise<void> {
   // The canonical server fields, applied on both insert and merge. The server
   // copy supersedes any on-device draft, so draftEnvelopeJson is cleared and the
   // optimistic local image URIs are replaced by the server gallery URLs.
+  // Coalesce every nullable/optional field to a concrete null/default before it
+  // reaches the SQLite bind: an omitted server field arrives as `undefined`, which
+  // expo-sqlite rejects (InvalidConvertibleException) and which would abort the
+  // whole pull. JS null binds fine.
   const mirrored = {
     serverId: post.id,
-    slug: post.slug,
-    title: post.title,
-    body: post.content,
-    excerpt: post.excerpt,
-    type: post.type,
-    tags: post.tags,
-    categories: post.categories,
-    imageUrl: post.imageUrl,
+    slug: post.slug ?? null,
+    title: post.title ?? "",
+    body: post.content ?? "",
+    excerpt: post.excerpt ?? null,
+    type: post.type ?? "BLOG",
+    tags: post.tags ?? [],
+    categories: post.categories ?? [],
+    imageUrl: post.imageUrl ?? null,
     images: normalizeImages(post.images),
-    providerId: post.providerId,
-    contentDigest: post.contentDigest,
+    providerId: post.providerId ?? null,
+    contentDigest: post.contentDigest ?? null,
     syncState: "synced" as const,
     draftEnvelopeJson: null,
     serverUpdatedAt,
@@ -126,18 +97,16 @@ export async function reconcileUpsert(post: PostDelta): Promise<void> {
       .update(posts)
       .set(mirrored)
       .where(eq(posts.localId, existing.localId));
-    await mirrorPostVector(post);
     return;
   }
 
   // Brand-new post (created elsewhere, or pulled before any local draft).
   await db.insert(posts).values({
     localId: randomUUID(),
-    submissionId: post.sourceRecordId,
+    submissionId: post.sourceRecordId ?? null,
     createdAt: new Date(post.createdAt),
     ...mirrored,
   });
-  await mirrorPostVector(post);
 }
 
 // A deleted server post. Keep the row (as a tombstone) so re-deliveries are

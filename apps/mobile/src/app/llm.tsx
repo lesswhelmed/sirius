@@ -36,6 +36,7 @@ import {
   modelBusyBy,
   withPreparedModel,
 } from "@/lib/llm/engine";
+import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { formatSize, modelSpec, textModels } from "@/lib/llm/models";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
 import {
@@ -56,6 +57,28 @@ type ChatMessage = {
 };
 
 export default function LlmScreen() {
+  // Fully hidden when the on-device AI build flag is off: no nav entry points
+  // here (composer gates them), and a deep link lands on this neutral state
+  // instead of the download/chat UI. EXPO_PUBLIC_ON_DEVICE_AI is a build-time
+  // constant, so this early return runs before any hooks every render.
+  if (!ON_DEVICE_AI_ENABLED) {
+    return (
+      <Screen style={styles.container}>
+        <View style={styles.downloadCard}>
+          <MetaText style={styles.cardEyebrow}>Local model</MetaText>
+          <Text style={styles.modelName}>On-device drafting isn&apos;t available.</Text>
+          <Text style={styles.modelDetail}>
+            On-device AI is turned off in this build. Your captures are drafted
+            by the server instead.
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
+  return <LlmScreenInner />;
+}
+
+function LlmScreenInner() {
   const queryClient = useQueryClient();
 
   const settings = useQuery({

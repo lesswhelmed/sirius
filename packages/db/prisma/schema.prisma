@@ -386,6 +386,7 @@ model User {
   handle   String? @unique
   bio      String?
   location String?
+  voiceProfile String?
 
   sessions    Session[]
   accounts    Account[]

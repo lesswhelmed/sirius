@@ -40,6 +40,7 @@ import {
 import { Sirius } from "@/constants/theme";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
 import { isModelReady } from "@/lib/llm/engine";
+import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
 import {
   CAPTURE_KINDS,
@@ -553,11 +554,14 @@ export default function ComposerScreen() {
                 tone={Sirius.color.accent}
                 onPress={() => router.push("/focus")}
               />
-              <TextLink
-                label="On-device AI →"
-                tone={Sirius.color.accent}
-                onPress={() => router.push("/llm")}
-              />
+              {/* /llm is fully hidden when on-device AI is off. */}
+              {ON_DEVICE_AI_ENABLED ? (
+                <TextLink
+                  label="On-device AI →"
+                  tone={Sirius.color.accent}
+                  onPress={() => router.push("/llm")}
+                />
+              ) : null}
             </View>
           </View>
 
@@ -669,7 +673,8 @@ export default function ComposerScreen() {
             </View>
           )}
 
-          {llmReady.data === true ? (
+          {/* On-device drafting is fully hidden behind the build-time flag. */}
+          {ON_DEVICE_AI_ENABLED && llmReady.data === true ? (
             <View style={styles.curationRow}>
               <View style={styles.curationCopy}>
                 <Text style={styles.curationLabel}>Draft on device</Text>
@@ -684,7 +689,7 @@ export default function ComposerScreen() {
                 accessibilityLabel="Draft on device"
               />
             </View>
-          ) : llmReady.isSuccess ? (
+          ) : ON_DEVICE_AI_ENABLED && llmReady.isSuccess ? (
             // No model on disk: the switch is hidden until the user downloads
             // one from the /llm screen. (Still loading → render neither, so the
             // CTA doesn't flash on every composer mount.)

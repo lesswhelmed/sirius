@@ -115,15 +115,29 @@ export interface UpsertPostEmbeddingInput {
 
 // Idempotent by postId; re-embeds overwrite (embeddingHash lets callers skip
 // unchanged content before calling).
+//
+// Also bumps the parent Post.updatedAt so the mobile delta feed re-delivers this
+// post carrying its new vector. The feed (listPostsChangedSince) cursors on
+// Post.updatedAt, but the worker embeds in a stage AFTER the post is written and
+// often already synced to a device — without this touch the post is never re-sent,
+// its on-device post_vectors row never lands, and "ask my posts" finds nothing.
+// Raw SQL touches ONLY updatedAt: an ORM update would also bump `lastEdited`
+// (@updatedAt), which is the user-facing "Last edited" time and must not move on a
+// re-embed. Run in one transaction so the vector and its delivery signal commit
+// together.
 export async function upsertPostEmbedding(
   input: UpsertPostEmbeddingInput,
 ): Promise<PostEmbedding> {
   const { postId, ...rest } = input;
-  return prisma.postEmbedding.upsert({
-    where: { postId },
-    create: { postId, ...rest },
-    update: rest,
-  });
+  const [embedding] = await prisma.$transaction([
+    prisma.postEmbedding.upsert({
+      where: { postId },
+      create: { postId, ...rest },
+      update: rest,
+    }),
+    prisma.$executeRaw`UPDATE "Post" SET "updatedAt" = NOW() WHERE "id" = ${postId}`,
+  ]);
+  return embedding;
 }
 
 // Replace the post's category linkage with the latest classify result.

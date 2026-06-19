@@ -126,6 +126,15 @@ no root alias yet, ask if you want one).
   builds with a matching native fingerprint.
 - Prod auth: `AUTH_TRUSTED_ORIGINS` **must include `siriusapp://`** (dev trusts it
   automatically — see `packages/auth/src/index.ts`).
+- On-device AI feature flag: **`EXPO_PUBLIC_ON_DEVICE_AI`** (mobile `.env` / per-EAS-profile
+  in `eas.json`) is the master JS switch for ALL on-device LLM work (drafting, the `/llm`
+  download+chat screen, the dev `/llm-test` bench). It **defaults off** (unset/anything but
+  `"true"`); when off the whole feature is hidden — the composer "Draft on device" toggle and
+  its `/llm` entry points don't render, `/llm` shows a neutral "not available" state,
+  `canDraftOnDevice()`/`canDraftSightOnDevice()` short-circuit to `false`, and captures route
+  to the server worker. Inlined by Expo at build time (`apps/mobile/src/lib/llm/flag.ts` →
+  `ON_DEVICE_AI_ENABLED`). The native `llama.rn` bridge is still bundled (the gate below is
+  unaffected), so flipping the env back on needs no native change.
 - On-device AI gate: every `build:*` script and EAS's `eas-build-post-install` hook
   run `bun run verify:native-ai` (`scripts/verify-native-ai.mjs`) BEFORE the cloud
   prebuild/compile — it asserts `llama.rn` is installed at the pinned `0.12.4`, ships

@@ -34,6 +34,14 @@ const INPUTS = [
 	join(APP, "package.json"),
 	join(APP, "app.json"),
 	join(ROOT, "package.json"), // overrides (llama.rn pin) + trustedDependencies
+	// Icon/splash sources are baked into the native project at prebuild time
+	// (iOS AppIcon.appiconset, Android mipmaps, splash). Editing the PNG without
+	// re-running prebuild leaves the installed app on the OLD icon, so these are
+	// native inputs too — include them so a swap auto-triggers a clean rebuild.
+	join(APP, "assets/images/icon.png"),
+	join(APP, "assets/images/android-icon-foreground.png"),
+	join(APP, "assets/images/splash-icon.png"),
+	join(APP, "assets/images/favicon.png"),
 ];
 
 function fingerprint() {

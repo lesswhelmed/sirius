@@ -26,6 +26,7 @@ import {
 import { generateText } from "ai";
 
 import { checkNativeBridge, isModelReady, withPreparedModel } from "./engine";
+import { ON_DEVICE_AI_ENABLED } from "./flag";
 import { VISION_MODEL_ID } from "./models";
 import { getLlmSettings } from "./settings";
 
@@ -133,6 +134,9 @@ function buildNotePrompt(notes: string): string {
 // disk. Used by the submit path to decide whether to draft at all.
 export async function canDraftOnDevice(): Promise<boolean> {
   try {
+    if (!ON_DEVICE_AI_ENABLED) {
+      return false;
+    }
     const settings = await getLlmSettings();
     if (!settings.onDeviceCuration) {
       return false;
@@ -304,6 +308,9 @@ function buildSightPrompt(imageCount: number, notes: string): string {
 // vision model (weights + mmproj projector) is downloaded.
 export async function canDraftSightOnDevice(): Promise<boolean> {
   try {
+    if (!ON_DEVICE_AI_ENABLED) {
+      return false;
+    }
     const settings = await getLlmSettings();
     if (!settings.onDeviceCuration) {
       return false;

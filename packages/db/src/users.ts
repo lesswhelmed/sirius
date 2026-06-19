@@ -1,5 +1,7 @@
 // User storefront helpers. The handle is the public URL slug for a user's
 // catalog page (/catalog/<handle>) and is enforced to be lowercase + URL-safe.
+import { sanitizeVoiceProfile } from "@repo/ingest-draft";
+
 import { Prisma } from "../generated/prisma";
 import { prisma } from "./index";
 
@@ -93,4 +95,25 @@ export async function getUserContact(
     select: { email: true, name: true },
   });
   return row ? { email: row.email, name: row.name } : null;
+}
+
+export async function getVoiceProfile(userId: string): Promise<string | null> {
+  const row = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { voiceProfile: true },
+  });
+  return row?.voiceProfile ?? null;
+}
+
+export async function setVoiceProfile(
+  userId: string,
+  text: string,
+): Promise<{ ok: true; voiceProfile: string | null }> {
+  const cleaned = sanitizeVoiceProfile(text);
+  const value = cleaned.length > 0 ? cleaned : null;
+  await prisma.user.update({
+    where: { id: userId },
+    data: { voiceProfile: value },
+  });
+  return { ok: true, voiceProfile: value };
 }

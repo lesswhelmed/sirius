@@ -11,11 +11,10 @@ import { syncMeta } from "@/lib/db/schema";
 import type { PostChangesResult } from "./events";
 import { applyTombstone, reconcileUpsert } from "./reconcile";
 
-// Bumped to v2 when post deltas began carrying the server embedding vector (for
-// "ask my posts" — see reconcile.mirrorPostVector). The new key starts at EPOCH,
-// so every existing device does ONE idempotent full re-pull to backfill vectors
-// for posts it already had (their updatedAt didn't change, so the old cursor would
-// never re-deliver them). Reconcile is upsert-by-id, so the re-pull is harmless.
+// Bumped to v2 when post deltas began carrying the server embedding vector. The
+// on-device vector mirror was later removed ("ask my posts" no longer uses
+// embeddings — it queries categories from local SQLite), so the embedding fields
+// in the delta are now simply ignored by reconcile. Key kept at v2; no re-pull needed.
 const SINCE_KEY = "posts.changes.since.v2";
 const EPOCH = new Date(0).toISOString();
 
@@ -49,10 +48,18 @@ export function pullChanges(): Promise<void> {
         `/api/app/posts/changes?${qs.toString()}`,
       );
       for (const change of result.changes) {
-        if (change.op === "upsert") {
-          await reconcileUpsert(change.post);
-        } else {
-          await applyTombstone(change.id, change.deletedAt);
+        // Isolate per-row failures: a single malformed change must not abort the
+        // whole page (which would stall the cursor forever). Log + skip; the
+        // cursor still advances, and reconcile is an idempotent upsert-by-id.
+        try {
+          if (change.op === "upsert") {
+            await reconcileUpsert(change.post);
+          } else {
+            await applyTombstone(change.id, change.deletedAt);
+          }
+        } catch (err) {
+          const id = change.op === "upsert" ? change.post.id : change.id;
+          console.warn(`[sync] skipped post change ${id}`, err);
         }
       }
       if (result.nextCursor) {
