@@ -68,6 +68,12 @@
       ],
       "expo-image",
       "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Sirius to use Face ID to sign you in securely."
+        }
+      ],
       "expo-web-browser",
       [
         "llama.rn",

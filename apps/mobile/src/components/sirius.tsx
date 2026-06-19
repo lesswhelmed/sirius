@@ -3,7 +3,14 @@
 // screens without pulling in a styling library. Everything is built on plain
 // react-native + StyleSheet.create per the project's RN conventions.
 import { SymbolView } from "expo-symbols";
-import { forwardRef, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  type ReactNode,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -210,6 +217,75 @@ export function PasswordField({
     </View>
   );
 }
+
+// Imperative handle for an <AuthField/>: read the current text, focus, or clear.
+export type AuthFieldHandle = {
+  value: () => string;
+  focus: () => void;
+  clear: () => void;
+};
+
+// An UNCONTROLLED text field for the auth screens. Why not the controlled
+// `Field`: under the iOS New Architecture (Fabric), a controlled TextInput can
+// be recycled after Password Autofill and stop propagating updates, leaving the
+// field visually empty (React Native issues #53050, #23921 — strong-password
+// autofill can also fire onChangeText("") and clobber controlled state). Letting
+// the native input own its text (`defaultValue`, no `value`) sidesteps both: we
+// mirror the latest value into a ref via BOTH onChangeText and onEndEditing (the
+// latter still carries the final native text when onChangeText was skipped), and
+// the parent reads it at submit through the handle. Do NOT pass a `value` prop.
+export const AuthField = forwardRef<
+  AuthFieldHandle,
+  Omit<TextInputProps, "value"> & { label?: string }
+>(function AuthField(
+  {
+    label,
+    style,
+    accessibilityLabel,
+    defaultValue,
+    onChangeText,
+    onEndEditing,
+    ...rest
+  },
+  ref
+) {
+  const inputRef = useRef<TextInput>(null);
+  const valueRef = useRef<string>(defaultValue ?? "");
+  useImperativeHandle(
+    ref,
+    () => ({
+      value: () => valueRef.current,
+      focus: () => inputRef.current?.focus(),
+      clear: () => {
+        valueRef.current = "";
+        inputRef.current?.clear();
+      },
+    }),
+    []
+  );
+  return (
+    <View style={styles.field}>
+      {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
+      <TextInput
+        ref={inputRef}
+        style={[styles.input, style]}
+        placeholderTextColor={Sirius.color.inkSubtle}
+        selectionColor={Sirius.color.accent}
+        defaultValue={defaultValue}
+        accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
+        onChangeText={(text) => {
+          valueRef.current = text;
+          onChangeText?.(text);
+        }}
+        onEndEditing={(event) => {
+          valueRef.current = event.nativeEvent.text;
+          onEndEditing?.(event);
+        }}
+        {...rest}
+      />
+    </View>
+  );
+});
 
 // Tracks soft-keyboard visibility. The one reliable primitive for "is the
 // keyboard up" — drives <KeyboardDoneButton/> and any keyboard-aware layout.

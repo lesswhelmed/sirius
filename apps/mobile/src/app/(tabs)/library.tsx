@@ -2,6 +2,7 @@ import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { desc, ne } from "drizzle-orm";
 import { Image } from "expo-image";
 import { router } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
@@ -18,6 +19,7 @@ import { readRepoDigest } from "@repo/github-ingest/digest";
 import { KindLabel, PageHeader, Screen, TextLink } from "@/components/sirius";
 import { PostTypeTone, Sirius } from "@/constants/theme";
 import { resolveMediaUrl } from "@/lib/api";
+import { useSession } from "@/lib/auth-client";
 import { db } from "@/lib/db/client";
 import { posts, type PostRow, type SyncState } from "@/lib/db/schema";
 import { kickSync } from "@/lib/sync/engine";
@@ -52,6 +54,17 @@ function humanizeCategory(name: string): string {
 }
 
 export default function LibraryScreen() {
+  // Logged-in user for the header's account chip. `handle` is an extra profile
+  // field (see schema), not on the base better-auth type, so read it
+  // defensively — same pattern as settings.tsx.
+  const { data: session } = useSession();
+  const user = session?.user as
+    | { name?: string; email?: string; handle?: string | null }
+    | undefined;
+  const accountLabel = user?.handle
+    ? `@${user.handle}`
+    : (user?.name ?? user?.email ?? "Account");
+
   // Live view of the local mirror: local drafts, in-flight submissions, and
   // synced server posts, newest first. Re-renders automatically on any row
   // change (sync pull, SSE reconcile, optimistic write).
@@ -281,11 +294,34 @@ export default function LibraryScreen() {
               count={visibleItems.length}
               countLabel={isFiltered ? "Matches" : "On file"}
             />
-            <TextLink
-              label="Enter the space →"
-              tone={Sirius.color.accent}
-              onPress={() => router.push("/space")}
-            />
+            <View style={styles.headerActions}>
+              <TextLink
+                label="Enter the space →"
+                tone={Sirius.color.accent}
+                onPress={() => router.push("/space")}
+              />
+              <Pressable
+                onPress={() => router.push("/settings")}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Account and settings"
+                style={({ pressed }) => [
+                  styles.profileChip,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <SymbolView
+                  name="person.crop.circle"
+                  size={18}
+                  weight="regular"
+                  tintColor={Sirius.color.ink}
+                  fallback={<Text style={styles.profileChipText}>◔</Text>}
+                />
+                <Text style={styles.profileChipText} numberOfLines={1}>
+                  {accountLabel}
+                </Text>
+              </Pressable>
+            </View>
 
             {/* Category index — the primary navigation. A sticky-feeling
                 segmented bar; the selected tab sits over an oxblood underline. */}
@@ -439,6 +475,30 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   header: { marginBottom: Sirius.space.lg },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: Sirius.space.lg,
+  },
+  profileChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.xs,
+    maxWidth: "55%",
+    paddingHorizontal: Sirius.space.md,
+    paddingVertical: Sirius.space.xs,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    backgroundColor: Sirius.color.paperRaised,
+  },
+  profileChipText: {
+    flexShrink: 1,
+    fontFamily: Sirius.font.mono,
+    fontSize: 12,
+    letterSpacing: 0.3,
+    color: Sirius.color.ink,
+  },
 
   // Category segmented bar.
   categoryBarScroll: {

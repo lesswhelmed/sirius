@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -10,7 +10,8 @@ import {
 } from "react-native";
 
 import {
-  Field,
+  AuthField,
+  type AuthFieldHandle,
   PageHeader,
   PrimaryButton,
   Screen,
@@ -20,13 +21,19 @@ import { Sirius } from "@/constants/theme";
 import { signUp } from "@/lib/auth-client";
 
 export default function SignUpScreen() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  // Uncontrolled inputs (see <AuthField/>): read at submit so iOS Password
+  // Autofill / strong-password suggestions land reliably instead of being
+  // clobbered by a re-render.
+  const nameRef = useRef<AuthFieldHandle>(null);
+  const emailRef = useRef<AuthFieldHandle>(null);
+  const passwordRef = useRef<AuthFieldHandle>(null);
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit() {
     if (busy) return;
+    const name = nameRef.current?.value().trim() ?? "";
+    const email = emailRef.current?.value().trim() ?? "";
+    const password = passwordRef.current?.value() ?? "";
     if (!email || !password) {
       Alert.alert("Missing fields", "Email and password are required.");
       return;
@@ -39,7 +46,7 @@ export default function SignUpScreen() {
     const { error } = await signUp.email({
       email,
       password,
-      name: name.trim() || email.split("@")[0],
+      name: name || email.split("@")[0],
     });
     setBusy(false);
     if (error) {
@@ -67,37 +74,34 @@ export default function SignUpScreen() {
           />
 
           <View style={styles.form}>
-            <Field
+            <AuthField
               label="Name (optional)"
               placeholder="Your name"
               autoComplete="name"
               textContentType="name"
-              value={name}
-              onChangeText={setName}
               editable={!busy}
+              ref={nameRef}
             />
-            <Field
+            <AuthField
               label="Email"
               placeholder="you@example.com"
               autoCapitalize="none"
               autoComplete="email"
-              textContentType="emailAddress"
+              textContentType="username"
               importantForAutofill="yes"
               keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
               editable={!busy}
+              ref={emailRef}
             />
-            <Field
+            <AuthField
               label="Password"
               placeholder="At least 8 characters"
               secureTextEntry
               autoComplete="new-password"
               textContentType="newPassword"
               importantForAutofill="yes"
-              value={password}
-              onChangeText={setPassword}
               editable={!busy}
+              ref={passwordRef}
             />
             <PrimaryButton label="Sign up" onPress={handleSubmit} busy={busy} />
           </View>

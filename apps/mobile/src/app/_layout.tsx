@@ -195,6 +195,15 @@ export default function RootLayout() {
                   }}
                 />
                 <Stack.Screen
+                  name="settings"
+                  options={{
+                    headerShown: true,
+                    title: "Settings",
+                    // Reached only from the Catalog tab (gear in the header).
+                    headerBackTitle: "Catalog",
+                  }}
+                />
+                <Stack.Screen
                   name="llm"
                   options={{
                     headerShown: true,

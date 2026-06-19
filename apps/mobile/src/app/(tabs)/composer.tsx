@@ -40,7 +40,6 @@ import type { RepoPreview } from "@repo/github-ingest";
 
 import { Sirius } from "@/constants/theme";
 import { apiGet, apiPostJson, ApiError } from "@/lib/api";
-import { signOut } from "@/lib/auth-client";
 import {
   CAPTURE_KINDS,
   type CaptureKind,
@@ -486,11 +485,6 @@ export default function ComposerScreen() {
     router.push("/(tabs)/queue");
   }
 
-  async function handleSignOut() {
-    await signOut();
-    router.replace("/(auth)/sign-in");
-  }
-
   const formCopy =
     activeKey === "link" || activeKey === "note" ? FORM_COPY[activeKey] : null;
 
@@ -521,13 +515,6 @@ export default function ComposerScreen() {
                 label="On-device AI →"
                 tone={Sirius.color.accent}
                 onPress={() => router.push("/llm")}
-              />
-            </View>
-            <View style={styles.headerSignOut}>
-              <TextLink
-                label="Sign out"
-                tone={Sirius.color.inkMuted}
-                onPress={handleSignOut}
               />
             </View>
           </View>
@@ -929,7 +916,6 @@ const styles = StyleSheet.create({
     borderColor: Sirius.color.rule,
     paddingBottom: Sirius.space.md,
   },
-  headerSignOut: { alignItems: "flex-end" },
   focusEmpty: { gap: Sirius.space.sm },
   focusEmptyText: {
     fontFamily: Sirius.font.serif,
