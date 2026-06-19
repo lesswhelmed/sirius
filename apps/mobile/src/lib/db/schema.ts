@@ -138,6 +138,13 @@ export const pendingSubmissions = sqliteTable(
     imageIndex: integer("image_index"),
     totalCount: integer("total_count"),
 
+    // App-private on-disk copy of the binary to upload (images/video/audio/
+    // documents). The picker's own URI is ephemeral — iOS can evict it — so we
+    // copy the bytes here at staging time and replay the upload from this path,
+    // which survives backgrounding and force-quit. Null for note/url rows.
+    // Deleted when the row succeeds or is discarded.
+    localFilePath: text("local_file_path"),
+
     attempts: integer("attempts").notNull().default(0),
     status: text("status").$type<PendingStatus>().notNull().default("queued"),
     lastError: text("last_error"),

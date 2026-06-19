@@ -1,0 +1,1 @@
+ALTER TABLE `pending_submissions` ADD `local_file_path` text;
