@@ -28,6 +28,7 @@ import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 
 import { Eyebrow, PageHeader, PrimaryButton, Screen } from "@/components/sirius";
 import { Segment, SegmentedControl } from "@/components/segmented";
+import { ExploreView } from "@/components/explore/explore-view";
 import { Sirius } from "@/constants/theme";
 import { useSession } from "@/lib/auth-client";
 import { apiGet } from "@/lib/api";
@@ -45,7 +46,7 @@ export const fetchScene = () =>
 const EXPANDED_PREFIX = "tree.expanded";
 const EXPAND_TO_DEPTH = 1;
 
-type Tab = "categories" | "focus";
+type Tab = "categories" | "focus" | "explore";
 
 export default function TreeScreen() {
   const { data: scene, isLoading, isError, error, refetch } = useQuery({
@@ -163,6 +164,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
         <SegmentedControl value={tab} onChange={setTab}>
           <Segment value="categories" label="Categories" count={categoryCount} />
           <Segment value="focus" label="Focus" count={projects.length} />
+          <Segment value="explore" label="Explore" />
         </SegmentedControl>
       </View>
 
@@ -183,7 +185,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
             refreshing={refreshing}
             onRefresh={onRefresh}
           />
-        ) : (
+        ) : tab === "focus" ? (
           <FocusView
             projects={projects}
             counts={counts.direct}
@@ -191,6 +193,8 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
             refreshing={refreshing}
             onRefresh={onRefresh}
           />
+        ) : (
+          <ExploreView scene={scene} />
         )}
       </Animated.View>
     </Screen>
