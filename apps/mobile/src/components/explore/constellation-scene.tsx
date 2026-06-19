@@ -42,6 +42,17 @@ const ZOOM_MAX = 3;
 // moves the same on-screen distance whether zoomed in or out.
 const PAN_SCALE = 0.9;
 
+// Gesture instrumentation for the ONE path we can't statically prove: that
+// react-three-fiber/native actually delivers two simultaneous pointers (with
+// distinct pointerIds) through the expo-gl GLView — the prerequisite for pinch.
+// Dev-only, logged on gesture TRANSITIONS only (down / pinch-begin / up), never
+// per-frame, so Metro stays readable. If you pinch and never see "[constellation]
+// pinch:begin" with active=2, multi-touch isn't reaching the scene → fall back to
+// a gesture-handler Pinch (see docs/plan). Matches the repo's [tag] log style.
+const logGesture = (...args: unknown[]) => {
+  if (__DEV__) console.log("[constellation]", ...args);
+};
+
 interface Orbit {
   yaw: number;
   pitch: number;
@@ -192,6 +203,7 @@ function OrbitBackdrop({
       onPointerDown={(e: ThreeEvent<PointerEvent>) => {
         pts.current.set(e.pointerId, { x: e.pointer.x, y: e.pointer.y });
         resetPinch();
+        logGesture("down", "id=", e.pointerId, "active=", pts.current.size);
       }}
       onPointerMove={(e: ThreeEvent<PointerEvent>) => {
         const map = pts.current;
@@ -214,6 +226,18 @@ function OrbitBackdrop({
           if (pinchMid.current) {
             onPan(mid.x - pinchMid.current.x, mid.y - pinchMid.current.y);
           }
+        } else {
+          // First frame of a 2-pointer gesture (baseline). If you never see this,
+          // multi-touch isn't reaching the GLView — pinch can't work as built.
+          logGesture(
+            "pinch:begin",
+            "active=",
+            map.size,
+            "ids=",
+            [...map.keys()].join(","),
+            "dist=",
+            dist.toFixed(3),
+          );
         }
         pinchDist.current = dist;
         pinchMid.current = mid;
@@ -221,10 +245,12 @@ function OrbitBackdrop({
       onPointerUp={(e: ThreeEvent<PointerEvent>) => {
         pts.current.delete(e.pointerId);
         resetPinch();
+        logGesture("up", "id=", e.pointerId, "active=", pts.current.size);
       }}
       onPointerLeave={(e: ThreeEvent<PointerEvent>) => {
         pts.current.delete(e.pointerId);
         resetPinch();
+        logGesture("leave", "id=", e.pointerId, "active=", pts.current.size);
       }}
     >
       <sphereGeometry args={[60, 8, 8]} />
@@ -315,6 +341,20 @@ export function ConstellationHero({
       pan.current = [0, 0, 0];
     }
   }, [focused]);
+
+  // One-time scene summary so an empty/sparse map can be diagnosed as "no nodes
+  // arrived" vs. a render bug (the scene is owner-scoped — see CLAUDE.md).
+  useEffect(() => {
+    logGesture(
+      "scene",
+      "nodes=",
+      scene.nodes.length,
+      "edges=",
+      scene.edges.length,
+      "model=",
+      scene.modelVersion,
+    );
+  }, [scene]);
 
   const onOrbitDelta = (dx: number, dy: number) => {
     const t = orbit.current;
