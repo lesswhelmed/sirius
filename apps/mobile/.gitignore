@@ -41,3 +41,6 @@ app-example
 # generated native folders
 /ios
 /android
+
+# adb wireless dev: remembered phone endpoint (machine-local)
+wireless/.last-wireless-endpoint
