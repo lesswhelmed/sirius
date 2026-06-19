@@ -16,39 +16,39 @@ import { useState } from "react";
 // - Any load failure (missing file, expired remote URL) degrades to a quiet
 //   "No plate" placeholder instead of a broken-image box.
 export function PostImage({
-  src,
-  alt,
-  sizes,
-  className = "object-cover",
-  priority = false,
+	src,
+	alt,
+	sizes,
+	className = "object-cover",
+	priority = false,
 }: {
-  src: string | null | undefined;
-  alt: string;
-  sizes: string;
-  className?: string;
-  priority?: boolean;
+	src: string | null | undefined;
+	alt: string;
+	sizes: string;
+	className?: string;
+	priority?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
+	const [failed, setFailed] = useState(false);
 
-  if (!src || failed) {
-    return (
-      <div className="flex h-full w-full items-center justify-center font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
-        No plate
-      </div>
-    );
-  }
+	if (!src || failed) {
+		return (
+			<div className="flex h-full w-full items-center justify-center font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
+				No plate
+			</div>
+		);
+	}
 
-  const isLocal = src.startsWith("/");
-  return (
-    <Image
-      src={src}
-      alt={alt}
-      fill
-      sizes={sizes}
-      className={className}
-      unoptimized={!isLocal}
-      priority={priority}
-      onError={() => setFailed(true)}
-    />
-  );
+	const isLocal = src.startsWith("/");
+	return (
+		<Image
+			src={src}
+			alt={alt}
+			fill
+			sizes={sizes}
+			className={className}
+			unoptimized={!isLocal}
+			priority={priority}
+			onError={() => setFailed(true)}
+		/>
+	);
 }

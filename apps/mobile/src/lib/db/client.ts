@@ -12,7 +12,7 @@ import * as schema from "./schema";
 // enableChangeListener powers useLiveQuery — without it row changes don't
 // notify subscribers and the UI won't reactively update.
 export const sqlite = openDatabaseSync("sirius.db", {
-  enableChangeListener: true,
+	enableChangeListener: true,
 });
 
 export const db = drizzle(sqlite, { schema });
@@ -24,5 +24,5 @@ export type Db = typeof db;
  * its own __drizzle_migrations table. Must resolve before any useLiveQuery runs.
  */
 export async function runMigrations(): Promise<void> {
-  await migrate(db, migrations);
+	await migrate(db, migrations);
 }

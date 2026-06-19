@@ -1,7 +1,7 @@
-import { redirect } from "next/navigation";
 import { getUserHandle } from "@repo/db";
-import { getSessionOrNull } from "../../../lib/session";
+import { redirect } from "next/navigation";
 import { PUBLIC_CATALOG_ENABLED } from "../../../lib/features";
+import { getSessionOrNull } from "../../../lib/session";
 import { OwnerCatalog } from "./owner-catalog";
 import { PublicCatalog } from "./public-catalog";
 
@@ -14,29 +14,29 @@ import { PublicCatalog } from "./public-catalog";
 // While PUBLIC_CATALOG_ENABLED is false the signed-out body is gated: there is
 // no public, cross-user catalog, so anonymous visitors are sent to sign in.
 export default async function CatalogPage({
-  searchParams,
+	searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+	searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const params = await searchParams;
-  const session = await getSessionOrNull();
+	const params = await searchParams;
+	const session = await getSessionOrNull();
 
-  if (session) {
-    const handle = await getUserHandle(session.user.id);
-    return (
-      <OwnerCatalog
-        userId={session.user.id}
-        userName={session.user.name}
-        handle={handle}
-        searchParams={params}
-      />
-    );
-  }
+	if (session) {
+		const handle = await getUserHandle(session.user.id);
+		return (
+			<OwnerCatalog
+				userId={session.user.id}
+				userName={session.user.name}
+				handle={handle}
+				searchParams={params}
+			/>
+		);
+	}
 
-  if (!PUBLIC_CATALOG_ENABLED) {
-    redirect("/sign-in?next=/catalog");
-  }
+	if (!PUBLIC_CATALOG_ENABLED) {
+		redirect("/sign-in?next=/catalog");
+	}
 
-  const q = typeof params.q === "string" ? params.q.trim() : "";
-  return <PublicCatalog q={q} />;
+	const q = typeof params.q === "string" ? params.q.trim() : "";
+	return <PublicCatalog q={q} />;
 }

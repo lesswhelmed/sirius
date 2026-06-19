@@ -14,63 +14,69 @@ import { extname } from "node:path";
 import { classifyContent } from "@repo/db";
 import { getClassifyConfig } from "../src/lib/ai-config";
 import {
-  type EmbedPart,
-  embedContent,
-  queryPrefix,
+	type EmbedPart,
+	embedContent,
+	queryPrefix,
 } from "../src/lib/embeddings";
 
 const MIME_BY_EXT: Record<string, string> = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	png: "image/png",
+	webp: "image/webp",
 };
 
 async function main(): Promise<void> {
-  const config = getClassifyConfig();
-  const fixtureText =
-    "Researching pour-over coffee technique: grind size, water temperature, and " +
-    "bloom timing, with photos and notes kept for a brewing log.";
+	const config = getClassifyConfig();
+	const fixtureText =
+		"Researching pour-over coffee technique: grind size, water temperature, and " +
+		"bloom timing, with photos and notes kept for a brewing log.";
 
-  const parts: EmbedPart[] = [{ text: queryPrefix(fixtureText) }];
-  const imagePath = process.argv[2];
-  if (imagePath && existsSync(imagePath)) {
-    const ext = extname(imagePath).slice(1).toLowerCase();
-    const mimeType = MIME_BY_EXT[ext] ?? "image/jpeg";
-    const data = readFileSync(imagePath).toString("base64");
-    parts.unshift({ inlineData: { mimeType, data } });
-    console.log(`(embedding with image fixture: ${imagePath})`);
-  }
+	const parts: EmbedPart[] = [{ text: queryPrefix(fixtureText) }];
+	const imagePath = process.argv[2];
+	if (imagePath && existsSync(imagePath)) {
+		const ext = extname(imagePath).slice(1).toLowerCase();
+		const mimeType = MIME_BY_EXT[ext] ?? "image/jpeg";
+		const data = readFileSync(imagePath).toString("base64");
+		parts.unshift({ inlineData: { mimeType, data } });
+		console.log(`(embedding with image fixture: ${imagePath})`);
+	}
 
-  const contentEmbedding = await embedContent(parts);
+	const contentEmbedding = await embedContent(parts);
 
-  const { categories, bestProject } = await classifyContent({
-    ownerId: "smoke-owner-does-not-exist",
-    contentEmbedding,
-    projectMatchMin: config.projectMatchMin,
-    categoryMatchMin: config.categoryMatchMin,
-  });
+	const { categories, bestProject } = await classifyContent({
+		ownerId: "smoke-owner-does-not-exist",
+		contentEmbedding,
+		projectMatchMin: config.projectMatchMin,
+		categoryMatchMin: config.categoryMatchMin,
+	});
 
-  console.log(`thresholds: project>=${config.projectMatchMin} category>=${config.categoryMatchMin}`);
-  console.log("ranked categories:");
-  for (const c of categories) {
-    console.log(`  ${c.score.toFixed(4)}  ${c.path}`);
-  }
-  console.log(`bestProject: ${bestProject ? `${bestProject.projectId} (${bestProject.score.toFixed(4)})` : "none (would auto-create)"}`);
+	console.log(
+		`thresholds: project>=${config.projectMatchMin} category>=${config.categoryMatchMin}`,
+	);
+	console.log("ranked categories:");
+	for (const c of categories) {
+		console.log(`  ${c.score.toFixed(4)}  ${c.path}`);
+	}
+	console.log(
+		`bestProject: ${bestProject ? `${bestProject.projectId} (${bestProject.score.toFixed(4)})` : "none (would auto-create)"}`,
+	);
 
-  // An empty/sparse dynamic taxonomy is a valid state (no user content ingested
-  // yet), so zero matches is a SKIP rather than a failure. The matcher running
-  // without throwing is the actual thing under test.
-  if (categories.length === 0) {
-    console.log("SKIP: no dynamic categories cleared the threshold (empty/sparse taxonomy?)");
-    return;
-  }
-  console.log(`PASS: ${categories.length} category match(es) above threshold`);
+	// An empty/sparse dynamic taxonomy is a valid state (no user content ingested
+	// yet), so zero matches is a SKIP rather than a failure. The matcher running
+	// without throwing is the actual thing under test.
+	if (categories.length === 0) {
+		console.log(
+			"SKIP: no dynamic categories cleared the threshold (empty/sparse taxonomy?)",
+		);
+		return;
+	}
+	console.log(`PASS: ${categories.length} category match(es) above threshold`);
 }
 
 main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error("[smoke-classify] failed:", err);
-    process.exit(1);
-  });
+	.then(() => process.exit(0))
+	.catch((err) => {
+		console.error("[smoke-classify] failed:", err);
+		process.exit(1);
+	});

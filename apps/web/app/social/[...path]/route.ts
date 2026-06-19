@@ -9,9 +9,9 @@ import { resolveSocialDir, serveMedia } from "../../../lib/media/serve-media";
 // export: it is incompatible with this app's Cache Components config.
 
 export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ path: string[] }> }
+	_request: Request,
+	{ params }: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
-  const { path } = await params;
-  return serveMedia(resolveSocialDir(), path);
+	const { path } = await params;
+	return serveMedia(resolveSocialDir(), path);
 }

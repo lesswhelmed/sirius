@@ -5,35 +5,35 @@ import { requireSession } from "../../../lib/session";
 import { SpaceView } from "./space-view";
 
 export default async function SpacePage() {
-  const session = await requireSession();
-  const rows = await getEmbeddingSceneRows(session.user.id);
-  const scene = buildScene({
-    categories: rows.categories.map((c) => ({
-      path: c.path,
-      name: c.name,
-      parentPath: c.parentPath,
-      depth: c.depth,
-      purpose: c.purpose,
-      embedding: c.embedding,
-      dimensionality: c.dimensionality,
-    })),
-    projects: rows.projects.map((p) => ({
-      projectId: p.projectId,
-      title: p.project.title,
-      embedding: p.embedding,
-      dimensionality: p.dimensionality,
-    })),
-    posts: rows.posts.map((p) => ({
-      postId: p.postId,
-      slug: p.post.slug,
-      title: p.post.title,
-      projectId: p.post.projectId,
-      embedding: p.embedding,
-      dimensionality: p.dimensionality,
-      matches: p.matches,
-    })),
-    modelVersion: rows.categories[0]?.modelVersion ?? "unknown",
-    generatedAt: new Date().toISOString(),
-  });
-  return <SpaceView scene={scene} />;
+	const session = await requireSession();
+	const rows = await getEmbeddingSceneRows(session.user.id);
+	const scene = buildScene({
+		categories: rows.categories.map((c) => ({
+			path: c.path,
+			name: c.name,
+			parentPath: c.parentPath,
+			depth: c.depth,
+			purpose: c.purpose,
+			embedding: c.embedding,
+			dimensionality: c.dimensionality,
+		})),
+		projects: rows.projects.map((p) => ({
+			projectId: p.projectId,
+			title: p.project.title,
+			embedding: p.embedding,
+			dimensionality: p.dimensionality,
+		})),
+		posts: rows.posts.map((p) => ({
+			postId: p.postId,
+			slug: p.post.slug,
+			title: p.post.title,
+			projectId: p.post.projectId,
+			embedding: p.embedding,
+			dimensionality: p.dimensionality,
+			matches: p.matches,
+		})),
+		modelVersion: rows.categories[0]?.modelVersion ?? "unknown",
+		generatedAt: new Date().toISOString(),
+	});
+	return <SpaceView scene={scene} />;
 }

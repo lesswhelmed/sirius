@@ -4,23 +4,23 @@
 import { createHash } from "node:crypto";
 
 export function contentHashForUrls(
-  urls: string[],
-  notes: string,
-  force: boolean
+	urls: string[],
+	notes: string,
+	force: boolean,
 ): string {
-  const sorted = [...urls].map((u) => u.trim()).sort();
-  const base = JSON.stringify({ urls: sorted, notes: notes.trim() });
-  const seed = force ? `${base}|force:${Date.now()}` : base;
-  return createHash("sha256").update(seed).digest("hex");
+	const sorted = [...urls].map((u) => u.trim()).sort();
+	const base = JSON.stringify({ urls: sorted, notes: notes.trim() });
+	const seed = force ? `${base}|force:${Date.now()}` : base;
+	return createHash("sha256").update(seed).digest("hex");
 }
 
 export function contentHashForBytes(
-  bytes: ArrayBuffer | Uint8Array | Buffer
+	bytes: ArrayBuffer | Uint8Array | Buffer,
 ): string {
-  const buf = Buffer.isBuffer(bytes)
-    ? bytes
-    : Buffer.from(bytes as ArrayBuffer);
-  return createHash("sha256").update(buf).digest("hex");
+	const buf = Buffer.isBuffer(bytes)
+		? bytes
+		: Buffer.from(bytes as ArrayBuffer);
+	return createHash("sha256").update(buf).digest("hex");
 }
 
 // Dedup identity for an image batch MEMBER is its slot (batchId, imageIndex),
@@ -34,15 +34,15 @@ export function contentHashForBytes(
 // identically and dedups. Bytes stay in the digest so an accidental same-slot
 // re-post with different content is still treated as the same slot.
 export function contentHashForImage(
-  bytes: ArrayBuffer | Uint8Array | Buffer,
-  batchId: string,
-  imageIndex: number
+	bytes: ArrayBuffer | Uint8Array | Buffer,
+	batchId: string,
+	imageIndex: number,
 ): string {
-  const buf = Buffer.isBuffer(bytes)
-    ? bytes
-    : Buffer.from(bytes as ArrayBuffer);
-  return createHash("sha256")
-    .update(`${batchId}:${imageIndex}:`)
-    .update(buf)
-    .digest("hex");
+	const buf = Buffer.isBuffer(bytes)
+		? bytes
+		: Buffer.from(bytes as ArrayBuffer);
+	return createHash("sha256")
+		.update(`${batchId}:${imageIndex}:`)
+		.update(buf)
+		.digest("hex");
 }

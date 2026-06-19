@@ -284,6 +284,21 @@
         "typescript": "~6.0.3",
       },
     },
+    "packages/research-agent": {
+      "name": "@repo/research-agent",
+      "version": "0.0.0",
+      "dependencies": {
+        "ai": "^6.0.182",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@repo/eslint-config": "*",
+        "@repo/typescript-config": "*",
+        "@types/node": "^22.15.3",
+        "eslint": "^9.39.1",
+        "typescript": "~6.0.3",
+      },
+    },
     "packages/typescript-config": {
       "name": "@repo/typescript-config",
       "version": "0.0.0",
@@ -959,6 +974,8 @@
     "@repo/github-ingest": ["@repo/github-ingest@workspace:packages/github-ingest"],
 
     "@repo/ingest-draft": ["@repo/ingest-draft@workspace:packages/ingest-draft"],
+
+    "@repo/research-agent": ["@repo/research-agent@workspace:packages/research-agent"],
 
     "@repo/typescript-config": ["@repo/typescript-config@workspace:packages/typescript-config"],
 

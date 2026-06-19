@@ -5,8 +5,8 @@ import type { Config } from "drizzle-kit";
 // expo-sqlite migrator consumes (the raw .sql files are inlined by
 // babel-plugin-inline-import at build time — see babel.config.js).
 export default {
-  dialect: "sqlite",
-  driver: "expo",
-  schema: "./src/lib/db/schema.ts",
-  out: "./src/lib/db/migrations",
+	dialect: "sqlite",
+	driver: "expo",
+	schema: "./src/lib/db/schema.ts",
+	out: "./src/lib/db/migrations",
 } satisfies Config;

@@ -1,93 +1,93 @@
 {
-  "$schema": "https://turborepo.dev/schema.json",
-  "ui": "tui",
-  "globalEnv": [
-    "NODE_ENV",
-    "BUILD_DIR",
-    "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY",
-    "DATABASE_URL",
-    "BETTER_AUTH_URL",
-    "INGEST_TOKEN",
-    "REVALIDATE_TOKEN",
-    "WEB_REVALIDATE_URL",
-    "INGEST_STAGING_DIR",
-    "INGEST_POLL_INTERVAL_MS",
-    "INGEST_LEASE_MS",
-    "INGEST_MAX_ATTEMPTS",
-    "INGEST_BATCH_ASSEMBLY_MS",
-    "SIGHT_IMAGE_DIR",
-    "SOCIAL_IMAGE_DIR",
-    "FFMPEG_PATH",
-    "ORIGINALS_DIR",
-    "ARCHIVES_DIR",
-    "ARCHIVE_TTL_HOURS",
-    "ARCHIVE_LINK_BASE_URL",
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "GOOGLE_GENAI_API_KEY",
-    "AI_MODEL",
-    "AI_TEMPERATURE",
-    "EMBEDDING_MODEL",
-    "EMBEDDING_DIMENSIONALITY",
-    "CLASSIFY_ENABLED",
-    "CLASSIFY_PROJECT_MATCH_MIN",
-    "CLASSIFY_CATEGORY_MATCH_MIN",
-    "IMAGE_GEN_ENABLED",
-    "IMAGE_GEN_MODEL",
-    "IMAGE_GEN_BRIEF_MODEL",
-    "IMAGE_GEN_ASPECT_RATIO",
-    "IMAGE_GEN_SIZE",
-    "YOUTUBE_DATA_API_KEY",
-    "YOUTUBE_AI_MODEL",
-    "YOUTUBE_CHUNK_SECONDS",
-    "YOUTUBE_CHUNK_OVERLAP_SECONDS",
-    "YOUTUBE_CHUNK_PARALLEL",
-    "APIFY_TOKEN",
-    "APIFY_API_TOKEN",
-    "INSTAGRAM_ACTOR_ID",
-    "INSTAGRAM_MAX_ITEMS",
-    "INSTAGRAM_WAIT_SECS"
-  ],
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
-    },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
-    "check-types": {
-      "dependsOn": ["^check-types"]
-    },
-    "test": {
-      "dependsOn": ["^test"],
-      "outputs": []
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    },
-    "setup": {
-      "cache": false
-    },
-    "db:generate": {
-      "cache": false,
-      "outputs": ["generated/**"]
-    },
-    "db:migrate:dev": {
-      "cache": false,
-      "persistent": false
-    },
-    "db:migrate:deploy": {
-      "cache": false
-    },
-    "db:push": {
-      "cache": false
-    },
-    "db:studio": {
-      "cache": false,
-      "persistent": true
-    }
-  }
+	"$schema": "https://turborepo.dev/schema.json",
+	"ui": "tui",
+	"globalEnv": [
+		"NODE_ENV",
+		"BUILD_DIR",
+		"NEXT_SERVER_ACTIONS_ENCRYPTION_KEY",
+		"DATABASE_URL",
+		"BETTER_AUTH_URL",
+		"INGEST_TOKEN",
+		"REVALIDATE_TOKEN",
+		"WEB_REVALIDATE_URL",
+		"INGEST_STAGING_DIR",
+		"INGEST_POLL_INTERVAL_MS",
+		"INGEST_LEASE_MS",
+		"INGEST_MAX_ATTEMPTS",
+		"INGEST_BATCH_ASSEMBLY_MS",
+		"SIGHT_IMAGE_DIR",
+		"SOCIAL_IMAGE_DIR",
+		"FFMPEG_PATH",
+		"ORIGINALS_DIR",
+		"ARCHIVES_DIR",
+		"ARCHIVE_TTL_HOURS",
+		"ARCHIVE_LINK_BASE_URL",
+		"GEMINI_API_KEY",
+		"GOOGLE_API_KEY",
+		"GOOGLE_GENAI_API_KEY",
+		"AI_MODEL",
+		"AI_TEMPERATURE",
+		"EMBEDDING_MODEL",
+		"EMBEDDING_DIMENSIONALITY",
+		"CLASSIFY_ENABLED",
+		"CLASSIFY_PROJECT_MATCH_MIN",
+		"CLASSIFY_CATEGORY_MATCH_MIN",
+		"IMAGE_GEN_ENABLED",
+		"IMAGE_GEN_MODEL",
+		"IMAGE_GEN_BRIEF_MODEL",
+		"IMAGE_GEN_ASPECT_RATIO",
+		"IMAGE_GEN_SIZE",
+		"YOUTUBE_DATA_API_KEY",
+		"YOUTUBE_AI_MODEL",
+		"YOUTUBE_CHUNK_SECONDS",
+		"YOUTUBE_CHUNK_OVERLAP_SECONDS",
+		"YOUTUBE_CHUNK_PARALLEL",
+		"APIFY_TOKEN",
+		"APIFY_API_TOKEN",
+		"INSTAGRAM_ACTOR_ID",
+		"INSTAGRAM_MAX_ITEMS",
+		"INSTAGRAM_WAIT_SECS"
+	],
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": [".next/**", "!.next/cache/**"]
+		},
+		"lint": {
+			"dependsOn": ["^lint"]
+		},
+		"check-types": {
+			"dependsOn": ["^check-types"]
+		},
+		"test": {
+			"dependsOn": ["^test"],
+			"outputs": []
+		},
+		"dev": {
+			"cache": false,
+			"persistent": true
+		},
+		"setup": {
+			"cache": false
+		},
+		"db:generate": {
+			"cache": false,
+			"outputs": ["generated/**"]
+		},
+		"db:migrate:dev": {
+			"cache": false,
+			"persistent": false
+		},
+		"db:migrate:deploy": {
+			"cache": false
+		},
+		"db:push": {
+			"cache": false
+		},
+		"db:studio": {
+			"cache": false,
+			"persistent": true
+		}
+	}
 }

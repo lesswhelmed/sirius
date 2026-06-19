@@ -11,31 +11,40 @@ import { rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export function resolveOriginalsDir(): string {
-  const override = process.env.ORIGINALS_DIR?.trim();
-  return override || resolve(process.cwd(), "..", "..", "private-uploads", "originals");
+	const override = process.env.ORIGINALS_DIR?.trim();
+	return (
+		override ||
+		resolve(process.cwd(), "..", "..", "private-uploads", "originals")
+	);
 }
 
 export function resolveArchivesDir(): string {
-  const override = process.env.ARCHIVES_DIR?.trim();
-  return override || resolve(process.cwd(), "..", "..", "private-uploads", "archives");
+	const override = process.env.ARCHIVES_DIR?.trim();
+	return (
+		override ||
+		resolve(process.cwd(), "..", "..", "private-uploads", "archives")
+	);
 }
 
 function ownerBucket(submittedById: string | null): string {
-  return submittedById ?? "_anon";
+	return submittedById ?? "_anon";
 }
 
 // Best-effort removal of a submission's retained dir, called when the owner
 // deletes a post. Kept in sync with the worker's removeRetainedForSubmission.
 export function removeRetainedForSubmission(
-  submittedById: string | null,
-  submissionId: string
+	submittedById: string | null,
+	submissionId: string,
 ): void {
-  try {
-    rmSync(join(resolveOriginalsDir(), ownerBucket(submittedById), submissionId), {
-      recursive: true,
-      force: true,
-    });
-  } catch {
-    // best-effort; a missing dir is fine (pre-feature posts have no originals)
-  }
+	try {
+		rmSync(
+			join(resolveOriginalsDir(), ownerBucket(submittedById), submissionId),
+			{
+				recursive: true,
+				force: true,
+			},
+		);
+	} catch {
+		// best-effort; a missing dir is fine (pre-feature posts have no originals)
+	}
 }

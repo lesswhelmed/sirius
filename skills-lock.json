@@ -1,11 +1,11 @@
 {
-  "version": 1,
-  "skills": {
-    "instagram-downloader": {
-      "source": "serpdownloaders/skills",
-      "sourceType": "github",
-      "skillPath": "skills/instagram-downloader/SKILL.md",
-      "computedHash": "807654ad1e3e63cf731f790c1ac6e92d0a2733438facbb1da6134c93a200c950"
-    }
-  }
+	"version": 1,
+	"skills": {
+		"instagram-downloader": {
+			"source": "serpdownloaders/skills",
+			"sourceType": "github",
+			"skillPath": "skills/instagram-downloader/SKILL.md",
+			"computedHash": "807654ad1e3e63cf731f790c1ac6e92d0a2733438facbb1da6134c93a200c950"
+		}
+	}
 }

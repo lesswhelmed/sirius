@@ -3,10 +3,10 @@
 // env lookups or model names.
 
 export type AIConfig = {
-  apiKey: string;
-  model: string;
-  temperature: number;
-  embeddingModel: string;
+	apiKey: string;
+	model: string;
+	temperature: number;
+	embeddingModel: string;
 };
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
@@ -22,46 +22,46 @@ const DEFAULT_EMBEDDING_DIMENSIONALITY = 768;
 const DEFAULT_YOUTUBE_MODEL = "gemini-2.5-pro";
 
 export function resolveApiKey(): string | undefined {
-  return (
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    process.env.GOOGLE_GENAI_API_KEY
-  );
+	return (
+		process.env.GEMINI_API_KEY ||
+		process.env.GOOGLE_API_KEY ||
+		process.env.GOOGLE_GENAI_API_KEY
+	);
 }
 
 export function requireApiKey(): string {
-  const key = resolveApiKey();
-  if (!key) {
-    throw new Error(
-      "GEMINI_API_KEY environment variable required (see .env.example)"
-    );
-  }
-  return key;
+	const key = resolveApiKey();
+	if (!key) {
+		throw new Error(
+			"GEMINI_API_KEY environment variable required (see .env.example)",
+		);
+	}
+	return key;
 }
 
 export function getAIConfig(apiKeyOverride?: string): AIConfig {
-  const apiKey = apiKeyOverride ?? requireApiKey();
-  return {
-    apiKey,
-    model: process.env.AI_MODEL ?? DEFAULT_MODEL,
-    temperature: Number(process.env.AI_TEMPERATURE ?? DEFAULT_TEMPERATURE),
-    embeddingModel: process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
-  };
+	const apiKey = apiKeyOverride ?? requireApiKey();
+	return {
+		apiKey,
+		model: process.env.AI_MODEL ?? DEFAULT_MODEL,
+		temperature: Number(process.env.AI_TEMPERATURE ?? DEFAULT_TEMPERATURE),
+		embeddingModel: process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
+	};
 }
 
 export function getYouTubeModel(): string {
-  return process.env.YOUTUBE_AI_MODEL ?? DEFAULT_YOUTUBE_MODEL;
+	return process.env.YOUTUBE_AI_MODEL ?? DEFAULT_YOUTUBE_MODEL;
 }
 
 export function getEmbeddingModel(): string {
-  return process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL;
+	return process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL;
 }
 
 export function getEmbeddingDimensionality(): number {
-  const raw = Number(process.env.EMBEDDING_DIMENSIONALITY);
-  return Number.isFinite(raw) && raw > 0
-    ? raw
-    : DEFAULT_EMBEDDING_DIMENSIONALITY;
+	const raw = Number(process.env.EMBEDDING_DIMENSIONALITY);
+	return Number.isFinite(raw) && raw > 0
+		? raw
+		: DEFAULT_EMBEDDING_DIMENSIONALITY;
 }
 
 // Auto-generated cover images. When a drafted post resolves to no imageUrl
@@ -71,11 +71,11 @@ export function getEmbeddingDimensionality(): number {
 // default — see image-generator.ts. Strictly non-fatal: a failure leaves the
 // post imageless rather than failing the write.
 export type ImageGenConfig = {
-  enabled: boolean;
-  model: string;
-  briefModel: string;
-  aspectRatio: string;
-  imageSize: string;
+	enabled: boolean;
+	model: string;
+	briefModel: string;
+	aspectRatio: string;
+	imageSize: string;
 };
 
 // gemini-3-pro-image-preview = Nano Banana Pro; only it supports imageConfig.
@@ -88,21 +88,22 @@ const DEFAULT_IMAGE_ASPECT_RATIO = "3:2";
 const DEFAULT_IMAGE_SIZE = "2K";
 
 export function getImageGenConfig(): ImageGenConfig {
-  return {
-    // Default ON; set IMAGE_GEN_ENABLED=false to disable cover generation.
-    enabled: process.env.IMAGE_GEN_ENABLED !== "false",
-    model: process.env.IMAGE_GEN_MODEL ?? DEFAULT_IMAGE_GEN_MODEL,
-    briefModel: process.env.IMAGE_GEN_BRIEF_MODEL ?? DEFAULT_IMAGE_BRIEF_MODEL,
-    aspectRatio: process.env.IMAGE_GEN_ASPECT_RATIO ?? DEFAULT_IMAGE_ASPECT_RATIO,
-    imageSize: process.env.IMAGE_GEN_SIZE ?? DEFAULT_IMAGE_SIZE,
-  };
+	return {
+		// Default ON; set IMAGE_GEN_ENABLED=false to disable cover generation.
+		enabled: process.env.IMAGE_GEN_ENABLED !== "false",
+		model: process.env.IMAGE_GEN_MODEL ?? DEFAULT_IMAGE_GEN_MODEL,
+		briefModel: process.env.IMAGE_GEN_BRIEF_MODEL ?? DEFAULT_IMAGE_BRIEF_MODEL,
+		aspectRatio:
+			process.env.IMAGE_GEN_ASPECT_RATIO ?? DEFAULT_IMAGE_ASPECT_RATIO,
+		imageSize: process.env.IMAGE_GEN_SIZE ?? DEFAULT_IMAGE_SIZE,
+	};
 }
 
 export type ClassifyConfig = {
-  enabled: boolean;
-  projectMatchMin: number;
-  categoryMatchMin: number;
-  categoryReuseMin: number;
+	enabled: boolean;
+	projectMatchMin: number;
+	categoryMatchMin: number;
+	categoryReuseMin: number;
 };
 
 // Calibrated against gemini-embedding-2 @ 768 dims (see smoke-classify):
@@ -127,28 +128,37 @@ const DEFAULT_CATEGORY_MATCH_MIN = 0.58;
 const DEFAULT_CATEGORY_REUSE_MIN = 0.88;
 
 function envFloat(name: string, fallback: number): number {
-  const raw = Number(process.env[name]);
-  return Number.isFinite(raw) ? raw : fallback;
+	const raw = Number(process.env[name]);
+	return Number.isFinite(raw) ? raw : fallback;
 }
 
 export function getClassifyConfig(): ClassifyConfig {
-  return {
-    // Default ON; set CLASSIFY_ENABLED=false to disable auto-org.
-    enabled: process.env.CLASSIFY_ENABLED !== "false",
-    projectMatchMin: envFloat("CLASSIFY_PROJECT_MATCH_MIN", DEFAULT_PROJECT_MATCH_MIN),
-    categoryMatchMin: envFloat("CLASSIFY_CATEGORY_MATCH_MIN", DEFAULT_CATEGORY_MATCH_MIN),
-    categoryReuseMin: envFloat("CATEGORY_REUSE_MIN", DEFAULT_CATEGORY_REUSE_MIN),
-  };
+	return {
+		// Default ON; set CLASSIFY_ENABLED=false to disable auto-org.
+		enabled: process.env.CLASSIFY_ENABLED !== "false",
+		projectMatchMin: envFloat(
+			"CLASSIFY_PROJECT_MATCH_MIN",
+			DEFAULT_PROJECT_MATCH_MIN,
+		),
+		categoryMatchMin: envFloat(
+			"CLASSIFY_CATEGORY_MATCH_MIN",
+			DEFAULT_CATEGORY_MATCH_MIN,
+		),
+		categoryReuseMin: envFloat(
+			"CATEGORY_REUSE_MIN",
+			DEFAULT_CATEGORY_REUSE_MIN,
+		),
+	};
 }
 
 export {
-  DEFAULT_EMBEDDING_DIMENSIONALITY,
-  DEFAULT_EMBEDDING_MODEL,
-  DEFAULT_IMAGE_ASPECT_RATIO,
-  DEFAULT_IMAGE_BRIEF_MODEL,
-  DEFAULT_IMAGE_GEN_MODEL,
-  DEFAULT_IMAGE_SIZE,
-  DEFAULT_MODEL,
-  DEFAULT_TEMPERATURE,
-  DEFAULT_YOUTUBE_MODEL,
+	DEFAULT_EMBEDDING_DIMENSIONALITY,
+	DEFAULT_EMBEDDING_MODEL,
+	DEFAULT_IMAGE_ASPECT_RATIO,
+	DEFAULT_IMAGE_BRIEF_MODEL,
+	DEFAULT_IMAGE_GEN_MODEL,
+	DEFAULT_IMAGE_SIZE,
+	DEFAULT_MODEL,
+	DEFAULT_TEMPERATURE,
+	DEFAULT_YOUTUBE_MODEL,
 };

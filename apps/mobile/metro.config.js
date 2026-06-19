@@ -8,8 +8,8 @@ const config = getDefaultConfig(projectRoot);
 
 config.watchFolders = [...(config.watchFolders ?? []), workspaceRoot];
 config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, "node_modules"),
-  path.resolve(workspaceRoot, "node_modules"),
+	path.resolve(projectRoot, "node_modules"),
+	path.resolve(workspaceRoot, "node_modules"),
 ];
 
 // Drizzle ships its migrations as `.sql` files that the generated
@@ -17,7 +17,7 @@ config.resolver.nodeModulesPaths = [
 // (babel.config.js) inlines them, but Metro must first treat `.sql` as a
 // source file it will hand to Babel.
 if (!config.resolver.sourceExts.includes("sql")) {
-  config.resolver.sourceExts.push("sql");
+	config.resolver.sourceExts.push("sql");
 }
 
 // three's exports map serves a different build per import kind (`import` →
@@ -44,22 +44,22 @@ const threeEntry = require.resolve("three"); // → build/three.cjs
 // @/lib/db/client AND drizzle-orm/expo-sqlite's useLiveQuery) while leaving the
 // native bundle's import untouched. See src/lib/db/expo-sqlite-web.ts.
 const expoSqliteWebStub = path.resolve(
-  projectRoot,
-  "src/lib/db/expo-sqlite-web.ts"
+	projectRoot,
+	"src/lib/db/expo-sqlite-web.ts",
 );
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === "three") {
-    return { type: "sourceFile", filePath: threeEntry };
-  }
-  if (moduleName === "expo-sqlite" && platform === "web") {
-    return { type: "sourceFile", filePath: expoSqliteWebStub };
-  }
-  return (defaultResolveRequest ?? context.resolveRequest)(
-    context,
-    moduleName,
-    platform
-  );
+	if (moduleName === "three") {
+		return { type: "sourceFile", filePath: threeEntry };
+	}
+	if (moduleName === "expo-sqlite" && platform === "web") {
+		return { type: "sourceFile", filePath: expoSqliteWebStub };
+	}
+	return (defaultResolveRequest ?? context.resolveRequest)(
+		context,
+		moduleName,
+		platform,
+	);
 };
 
 module.exports = config;

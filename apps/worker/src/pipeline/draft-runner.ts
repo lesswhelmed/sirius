@@ -8,67 +8,67 @@
 // nothing in the client envelope can influence it.
 
 import {
-  DraftEnvelopeSchema,
-  SightDraftEnvelopeSchema,
+	DraftEnvelopeSchema,
+	SightDraftEnvelopeSchema,
 } from "@repo/ingest-draft";
 import { toGeminiOutput } from "./gemini-runner";
 import type { GeminiOutput, PipelineInput } from "./types";
 
 export function tryClientDraft(input: PipelineInput): GeminiOutput | null {
-  if (input.kind === "note") {
-    if (input.draft == null) {
-      return null;
-    }
-    const parsed = DraftEnvelopeSchema.safeParse(input.draft);
-    if (!parsed.success) {
-      console.warn(
-        `[draft] invalid note draft envelope, falling back to Gemini: ${parsed.error.message}`
-      );
-      return null;
-    }
-    return toGeminiOutput(parsed.data.post, "BLOG");
-  }
+	if (input.kind === "note") {
+		if (input.draft == null) {
+			return null;
+		}
+		const parsed = DraftEnvelopeSchema.safeParse(input.draft);
+		if (!parsed.success) {
+			console.warn(
+				`[draft] invalid note draft envelope, falling back to Gemini: ${parsed.error.message}`,
+			);
+			return null;
+		}
+		return toGeminiOutput(parsed.data.post, "BLOG");
+	}
 
-  if (input.kind === "image") {
-    if (input.draft == null) {
-      return null;
-    }
-    const parsed = SightDraftEnvelopeSchema.safeParse(input.draft);
-    if (!parsed.success) {
-      console.warn(
-        `[draft] invalid sight draft envelope, falling back to Gemini: ${parsed.error.message}`
-      );
-      return null;
-    }
-    return toGeminiOutput(parsed.data.post, "SIGHT", {
-      excerpt: parsed.data.post.excerpt,
-      imageAlts: parsed.data.post.imageAlts,
-    });
-  }
+	if (input.kind === "image") {
+		if (input.draft == null) {
+			return null;
+		}
+		const parsed = SightDraftEnvelopeSchema.safeParse(input.draft);
+		if (!parsed.success) {
+			console.warn(
+				`[draft] invalid sight draft envelope, falling back to Gemini: ${parsed.error.message}`,
+			);
+			return null;
+		}
+		return toGeminiOutput(parsed.data.post, "SIGHT", {
+			excerpt: parsed.data.post.excerpt,
+			imageAlts: parsed.data.post.imageAlts,
+		});
+	}
 
-  // Single-url submissions may carry a draft: the client fetched the page
-  // summary from /api/app/extract and drafted locally (extraction/generation
-  // split). The web layer already strips drafts from multi-url batches; the
-  // length check here re-asserts it on the stored payload. toGeminiOutput adds
-  // the Source:/YouTubeEmbed line and original_url frontmatter exactly like
-  // the Gemini path; type is still forced to FINDING from the kind.
-  if (input.kind === "url") {
-    if (input.draft == null || input.urls.length !== 1) {
-      return null;
-    }
-    const parsed = DraftEnvelopeSchema.safeParse(input.draft);
-    if (!parsed.success) {
-      console.warn(
-        `[draft] invalid url draft envelope, falling back to Gemini: ${parsed.error.message}`
-      );
-      return null;
-    }
-    return toGeminiOutput(parsed.data.post, "FINDING", {
-      originalUrl: input.urls[0],
-    });
-  }
+	// Single-url submissions may carry a draft: the client fetched the page
+	// summary from /api/app/extract and drafted locally (extraction/generation
+	// split). The web layer already strips drafts from multi-url batches; the
+	// length check here re-asserts it on the stored payload. toGeminiOutput adds
+	// the Source:/YouTubeEmbed line and original_url frontmatter exactly like
+	// the Gemini path; type is still forced to FINDING from the kind.
+	if (input.kind === "url") {
+		if (input.draft == null || input.urls.length !== 1) {
+			return null;
+		}
+		const parsed = DraftEnvelopeSchema.safeParse(input.draft);
+		if (!parsed.success) {
+			console.warn(
+				`[draft] invalid url draft envelope, falling back to Gemini: ${parsed.error.message}`,
+			);
+			return null;
+		}
+		return toGeminiOutput(parsed.data.post, "FINDING", {
+			originalUrl: input.urls[0],
+		});
+	}
 
-  // video / audio / document never carry a usable draft: file kinds upload
-  // bytes precisely because the client did NOT process them locally.
-  return null;
+	// video / audio / document never carry a usable draft: file kinds upload
+	// bytes precisely because the client did NOT process them locally.
+	return null;
 }

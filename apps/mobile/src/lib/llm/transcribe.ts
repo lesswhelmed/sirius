@@ -11,13 +11,13 @@
 // couldn't swallow. Platform files avoid that whole mechanism.
 
 export async function prepareTranscription(): Promise<boolean> {
-  return false;
+	return false;
 }
 
 export async function canTranscribeOnDevice(): Promise<boolean> {
-  return false;
+	return false;
 }
 
 export async function transcribeAudio(_uri: string): Promise<string | null> {
-  return null;
+	return null;
 }

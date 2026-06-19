@@ -16,14 +16,14 @@ import { Client } from "pg";
 export const POSTS_CHANNEL = "posts_channel";
 
 export type PostChangeNotification = {
-  op: "upsert" | "delete";
-  postId: string;
-  slug: string;
-  // The post's owner (submittedById). Null for bearer-token ingest with no
-  // attribution; the SSE route drops those since the mirror is owner-scoped.
-  ownerId: string | null;
-  sourceRecordId: string | null;
-  updatedAt: string; // ISO
+	op: "upsert" | "delete";
+	postId: string;
+	slug: string;
+	// The post's owner (submittedById). Null for bearer-token ingest with no
+	// attribution; the SSE route drops those since the mirror is owner-scoped.
+	ownerId: string | null;
+	sourceRecordId: string | null;
+	updatedAt: string; // ISO
 };
 
 /**
@@ -34,16 +34,16 @@ export type PostChangeNotification = {
  * connection per call is fine.
  */
 export async function notifyPostChanged(
-  payload: PostChangeNotification
+	payload: PostChangeNotification,
 ): Promise<void> {
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
-  try {
-    await client.connect();
-    await client.query("SELECT pg_notify($1, $2)", [
-      POSTS_CHANNEL,
-      JSON.stringify(payload),
-    ]);
-  } finally {
-    await client.end();
-  }
+	const client = new Client({ connectionString: process.env.DATABASE_URL });
+	try {
+		await client.connect();
+		await client.query("SELECT pg_notify($1, $2)", [
+			POSTS_CHANNEL,
+			JSON.stringify(payload),
+		]);
+	} finally {
+		await client.end();
+	}
 }

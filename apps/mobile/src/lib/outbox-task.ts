@@ -22,29 +22,29 @@ import { replayAndPullOnce } from "@/lib/sync/engine";
 export const OUTBOX_TASK = "outbox-flush";
 
 TaskManager.defineTask(OUTBOX_TASK, async () => {
-  try {
-    await replayAndPullOnce();
-    return BackgroundTask.BackgroundTaskResult.Success;
-  } catch {
-    return BackgroundTask.BackgroundTaskResult.Failed;
-  }
+	try {
+		await replayAndPullOnce();
+		return BackgroundTask.BackgroundTaskResult.Success;
+	} catch {
+		return BackgroundTask.BackgroundTaskResult.Failed;
+	}
 });
 
 // Registers the periodic task; idempotent across launches. minimumInterval is
 // in minutes and is a floor, not a schedule.
 export async function registerOutboxTask(): Promise<void> {
-  try {
-    if (await TaskManager.isTaskRegisteredAsync(OUTBOX_TASK)) {
-      return;
-    }
-    await BackgroundTask.registerTaskAsync(OUTBOX_TASK, {
-      minimumInterval: 15,
-    });
-  } catch (err) {
-    // Background flushing is best-effort; never let registration failures
-    // (e.g. unsupported platform/simulator) affect the app.
-    console.warn(
-      `[outbox] background task registration failed: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
+	try {
+		if (await TaskManager.isTaskRegisteredAsync(OUTBOX_TASK)) {
+			return;
+		}
+		await BackgroundTask.registerTaskAsync(OUTBOX_TASK, {
+			minimumInterval: 15,
+		});
+	} catch (err) {
+		// Background flushing is best-effort; never let registration failures
+		// (e.g. unsupported platform/simulator) affect the app.
+		console.warn(
+			`[outbox] background task registration failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
 }

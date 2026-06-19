@@ -1,10 +1,10 @@
 {
-  "extends": "@repo/typescript-config/base.json",
-  "compilerOptions": {
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "noEmit": true
-  },
-  "include": ["src/**/*.ts", "generated/prisma/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+	"extends": "@repo/typescript-config/base.json",
+	"compilerOptions": {
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts", "generated/prisma/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
 }

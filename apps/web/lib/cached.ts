@@ -3,28 +3,29 @@
 // mutation) can invalidate them via revalidateTag. These functions must never
 // touch cookies/headers/searchParams — callers pass plain args, which become
 // the cache key.
-import { cacheLife, cacheTag } from "next/cache";
+
 import {
-  findPostBySlug,
-  listCatalogPosts,
-  listUserStorefront,
-  type PostWithRelations,
-  type StorefrontResult,
+	findPostBySlug,
+	listCatalogPosts,
+	listUserStorefront,
+	type PostWithRelations,
+	type StorefrontResult,
 } from "@repo/db";
+import { cacheLife, cacheTag } from "next/cache";
 
 export async function getCachedPost(
-  slug: string
+	slug: string,
 ): Promise<PostWithRelations | null> {
-  "use cache";
-  // Shared, slug-keyed cache. Freshness is event-driven (worker writes + post
-  // delete revalidate `post-${slug}` with expire:0), so this TTL is only a
-  // backstop. Kept to "minutes" — not "hours" — so any future visibility window
-  // (if canReadPost is widened or a publish/unpublish toggle is ever added and
-  // a revalidate is missed) stays small. Per-request access is still gated by
-  // canReadPost / the PUBLISHED check at every call site.
-  cacheLife("minutes");
-  cacheTag(`post-${slug}`);
-  return findPostBySlug(slug);
+	"use cache";
+	// Shared, slug-keyed cache. Freshness is event-driven (worker writes + post
+	// delete revalidate `post-${slug}` with expire:0), so this TTL is only a
+	// backstop. Kept to "minutes" — not "hours" — so any future visibility window
+	// (if canReadPost is widened or a publish/unpublish toggle is ever added and
+	// a revalidate is missed) stays small. Per-request access is still gated by
+	// canReadPost / the PUBLISHED check at every call site.
+	cacheLife("minutes");
+	cacheTag(`post-${slug}`);
+	return findPostBySlug(slug);
 }
 
 // NOTE: the signed-in owner's private catalog is intentionally NOT cached here.
@@ -33,21 +34,21 @@ export async function getCachedPost(
 // after re-login. owner-catalog.tsx reads it directly via listPostsPage().
 
 export async function getCachedCatalog(
-  q: string | undefined,
-  limit: number
+	q: string | undefined,
+	limit: number,
 ): Promise<Awaited<ReturnType<typeof listCatalogPosts>>> {
-  "use cache";
-  cacheLife("minutes");
-  cacheTag("posts");
-  return listCatalogPosts({ q, limit });
+	"use cache";
+	cacheLife("minutes");
+	cacheTag("posts");
+	return listCatalogPosts({ q, limit });
 }
 
 export async function getCachedStorefront(
-  handle: string,
-  limit: number
+	handle: string,
+	limit: number,
 ): Promise<StorefrontResult> {
-  "use cache";
-  cacheLife("minutes");
-  cacheTag("posts", `storefront-${handle}`);
-  return listUserStorefront(handle, { limit });
+	"use cache";
+	cacheLife("minutes");
+	cacheTag("posts", `storefront-${handle}`);
+	return listUserStorefront(handle, { limit });
 }

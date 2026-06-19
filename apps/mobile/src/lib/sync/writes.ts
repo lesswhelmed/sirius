@@ -9,26 +9,26 @@
 // the server generates the content, so there's nothing to show locally until it
 // syncs. That keeps the local store honest about what it actually knows.
 import type { DraftEnvelope, SightDraftEnvelope } from "@repo/ingest-draft";
-import { randomUUID } from "expo-crypto";
 import { and, eq } from "drizzle-orm";
+import { randomUUID } from "expo-crypto";
 
 import { db } from "@/lib/db/client";
-import { posts, type PostImage } from "@/lib/db/schema";
+import { type PostImage, posts } from "@/lib/db/schema";
 
 export type LocalDraftType = "BLOG" | "FINDING" | "SIGHT";
 
 type CreateLocalDraftInput = {
-  type: LocalDraftType;
-  envelope: DraftEnvelope | SightDraftEnvelope;
-  // For SIGHT: the local image URIs, shown in the optimistic gallery until the
-  // server URLs arrive on reconcile.
-  imageUris?: string[];
+	type: LocalDraftType;
+	envelope: DraftEnvelope | SightDraftEnvelope;
+	// For SIGHT: the local image URIs, shown in the optimistic gallery until the
+	// server URLs arrive on reconcile.
+	imageUris?: string[];
 };
 
 function isSightEnvelope(
-  envelope: DraftEnvelope | SightDraftEnvelope
+	envelope: DraftEnvelope | SightDraftEnvelope,
 ): envelope is SightDraftEnvelope {
-  return "excerpt" in envelope.post;
+	return "excerpt" in envelope.post;
 }
 
 /**
@@ -37,39 +37,39 @@ function isSightEnvelope(
  * so reconciliation can later find and merge this exact row.
  */
 export async function createLocalDraft(
-  input: CreateLocalDraftInput
+	input: CreateLocalDraftInput,
 ): Promise<string> {
-  const localId = randomUUID();
-  const { post } = input.envelope;
-  const now = new Date();
+	const localId = randomUUID();
+	const { post } = input.envelope;
+	const now = new Date();
 
-  const alts = isSightEnvelope(input.envelope)
-    ? input.envelope.post.imageAlts
-    : undefined;
-  const images: PostImage[] | null = input.imageUris?.length
-    ? input.imageUris.map((url, i) => ({ url, alt: alts?.[i] }))
-    : null;
-  const excerpt = isSightEnvelope(input.envelope)
-    ? input.envelope.post.excerpt
-    : null;
+	const alts = isSightEnvelope(input.envelope)
+		? input.envelope.post.imageAlts
+		: undefined;
+	const images: PostImage[] | null = input.imageUris?.length
+		? input.imageUris.map((url, i) => ({ url, alt: alts?.[i] }))
+		: null;
+	const excerpt = isSightEnvelope(input.envelope)
+		? input.envelope.post.excerpt
+		: null;
 
-  await db.insert(posts).values({
-    localId,
-    syncState: "local_draft",
-    title: post.title,
-    body: post.body,
-    excerpt,
-    type: input.type,
-    tags: post.tags,
-    categories: post.categories,
-    imageUrl: images?.[0]?.url ?? null,
-    images,
-    draftEnvelopeJson: JSON.stringify(input.envelope),
-    createdAt: now,
-    updatedAt: now,
-  });
+	await db.insert(posts).values({
+		localId,
+		syncState: "local_draft",
+		title: post.title,
+		body: post.body,
+		excerpt,
+		type: input.type,
+		tags: post.tags,
+		categories: post.categories,
+		imageUrl: images?.[0]?.url ?? null,
+		images,
+		draftEnvelopeJson: JSON.stringify(input.envelope),
+		createdAt: now,
+		updatedAt: now,
+	});
 
-  return localId;
+	return localId;
 }
 
 /**
@@ -79,22 +79,22 @@ export async function createLocalDraft(
  * Guarded so it never clobbers a row that already reconciled to synced.
  */
 export async function linkSubmission(
-  localId: string,
-  submissionId: string
+	localId: string,
+	submissionId: string,
 ): Promise<void> {
-  await db
-    .update(posts)
-    .set({ submissionId, syncState: "pending", updatedAt: new Date() })
-    .where(and(eq(posts.localId, localId), eq(posts.syncState, "local_draft")));
+	await db
+		.update(posts)
+		.set({ submissionId, syncState: "pending", updatedAt: new Date() })
+		.where(and(eq(posts.localId, localId), eq(posts.syncState, "local_draft")));
 }
 
 /** Mark an optimistic row as permanently failed (a 4xx submit). Visible to the
  * user for retry/delete rather than silently dropped. */
 export async function markLocalFailed(localId: string): Promise<void> {
-  await db
-    .update(posts)
-    .set({ syncState: "failed", updatedAt: new Date() })
-    .where(and(eq(posts.localId, localId), eq(posts.syncState, "local_draft")));
+	await db
+		.update(posts)
+		.set({ syncState: "failed", updatedAt: new Date() })
+		.where(and(eq(posts.localId, localId), eq(posts.syncState, "local_draft")));
 }
 
 /** Drop an optimistic row entirely. Used when the on-device draft is abandoned
@@ -102,7 +102,7 @@ export async function markLocalFailed(localId: string): Promise<void> {
  * which then falls back to uploading the audio for server-side drafting). Only
  * deletes a still-optimistic row, never one that already reconciled. */
 export async function deleteLocalDraft(localId: string): Promise<void> {
-  await db
-    .delete(posts)
-    .where(and(eq(posts.localId, localId), eq(posts.syncState, "local_draft")));
+	await db
+		.delete(posts)
+		.where(and(eq(posts.localId, localId), eq(posts.syncState, "local_draft")));
 }

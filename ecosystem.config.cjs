@@ -9,50 +9,48 @@
 
 const path = require("node:path");
 
-const ROOT =
-  process.env.SIRIUS_DEPLOY_ROOT ||
-  path.resolve(__dirname);
+const ROOT = process.env.SIRIUS_DEPLOY_ROOT || path.resolve(__dirname);
 
 module.exports = {
-  apps: [
-    {
-      name: "sirius-web",
-      script: "bun",
-      args: "run start",
-      interpreter: "none",
-      cwd: path.join(ROOT, "apps", "web"),
-      env: {
-        NODE_ENV: "production",
-        // Shared server: copt-dev owns 3000, botanical-bros 6940; sirius = 3003.
-        PORT: 3003,
-        // `next start` resolves distDir from BUILD_DIR (see apps/web/next.config.js),
-        // so it serves the build symlinked at .next-builds/current.
-        BUILD_DIR: ".next-builds/current",
-      },
-      instances: 1,
-      exec_mode: "fork",
-      max_memory_restart: "1024M",
-      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
-      error_file: "/home/deploy/logs/sirius-web-error.log",
-      out_file: "/home/deploy/logs/sirius-web-out.log",
-      merge_logs: true,
-    },
-    {
-      name: "sirius-worker",
-      script: "bun",
-      args: "run start",
-      interpreter: "none",
-      cwd: path.join(ROOT, "apps", "worker"),
-      env: {
-        NODE_ENV: "production",
-      },
-      instances: 1,
-      exec_mode: "fork",
-      max_memory_restart: "1024M",
-      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
-      error_file: "/home/deploy/logs/sirius-worker-error.log",
-      out_file: "/home/deploy/logs/sirius-worker-out.log",
-      merge_logs: true,
-    },
-  ],
+	apps: [
+		{
+			name: "sirius-web",
+			script: "bun",
+			args: "run start",
+			interpreter: "none",
+			cwd: path.join(ROOT, "apps", "web"),
+			env: {
+				NODE_ENV: "production",
+				// Shared server: copt-dev owns 3000, botanical-bros 6940; sirius = 3003.
+				PORT: 3003,
+				// `next start` resolves distDir from BUILD_DIR (see apps/web/next.config.js),
+				// so it serves the build symlinked at .next-builds/current.
+				BUILD_DIR: ".next-builds/current",
+			},
+			instances: 1,
+			exec_mode: "fork",
+			max_memory_restart: "1024M",
+			log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+			error_file: "/home/deploy/logs/sirius-web-error.log",
+			out_file: "/home/deploy/logs/sirius-web-out.log",
+			merge_logs: true,
+		},
+		{
+			name: "sirius-worker",
+			script: "bun",
+			args: "run start",
+			interpreter: "none",
+			cwd: path.join(ROOT, "apps", "worker"),
+			env: {
+				NODE_ENV: "production",
+			},
+			instances: 1,
+			exec_mode: "fork",
+			max_memory_restart: "1024M",
+			log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+			error_file: "/home/deploy/logs/sirius-worker-error.log",
+			out_file: "/home/deploy/logs/sirius-worker-out.log",
+			merge_logs: true,
+		},
+	],
 };

@@ -15,12 +15,16 @@
 // Bash). It returns a structured verdict; the synth agent rolls them up. No agent
 // edits prod-shipped code or re-OTAs — findings become HANDOFFs + beads.
 export const meta = {
-  name: "pass2-offline-sync",
-  description: "Parallel validation of the mobile offline-sync WIP + go/rollback verdict",
-  phases: [
-    { title: "Test", detail: "one agent per independent test dimension" },
-    { title: "Synthesize", detail: "roll up verdicts → rollback recommendation" },
-  ],
+	name: "pass2-offline-sync",
+	description:
+		"Parallel validation of the mobile offline-sync WIP + go/rollback verdict",
+	phases: [
+		{ title: "Test", detail: "one agent per independent test dimension" },
+		{
+			title: "Synthesize",
+			detail: "roll up verdicts → rollback recommendation",
+		},
+	],
 };
 
 const surface = (args && args.surface) === "prod" ? "prod" : "sim";
@@ -47,97 +51,124 @@ real failure, write the root cause into a HANDOFF-<topic>.md at repo root and re
 
 // Independent dimensions — each is blind to the others (true fan-out).
 const DIMENSIONS = [
-  {
-    key: "migration-safety",
-    prompt: `Validate the on-device drizzle migration 0001_tense_the_hood.sql (ALTER TABLE posts
+	{
+		key: "migration-safety",
+		prompt: `Validate the on-device drizzle migration 0001_tense_the_hood.sql (ALTER TABLE posts
 ADD provider_id + content_digest). Cover BOTH paths: (1) fresh install (no prior sirius.db),
 (2) upgrade over a pre-0001 db. Cold-start the app twice each. Assert: no white-screen/crash from
 <DbGate> migrations in _layout.tsx, the posts table ends with provider_id AND content_digest, and
 no "duplicate column" error on re-run (idempotency). This is the #1 prod crash risk — be thorough.`,
-  },
-  {
-    key: "offline-create-reconcile",
-    prompt: `Validate offline create → reconcile. With the device offline (airplane mode), create a
+	},
+	{
+		key: "offline-create-reconcile",
+		prompt: `Validate offline create → reconcile. With the device offline (airplane mode), create a
 text note in the composer; confirm it lands in pending_submissions and renders optimistically via
 useLiveQuery. Relaunch, go online; assert the pending row REPLAYS (transport "ingest") and reconciles
 into the SAME local row (stable localId, keyed by Post.sourceRecordId) flipping syncState→synced and
 clearing draftEnvelopeJson — NOT a duplicate row. (Offline IMAGE drafts are deferred → expected to
 mark failed; don't flag that as a bug.)`,
-  },
-  {
-    key: "realtime-nudge",
-    prompt: `Validate realtime push. Ingest a new note for the same owner from another client (web
+	},
+	{
+		key: "realtime-nudge",
+		prompt: `Validate realtime push. Ingest a new note for the same owner from another client (web
 composer, or POST via scripts/probe-embedding-scene.sh's host). Assert the SSE stream
 /api/app/posts/stream nudges, the mobile pulls the delta /api/app/posts/changes (listPostsChangedSince),
 and the new post appears LIVE in the library via useLiveQuery WITHOUT a manual refresh. Confirm SSE
 carries a nudge, not the post body (Postgres NOTIFY 8KB cap).`,
-  },
-  {
-    key: "owner-scoping",
-    prompt: `Validate the local mirror is OWNER-SCOPED. Assert the SQLite posts table only contains rows
+	},
+	{
+		key: "owner-scoping",
+		prompt: `Validate the local mirror is OWNER-SCOPED. Assert the SQLite posts table only contains rows
 with submittedById == the signed-in user (not the global all-posts the old /api/app/posts returned).
 Inspect via the app UI (library list) and, if reachable, the changes feed payload. Flag any leakage of
 other users' posts into the local store.`,
-  },
-  {
-    key: "no-regression",
-    prompt: `Validate NO regression in the surfaces still on React Query (NOT SQLite): the Tree tab and
+	},
+	{
+		key: "no-regression",
+		prompt: `Validate NO regression in the surfaces still on React Query (NOT SQLite): the Tree tab and
 the Queue/server-list. Run apps/mobile/scripts/test-tree-categories.sh and assert the Tree category
 outline renders (the shipped parentPath fix) and the Queue still loads. Confirm these did not get
 accidentally wired to the local store.`,
-  },
+	},
 ];
 
 phase("Test");
 const verdicts = await parallel(
-  DIMENSIONS.map((d) => () =>
-    agent(`${COMMON}\nDIMENSION: ${d.key}\n${d.prompt}`, {
-      label: `test:${d.key}`,
-      phase: "Test",
-      schema: {
-        type: "object",
-        additionalProperties: false,
-        required: ["dimension", "surface", "passed", "severity", "evidence"],
-        properties: {
-          dimension: { type: "string" },
-          surface: { type: "string", enum: ["sim", "prod", "blocked"] },
-          passed: { type: "boolean" },
-          severity: { type: "string", enum: ["none", "low", "medium", "high", "crash"] },
-          evidence: { type: "string", description: "concrete: snapshot/screenshot path or log line" },
-          rootCause: { type: "string" },
-          handoff: { type: "string", description: "HANDOFF file path if one was written" },
-        },
-      },
-    }).then((v) => ({ ...d, ...(v || { dimension: d.key, surface: "blocked", passed: false, severity: "high", evidence: "agent returned null" }) }))
-  )
+	DIMENSIONS.map(
+		(d) => () =>
+			agent(`${COMMON}\nDIMENSION: ${d.key}\n${d.prompt}`, {
+				label: `test:${d.key}`,
+				phase: "Test",
+				schema: {
+					type: "object",
+					additionalProperties: false,
+					required: ["dimension", "surface", "passed", "severity", "evidence"],
+					properties: {
+						dimension: { type: "string" },
+						surface: { type: "string", enum: ["sim", "prod", "blocked"] },
+						passed: { type: "boolean" },
+						severity: {
+							type: "string",
+							enum: ["none", "low", "medium", "high", "crash"],
+						},
+						evidence: {
+							type: "string",
+							description: "concrete: snapshot/screenshot path or log line",
+						},
+						rootCause: { type: "string" },
+						handoff: {
+							type: "string",
+							description: "HANDOFF file path if one was written",
+						},
+					},
+				},
+			}).then((v) => ({
+				...d,
+				...(v || {
+					dimension: d.key,
+					surface: "blocked",
+					passed: false,
+					severity: "high",
+					evidence: "agent returned null",
+				}),
+			})),
+	),
 );
 
 phase("Synthesize");
 const summary = await agent(
-  `${COMMON}\nYou are the synthesis judge. Here are the Pass-2 dimension verdicts as JSON:\n` +
-    JSON.stringify(verdicts, null, 2) +
-    `\nProduce a crisp rollup: which dimensions passed, which failed (with severity), whether any
+	`${COMMON}\nYou are the synthesis judge. Here are the Pass-2 dimension verdicts as JSON:\n` +
+		JSON.stringify(verdicts, null, 2) +
+		`\nProduce a crisp rollup: which dimensions passed, which failed (with severity), whether any
 crash/high-severity issue warrants an immediate EAS rollback of the production OTA (iOS update group
 c67c3dff-af3b-4a71-845a-bbe10ac8616d — rollback = republish the prior good group, ASK the owner first),
 and the ordered next actions. Be decisive: rollback = yes only if a crash or data-loss/dup-row issue is
 confirmed on a real device.`,
-  {
-    label: "synthesize:verdict",
-    phase: "Synthesize",
-    schema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["passedCount", "failedCount", "rollbackRecommended", "rollbackReason", "nextActions"],
-      properties: {
-        passedCount: { type: "number" },
-        failedCount: { type: "number" },
-        rollbackRecommended: { type: "boolean" },
-        rollbackReason: { type: "string" },
-        nextActions: { type: "array", items: { type: "string" } },
-      },
-    },
-  }
+	{
+		label: "synthesize:verdict",
+		phase: "Synthesize",
+		schema: {
+			type: "object",
+			additionalProperties: false,
+			required: [
+				"passedCount",
+				"failedCount",
+				"rollbackRecommended",
+				"rollbackReason",
+				"nextActions",
+			],
+			properties: {
+				passedCount: { type: "number" },
+				failedCount: { type: "number" },
+				rollbackRecommended: { type: "boolean" },
+				rollbackReason: { type: "string" },
+				nextActions: { type: "array", items: { type: "string" } },
+			},
+		},
+	},
 );
 
-log(`Pass-2 complete: ${summary?.passedCount ?? "?"} passed, ${summary?.failedCount ?? "?"} failed; rollback=${summary?.rollbackRecommended}`);
+log(
+	`Pass-2 complete: ${summary?.passedCount ?? "?"} passed, ${summary?.failedCount ?? "?"} failed; rollback=${summary?.rollbackRecommended}`,
+);
 return { surface, verdicts, summary };

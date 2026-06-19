@@ -5,19 +5,19 @@ import { createArchiveRequest, listArchiveRequests } from "@repo/db";
 import { getSessionOrNull } from "../../../../lib/session";
 
 export async function POST() {
-  const session = await getSessionOrNull();
-  if (!session) {
-    return Response.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const req = await createArchiveRequest(session.user.id);
-  return Response.json({ id: req.id, status: req.status }, { status: 202 });
+	const session = await getSessionOrNull();
+	if (!session) {
+		return Response.json({ error: "unauthorized" }, { status: 401 });
+	}
+	const req = await createArchiveRequest(session.user.id);
+	return Response.json({ id: req.id, status: req.status }, { status: 202 });
 }
 
 export async function GET() {
-  const session = await getSessionOrNull();
-  if (!session) {
-    return Response.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const requests = await listArchiveRequests(session.user.id);
-  return Response.json({ requests });
+	const session = await getSessionOrNull();
+	if (!session) {
+		return Response.json({ error: "unauthorized" }, { status: 401 });
+	}
+	const requests = await listArchiveRequests(session.user.id);
+	return Response.json({ requests });
 }

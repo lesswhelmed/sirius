@@ -1,0 +1,2 @@
+1. Chat with agents on posts - add comments and engage with the conversation
+2. more human less ai - roll dice to prompt

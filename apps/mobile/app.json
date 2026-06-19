@@ -1,98 +1,93 @@
 {
-  "expo": {
-    "name": "Sirius",
-    "slug": "sirius",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "siriusapp",
-    "userInterfaceStyle": "automatic",
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/c14faf73-b1f9-425e-b66b-974ac26b827c"
-    },
-    "ios": {
-      "bundleIdentifier": "dev.copt.sirius",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      },
-      "entitlements": {
-        "com.apple.developer.kernel.increased-memory-limit": true,
-        "com.apple.developer.kernel.extended-virtual-addressing": true
-      }
-    },
-    "android": {
-      "package": "dev.copt.sirius",
-      "adaptiveIcon": {
-        "backgroundColor": "#0A1F44",
-        "foregroundImage": "./assets/images/android-icon-foreground.png"
-      },
-      "predictiveBackGestureEnabled": false
-    },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
-    },
-    "plugins": [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "backgroundColor": "#0A1F44",
-          "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
-          }
-        }
-      ],
-      [
-        "expo-share-intent",
-        {
-          "iosActivationRules": {
-            "NSExtensionActivationSupportsText": true,
-            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
-            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
-            "NSExtensionActivationSupportsImageWithMaxCount": 8
-          },
-          "iosShareExtensionName": "Share to Sirius",
-          "androidIntentFilters": [
-            "text/*",
-            "image/*"
-          ],
-          "androidMultiIntentFilters": [
-            "image/*"
-          ]
-        }
-      ],
-      "expo-image",
-      "expo-secure-store",
-      [
-        "expo-local-authentication",
-        {
-          "faceIDPermission": "Allow Sirius to use Face ID to sign you in securely."
-        }
-      ],
-      "expo-web-browser",
-      [
-        "llama.rn",
-        {
-          "enableOpenCLAndHexagon": false
-        }
-      ],
-      "expo-background-task",
-      "expo-sqlite"
-    ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "c14faf73-b1f9-425e-b66b-974ac26b827c"
-      }
-    },
-    "owner": "minasaleeb"
-  }
+	"expo": {
+		"name": "Sirius",
+		"slug": "sirius",
+		"version": "1.0.0",
+		"orientation": "portrait",
+		"icon": "./assets/images/icon.png",
+		"scheme": "siriusapp",
+		"userInterfaceStyle": "automatic",
+		"runtimeVersion": {
+			"policy": "fingerprint"
+		},
+		"updates": {
+			"url": "https://u.expo.dev/c14faf73-b1f9-425e-b66b-974ac26b827c"
+		},
+		"ios": {
+			"bundleIdentifier": "dev.copt.sirius",
+			"infoPlist": {
+				"ITSAppUsesNonExemptEncryption": false
+			},
+			"entitlements": {
+				"com.apple.developer.kernel.increased-memory-limit": true,
+				"com.apple.developer.kernel.extended-virtual-addressing": true
+			}
+		},
+		"android": {
+			"package": "dev.copt.sirius",
+			"adaptiveIcon": {
+				"backgroundColor": "#0A1F44",
+				"foregroundImage": "./assets/images/android-icon-foreground.png"
+			},
+			"predictiveBackGestureEnabled": false
+		},
+		"web": {
+			"output": "static",
+			"favicon": "./assets/images/favicon.png"
+		},
+		"plugins": [
+			"expo-router",
+			[
+				"expo-splash-screen",
+				{
+					"backgroundColor": "#0A1F44",
+					"android": {
+						"image": "./assets/images/splash-icon.png",
+						"imageWidth": 76
+					}
+				}
+			],
+			[
+				"expo-share-intent",
+				{
+					"iosActivationRules": {
+						"NSExtensionActivationSupportsText": true,
+						"NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+						"NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+						"NSExtensionActivationSupportsImageWithMaxCount": 8
+					},
+					"iosShareExtensionName": "Share to Sirius",
+					"androidIntentFilters": ["text/*", "image/*"],
+					"androidMultiIntentFilters": ["image/*"]
+				}
+			],
+			"expo-image",
+			"expo-secure-store",
+			[
+				"expo-local-authentication",
+				{
+					"faceIDPermission": "Allow Sirius to use Face ID to sign you in securely."
+				}
+			],
+			"expo-web-browser",
+			[
+				"llama.rn",
+				{
+					"enableOpenCLAndHexagon": false
+				}
+			],
+			"expo-background-task",
+			"expo-sqlite"
+		],
+		"experiments": {
+			"typedRoutes": true,
+			"reactCompiler": true
+		},
+		"extra": {
+			"eas": {
+				"projectId": "c14faf73-b1f9-425e-b66b-974ac26b827c"
+			}
+		},
+		"owner": "minasaleeb"
+	}
 }

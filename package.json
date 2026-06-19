@@ -1,78 +1,78 @@
 {
-  "name": "sirius-2-simple",
-  "private": true,
-  "scripts": {
-    "//postinstall": "Belt-and-suspenders for the on-device AI native artifacts: trustedDependencies lets bun run llama.rn's own postinstall, but bun SKIPS it when the package is restored from cache or forced via overrides (the exact case that left 0.12.4 with no xcframework). Running the downloader from the ROOT package (not gated like deps) guarantees it fires every install; it's idempotent + cache-backed (~instant when present). verify:native-ai still hard-asserts the result, so a failure here fails the build loudly. The download script resolves its own package root via __dirname, so cwd doesn't matter.",
-    "postinstall": "[ -f node_modules/llama.rn/install/download-native-artifacts.js ] && node node_modules/llama.rn/install/download-native-artifacts.js || true",
-    "build": "turbo run build",
-    "mobile:run:ios": "bun --cwd=apps/mobile ios",
-    "mobile:build:ios": "bun --cwd=apps/mobile run build:prod:ios",
-    "mobile:build:android": "bun --cwd=apps/mobile run build:prod:android",
-    "mobile:build:all": "bun --cwd=apps/mobile run build:prod",
-    "mobile:build:preview": "bun --cwd=apps/mobile run build:preview",
-    "mobile:build:preview:ios": "bun --cwd=apps/mobile run build:preview:ios",
-    "mobile:build:preview:android": "bun --cwd=apps/mobile run build:preview:android",
-    "mobile:build:dev": "bun --cwd=apps/mobile run build:dev",
-    "mobile:build:dev:ios": "bun --cwd=apps/mobile run build:dev:ios",
-    "mobile:build:dev:android": "bun --cwd=apps/mobile run build:dev:android",
-    "mobile:submit:ios": "bun --cwd=apps/mobile run submit:prod:ios",
-    "mobile:submit:android": "bun --cwd=apps/mobile run submit:prod:android",
-    "dev": "bash scripts/dev.sh",
-    "dev:stack": "turbo run dev",
-    "dev:proxy": "bash scripts/setup-dev-proxy.sh",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types",
-    "db:generate": "turbo run db:generate --filter=@repo/db",
-    "db:migrate:dev": "turbo run db:migrate:dev --filter=@repo/db",
-    "db:migrate:deploy": "turbo run db:migrate:deploy --filter=@repo/db",
-    "db:migrate:reset": "bun --cwd=packages/db run db:migrate:reset",
-    "db:push": "turbo run db:push --filter=@repo/db",
-    "db:studio": "turbo run db:studio --filter=@repo/db",
-    "mobile:dev": "turbo run dev --filter=mobile",
-    "notmobile:dev": "turbo run dev --filter=!mobile",
-    "worker:dev": "turbo run dev --filter=worker",
-    "worker:setup": "turbo run setup --filter=worker",
-    "worker:backfill:covers": "bun --cwd=apps/worker run backfill:covers",
-    "scene:backfill": "bun --cwd=apps/worker run scene:backfill",
-    "env:production": "bun run scripts/create-production-env.ts",
-    "auth:reset-password": "bun run scripts/reset-user-password.ts",
-    "reviewer:seed": "bun run scripts/create-reviewer-account.ts",
-    "deploy": "bash scripts/deploy-remote.sh"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.1",
-    "expo-mcp": "~0.2.1",
-    "prettier": "^3.8.4",
-    "tailwindcss": "^4",
-    "turbo": "^2.9.18",
-    "typescript": "~6.0.3"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "packageManager": "bun@1.3.14",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "dependencies": {
-    "@react-native-ai/apple": "^0.12.0",
-    "better-auth": "^1.6.18"
-  },
-  "//trustedDependencies": "llama.rn 0.12.4 fetches its native artifacts (the rnllama xcframework / Android libs) via a postinstall (install/download-native-artifacts.js); bun blocks postinstalls by default. Without this, EVERY install — local AND EAS cloud — produces a build with no native llama, breaking on-device AI. Keep it trusted.",
-  "trustedDependencies": [
-    "llama.rn"
-  ],
-  "overrides": {
-    "llama.rn": "0.12.4",
-    "kysely": "0.28.17",
-    "expo": "56.0.11",
-    "expo-asset": "56.0.17",
-    "expo-constants": "56.0.18",
-    "expo-linking": "56.0.14",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
-  }
+	"name": "sirius-2-simple",
+	"private": true,
+	"scripts": {
+		"//postinstall": "Belt-and-suspenders for the on-device AI native artifacts: trustedDependencies lets bun run llama.rn's own postinstall, but bun SKIPS it when the package is restored from cache or forced via overrides (the exact case that left 0.12.4 with no xcframework). Running the downloader from the ROOT package (not gated like deps) guarantees it fires every install; it's idempotent + cache-backed (~instant when present). verify:native-ai still hard-asserts the result, so a failure here fails the build loudly. The download script resolves its own package root via __dirname, so cwd doesn't matter.",
+		"postinstall": "[ -f node_modules/llama.rn/install/download-native-artifacts.js ] && node node_modules/llama.rn/install/download-native-artifacts.js || true",
+		"build": "turbo run build",
+		"mobile:run:ios": "bun --cwd=apps/mobile ios",
+		"mobile:build:ios": "bun --cwd=apps/mobile run build:prod:ios",
+		"mobile:build:android": "bun --cwd=apps/mobile run build:prod:android",
+		"mobile:build:all": "bun --cwd=apps/mobile run build:prod",
+		"mobile:build:preview": "bun --cwd=apps/mobile run build:preview",
+		"mobile:build:preview:ios": "bun --cwd=apps/mobile run build:preview:ios",
+		"mobile:build:preview:android": "bun --cwd=apps/mobile run build:preview:android",
+		"mobile:build:dev": "bun --cwd=apps/mobile run build:dev",
+		"mobile:build:dev:ios": "bun --cwd=apps/mobile run build:dev:ios",
+		"mobile:build:dev:android": "bun --cwd=apps/mobile run build:dev:android",
+		"mobile:submit:ios": "bun --cwd=apps/mobile run submit:prod:ios",
+		"mobile:submit:android": "bun --cwd=apps/mobile run submit:prod:android",
+		"dev": "bash scripts/dev.sh",
+		"dev:stack": "turbo run dev",
+		"dev:proxy": "bash scripts/setup-dev-proxy.sh",
+		"lint": "turbo run lint",
+		"test": "turbo run test",
+		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
+		"check-types": "turbo run check-types",
+		"db:generate": "turbo run db:generate --filter=@repo/db",
+		"db:migrate:dev": "turbo run db:migrate:dev --filter=@repo/db",
+		"db:migrate:deploy": "turbo run db:migrate:deploy --filter=@repo/db",
+		"db:migrate:reset": "bun --cwd=packages/db run db:migrate:reset",
+		"db:push": "turbo run db:push --filter=@repo/db",
+		"db:studio": "turbo run db:studio --filter=@repo/db",
+		"mobile:dev": "turbo run dev --filter=mobile",
+		"notmobile:dev": "turbo run dev --filter=!mobile",
+		"worker:dev": "turbo run dev --filter=worker",
+		"worker:setup": "turbo run setup --filter=worker",
+		"worker:backfill:covers": "bun --cwd=apps/worker run backfill:covers",
+		"scene:backfill": "bun --cwd=apps/worker run scene:backfill",
+		"env:production": "bun run scripts/create-production-env.ts",
+		"auth:reset-password": "bun run scripts/reset-user-password.ts",
+		"reviewer:seed": "bun run scripts/create-reviewer-account.ts",
+		"deploy": "bash scripts/deploy-remote.sh"
+	},
+	"devDependencies": {
+		"@tailwindcss/postcss": "^4.3.1",
+		"expo-mcp": "~0.2.1",
+		"prettier": "^3.8.4",
+		"tailwindcss": "^4",
+		"turbo": "^2.9.18",
+		"typescript": "~6.0.3"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"packageManager": "bun@1.3.14",
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"dependencies": {
+		"@react-native-ai/apple": "^0.12.0",
+		"better-auth": "^1.6.18"
+	},
+	"//trustedDependencies": "llama.rn 0.12.4 fetches its native artifacts (the rnllama xcframework / Android libs) via a postinstall (install/download-native-artifacts.js); bun blocks postinstalls by default. Without this, EVERY install — local AND EAS cloud — produces a build with no native llama, breaking on-device AI. Keep it trusted.",
+	"trustedDependencies": [
+		"llama.rn"
+	],
+	"overrides": {
+		"llama.rn": "0.12.4",
+		"kysely": "0.28.17",
+		"expo": "56.0.11",
+		"expo-asset": "56.0.17",
+		"expo-constants": "56.0.18",
+		"expo-linking": "56.0.14",
+		"react": "19.2.3",
+		"react-dom": "19.2.3"
+	}
 }

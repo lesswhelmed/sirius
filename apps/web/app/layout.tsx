@@ -1,59 +1,59 @@
 import type { Metadata } from "next";
-import { Instrument_Serif, Newsreader, JetBrains_Mono } from "next/font/google";
+import { Instrument_Serif, JetBrains_Mono, Newsreader } from "next/font/google";
 import "./tailwind.css";
+import { SITE_NAME, SITE_URL } from "../lib/site";
 import { ThemeProvider } from "./_theme/theme-provider";
 import { ThemeScript } from "./_theme/theme-script";
-import { SITE_NAME, SITE_URL } from "../lib/site";
 
 const instrumentSerif = Instrument_Serif({
-  weight: "400",
-  style: ["normal", "italic"],
-  subsets: ["latin"],
-  variable: "--font-instrument-serif",
-  display: "swap",
+	weight: "400",
+	style: ["normal", "italic"],
+	subsets: ["latin"],
+	variable: "--font-instrument-serif",
+	display: "swap",
 });
 
 const newsreader = Newsreader({
-  weight: ["300", "400", "500", "600"],
-  style: ["normal", "italic"],
-  subsets: ["latin"],
-  variable: "--font-newsreader",
-  display: "swap",
+	weight: ["300", "400", "500", "600"],
+	style: ["normal", "italic"],
+	subsets: ["latin"],
+	variable: "--font-newsreader",
+	display: "swap",
 });
 
 const jetbrainsMono = JetBrains_Mono({
-  weight: ["400", "500"],
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
-  display: "swap",
+	weight: ["400", "500"],
+	subsets: ["latin"],
+	variable: "--font-geist-mono",
+	display: "swap",
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
-  title: `${SITE_NAME} — Capture anything. Keep what matters.`,
-  description:
-    "Sirius turns the things you capture — links, photos, notes, repos, videos, documents, even voice memos — into clean, organized posts, drafted for you by AI. Keep them private or publish to your catalog.",
-  applicationName: SITE_NAME,
+	metadataBase: new URL(SITE_URL),
+	title: `${SITE_NAME} — Capture anything. Keep what matters.`,
+	description:
+		"Sirius turns the things you capture — links, photos, notes, repos, videos, documents, even voice memos — into clean, organized posts, drafted for you by AI. Keep them private or publish to your catalog.",
+	applicationName: SITE_NAME,
 };
 
 export default function RootLayout({
-  children,
+	children,
 }: Readonly<{
-  children: React.ReactNode;
+	children: React.ReactNode;
 }>) {
-  return (
-    // data-theme defaults to dark for SSR; ThemeScript reconciles it with the
-    // stored preference before paint. suppressHydrationWarning covers that
-    // pre-hydration attribute mutation.
-    <html lang="en" data-theme="dark" suppressHydrationWarning>
-      <head>
-        <ThemeScript />
-      </head>
-      <body
-        className={`${instrumentSerif.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
-      >
-        <ThemeProvider>{children}</ThemeProvider>
-      </body>
-    </html>
-  );
+	return (
+		// data-theme defaults to dark for SSR; ThemeScript reconciles it with the
+		// stored preference before paint. suppressHydrationWarning covers that
+		// pre-hydration attribute mutation.
+		<html lang="en" data-theme="dark" suppressHydrationWarning>
+			<head>
+				<ThemeScript />
+			</head>
+			<body
+				className={`${instrumentSerif.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
+			>
+				<ThemeProvider>{children}</ThemeProvider>
+			</body>
+		</html>
+	);
 }

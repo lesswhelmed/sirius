@@ -1,29 +1,29 @@
 {
-  "name": "@repo/embedding-scene",
-  "version": "0.0.0",
-  "private": true,
-  "exports": {
-    "./react/*": "./src/react/*.tsx",
-    "./*": "./src/*.ts"
-  },
-  "scripts": {
-    "lint": "eslint . --max-warnings 0",
-    "check-types": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@react-three/fiber": "^9.3.0",
-    "@repo/eslint-config": "*",
-    "@repo/typescript-config": "*",
-    "@types/node": "^22.15.3",
-    "@types/react": "~19.2.14",
-    "@types/three": "^0.182.0",
-    "eslint": "^9.39.1",
-    "three": "^0.182.0",
-    "typescript": "~6.0.3"
-  },
-  "peerDependencies": {
-    "@react-three/fiber": "^9.0.0",
-    "react": "^19.2.0",
-    "three": "^0.181.0 || ^0.182.0"
-  }
+	"name": "@repo/embedding-scene",
+	"version": "0.0.0",
+	"private": true,
+	"exports": {
+		"./react/*": "./src/react/*.tsx",
+		"./*": "./src/*.ts"
+	},
+	"scripts": {
+		"lint": "eslint . --max-warnings 0",
+		"check-types": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@react-three/fiber": "^9.3.0",
+		"@repo/eslint-config": "*",
+		"@repo/typescript-config": "*",
+		"@types/node": "^22.15.3",
+		"@types/react": "~19.2.14",
+		"@types/three": "^0.182.0",
+		"eslint": "^9.39.1",
+		"three": "^0.182.0",
+		"typescript": "~6.0.3"
+	},
+	"peerDependencies": {
+		"@react-three/fiber": "^9.0.0",
+		"react": "^19.2.0",
+		"three": "^0.181.0 || ^0.182.0"
+	}
 }

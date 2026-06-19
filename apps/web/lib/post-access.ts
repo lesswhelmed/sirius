@@ -18,26 +18,26 @@ import type { PostStatus } from "@repo/db";
 // (PostWithRelations) and getCachedPost satisfy it structurally, so callers pass
 // the post they already loaded — no extra query.
 export type ReadableSubject = {
-  submittedById: string | null;
-  status: PostStatus;
+	submittedById: string | null;
+	status: PostStatus;
 };
 
 // `viewerId` is the current session user id, or null when signed out.
 export async function canReadPost(
-  post: ReadableSubject,
-  viewerId: string | null
+	post: ReadableSubject,
+	viewerId: string | null,
 ): Promise<boolean> {
-  // --- current rule: owner-only ---------------------------------------------
-  if (viewerId != null && post.submittedById === viewerId) {
-    return true;
-  }
+	// --- current rule: owner-only ---------------------------------------------
+	if (viewerId != null && post.submittedById === viewerId) {
+		return true;
+	}
 
-  // --- future extension points (intentionally empty today) ------------------
-  // When sharing arrives, add the checks here and nowhere else, e.g.:
-  //   if (await isPostSharedWith(post, viewerId)) return true;
-  //   if (post.status === PostStatus.PUBLISHED && allowPublicReadInCockpit) ...
-  // Published posts already have a public home at /listing/[slug]; the cockpit
-  // stays owner-only until a deliberate sharing feature opens it up.
+	// --- future extension points (intentionally empty today) ------------------
+	// When sharing arrives, add the checks here and nowhere else, e.g.:
+	//   if (await isPostSharedWith(post, viewerId)) return true;
+	//   if (post.status === PostStatus.PUBLISHED && allowPublicReadInCockpit) ...
+	// Published posts already have a public home at /listing/[slug]; the cockpit
+	// stays owner-only until a deliberate sharing feature opens it up.
 
-  return false;
+	return false;
 }

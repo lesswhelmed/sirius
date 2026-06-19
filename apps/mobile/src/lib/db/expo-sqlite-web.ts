@@ -26,22 +26,22 @@ import type { SQLiteDatabase } from "expo-sqlite";
 // as throwing/no-op shims so any accidental web query fails loudly with a clear
 // message rather than a cryptic "undefined is not a function".
 const notAvailable = (): never => {
-  throw new Error(
-    "[db] The on-device SQLite store is native-only; it is not available on web."
-  );
+	throw new Error(
+		"[db] The on-device SQLite store is native-only; it is not available on web.",
+	);
 };
 
 export function openDatabaseSync(): SQLiteDatabase {
-  return new Proxy(
-    {},
-    {
-      get: () => notAvailable,
-    }
-  ) as unknown as SQLiteDatabase;
+	return new Proxy(
+		{},
+		{
+			get: () => notAvailable,
+		},
+	) as unknown as SQLiteDatabase;
 }
 
 // useLiveQuery subscribes to change notifications via this; on web there is no
 // database, so return an inert subscription whose remove() is a no-op.
 export function addDatabaseChangeListener(): { remove: () => void } {
-  return { remove: () => {} };
+	return { remove: () => {} };
 }
