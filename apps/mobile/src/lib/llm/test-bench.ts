@@ -16,14 +16,9 @@ import { db } from "@/lib/db/client";
 import { posts as postsTable } from "@/lib/db/schema";
 import type { ScoredPost } from "@repo/research-agent";
 
-import {
-  answerFromPosts,
-  askMyPosts,
-  type AskPhase,
-  searchMyPosts,
-} from "@/lib/research/ask";
+import { askMyPosts, type AskPhase } from "@/lib/research/ask";
 
-import { canDraftOnDevice, draftNotePost, draftUrlPost } from "./curate";
+import { draftNotePost, draftUrlPost } from "./curate";
 import { isModelReady } from "./engine";
 import { DEFAULT_TEXT_MODEL_ID } from "./models";
 import { getLlmSettings } from "./settings";
@@ -214,19 +209,7 @@ export async function runDraftFixture(
   return result;
 }
 
-// ── Post search bench ──────────────────────────────────────────────────────
-// Blackbox test of the on-device "ask my posts" retrieval against the user's
-// REAL synced posts (no fixtures): build the index, then for a spread of sample
-// posts confirm that querying each post's own title brings that post back near
-// the top — a self-retrieval check that exercises the whole chain (embed → store
-// → cosine rank → slug links). When the chat model is also ready it adds a
-// best-effort grounded-answer check. Like the draft bench, it logs one
-// structured [llm-test] line for host-side / agent assertions.
-export const POST_SEARCH_FIXTURE = {
-  id: "post-search",
-  label: "Post search (your data)",
-};
-
+// ── Ask-my-posts shared helpers ─────────────────────────────────────────────
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
@@ -238,148 +221,15 @@ function pickSpread<T>(items: T[], count: number): T[] {
   return Array.from({ length: count }, (_, i) => items[Math.floor(i * step)]!);
 }
 
-export async function runPostSearchTest(): Promise<FixtureResult> {
-  const start = Date.now();
-  const checks: DraftCheck[] = [];
-  const finish = (ok: boolean): FixtureResult => {
-    const result: FixtureResult = {
-      id: POST_SEARCH_FIXTURE.id,
-      ok,
-      ms: Date.now() - start,
-      draft: null,
-      checks,
-    };
-    console.log(
-      `[llm-test] ${JSON.stringify({
-        id: result.id,
-        ok: result.ok,
-        ms: result.ms,
-        checks: checks.map((c) => ({ n: c.name, p: c.pass, d: c.detail })),
-      })}`,
-    );
-    return result;
-  };
-
-  // 1. Real synced posts to test against. Documents are embedded server-side
-  // (gemini) and their vectors arrive via post sync — there's no on-device
-  // embedding model to check anymore (see lib/research/ask + sync/reconcile).
-  const rows = await db
-    .select({
-      serverId: postsTable.serverId,
-      slug: postsTable.slug,
-      title: postsTable.title,
-    })
-    .from(postsTable)
-    .where(
-      and(
-        isNotNull(postsTable.serverId),
-        ne(postsTable.syncState, "tombstone"),
-      ),
-    )
-    .limit(500);
-  const usable = rows.filter(
-    (r): r is { serverId: string; slug: string; title: string } =>
-      Boolean(r.serverId) && Boolean(r.slug) && r.title.trim().length > 0,
-  );
-  checks.push({
-    name: "has-posts",
-    pass: usable.length > 0,
-    detail: `${usable.length} synced posts with a title`,
-  });
-  if (usable.length === 0) return finish(false);
-
-  // 2. Self-retrieval over a spread of samples. searchMyPosts embeds the query
-  // server-side and ranks it against the synced vectors — so this end-to-end
-  // check also proves the vectors arrived and the spaces line up (no separate
-  // "index built" step now that documents aren't embedded on-device).
-  const samples = pickSpread(usable, Math.min(3, usable.length));
-  let retrieved = 0;
-  let firstResults: Awaited<ReturnType<typeof searchMyPosts>> = [];
-  for (let i = 0; i < samples.length; i++) {
-    const s = samples[i]!;
-    const res = await searchMyPosts(s.title, { topK: 5 });
-    if (i === 0) firstResults = res;
-    const rank = res.findIndex((r) => r.serverId === s.serverId);
-    const hit = rank >= 0;
-    if (hit) retrieved++;
-    checks.push({
-      name: `retrieve: ${truncate(s.title, 24)}`,
-      pass: hit,
-      detail: hit
-        ? `rank #${rank + 1} · score ${res[rank]!.score.toFixed(2)} · ${res.length} hits`
-        : `not in top 5 (${res.length} hits)`,
-    });
-  }
-  checks.push({
-    name: "self-retrieval",
-    pass: retrieved === samples.length,
-    detail: `${retrieved}/${samples.length} posts found by their own title`,
-  });
-
-  // 5. Result shape: every hit is linkable + scores descending.
-  checks.push({
-    name: "results-have-links",
-    pass: firstResults.length > 0 && firstResults.every((r) => Boolean(r.slug)),
-    detail:
-      firstResults
-        .slice(0, 3)
-        .map((r) => r.slug)
-        .join(", ") || "no results",
-  });
-  const sorted = firstResults.every(
-    (r, i) => i === 0 || firstResults[i - 1]!.score >= r.score,
-  );
-  checks.push({
-    name: "scores-sorted-desc",
-    pass: sorted,
-    detail: firstResults.map((r) => r.score.toFixed(2)).join(" ≥ ") || "—",
-  });
-
-  // 6. Best-effort: a grounded answer when the chat model is also ready. Skipped
-  // (not failed) otherwise so the retrieval test doesn't require the 2GB chat
-  // model. Errors are surfaced as a failing check rather than throwing.
-  if (firstResults.length > 0 && (await canDraftOnDevice())) {
-    try {
-      const settings = await getLlmSettings();
-      const chatModelId = settings.modelId || DEFAULT_TEXT_MODEL_ID;
-      let answer = "";
-      await answerFromPosts({
-        chatModelId,
-        messages: [{ role: "user", content: samples[0]!.title }],
-        posts: firstResults,
-        onDelta: (d) => {
-          answer += d;
-        },
-      });
-      checks.push({
-        name: "answer-grounded",
-        pass: answer.trim().length > 0,
-        detail: truncate(answer.trim(), 60) || "(empty answer)",
-      });
-    } catch (err) {
-      checks.push({
-        name: "answer-grounded",
-        pass: false,
-        detail: err instanceof Error ? err.message : "answer failed",
-      });
-    }
-  }
-
-  return finish(checks.every((c) => c.pass));
-}
 
 // ── Ask-my-posts full chat-flow bench ───────────────────────────────────────
-// Blackbox test of the EXACT path the chat screen runs: askMyPosts (decide →
-// search → answer). The post-search bench above calls searchMyPosts directly and
-// so skips the decide step — but in the live chat the chat model first has to
-// CHOOSE to call the search tool, and small on-device models under-call tools
-// (see decideResearch's DECIDE_SYSTEM_PROMPT). When the chat answers "I couldn't
-// find anything in your posts", the usual culprit is the decide step answering
-// directly instead of searching — not the retrieval. This bench asks natural-
-// language questions derived from the user's REAL posts and asserts the decide
-// step routes to search, sources come back, and a grounded answer streams — so a
-// failure here points at the exact phase that broke. Needs the chat model loaded
-// (decide + answer both run on it); logs one structured [llm-test] line.
+// Blackbox test of the EXACT path the chat screen runs: askMyPosts — the chat
+// model's on-device tool loop (list_categories → get_posts_by_categories → grounded
+// answer) over the user's REAL synced posts in local SQLite. No embeddings, no
+// network. Asks natural-language questions derived from real posts and asserts the
+// model routed to a library search (captured posts), sources came back, and an
+// answer streamed — so a failure points at the phase that broke. Needs the chat
+// model loaded; logs one structured [llm-test] line.
 export const ASK_FLOW_FIXTURE = {
   id: "ask-flow",
   label: "Ask my posts (full chat flow)",

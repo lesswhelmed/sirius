@@ -34,10 +34,8 @@ import {
   ASK_FLOW_FIXTURE,
   DRAFT_FIXTURES,
   type FixtureResult,
-  POST_SEARCH_FIXTURE,
   runAskFlowTest,
   runDraftFixture,
-  runPostSearchTest,
   runTranscriptDraft,
   runUrlDraft,
   URL_EXTRACT_FIXTURE,
@@ -99,19 +97,6 @@ function Bench() {
     }
   }
 
-  async function runPostSearch() {
-    if (runningId) {
-      return;
-    }
-    setRunningId(POST_SEARCH_FIXTURE.id);
-    try {
-      const result = await runPostSearchTest();
-      setResults((prev) => ({ ...prev, [POST_SEARCH_FIXTURE.id]: result }));
-    } finally {
-      setRunningId(null);
-    }
-  }
-
   async function runAskFlow() {
     if (runningId) {
       return;
@@ -139,7 +124,6 @@ function Bench() {
       }
     }
     await runUrl();
-    await runPostSearch();
     await runAskFlow();
     console.log("[llm-test] run-all-done");
   }
@@ -153,14 +137,8 @@ function Bench() {
       return;
     }
     const run = params.run;
-    // "search" and "ask" do their own model-readiness gating inside the runner
-    // (embed model / isModelReady respectively), so they don't wait on the
-    // canDraftOnDevice `ready` gate that the draft fixtures need.
-    if (run === "search") {
-      autoran.current = true;
-      const t = setTimeout(() => void runPostSearch(), 0);
-      return () => clearTimeout(t);
-    }
+    // "ask" does its own model-readiness gating inside the runner (isModelReady),
+    // so it doesn't wait on the canDraftOnDevice `ready` gate the draft fixtures need.
     if (run === "ask") {
       autoran.current = true;
       const t = setTimeout(() => void runAskFlow(), 0);
@@ -321,67 +299,6 @@ function Bench() {
               )}
             </Text>
           ) : null}
-        </Pressable>
-        <MetaText style={styles.eyebrow}>Post search (your data)</MetaText>
-        <PrimaryButton
-          label={
-            runningId === POST_SEARCH_FIXTURE.id
-              ? "Searching your posts…"
-              : "Run post search"
-          }
-          onPress={() => void runPostSearch()}
-          disabled={Boolean(runningId)}
-        />
-        <Pressable
-          style={styles.card}
-          onPress={() =>
-            setExpanded(
-              expanded === POST_SEARCH_FIXTURE.id
-                ? null
-                : POST_SEARCH_FIXTURE.id,
-            )
-          }
-          onLongPress={() => void runPostSearch()}
-        >
-          <View style={styles.cardHeader}>
-            <StatusPip
-              label={
-                runningId === POST_SEARCH_FIXTURE.id
-                  ? "running"
-                  : results[POST_SEARCH_FIXTURE.id]
-                    ? results[POST_SEARCH_FIXTURE.id]!.ok
-                      ? "pass"
-                      : "fail"
-                    : "idle"
-              }
-              color={
-                runningId === POST_SEARCH_FIXTURE.id
-                  ? Sirius.color.accent
-                  : results[POST_SEARCH_FIXTURE.id]
-                    ? results[POST_SEARCH_FIXTURE.id]!.ok
-                      ? "#2c7a4b"
-                      : "#a33"
-                    : Sirius.color.inkSubtle
-              }
-            />
-            <Text style={styles.cardTitle}>
-              {POST_SEARCH_FIXTURE.label} — embeds your real posts &amp; checks
-              self-retrieval
-            </Text>
-            {results[POST_SEARCH_FIXTURE.id] ? (
-              <Text style={styles.dim}>
-                {(results[POST_SEARCH_FIXTURE.id]!.ms / 1000).toFixed(1)}s
-              </Text>
-            ) : null}
-          </View>
-          {results[POST_SEARCH_FIXTURE.id]?.checks.map((check) => (
-            <Text
-              key={check.name}
-              style={check.pass ? styles.checkPass : styles.checkFail}
-            >
-              {check.pass ? "✓" : "✗"} {check.name} — {check.detail}
-            </Text>
-          ))}
         </Pressable>
         <MetaText style={styles.eyebrow}>Ask my posts (full chat flow)</MetaText>
         <PrimaryButton
