@@ -1,108 +1,57 @@
-// Query-time half of "ask my posts" — fully on-device, no embeddings, no network.
-// Categories are the inline JSON string[] on each local post row, so retrieval is
-// a category filter over local SQLite. The chat model makes ONE tool call to pick
-// the relevant categories from the user's real list (the proven llama.rn pattern:
-// generateText + a single no-execute tool, like the old decide step — a multi-tool
-// auto-choice loop and a forced toolChoice both proved unreliable on the 3B), then
-// the host runs the read and streams a grounded answer. All in one chat-model slot;
-// the SQLite read between the two model calls needs no model swap.
-import { type ScoredPost, streamResearchAnswer } from "@repo/research-agent";
-import { generateText, type LanguageModel, type ModelMessage, tool } from "ai";
-import { z } from "zod";
+// Query-time half of "ask my posts" — SEMANTIC retrieval over the user's own
+// posts. The query is embedded SERVER-SIDE (the device has no working text encoder
+// — see engine.ts) and ranked against the gemini document vectors synced into the
+// local post_vectors index (filled by sync/reconcile from the post delta). That
+// returns the few genuinely-relevant posts — not a category dump — which then
+// ground a streamed answer. The answer model sees each retrieved post's capped
+// BODY (not just its title) so it can describe real detail.
+//
+// Two model phases? No — retrieval needs no model at all (a server embed + a local
+// cosine scan), so only the answer step uses the resident chat-model slot.
+import {
+  type ScoredPost,
+  searchPosts,
+  streamResearchAnswer,
+} from "@repo/research-agent";
+import type { ModelMessage } from "ai";
 
 import { modelBusyBy, withPreparedModel } from "@/lib/llm/engine";
 
-import { listCategoriesLocal, postsByCategoriesLocal } from "./tools";
+import { embedQuery, EmbedQueryError } from "./embed-query";
+import { bodiesByServerIds, trimExcerpt } from "./tools";
+import { sqliteVectorStore } from "./vector-store";
 
-// Stream a grounded answer from already-retrieved posts, calling `onDelta` with
-// each token chunk. Runs under the chat model slot. Kept for the test bench.
-export function answerFromPosts(args: {
-  chatModelId: string;
-  messages: ModelMessage[];
-  posts: ScoredPost[];
-  onDelta: (text: string) => void;
-  signal?: AbortSignal;
-}): Promise<void> {
-  return withPreparedModel(args.chatModelId, "chat", async (model) => {
-    const { textStream } = streamResearchAnswer({
-      llm: model,
-      messages: args.messages,
-      posts: args.posts,
-      abortSignal: args.signal,
-    });
-    for await (const delta of textStream) {
-      args.onDelta(delta);
-    }
-  });
-}
+// Retrieval knobs. topK few enough to fit the 3B model's context; minScore drops
+// weak matches so an off-topic question returns nothing (and the model says "I
+// couldn't find anything") instead of citing noise.
+const TOP_K = 6;
+const MIN_SCORE = 0.25;
 
-const GET_POSTS_TOOL = "get_posts";
-
-// Firm "you MUST call the tool" prompt, mirroring decideResearch — small on-device
-// models under-call tools, so we list the real categories and demand a single
-// get_posts call rather than a prose answer.
-function buildPickSystem(cats: { name: string; count: number }[]): string {
-  const list = cats.map((c) => `- ${c.name} (${c.count})`).join("\n");
-  return [
-    "You help the user search their OWN saved posts. Their posts are grouped into",
-    "these categories (name and post count):",
-    "",
-    list,
-    "",
-    `You MUST call the ${GET_POSTS_TOOL} tool, passing the category names — copied`,
-    "EXACTLY from the list above — that are most relevant to the user's question.",
-    "Pick 1 to 3 categories. If you are unsure, pick the closest ones. Do NOT answer",
-    "in prose and do NOT invent category names — just call the tool.",
-  ].join("\n");
-}
-
-// Model picks relevant categories via one tool call (no execute — we capture the
-// chosen names and run the read ourselves). Returns the validated category names,
-// or [] if the model didn't call the tool.
-async function pickCategories(
-  model: LanguageModel,
-  messages: ModelMessage[],
-  cats: { name: string; count: number }[],
-  signal?: AbortSignal,
-): Promise<string[]> {
-  const result = await generateText({
-    model,
-    system: buildPickSystem(cats),
-    messages,
-    tools: {
-      [GET_POSTS_TOOL]: tool({
-        description:
-          "Fetch the user's saved posts in the given categories so they can be " +
-          "cited in the answer. Pass exact category names from the system list.",
-        inputSchema: z.object({
-          categories: z
-            .array(z.string().min(1))
-            .min(1)
-            .describe("Exact category names to pull posts from."),
-        }),
-      }),
-    },
-    abortSignal: signal,
-  });
-  const call = result.toolCalls.find((c) => c.toolName === GET_POSTS_TOOL);
-  const raw = (call?.input as { categories?: unknown } | undefined)?.categories;
-  const picked = Array.isArray(raw)
-    ? raw.filter((x): x is string => typeof x === "string")
-    : [];
-  const known = new Set(cats.map((c) => c.name.toLowerCase()));
-  return picked.filter((p) => known.has(p.trim().toLowerCase()));
+// The user's latest question text, for embedding. Concatenates the text parts of a
+// multi-part user turn.
+function lastUserText(messages: ModelMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role !== "user") continue;
+    if (typeof m.content === "string") return m.content;
+    return m.content
+      .filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join(" ");
+  }
+  return "";
 }
 
 // Progress phases the UI surfaces while a research turn runs. Unchanged so
-// llm.tsx's onPhase mapping needs no edits ("searching" = pulling posts).
+// llm.tsx's onPhase mapping needs no edits ("searching" = embed + rank posts).
 export type AskPhase = "deciding" | "waiting" | "searching" | "answering";
 
-// The full "ask my posts" turn, in one chat-model slot:
-//   1. decide  — model picks relevant categories from the real list (one tool call).
-//   2. search  — host filters local posts by those categories (no model swap).
-//   3. answer  — stream a grounded answer citing the retrieved posts.
-// If the model declines to pick (or picks nothing valid), fall back to ALL
-// categories so the answer is still grounded rather than hallucinated.
+// The full "ask my posts" turn:
+//   1. search  — embed the query server-side, rank local post vectors (no model).
+//   2. answer  — stream a grounded answer citing the retrieved posts, feeding the
+//                model each post's capped body so it can give real detail.
+// If the query-embed call fails (offline), surface a clear message rather than a
+// silent empty result — semantic search has no offline fallback by design.
 export async function askMyPosts(args: {
   chatModelId: string;
   messages: ModelMessage[];
@@ -113,29 +62,56 @@ export async function askMyPosts(args: {
   onDecision?: (decision: { kind: "answer" | "search"; query?: string }) => void;
   signal?: AbortSignal;
 }): Promise<{ sources: ScoredPost[] }> {
-  const cats = await listCategoriesLocal();
+  const query = lastUserText(args.messages);
 
-  args.onPhase?.(modelBusyBy() === "draft" ? "waiting" : "deciding");
-
+  // 1. retrieve (server embed + local cosine scan — no model slot needed).
+  args.onPhase?.("searching");
   let sources: ScoredPost[] = [];
+  try {
+    const { vector, modelId } = await embedQuery(query, args.signal);
+    sources = await searchPosts(
+      { store: sqliteVectorStore, embeddingModelId: modelId },
+      query,
+      {
+        queryVector: vector,
+        topK: TOP_K,
+        minScore: MIN_SCORE,
+        abortSignal: args.signal,
+      },
+    );
+  } catch (err) {
+    if (err instanceof EmbedQueryError) {
+      args.onDelta(
+        "I couldn't reach the server to search your posts. Check your connection and try again.",
+      );
+      args.onDecision?.({ kind: "answer" });
+      return { sources: [] };
+    }
+    throw err;
+  }
+
+  // Two views of the same retrieved posts: compact excerpts for the Sources cards,
+  // and capped bodies for the answer model (folded into the `excerpt` slot that
+  // formatPostsBlock renders, so the shared prompt builder needs no change).
+  const uiSources: ScoredPost[] = sources.map((p) => ({
+    ...p,
+    excerpt: trimExcerpt(p.excerpt),
+  }));
+  const bodies = await bodiesByServerIds(sources.map((p) => p.serverId));
+  const answerPosts: ScoredPost[] = sources.map((p) => ({
+    ...p,
+    excerpt: bodies.get(p.serverId) ?? p.excerpt,
+  }));
+
+  // 2. grounded answer (streamed) under the chat-model slot. If a draft is using
+  // the model, the UI shows "waiting" until the slot frees.
+  args.onPhase?.(modelBusyBy() === "draft" ? "waiting" : "answering");
   await withPreparedModel(args.chatModelId, "chat", async (model) => {
-    // 1. decide
-    const picked = cats.length
-      ? await pickCategories(model, args.messages, cats, args.signal)
-      : [];
-
-    // 2. search (fall back to all categories if the model picked none).
-    args.onPhase?.("searching");
-    const useCats = picked.length ? picked : cats.map((c) => c.name);
-    sources = await postsByCategoriesLocal(useCats);
-
-    // 3. grounded answer (streamed). The retrieved posts are folded into the
-    // answer system prompt by streamResearchAnswer.
     args.onPhase?.("answering");
     const { textStream } = streamResearchAnswer({
       llm: model,
       messages: args.messages,
-      posts: sources,
+      posts: answerPosts,
       abortSignal: args.signal,
     });
     for await (const delta of textStream) {
@@ -144,7 +120,7 @@ export async function askMyPosts(args: {
   });
 
   args.onDecision?.(
-    sources.length > 0 ? { kind: "search" } : { kind: "answer" },
+    sources.length > 0 ? { kind: "search", query } : { kind: "answer" },
   );
-  return { sources };
+  return { sources: uiSources };
 }

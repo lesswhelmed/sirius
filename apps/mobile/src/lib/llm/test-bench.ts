@@ -223,17 +223,22 @@ function pickSpread<T>(items: T[], count: number): T[] {
 
 
 // ── Ask-my-posts full chat-flow bench ───────────────────────────────────────
-// Blackbox test of the EXACT path the chat screen runs: askMyPosts — the chat
-// model's on-device tool loop (list_categories → get_posts_by_categories → grounded
-// answer) over the user's REAL synced posts in local SQLite. No embeddings, no
-// network. Asks natural-language questions derived from real posts and asserts the
-// model routed to a library search (captured posts), sources came back, and an
-// answer streamed — so a failure points at the phase that broke. Needs the chat
-// model loaded; logs one structured [llm-test] line.
+// Blackbox test of the EXACT path the chat screen runs: askMyPosts — SEMANTIC
+// retrieval (the query is embedded server-side and ranked against the gemini
+// vectors synced into the local post_vectors index) followed by a grounded answer.
+// Asks natural-language questions derived from REAL synced posts and asserts: the
+// asked post is itself retrieved (self-retrieval), the source set stays FOCUSED
+// (not a whole-library dump), and an answer streamed — so a failure points at the
+// phase that broke. Requires the chat model loaded AND post_vectors populated (run
+// a sync first); logs one structured [llm-test] line.
 export const ASK_FLOW_FIXTURE = {
   id: "ask-flow",
   label: "Ask my posts (full chat flow)",
 };
+
+// Mirror of ask.ts TOP_K — the focused-retrieval bound. A relevant query must
+// return a handful of posts, never the whole library.
+const EXPECTED_TOP_K = 6;
 
 export async function runAskFlowTest(): Promise<FixtureResult> {
   const start = Date.now();
@@ -298,9 +303,10 @@ export async function runAskFlowTest(): Promise<FixtureResult> {
   if (usable.length === 0) return finish(false);
 
   // A spread of real posts, phrased as a user would actually ask — not the bare
-  // title — so the decide step has to distill a query the way it does in chat.
+  // title — so retrieval has to match on meaning the way it does in chat.
   const samples = pickSpread(usable, Math.min(2, usable.length));
-  let searchedCount = 0;
+  let selfRetrievedCount = 0;
+  let maxSources = 0;
   for (const s of samples) {
     const question = `What did I write about "${s.title}"? Summarize it for me.`;
     const phases: AskPhase[] = [];
@@ -333,31 +339,37 @@ export async function runAskFlowTest(): Promise<FixtureResult> {
       continue;
     }
 
-    // The crux: did the model route to a library search at all? (vs answering
-    // from memory, which is what surfaces as "I couldn't find anything".)
+    // The crux: did semantic retrieval surface the post the question is ABOUT
+    // (self-retrieval), keep the source set focused (not a whole-library dump),
+    // and stream an answer?
     const decision = captured.decision;
     const searched = decision?.kind === "search";
-    if (searched) searchedCount++;
     const found = sources.some((p) => p.serverId === s.serverId);
-    const ok = searched && sources.length > 0 && answer.trim().length > 0;
+    if (found) selfRetrievedCount++;
+    maxSources = Math.max(maxSources, sources.length);
+    const focused = sources.length > 0 && sources.length <= EXPECTED_TOP_K;
+    const ok = searched && found && focused && answer.trim().length > 0;
     checks.push({
       name: `ask: ${truncate(s.title, 22)}`,
       pass: ok,
       detail:
-        `decide=${decision?.kind ?? "?"}` +
-        (decision?.kind === "search" && decision.query
-          ? ` "${truncate(decision.query, 24)}"`
-          : "") +
-        ` · ${sources.length} sources` +
-        (found ? " (self ✓)" : "") +
+        `${sources.length} sources` +
+        (found ? " (self ✓)" : " (self ✗)") +
         ` · answer ${answer.trim().length}ch`,
     });
   }
 
+  // Aggregate: the asked post must come back (semantic match working) and the set
+  // must stay small relative to the library (the old category dump returned all).
   checks.push({
-    name: "decide-routes-to-search",
-    pass: searchedCount === samples.length,
-    detail: `${searchedCount}/${samples.length} questions triggered a library search`,
+    name: "self-retrieval",
+    pass: selfRetrievedCount === samples.length,
+    detail: `${selfRetrievedCount}/${samples.length} asked posts were retrieved`,
+  });
+  checks.push({
+    name: "focused-sources",
+    pass: maxSources > 0 && maxSources <= EXPECTED_TOP_K,
+    detail: `max ${maxSources} sources/query (≤ ${EXPECTED_TOP_K}, library ${usable.length})`,
   });
 
   return finish(checks.every((c) => c.pass));
