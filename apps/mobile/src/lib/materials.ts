@@ -5,6 +5,7 @@
 // change: add a Material variant, teach materialsFromShareIntent to emit it,
 // and register a handler below.
 import type { ShareIntent } from "expo-share-intent";
+import * as Crypto from "expo-crypto";
 
 import { ApiError } from "@/lib/api";
 import {
@@ -12,8 +13,6 @@ import {
   formatError,
   type ImageInput,
   noteIngestBody,
-  submitFile,
-  submitImageBatch,
   submitNote,
   submitUrl,
 } from "@/lib/ingest-submit";
@@ -25,7 +24,11 @@ import {
 } from "@/lib/llm/curate";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { canTranscribeOnDevice, transcribeAudio } from "@/lib/llm/transcribe";
-import { enqueueOutbox } from "@/lib/outbox";
+import {
+  discardStagedCopy,
+  enqueueAndSendBinary,
+  enqueueOutbox,
+} from "@/lib/outbox";
 import {
   createLocalDraft,
   deleteLocalDraft,
@@ -402,14 +405,13 @@ const imageHandler: MaterialHandler<"image"> = {
   kind: "image",
   async submit(materials, ctx) {
     const errors: string[] = [];
+    if (materials.length === 0) return { submitted: 0, errors, failed: [] };
     const notes = materials.find((m) => m.notes)?.notes ?? "";
     const inputs: ImageInput[] = materials.map((m) => ({
       uri: m.uri,
       name: m.name,
       type: m.type,
     }));
-    // SIGHT drafting on device (vision model). The bytes still upload — the
-    // web app serves them — only the worker's Gemini stage is skipped.
     const sightDraft =
       ON_DEVICE_AI_ENABLED && ctx.onDeviceCuration
         ? await draftSightPost(
@@ -417,71 +419,79 @@ const imageHandler: MaterialHandler<"image"> = {
             notes,
           )
         : null;
-    // Optimistic SIGHT row rendered from the local photo URIs + on-device draft;
-    // reconciliation swaps in the served gallery URLs once the worker writes the
-    // post (sourceRecordId === "batch:<batchId>").
     const localId = sightDraft
       ? await createLocalDraft({
           type: "SIGHT",
           envelope: sightDraft,
           imageUris: inputs.map((i) => i.uri),
         })
-      : undefined;
-    const { submitted, failedIndices, batchId } = await submitImageBatch(
-      inputs,
-      notes,
-      (label, err) => {
-        ctx.onError?.(label, err);
-        errors.push(formatError(err, label));
-      },
-      ctx.projectId,
-      sightDraft ? JSON.stringify(sightDraft) : undefined,
-    );
-    if (localId) {
-      // The worker only writes the post once ALL rows arrive, so a partial
-      // upload (any failure) means it'll never complete — surface that as
-      // failed rather than a perpetually-pending card.
-      if (failedIndices.length === 0 && batchId) {
-        await linkSubmission(localId, `batch:${batchId}`);
-      } else {
-        await markLocalFailed(localId);
-      }
+      : Crypto.randomUUID();
+    const batchId = Crypto.randomUUID();
+    const draftJson = sightDraft ? JSON.stringify(sightDraft) : undefined;
+    // Link the optimistic post to the batch up front: the worker only writes the
+    // post once every row lands, so it stays `pending` until the batch completes
+    // (including after an auto-resume / requeue), then reconciles into this card.
+    if (sightDraft) await linkSubmission(localId, `batch:${batchId}`);
+
+    let submitted = 0;
+    let queued = 0;
+    for (let i = 0; i < inputs.length; i++) {
+      const img = inputs[i]!;
+      const result = await enqueueAndSendBinary({
+        transport: "ingest-image",
+        localId,
+        localFilePath: img.uri,
+        fieldName: "image",
+        mimeType: img.type,
+        parameters: {
+          batchId,
+          imageIndex: String(i),
+          totalCount: String(inputs.length),
+          notes,
+          ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+          ...(draftJson ? { draft: draftJson } : {}),
+        },
+        batchId,
+        imageIndex: i,
+        totalCount: inputs.length,
+      });
+      if (result === "sent") submitted++;
+      else if (result === "deferred") queued++;
+      else errors.push(`Image ${i + 1} failed — retry from the Queue.`);
     }
-    const failed = failedIndices
-      .map((i) => materials[i])
-      .filter((m): m is ImageMaterial => m !== undefined);
-    return { submitted, errors, failed };
+    // failed:[] — binary failures live as `failed` outbox rows (Requeue), never
+    // re-staged in the tray.
+    return { submitted, errors, failed: [], queued };
   },
 };
 
 // Generic single-file handlers (video/audio/document). Each material is one
-// submission posted to the file-ingest endpoint; the worker forces the
-// PostType per kind (video→SIGHT, audio→BLOG, document→FINDING).
+// durable outbox row sent immediately; terminal failures persist as `failed`
+// rows for Requeue — never re-staged in the tray.
 const videoHandler: MaterialHandler<"video"> = {
   kind: "video",
   async submit(materials, ctx) {
     const errors: string[] = [];
-    const failed: VideoMaterial[] = [];
     let submitted = 0;
+    let queued = 0;
     for (const [i, m] of materials.entries()) {
-      try {
-        await submitFile(
-          m.uri,
-          "video",
-          m.type,
-          m.name,
-          m.notes ?? "",
-          ctx.projectId,
-        );
-        submitted++;
-      } catch (err) {
-        const label = `Video ${i + 1}/${materials.length}`;
-        ctx.onError?.(label, err);
-        errors.push(formatError(err, label));
-        failed.push(m);
-      }
+      const result = await enqueueAndSendBinary({
+        transport: "ingest-file",
+        localId: Crypto.randomUUID(),
+        localFilePath: m.uri,
+        fieldName: "file",
+        mimeType: m.type,
+        parameters: {
+          kind: "video",
+          notes: m.notes ?? "",
+          ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+        },
+      });
+      if (result === "sent") submitted++;
+      else if (result === "deferred") queued++;
+      else errors.push(`Video ${i + 1} failed — retry from the Queue.`);
     }
-    return { submitted, errors, failed };
+    return { submitted, errors, failed: [], queued };
   },
 };
 
@@ -489,7 +499,6 @@ const audioHandler: MaterialHandler<"audio"> = {
   kind: "audio",
   async submit(materials, ctx) {
     const errors: string[] = [];
-    const failed: AudioMaterial[] = [];
     let submitted = 0;
     let queued = 0;
     // With curation on and Apple SpeechAnalyzer available (iOS 26+), audio is
@@ -525,6 +534,7 @@ const audioHandler: MaterialHandler<"audio"> = {
             );
             if (localId) await linkSubmission(localId, ok.id);
             submitted++;
+            await discardStagedCopy(m.uri);
             continue;
           } catch (err) {
             if (!(err instanceof ApiError)) {
@@ -536,6 +546,7 @@ const audioHandler: MaterialHandler<"audio"> = {
                 localId,
               );
               queued++;
+              await discardStagedCopy(m.uri);
               continue;
             }
             // Server rejected the note — discard the optimistic draft and fall
@@ -545,23 +556,23 @@ const audioHandler: MaterialHandler<"audio"> = {
           }
         }
       }
-      try {
-        await submitFile(
-          m.uri,
-          "audio",
-          m.type,
-          m.name,
-          m.notes ?? "",
-          ctx.projectId,
-        );
-        submitted++;
-      } catch (err) {
-        ctx.onError?.(label, err);
-        errors.push(formatError(err, label));
-        failed.push(m);
-      }
+      const result = await enqueueAndSendBinary({
+        transport: "ingest-file",
+        localId: Crypto.randomUUID(),
+        localFilePath: m.uri,
+        fieldName: "file",
+        mimeType: m.type,
+        parameters: {
+          kind: "audio",
+          notes: m.notes ?? "",
+          ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+        },
+      });
+      if (result === "sent") submitted++;
+      else if (result === "deferred") queued++;
+      else errors.push(`${label} failed — retry from the Queue.`);
     }
-    return { submitted, errors, failed, queued };
+    return { submitted, errors, failed: [], queued };
   },
 };
 
@@ -569,27 +580,26 @@ const documentHandler: MaterialHandler<"document"> = {
   kind: "document",
   async submit(materials, ctx) {
     const errors: string[] = [];
-    const failed: DocumentMaterial[] = [];
     let submitted = 0;
+    let queued = 0;
     for (const [i, m] of materials.entries()) {
-      try {
-        await submitFile(
-          m.uri,
-          "document",
-          m.type,
-          m.name,
-          m.notes ?? "",
-          ctx.projectId,
-        );
-        submitted++;
-      } catch (err) {
-        const label = `Document ${i + 1}/${materials.length}`;
-        ctx.onError?.(label, err);
-        errors.push(formatError(err, label));
-        failed.push(m);
-      }
+      const result = await enqueueAndSendBinary({
+        transport: "ingest-file",
+        localId: Crypto.randomUUID(),
+        localFilePath: m.uri,
+        fieldName: "file",
+        mimeType: m.type,
+        parameters: {
+          kind: "document",
+          notes: m.notes ?? "",
+          ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+        },
+      });
+      if (result === "sent") submitted++;
+      else if (result === "deferred") queued++;
+      else errors.push(`Document ${i + 1} failed — retry from the Queue.`);
     }
-    return { submitted, errors, failed };
+    return { submitted, errors, failed: [], queued };
   },
 };
 
@@ -652,11 +662,13 @@ export async function submitMaterials(
   submitted += imageResult.submitted;
   errors.push(...imageResult.errors);
   failed.push(...imageResult.failed);
+  queued += imageResult.queued ?? 0;
 
   const videoResult = await HANDLERS.video.submit(grouped.video, ctx);
   submitted += videoResult.submitted;
   errors.push(...videoResult.errors);
   failed.push(...videoResult.failed);
+  queued += videoResult.queued ?? 0;
 
   const audioResult = await HANDLERS.audio.submit(grouped.audio, ctx);
   submitted += audioResult.submitted;
@@ -668,6 +680,7 @@ export async function submitMaterials(
   submitted += documentResult.submitted;
   errors.push(...documentResult.errors);
   failed.push(...documentResult.failed);
+  queued += documentResult.queued ?? 0;
 
   return { submitted, errors, skipped: grouped.unsupported, failed, queued };
 }

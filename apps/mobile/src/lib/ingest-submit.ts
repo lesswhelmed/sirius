@@ -3,9 +3,8 @@
 // submission (so the dedicated IG / YouTube paths fire per-URL) and images are
 // sent as a single batch keyed by one `batchId`.
 import type { DraftEnvelope } from "@repo/ingest-draft";
-import * as Crypto from "expo-crypto";
 
-import { ApiError, apiPostJson, uploadFile } from "@/lib/api";
+import { ApiError, apiPostJson } from "@/lib/api";
 
 export type SubmitOk = {
   id: string;
@@ -96,73 +95,9 @@ export function submitNote(
   );
 }
 
-// Submits a single non-image file (video/audio/document) as one submission.
-// Mirrors submitImageBatch's per-file upload but targets the generic
-// file-ingest endpoint; the worker forces the PostType per kind.
+// Binary file kind for reference. Kept here (rather than outbox.ts) so
+// callers that only know the kind don't need to import the full outbox module.
 export type FileKind = "video" | "audio" | "document";
-
-export async function submitFile(
-  fileUri: string,
-  kind: FileKind,
-  mimeType: string,
-  fileName: string,
-  notes = "",
-  projectId?: string,
-): Promise<SubmitOk> {
-  return uploadFile<SubmitOk>("/api/app/ingest-file", fileUri, {
-    fieldName: "file",
-    mimeType,
-    parameters: {
-      kind,
-      notes,
-      ...(projectId ? { projectId } : {}),
-    },
-  });
-}
-
-// Submits a set of images as one SIGHT batch. Each image is posted
-// individually with a shared batchId/totalCount so the worker can wait for the
-// whole batch before drafting. Per-image failures are reported via onError but
-// don't abort the rest of the batch.
-export async function submitImageBatch(
-  images: ImageInput[],
-  notes: string,
-  onError?: (label: string, err: unknown) => void,
-  projectId?: string,
-  // JSON-encoded SightDraftEnvelope from on-device drafting. Sent on EVERY row
-  // (mirroring notes) so the worker's rows[0] read works regardless of which
-  // row it claims first.
-  draftJson?: string,
-): Promise<{ submitted: number; failedIndices: number[]; batchId: string }> {
-  if (images.length === 0) {
-    return { submitted: 0, failedIndices: [], batchId: "" };
-  }
-  const batchId = Crypto.randomUUID();
-  let submitted = 0;
-  const failedIndices: number[] = [];
-  for (let i = 0; i < images.length; i++) {
-    const image = images[i]!;
-    try {
-      await uploadFile<SubmitOk>("/api/app/ingest-images", image.uri, {
-        fieldName: "image",
-        mimeType: image.type,
-        parameters: {
-          batchId,
-          imageIndex: String(i),
-          totalCount: String(images.length),
-          notes,
-          ...(projectId ? { projectId } : {}),
-          ...(draftJson ? { draft: draftJson } : {}),
-        },
-      });
-      submitted++;
-    } catch (err) {
-      failedIndices.push(i);
-      onError?.(`image ${i + 1}`, err);
-    }
-  }
-  return { submitted, failedIndices, batchId };
-}
 
 export function formatError(err: unknown, label: string): string {
   if (err instanceof ApiError)
