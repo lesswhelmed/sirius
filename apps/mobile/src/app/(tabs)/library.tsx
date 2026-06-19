@@ -14,7 +14,7 @@ import {
 	View,
 } from "react-native";
 
-import { KindLabel, PageHeader, Screen, TextLink } from "@/components/sirius";
+import { KindLabel, PageHeader, Screen } from "@/components/sirius";
 import { PostTypeTone, Sirius } from "@/constants/theme";
 import { resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
@@ -278,14 +278,6 @@ export default function LibraryScreen() {
 							count={visibleItems.length}
 							countLabel={isFiltered ? "Matches" : "On file"}
 						/>
-						<View style={styles.headerActions}>
-							<TextLink
-								label="Enter the space →"
-								tone={Sirius.color.accent}
-								onPress={() => router.push("/space")}
-							/>
-						</View>
-
 						{/* Category index — the primary navigation. A sticky-feeling
                 segmented bar; the selected tab sits over an oxblood underline. */}
 						{categoryFacets.length > 0 ? (
@@ -448,12 +440,6 @@ const styles = StyleSheet.create({
 		paddingBottom: 120,
 	},
 	header: { marginBottom: Sirius.space.lg },
-	headerActions: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: Sirius.space.lg,
-	},
 
 	// Category segmented bar.
 	categoryBarScroll: {
