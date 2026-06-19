@@ -40,6 +40,13 @@ export default function TabsLayout() {
         selected: { color: Sirius.color.accent },
       }}
     >
+      {/* Explore (the zoomable constellation) leads — it's the app's home view,
+          so its trigger is first and the tabs default to it. Route name stays
+          "tree" so /tree/[...node] drill links + deep links keep resolving. */}
+      <NativeTabs.Trigger name="tree">
+        <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="point.3.connected.trianglepath.dotted" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="composer">
         <NativeTabs.Trigger.Label>Capture</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="square.and.pencil" />
@@ -51,10 +58,6 @@ export default function TabsLayout() {
       <NativeTabs.Trigger name="queue">
         <NativeTabs.Trigger.Label>Queue</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="tray.full" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="tree">
-        <NativeTabs.Trigger.Label>Tree</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="list.bullet.indent" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
         <NativeTabs.Trigger.Label>Account</NativeTabs.Trigger.Label>

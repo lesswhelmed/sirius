@@ -30,9 +30,11 @@ import {
 import { Sirius } from "@/constants/theme";
 import { canDraftOnDevice } from "@/lib/llm/curate";
 import {
+  ASK_FLOW_FIXTURE,
   DRAFT_FIXTURES,
   type FixtureResult,
   POST_SEARCH_FIXTURE,
+  runAskFlowTest,
   runDraftFixture,
   runPostSearchTest,
   runTranscriptDraft,
@@ -108,6 +110,19 @@ function Bench() {
     }
   }
 
+  async function runAskFlow() {
+    if (runningId) {
+      return;
+    }
+    setRunningId(ASK_FLOW_FIXTURE.id);
+    try {
+      const result = await runAskFlowTest();
+      setResults((prev) => ({ ...prev, [ASK_FLOW_FIXTURE.id]: result }));
+    } finally {
+      setRunningId(null);
+    }
+  }
+
   async function runAll() {
     if (runningId) {
       return;
@@ -123,20 +138,30 @@ function Bench() {
     }
     await runUrl();
     await runPostSearch();
+    await runAskFlow();
     console.log("[llm-test] run-all-done");
   }
 
-  // Deep-link autorun: dev.copt.sirius://llm-test?run=all (or one fixture id, or
+  // Deep-link autorun: dev.copt.sirius://llm-test?run=all (or one fixture id,
   // "search" for just the post-search bench — which only needs the embed model,
-  // not the chat model the run-all gating waits on).
+  // not the chat model the run-all gating waits on — or "ask" for the full
+  // ask-my-posts chat flow: decide → search → grounded answer).
   useEffect(() => {
     if (!params.run || autoran.current) {
       return;
     }
     const run = params.run;
+    // "search" and "ask" do their own model-readiness gating inside the runner
+    // (embed model / isModelReady respectively), so they don't wait on the
+    // canDraftOnDevice `ready` gate that the draft fixtures need.
     if (run === "search") {
       autoran.current = true;
       const t = setTimeout(() => void runPostSearch(), 0);
+      return () => clearTimeout(t);
+    }
+    if (run === "ask") {
+      autoran.current = true;
+      const t = setTimeout(() => void runAskFlow(), 0);
       return () => clearTimeout(t);
     }
     if (ready.data !== true) {
@@ -348,6 +373,65 @@ function Bench() {
             ) : null}
           </View>
           {results[POST_SEARCH_FIXTURE.id]?.checks.map((check) => (
+            <Text
+              key={check.name}
+              style={check.pass ? styles.checkPass : styles.checkFail}
+            >
+              {check.pass ? "✓" : "✗"} {check.name} — {check.detail}
+            </Text>
+          ))}
+        </Pressable>
+        <MetaText style={styles.eyebrow}>Ask my posts (full chat flow)</MetaText>
+        <PrimaryButton
+          label={
+            runningId === ASK_FLOW_FIXTURE.id
+              ? "Asking…"
+              : "Run ask-my-posts flow"
+          }
+          onPress={() => void runAskFlow()}
+          disabled={Boolean(runningId)}
+        />
+        <Pressable
+          style={styles.card}
+          onPress={() =>
+            setExpanded(
+              expanded === ASK_FLOW_FIXTURE.id ? null : ASK_FLOW_FIXTURE.id,
+            )
+          }
+          onLongPress={() => void runAskFlow()}
+        >
+          <View style={styles.cardHeader}>
+            <StatusPip
+              label={
+                runningId === ASK_FLOW_FIXTURE.id
+                  ? "running"
+                  : results[ASK_FLOW_FIXTURE.id]
+                    ? results[ASK_FLOW_FIXTURE.id]!.ok
+                      ? "pass"
+                      : "fail"
+                    : "idle"
+              }
+              color={
+                runningId === ASK_FLOW_FIXTURE.id
+                  ? Sirius.color.accent
+                  : results[ASK_FLOW_FIXTURE.id]
+                    ? results[ASK_FLOW_FIXTURE.id]!.ok
+                      ? "#2c7a4b"
+                      : "#a33"
+                    : Sirius.color.inkSubtle
+              }
+            />
+            <Text style={styles.cardTitle}>
+              {ASK_FLOW_FIXTURE.label} — decide → search → grounded answer, the
+              real chat path
+            </Text>
+            {results[ASK_FLOW_FIXTURE.id] ? (
+              <Text style={styles.dim}>
+                {(results[ASK_FLOW_FIXTURE.id]!.ms / 1000).toFixed(1)}s
+              </Text>
+            ) : null}
+          </View>
+          {results[ASK_FLOW_FIXTURE.id]?.checks.map((check) => (
             <Text
               key={check.name}
               style={check.pass ? styles.checkPass : styles.checkFail}

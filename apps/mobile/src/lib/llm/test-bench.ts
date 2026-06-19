@@ -14,9 +14,17 @@ import { and, isNotNull, ne } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { posts as postsTable } from "@/lib/db/schema";
-import { answerFromPosts, searchMyPosts } from "@/lib/research/ask";
+import type { ScoredPost } from "@repo/research-agent";
+
+import {
+  answerFromPosts,
+  askMyPosts,
+  type AskPhase,
+  searchMyPosts,
+} from "@/lib/research/ask";
 
 import { canDraftOnDevice, draftNotePost, draftUrlPost } from "./curate";
+import { isModelReady } from "./engine";
 import { DEFAULT_TEXT_MODEL_ID } from "./models";
 import { getLlmSettings } from "./settings";
 
@@ -356,6 +364,151 @@ export async function runPostSearchTest(): Promise<FixtureResult> {
       });
     }
   }
+
+  return finish(checks.every((c) => c.pass));
+}
+
+// ── Ask-my-posts full chat-flow bench ───────────────────────────────────────
+// Blackbox test of the EXACT path the chat screen runs: askMyPosts (decide →
+// search → answer). The post-search bench above calls searchMyPosts directly and
+// so skips the decide step — but in the live chat the chat model first has to
+// CHOOSE to call the search tool, and small on-device models under-call tools
+// (see decideResearch's DECIDE_SYSTEM_PROMPT). When the chat answers "I couldn't
+// find anything in your posts", the usual culprit is the decide step answering
+// directly instead of searching — not the retrieval. This bench asks natural-
+// language questions derived from the user's REAL posts and asserts the decide
+// step routes to search, sources come back, and a grounded answer streams — so a
+// failure here points at the exact phase that broke. Needs the chat model loaded
+// (decide + answer both run on it); logs one structured [llm-test] line.
+export const ASK_FLOW_FIXTURE = {
+  id: "ask-flow",
+  label: "Ask my posts (full chat flow)",
+};
+
+export async function runAskFlowTest(): Promise<FixtureResult> {
+  const start = Date.now();
+  const checks: DraftCheck[] = [];
+  const finish = (ok: boolean): FixtureResult => {
+    const result: FixtureResult = {
+      id: ASK_FLOW_FIXTURE.id,
+      ok,
+      ms: Date.now() - start,
+      draft: null,
+      checks,
+    };
+    console.log(
+      `[llm-test] ${JSON.stringify({
+        id: result.id,
+        ok: result.ok,
+        ms: result.ms,
+        checks: checks.map((c) => ({ n: c.name, p: c.pass, d: c.detail })),
+      })}`,
+    );
+    return result;
+  };
+
+  // The whole flow (decide + answer) runs on the chat model. Gate on the SAME
+  // signal the chat screen uses — isModelReady(chatModelId) — not canDraftOnDevice:
+  // the chat path prepares the model directly and works even when the "Draft on
+  // device" curation toggle is off. Skip-as-fail (don't trigger a download) with a
+  // clear reason rather than throwing, mirroring the other benches.
+  const settings = await getLlmSettings();
+  const chatModelId = settings.modelId || DEFAULT_TEXT_MODEL_ID;
+  if (!(await isModelReady(chatModelId))) {
+    checks.push({
+      name: "chat-model-ready",
+      pass: false,
+      detail: `download the chat model first (${chatModelId})`,
+    });
+    return finish(false);
+  }
+
+  // Real synced posts to phrase questions about (same source as the post-search
+  // bench: documents are embedded server-side, vectors arrive via post sync).
+  const rows = await db
+    .select({
+      serverId: postsTable.serverId,
+      slug: postsTable.slug,
+      title: postsTable.title,
+    })
+    .from(postsTable)
+    .where(
+      and(isNotNull(postsTable.serverId), ne(postsTable.syncState, "tombstone")),
+    )
+    .limit(500);
+  const usable = rows.filter(
+    (r): r is { serverId: string; slug: string; title: string } =>
+      Boolean(r.serverId) && Boolean(r.slug) && r.title.trim().length > 0,
+  );
+  checks.push({
+    name: "has-posts",
+    pass: usable.length > 0,
+    detail: `${usable.length} synced posts with a title`,
+  });
+  if (usable.length === 0) return finish(false);
+
+  // A spread of real posts, phrased as a user would actually ask — not the bare
+  // title — so the decide step has to distill a query the way it does in chat.
+  const samples = pickSpread(usable, Math.min(2, usable.length));
+  let searchedCount = 0;
+  for (const s of samples) {
+    const question = `What did I write about "${s.title}"? Summarize it for me.`;
+    const phases: AskPhase[] = [];
+    // Captured through a container object: a bare `let` assigned only inside the
+    // onDecision closure trips TS's closure-narrowing-to-never quirk.
+    const captured: {
+      decision: { kind: "answer" | "search"; query?: string } | null;
+    } = { decision: null };
+    let answer = "";
+    let sources: ScoredPost[] = [];
+    try {
+      const res = await askMyPosts({
+        chatModelId,
+        messages: [{ role: "user", content: question }],
+        onPhase: (p) => phases.push(p),
+        onDecision: (d) => {
+          captured.decision = d;
+        },
+        onDelta: (d) => {
+          answer += d;
+        },
+      });
+      sources = res.sources;
+    } catch (err) {
+      checks.push({
+        name: `ask: ${truncate(s.title, 22)}`,
+        pass: false,
+        detail: err instanceof Error ? err.message : "askMyPosts threw",
+      });
+      continue;
+    }
+
+    // The crux: did the model route to a library search at all? (vs answering
+    // from memory, which is what surfaces as "I couldn't find anything".)
+    const decision = captured.decision;
+    const searched = decision?.kind === "search";
+    if (searched) searchedCount++;
+    const found = sources.some((p) => p.serverId === s.serverId);
+    const ok = searched && sources.length > 0 && answer.trim().length > 0;
+    checks.push({
+      name: `ask: ${truncate(s.title, 22)}`,
+      pass: ok,
+      detail:
+        `decide=${decision?.kind ?? "?"}` +
+        (decision?.kind === "search" && decision.query
+          ? ` "${truncate(decision.query, 24)}"`
+          : "") +
+        ` · ${sources.length} sources` +
+        (found ? " (self ✓)" : "") +
+        ` · answer ${answer.trim().length}ch`,
+    });
+  }
+
+  checks.push({
+    name: "decide-routes-to-search",
+    pass: searchedCount === samples.length,
+    detail: `${searchedCount}/${samples.length} questions triggered a library search`,
+  });
 
   return finish(checks.every((c) => c.pass));
 }

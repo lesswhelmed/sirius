@@ -29,9 +29,18 @@ const INK_FAINT = Sirius.color.inkFaint;
 const OXBLOOD = Sirius.color.accent;
 
 // Camera framing distance from the focused node. Small enough to feel "zoomed
-// in" on it, wide enough that its neighbors stay in frame.
+// in" on it, wide enough that its neighbors stay in frame. This is the *neutral*
+// distance (zoom === 1); pinch scales it live between ZOOM_MIN..ZOOM_MAX.
 const FRAME_RADIUS = 9;
-const DAMPING = 0.16; // orbit + center easing per frame (OrbitControls feel)
+const DAMPING = 0.16; // orbit + center + radius easing per frame (OrbitControls feel)
+
+// Pinch multiplier bounds on FRAME_RADIUS. <1 = closer (zoomed in), >1 = farther
+// out. ~3x each way keeps a single node legible without losing the whole map.
+const ZOOM_MIN = 0.35;
+const ZOOM_MAX = 3;
+// Two-finger pan: NDC-delta → world units, scaled by the live radius so a drag
+// moves the same on-screen distance whether zoomed in or out.
+const PAN_SCALE = 0.9;
 
 interface Orbit {
   yaw: number;
@@ -152,28 +161,70 @@ function PulseHalo({ position }: { position: Vec3 }) {
   );
 }
 
-// Drag-to-orbit surface. The Canvas claims every touch before any RN responder
-// on an ancestor can, so the orbit drag must live INSIDE the R3F event system:
-// an inside-out sphere catches drags that miss every node; node halos still win
-// the raycast (nearer hit). Copied from app/space.tsx's proven approach.
+// Drag surface for orbit + pinch-zoom + two-finger pan. The Canvas claims every
+// touch before any RN responder on an ancestor can, so ALL gestures must live
+// INSIDE the R3F event system (an ancestor GestureDetector never sees these
+// touches): an inside-out sphere catches drags that miss every node; node halos
+// still win the raycast (nearer hit). Builds on app/space.tsx's orbit approach.
+//
+// Multi-touch: we track each live pointer by its pointerId in NDC ([-1,1]). One
+// pointer → orbit (yaw/pitch delta). Two pointers → pinch (their distance ratio
+// scales zoom) + pan (their midpoint delta moves the look-at center). Transitions
+// reset the pinch baseline so finger lifts don't snap the camera.
 function OrbitBackdrop({
-  onDelta,
+  onOrbit,
+  onZoom,
+  onPan,
 }: {
-  onDelta: (dx: number, dy: number) => void;
+  onOrbit: (dx: number, dy: number) => void;
+  onZoom: (factor: number) => void;
+  onPan: (dx: number, dy: number) => void;
 }) {
-  const last = useRef<{ x: number; y: number } | null>(null);
+  const pts = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchDist = useRef<number | null>(null);
+  const pinchMid = useRef<{ x: number; y: number } | null>(null);
+  const resetPinch = () => {
+    pinchDist.current = null;
+    pinchMid.current = null;
+  };
   return (
     <mesh
       onPointerDown={(e: ThreeEvent<PointerEvent>) => {
-        last.current = { x: e.pointer.x, y: e.pointer.y };
+        pts.current.set(e.pointerId, { x: e.pointer.x, y: e.pointer.y });
+        resetPinch();
       }}
       onPointerMove={(e: ThreeEvent<PointerEvent>) => {
-        if (!last.current) return;
-        onDelta(e.pointer.x - last.current.x, e.pointer.y - last.current.y);
-        last.current = { x: e.pointer.x, y: e.pointer.y };
+        const map = pts.current;
+        const prev = map.get(e.pointerId);
+        if (!prev) return;
+        const cur = { x: e.pointer.x, y: e.pointer.y };
+        map.set(e.pointerId, cur);
+        if (map.size === 1) {
+          onOrbit(cur.x - prev.x, cur.y - prev.y);
+          return;
+        }
+        // Two (or more) fingers: pinch + pan off the first two live pointers.
+        const [a, b] = [...map.values()];
+        if (!a || !b) return;
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        if (pinchDist.current != null && dist > 0) {
+          // Fingers apart → dist grows → factor < 1 → smaller radius → zoom in.
+          onZoom(pinchDist.current / dist);
+          if (pinchMid.current) {
+            onPan(mid.x - pinchMid.current.x, mid.y - pinchMid.current.y);
+          }
+        }
+        pinchDist.current = dist;
+        pinchMid.current = mid;
       }}
-      onPointerUp={() => {
-        last.current = null;
+      onPointerUp={(e: ThreeEvent<PointerEvent>) => {
+        pts.current.delete(e.pointerId);
+        resetPinch();
+      }}
+      onPointerLeave={(e: ThreeEvent<PointerEvent>) => {
+        pts.current.delete(e.pointerId);
+        resetPinch();
       }}
     >
       <sphereGeometry args={[60, 8, 8]} />
@@ -188,31 +239,40 @@ function OrbitBackdrop({
 }
 
 // The single priority-1 useFrame subscriber (priority > 0 = we own rendering).
-// Each frame: ease the orbit toward the drag target AND ease the look-at center
-// toward the focused node, place the camera on the orbit sphere around that
-// center, render, then force the synchronous GL round-trip expo-gl needs or the
-// view freezes on the last frame / stays black (see app/space.tsx:80-83).
+// Each frame: ease the orbit toward the drag target, ease the look-at center
+// toward the focused node (plus any pan offset), ease the radius toward
+// FRAME_RADIUS * zoom, place the camera on the orbit sphere around that center,
+// render, then force the synchronous GL round-trip expo-gl needs or the view
+// freezes on the last frame / stays black (see app/space.tsx:80-83).
 function CameraRig({
   orbit,
   center,
+  pan,
+  zoom,
 }: {
   orbit: RefObject<Orbit>;
   center: RefObject<Vec3>;
+  pan: RefObject<Vec3>;
+  zoom: RefObject<number>;
 }) {
   const curOrbit = useRef<Orbit>({ ...orbit.current });
   const curCenter = useRef<Vec3>([...center.current] as Vec3);
+  const curRadius = useRef<number>(FRAME_RADIUS * zoom.current);
   useFrame((state) => {
     const o = curOrbit.current;
     o.yaw += (orbit.current.yaw - o.yaw) * DAMPING;
     o.pitch += (orbit.current.pitch - o.pitch) * DAMPING;
     const c = curCenter.current;
     for (let i = 0; i < 3; i++) {
-      c[i] += (center.current[i]! - c[i]!) * DAMPING;
+      c[i] += (center.current[i]! + pan.current[i]! - c[i]!) * DAMPING;
     }
+    curRadius.current +=
+      (FRAME_RADIUS * zoom.current - curRadius.current) * DAMPING;
+    const r = curRadius.current;
     state.camera.position.set(
-      c[0]! + FRAME_RADIUS * Math.cos(o.pitch) * Math.sin(o.yaw),
-      c[1]! + FRAME_RADIUS * Math.sin(o.pitch),
-      c[2]! + FRAME_RADIUS * Math.cos(o.pitch) * Math.cos(o.yaw),
+      c[0]! + r * Math.cos(o.pitch) * Math.sin(o.yaw),
+      c[1]! + r * Math.sin(o.pitch),
+      c[2]! + r * Math.cos(o.pitch) * Math.cos(o.yaw),
     );
     state.camera.lookAt(c[0]!, c[1]!, c[2]!);
     // fiber/native patches gl.render to also call endFrameEXP
@@ -240,11 +300,20 @@ export function ConstellationHero({
   style,
 }: ConstellationHeroProps) {
   const orbit = useRef<Orbit>({ yaw: 0.6, pitch: 0.32 });
+  // Live pinch multiplier on FRAME_RADIUS (kept across focus changes so the
+  // user's chosen zoom level survives drilling to a new node).
+  const zoom = useRef<number>(1);
   // The focused node's position, eased toward by the camera each frame. Updated
   // in an effect (not during render) so the rig's useFrame reads the latest.
   const center = useRef<Vec3>(focused?.position ?? [0, 0, 0]);
+  // Accumulated two-finger pan offset, added on top of `center`. Reset whenever
+  // focus moves so each newly-focused node recenters in frame.
+  const pan = useRef<Vec3>([0, 0, 0]);
   useEffect(() => {
-    if (focused) center.current = focused.position;
+    if (focused) {
+      center.current = focused.position;
+      pan.current = [0, 0, 0];
+    }
   }, [focused]);
 
   const onOrbitDelta = (dx: number, dy: number) => {
@@ -253,13 +322,32 @@ export function ConstellationHero({
     t.pitch = Math.min(1.4, Math.max(-1.4, t.pitch - dy * 2));
   };
 
+  const onZoom = (factor: number) => {
+    zoom.current = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom.current * factor));
+  };
+
+  // Map a screen-space (NDC) midpoint delta to a world pan in the camera's
+  // horizontal plane. Right vector for the current yaw is (-cos, 0, sin); we
+  // move the center opposite the drag so content tracks the fingers. Vertical
+  // drag pans along world up. Scaled by the live radius for consistent feel.
+  const onPan = (dx: number, dy: number) => {
+    const yaw = orbit.current.yaw;
+    const k = PAN_SCALE * FRAME_RADIUS * zoom.current;
+    const rightX = -Math.cos(yaw);
+    const rightZ = Math.sin(yaw);
+    const p = pan.current;
+    p[0] = p[0]! - rightX * dx * k;
+    p[1] = p[1]! + dy * k;
+    p[2] = p[2]! - rightZ * dx * k;
+  };
+
   const focusedId = focused?.id ?? null;
   return (
     <View style={[styles.hero, style]}>
       <Canvas camera={{ fov: 52 }}>
         <color attach="background" args={[PAPER]} />
-        <CameraRig orbit={orbit} center={center} />
-        <OrbitBackdrop onDelta={onOrbitDelta} />
+        <CameraRig orbit={orbit} center={center} pan={pan} zoom={zoom} />
+        <OrbitBackdrop onOrbit={onOrbitDelta} onZoom={onZoom} onPan={onPan} />
         <ambientLight intensity={1} />
         <EdgeLines scene={scene} focusedId={focusedId} onlyFocus={false} />
         <EdgeLines scene={scene} focusedId={focusedId} onlyFocus />

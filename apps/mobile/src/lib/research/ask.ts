@@ -87,6 +87,11 @@ export async function askMyPosts(args: {
   messages: ModelMessage[];
   onDelta: (text: string) => void;
   onPhase?: (phase: AskPhase) => void;
+  // Reports the model's routing decision (whether it chose to search the library
+  // and with what query) as soon as phase 1 resolves. Production UI ignores this;
+  // the dev test bench uses it to assert the decide step routes correctly, since
+  // small on-device models tend to under-call the search tool (see decideResearch).
+  onDecision?: (decision: { kind: "answer" | "search"; query?: string }) => void;
   signal?: AbortSignal;
 }): Promise<{ sources: ScoredPost[] }> {
   // Phase 1 — decide. ("waiting" if curation currently holds the model.)
@@ -97,6 +102,11 @@ export async function askMyPosts(args: {
       messages: args.messages,
       abortSignal: args.signal,
     }),
+  );
+  args.onDecision?.(
+    decision.kind === "search"
+      ? { kind: "search", query: decision.query }
+      : { kind: "answer" },
   );
 
   // No library needed — deliver Qwen's direct answer. generateText returns the

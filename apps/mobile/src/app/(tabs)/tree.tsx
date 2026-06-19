@@ -25,7 +25,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { ExploreView } from "@/components/explore/explore-view";
+import { MapView } from "@/components/explore/map-view";
 import { Segment, SegmentedControl } from "@/components/segmented";
 import {
   Eyebrow,
@@ -50,7 +50,7 @@ export const fetchScene = () =>
 const EXPANDED_PREFIX = "tree.expanded";
 const EXPAND_TO_DEPTH = 1;
 
-type Tab = "categories" | "focus" | "explore";
+type Tab = "map" | "categories" | "focus";
 
 export default function TreeScreen() {
   const {
@@ -92,7 +92,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
   const userId = session?.user.id ?? null;
-  const [tab, setTab] = useState<Tab>("categories");
+  const [tab, setTab] = useState<Tab>("map");
   const [refreshing, setRefreshing] = useState(false);
 
   const childrenMap = useMemo(() => categoryChildren(scene), [scene]);
@@ -166,25 +166,28 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
 
   const expandedSet = expanded ?? defaultExpanded;
 
+  const segments = (
+    <SegmentedControl value={tab} onChange={setTab}>
+      <Segment value="map" label="Map" />
+      <Segment value="categories" label="Categories" count={categoryCount} />
+      <Segment value="focus" label="Focus" count={projects.length} />
+    </SegmentedControl>
+  );
+
   return (
     <Screen>
-      {/* Header + subtabs stay pinned; only the active view scrolls. */}
-      <View style={styles.head}>
-        <PageHeader
-          eyebrow="Section V — The Observatory"
-          title="The Tree"
-          titleAccent="."
-          subtitle="Every analysis branch and focus area, filed as an outline. Tap a node to open its index of posts."
-        />
-        <SegmentedControl value={tab} onChange={setTab}>
-          <Segment
-            value="categories"
-            label="Categories"
-            count={categoryCount}
+      {/* Map mode goes full-bleed: just a compact segmented-control bar over the
+          canvas. Categories/Focus keep the full editorial header. */}
+      <View style={tab === "map" ? styles.headCompact : styles.head}>
+        {tab === "map" ? null : (
+          <PageHeader
+            eyebrow="Section V — The Observatory"
+            title="The Tree"
+            titleAccent="."
+            subtitle="Every analysis branch and focus area. Tap a node to open its index of posts, or explore the map."
           />
-          <Segment value="focus" label="Focus" count={projects.length} />
-          <Segment value="explore" label="Explore" />
-        </SegmentedControl>
+        )}
+        {segments}
       </View>
 
       {/* Keyed remount drives the crossfade (opacity only — GPU-cheap) and
@@ -194,7 +197,9 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
         entering={FadeIn.duration(180)}
         style={styles.viewport}
       >
-        {tab === "categories" ? (
+        {tab === "map" ? (
+          <MapView scene={scene} />
+        ) : tab === "categories" ? (
           <CategoriesView
             childrenMap={childrenMap}
             counts={counts.subtree}
@@ -204,7 +209,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
             refreshing={refreshing}
             onRefresh={onRefresh}
           />
-        ) : tab === "focus" ? (
+        ) : (
           <FocusView
             projects={projects}
             counts={counts.direct}
@@ -212,8 +217,6 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
             refreshing={refreshing}
             onRefresh={onRefresh}
           />
-        ) : (
-          <ExploreView scene={scene} />
         )}
       </Animated.View>
     </Screen>
@@ -480,6 +483,12 @@ const styles = StyleSheet.create({
     paddingTop: 64,
     paddingBottom: Sirius.space.lg,
     gap: Sirius.space.xl,
+  },
+  // Compact bar for Map mode — clears the status bar, hands the rest to the canvas.
+  headCompact: {
+    paddingHorizontal: HEAD_PAD,
+    paddingTop: 64,
+    paddingBottom: Sirius.space.sm,
   },
   viewport: { flex: 1 },
   scrollBody: {
