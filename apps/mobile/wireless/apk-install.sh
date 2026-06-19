@@ -68,9 +68,15 @@ if [ "${NO_BUILD:-0}" != "1" ]; then
     echo "Verifying on-device-AI native artifacts…"
     bun --cwd "$MOBILE_DIR" run verify:native-ai
 
-    echo "Building $VARIANT APK (backend: $EXPO_PUBLIC_AUTH_BASE_URL)…"
+    # Build native libs for ONLY the phone's ABI (default) — building all 4 ABIs is ~4x
+    # the native compile and a much bigger APK for no benefit. Override with ABIS=... (e.g.
+    # ABIS=arm64-v8a,armeabi-v7a for a universal APK).
+    ABIS="${ABIS:-$("$ADB" -s "$ENDPOINT" shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r')}"
+    ABIS="${ABIS:-arm64-v8a}"
+    echo "Building $VARIANT APK for [$ABIS] (backend: $EXPO_PUBLIC_AUTH_BASE_URL)…"
     echo "  (first build compiles the llama.rn native bridge from scratch — several minutes)"
-    ( cd "$ANDROID_DIR" && ./gradlew ":app:assemble$VARIANT_CAP" --console=plain )
+    ( cd "$ANDROID_DIR" && ./gradlew ":app:assemble$VARIANT_CAP" \
+        "-PreactNativeArchitectures=$ABIS" --console=plain )
 fi
 
 if [ ! -f "$APK" ]; then
