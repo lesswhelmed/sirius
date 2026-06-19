@@ -111,7 +111,9 @@ Then release the schema.ts reservation via agent-mail (`release_file_reservation
 - [ ] **Step 1: Add file-system imports + the outbox dir.** At the top of `outbox.ts`, extend the expo-file-system import and add the dir constant + a `BinaryTransport` alias:
 
 ```ts
-import { and, asc, eq, ne } from "drizzle-orm";
+// Note: the old `and` import is no longer needed (countOutbox no longer filters
+// by transport) — the final import is just `asc, eq`. eslint runs --max-warnings 0.
+import { asc, eq } from "drizzle-orm";
 import { randomUUID } from "expo-crypto";
 import {
   copyAsync,
@@ -442,7 +444,7 @@ Update the module's top comment to note binaries are now persisted too. Remove t
 bun --cwd apps/mobile run check-types
 bunx eslint apps/mobile/src/lib/outbox.ts --max-warnings 0
 ```
-Expected: both clean. (`ne` import may be unused — if eslint flags it, remove it; it was added speculatively.)
+Expected: both clean. (If eslint flags any unused drizzle import, trim it — the final set is `asc, eq`.)
 
 - [ ] **Step 7: Commit.**
 
@@ -887,28 +889,32 @@ EOF
 
 ---
 
-### Task 6: Manual end-to-end verification on the iOS simulator
+### Task 6: End-to-end verification (USER-DRIVEN on device)
 
 **Files:** none (verification only).
 
 **Interfaces:** none.
 
-This repo has no automated tests; this task is the acceptance gate. Use the running stack (`bun run dev` interactively per the Portless note — see memory "Portless :443 sudo fallback"; web 200 at https://sirius.local, Metro on 8081, sim app `dev.copt.sirius`, login `saleebmina@icloud.com` / `DEV_LOGIN_PASSWORD`). Drive via the agent-device skill or by hand. Watch Metro log `apps/mobile/.expo/dev/logs/start.log`.
+This repo has no automated tests, so this is the acceptance gate. Per the user's standing preference (memory: "Prefer user manual testing — don't drive the iOS sim with agent-device"), the implementer does NOT drive the simulator. Instead: run the static gate yourself, then hand the user a concise numbered checklist and ask them to report back on each, calling out the exact thing to watch for.
 
-- [ ] **Step 1: Happy path.** Stage 2 photos, tap Submit (online) → both upload, Queue shows them server-side, no device-side failed rows, and `outbox/` has no leftover dirs for them.
-- [ ] **Step 2: Interrupted upload auto-resumes.** Stage a large video, tap Submit, immediately background the app (Cmd+Shift+H) mid-upload, wait, reopen → the upload resumes and completes without a tap. Confirm via Metro `[sync] replay (foreground)` + a completed submission.
-- [ ] **Step 3: Force-quit survives.** Stage 3 photos, Submit, then force-quit the app (swipe up) mid-upload. Relaunch → the queued rows re-send and complete (server `contentHash` dedup prevents duplicates).
-- [ ] **Step 4: Failed → Requeue.** Force a failure (e.g. stop the web server, or submit while offline long enough to exhaust, then bring a 4xx by other means) so a row lands `failed` → Queue shows it with Requeue → restore connectivity → tap Requeue → it completes.
-- [ ] **Step 5: Partial image batch requeue.** With a batch where one image fails terminally, confirm only the failed image's row is `failed`; Requeue re-sends just that one and the SIGHT post then completes (reconciles into the existing optimistic card).
-- [ ] **Step 6: Tray cleanup.** Stage a photo then remove it from the tray → its `outbox/<id>/` dir is gone. Stage a photo then force-quit BEFORE Submit → on next launch the orphan sweep removes the dir (check Metro has no error; `outbox/` is empty).
-- [ ] **Step 7: Note/URL unchanged.** Submit a note offline → still queues and auto-sends on reconnect exactly as before (no regression).
-- [ ] **Step 8: Final gate.**
+- [ ] **Step 1: Static gate (implementer runs this).**
 
 ```bash
 bun --cwd apps/mobile run check-types
 bun run lint --filter=mobile
 ```
-Expected: both clean. Record results honestly; if any step fails, file it (don't claim pass).
+Expected: both clean. If either fails, fix before handing off.
+
+- [ ] **Step 2: Hand the user this checklist** (they run it on the device/sim; ask them to report pass/fail + what they saw for each):
+  1. **Happy path:** stage 2 photos, Submit while online → both appear in the Queue and finish; no "failed" rows on the Queue tab.
+  2. **Backgrounding resumes:** stage a large video, Submit, then immediately background the app for ~10s and reopen → the upload finishes on its own, no tap needed. (Watch: does it complete after reopening?)
+  3. **Force-quit survives:** stage 3 photos, Submit, then swipe-kill the app mid-upload and relaunch → uploads finish and you get exactly 3 (no duplicates).
+  4. **Failed → Requeue:** turn Wi-Fi off, stage + Submit a photo (it should say "Saved on this device"), then — to force a real failure — the implementer can briefly stop the web server; once a row shows **failed** on the Queue tab, restore the server/Wi-Fi and tap **Requeue** → it completes.
+  5. **Partial batch:** in a multi-photo batch where one fails, only that one shows **failed**; **Requeue** re-sends just it and the post completes.
+  6. **Tray cleanup:** stage a photo then remove it from the tray (it should vanish); stage another then force-quit BEFORE Submit → relaunch shows nothing stuck.
+  7. **No note regression:** submit a note while offline → it still queues and auto-sends when back online, exactly as before.
+
+- [ ] **Step 3: Record results honestly.** If the user reports any failure, treat it as a bug to fix (systematic-debugging), not a pass. Do not claim the feature works until the user confirms the steps that matter to them.
 
 ---
 
