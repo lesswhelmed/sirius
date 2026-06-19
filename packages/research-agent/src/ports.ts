@@ -58,10 +58,13 @@ export interface PostVectorStore {
   remove(serverIds: string[], embeddingModelId: string): Promise<void>;
 }
 
-// What searchPosts needs: an embedding model to vectorize the query, the vector
-// store to rank against, and the id that tags those vectors.
+// What searchPosts needs: the vector store to rank against, the id that tags
+// those vectors, and a way to vectorize the query. The query vector comes from
+// EITHER an on-device embedding model (`embeddingModel`) OR a precomputed vector
+// passed at call time (`opts.queryVector`) — the mobile host embeds the query
+// server-side now, so it supplies the vector and omits `embeddingModel`.
 export interface SearchPorts {
-  embeddingModel: EmbeddingModel;
+  embeddingModel?: EmbeddingModel;
   store: PostVectorStore;
   embeddingModelId: string;
 }

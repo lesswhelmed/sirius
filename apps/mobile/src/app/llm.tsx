@@ -7,7 +7,7 @@ import type { ScoredPost } from "@repo/research-agent";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { streamText } from "ai";
 import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -36,19 +36,13 @@ import {
   modelBusyBy,
   withPreparedModel,
 } from "@/lib/llm/engine";
-import {
-  EMBEDDING_MODEL_ID,
-  formatSize,
-  modelSpec,
-  textModels,
-} from "@/lib/llm/models";
+import { formatSize, modelSpec, textModels } from "@/lib/llm/models";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
 import {
   canTranscribeOnDevice,
   prepareTranscription,
 } from "@/lib/llm/transcribe";
-import { answerFromPosts, searchMyPosts } from "@/lib/research/ask";
-import { buildPostIndex, type IndexProgress } from "@/lib/research/build-index";
+import { askMyPosts } from "@/lib/research/ask";
 
 // Chat modes: "ask" grounds answers in the user's own posts (on-device semantic
 // search + cited Sources); "chat" is the original free on-device conversation.
@@ -297,10 +291,18 @@ function TranscriptionAssets() {
   );
 }
 
-type BusyState = "waiting" | "preparing" | "generating" | "searching" | null;
+type BusyState =
+  | "deciding"
+  | "waiting"
+  | "preparing"
+  | "generating"
+  | "searching"
+  | null;
 
 function busyPlaceholder(busy: BusyState): string {
   switch (busy) {
+    case "deciding":
+      return "Reading your question…";
     case "waiting":
       return "Waiting for the post drafter…";
     case "searching":
@@ -319,15 +321,11 @@ function Chat({
   modelId: string;
   modelLabel: string;
 }) {
-  const queryClient = useQueryClient();
   const [mode, setMode] = useState<ChatMode>("ask");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<BusyState>(null);
   const [error, setError] = useState<string | null>(null);
-  const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(
-    null,
-  );
   const scrollRef = useRef<ScrollView>(null);
   // This screen sits under a native nav header, so the KeyboardAvoidingView has
   // to offset by exactly that header's height (safe-area top inset + the iOS
@@ -336,41 +334,14 @@ function Chat({
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 44;
 
-  // Post search needs its own (small) embedding model, separate from the chat
-  // model the outer screen already gated on.
-  const embedReady = useQuery({
-    queryKey: ["llm-model-ready", EMBEDDING_MODEL_ID],
-    queryFn: () => isModelReady(EMBEDDING_MODEL_ID),
-  });
-  const canAsk = mode === "ask" && embedReady.data === true;
-
-  // Keep the index fresh whenever the user is in ask mode and the model is ready.
-  // buildPostIndex is incremental + single-flight, so this is cheap when nothing
-  // changed. Only the still-building progress is surfaced.
-  useEffect(() => {
-    if (mode !== "ask" || embedReady.data !== true) return;
-    let cancelled = false;
-    void buildPostIndex({
-      onProgress: (p) => {
-        if (!cancelled) setIndexProgress(p.done < p.total ? p : null);
-      },
-    })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setIndexProgress(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [mode, embedReady.data]);
+  // "Ask my posts" needs no on-device model: the query is embedded server-side
+  // (same gemini space as the synced post vectors — see lib/research/ask) and
+  // documents arrive pre-embedded via post sync. So ask mode is always available;
+  // the only requirement is the chat model the outer screen already gated on.
 
   const send = async () => {
     const text = input.trim();
     if (!text || busy) {
-      return;
-    }
-    if (mode === "ask" && !canAsk) {
-      setError("Download the post-search model first to ask about your posts.");
       return;
     }
     setInput("");
@@ -387,16 +358,25 @@ function Chat({
     }));
     try {
       if (mode === "ask") {
-        setBusy("searching");
-        const posts = await searchMyPosts(text);
-        // The model runs one generation at a time; if curation is mid-draft,
-        // queue behind it and say so instead of failing.
-        setBusy(modelBusyBy() === "draft" ? "waiting" : "preparing");
+        // Qwen-driven router: the chat model parses the question and decides
+        // whether to search the library (via a search_posts tool call) before
+        // answering — the embedding search runs only if it asks for it. The
+        // "waiting" phase means curation currently holds the single model.
+        setBusy("deciding");
         let assistant = "";
-        await answerFromPosts({
+        const { sources } = await askMyPosts({
           chatModelId: modelId,
           messages: modelMessages,
-          posts,
+          onPhase: (phase) =>
+            setBusy(
+              phase === "searching"
+                ? "searching"
+                : phase === "waiting"
+                  ? "waiting"
+                  : phase === "answering"
+                    ? "preparing"
+                    : "deciding",
+            ),
           onDelta: (delta) => {
             assistant += delta;
             setBusy("generating");
@@ -408,7 +388,7 @@ function Chat({
         });
         setMessages([
           ...history,
-          { role: "assistant", content: assistant, sources: posts },
+          { role: "assistant", content: assistant, sources },
         ]);
       } else {
         setBusy(modelBusyBy() === "draft" ? "waiting" : "preparing");
@@ -445,11 +425,6 @@ function Chat({
         keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
       >
         <ModeToggle mode={mode} onChange={setMode} disabled={Boolean(busy)} />
-        {indexProgress ? (
-          <MetaText style={styles.indexNote}>
-            Indexing your posts… {indexProgress.done}/{indexProgress.total}
-          </MetaText>
-        ) : null}
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
@@ -460,15 +435,7 @@ function Chat({
             scrollRef.current?.scrollToEnd({ animated: true })
           }
         >
-          {mode === "ask" && embedReady.data === false ? (
-            <EnablePostSearch
-              onReady={() =>
-                queryClient.invalidateQueries({
-                  queryKey: ["llm-model-ready", EMBEDDING_MODEL_ID],
-                })
-              }
-            />
-          ) : messages.length === 0 ? (
+          {messages.length === 0 ? (
             <View style={styles.empty}>
               <MetaText style={styles.cardEyebrow}>{modelLabel}</MetaText>
               <Text style={styles.modelDetail}>
@@ -594,80 +561,6 @@ function ModeToggle({
   );
 }
 
-// First-run card for ask mode: downloads the small embedding model, then builds
-// the on-device search index over the user's synced posts.
-function EnablePostSearch({ onReady }: { onReady: () => void }) {
-  const spec = modelSpec(EMBEDDING_MODEL_ID);
-  const [downloadPct, setDownloadPct] = useState<number | null>(null);
-  const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(
-    null,
-  );
-
-  const enable = useMutation({
-    mutationFn: async () => {
-      setDownloadPct(0);
-      await downloadModelById(EMBEDDING_MODEL_ID, (pct) =>
-        setDownloadPct(Math.round(pct)),
-      );
-      setDownloadPct(null);
-      await buildPostIndex({ onProgress: setIndexProgress });
-    },
-    onSettled: () => {
-      setDownloadPct(null);
-      setIndexProgress(null);
-      onReady();
-    },
-  });
-
-  if (!spec) {
-    return null;
-  }
-
-  return (
-    <View style={styles.downloadCard}>
-      <MetaText style={styles.cardEyebrow}>Post search</MetaText>
-      <Text style={styles.modelName}>Ask about your posts</Text>
-      <Text style={styles.modelDetail}>
-        Download a small search model ({formatSize(spec.sizeBytes)}) so this
-        device can find the right posts for your question and answer from them —
-        entirely offline, with links back to the sources.
-      </Text>
-      {enable.isPending ? (
-        <View style={styles.progressWrap}>
-          {downloadPct !== null ? (
-            <>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[styles.progressFill, { width: `${downloadPct}%` }]}
-                />
-              </View>
-              <MetaText>Downloading… {downloadPct}%</MetaText>
-            </>
-          ) : (
-            <MetaText>
-              {indexProgress
-                ? `Indexing your posts… ${indexProgress.done}/${indexProgress.total}`
-                : "Preparing…"}
-            </MetaText>
-          )}
-        </View>
-      ) : (
-        <PrimaryButton
-          label="Enable post search"
-          onPress={() => enable.mutate()}
-        />
-      )}
-      {enable.isError ? (
-        <Text style={styles.error}>
-          {enable.error instanceof Error
-            ? enable.error.message
-            : "Couldn't enable post search"}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
 // The cited posts under an answer. Each taps through to the post detail screen.
 function Sources({ posts }: { posts: ScoredPost[] }) {
   return (
@@ -761,7 +654,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   toggleLabelActive: { color: Sirius.color.ink },
-  indexNote: { marginBottom: 6 },
   msgGroup: { gap: 6 },
   // Cited sources under an answer.
   sources: {

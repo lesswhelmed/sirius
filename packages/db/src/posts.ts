@@ -293,6 +293,14 @@ export type PostDelta = {
   // repo chip (and any future provider badge) without re-fetching the source.
   providerId: string;
   contentDigest: Prisma.JsonValue | null;
+  // Server-computed (gemini-embedding-2) retrieval vector, mirrored down so the
+  // device can run "ask my posts" semantic search WITHOUT embedding documents
+  // on-device. Null until the worker has embedded the post. `embeddingModel` +
+  // `embeddingDim` identify the vector space (must match the query-embed
+  // endpoint's modelId) so the device only ranks a query against same-space docs.
+  embedding: number[] | null;
+  embeddingModel: string | null;
+  embeddingDim: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -329,6 +337,9 @@ export async function listPostsChangedSince(opts: {
     include: {
       tags: { select: { name: true } },
       categories: { select: { name: true } },
+      embedding: {
+        select: { embedding: true, modelVersion: true, dimensionality: true },
+      },
     },
   });
   const hasMore = rows.length > take;
@@ -353,6 +364,9 @@ export async function listPostsChangedSince(opts: {
             sourceRecordId: p.sourceRecordId,
             providerId: p.providerId,
             contentDigest: p.contentDigest,
+            embedding: p.embedding?.embedding ?? null,
+            embeddingModel: p.embedding?.modelVersion ?? null,
+            embeddingDim: p.embedding?.dimensionality ?? null,
             createdAt: p.createdAt,
             updatedAt: p.updatedAt,
           },

@@ -2,6 +2,7 @@ import { getUserHandle } from "@repo/db";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getSessionOrNull } from "../../lib/session";
+import { SiriusLogo } from "../_chrome/sirius-logo";
 import { ThemeMenu } from "../_theme/theme-menu";
 import { APP_STORE_URL } from "./constants";
 
@@ -16,13 +17,7 @@ export default function MarketingLayout({
     <div className="min-h-screen w-full text-[var(--fg)]">
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 lg:px-12">
         <header className="flex items-center justify-between gap-4 pt-6 sm:pt-8">
-          <Link
-            href="/product"
-            aria-label="Sirius"
-            className="font-display text-[28px] leading-none tracking-[-0.02em] text-[var(--color-ink)] sm:text-[32px]"
-          >
-            Sirius<span className="text-[var(--color-accent)]">.</span>
-          </Link>
+          <SiriusLogo href="/product" ariaLabel="Sirius" variant="compact" />
           <div className="flex items-center gap-4 sm:gap-5">
             <ThemeMenu />
             <span

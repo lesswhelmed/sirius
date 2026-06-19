@@ -1,6 +1,28 @@
 // Shared AI configuration — single source of truth for env vars, model defaults,
 // and API key resolution. All AI code imports from here instead of hardcoding
 // env lookups or model names.
+//
+// The EMBEDDING contract (model, dimensionality, api-key resolution) lives in
+// @repo/db's embed-client so apps/web can embed queries in the same space as the
+// worker's stored vectors; we re-export those resolvers here to keep this file the
+// worker's one config surface.
+import {
+  DEFAULT_EMBEDDING_DIMENSIONALITY,
+  DEFAULT_EMBEDDING_MODEL,
+  getEmbeddingDimensionality,
+  getEmbeddingModel,
+  requireApiKey,
+  resolveApiKey,
+} from "@repo/db";
+
+export {
+  DEFAULT_EMBEDDING_DIMENSIONALITY,
+  DEFAULT_EMBEDDING_MODEL,
+  getEmbeddingDimensionality,
+  getEmbeddingModel,
+  requireApiKey,
+  resolveApiKey,
+};
 
 export type AIConfig = {
   apiKey: string;
@@ -11,33 +33,10 @@ export type AIConfig = {
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
 const DEFAULT_TEMPERATURE = 0.7;
-// gemini-embedding-2 (GA) is multimodal: text + image/audio/video/pdf map into
-// one vector space. Accessed via @google/genai (not @ai-sdk/google) in embeddings.ts.
-const DEFAULT_EMBEDDING_MODEL = "gemini-embedding-2";
-// MRL output size; gemini-embedding-2 auto-renormalizes truncated dims.
-const DEFAULT_EMBEDDING_DIMENSIONALITY = 768;
 // YouTube ingest needs a model that supports fileData YouTube URIs. Preview
 // models (e.g. gemini-3.1-pro-preview) routinely return INVALID_ARGUMENT for
 // YouTube fileData, so we pin a known-good default and let env override.
 const DEFAULT_YOUTUBE_MODEL = "gemini-2.5-pro";
-
-export function resolveApiKey(): string | undefined {
-  return (
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    process.env.GOOGLE_GENAI_API_KEY
-  );
-}
-
-export function requireApiKey(): string {
-  const key = resolveApiKey();
-  if (!key) {
-    throw new Error(
-      "GEMINI_API_KEY environment variable required (see .env.example)",
-    );
-  }
-  return key;
-}
 
 export function getAIConfig(apiKeyOverride?: string): AIConfig {
   const apiKey = apiKeyOverride ?? requireApiKey();
@@ -51,17 +50,6 @@ export function getAIConfig(apiKeyOverride?: string): AIConfig {
 
 export function getYouTubeModel(): string {
   return process.env.YOUTUBE_AI_MODEL ?? DEFAULT_YOUTUBE_MODEL;
-}
-
-export function getEmbeddingModel(): string {
-  return process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL;
-}
-
-export function getEmbeddingDimensionality(): number {
-  const raw = Number(process.env.EMBEDDING_DIMENSIONALITY);
-  return Number.isFinite(raw) && raw > 0
-    ? raw
-    : DEFAULT_EMBEDDING_DIMENSIONALITY;
 }
 
 // Auto-generated cover images. When a drafted post resolves to no imageUrl
@@ -85,7 +73,10 @@ const DEFAULT_IMAGE_BRIEF_MODEL = "gemini-2.5-flash";
 // 3:2 sits between the catalog card (4:3) and detail hero (16:10); both crop it
 // cleanly under object-cover.
 const DEFAULT_IMAGE_ASPECT_RATIO = "3:2";
-const DEFAULT_IMAGE_SIZE = "2K";
+// "2K" on the gemini-3 image models regressed to returning blank/foggy renders
+// (valid image part, no error — so it silently passes the success check and a
+// blank cover gets written). "1K" renders correctly. Override via IMAGE_GEN_SIZE.
+const DEFAULT_IMAGE_SIZE = "1K";
 
 export function getImageGenConfig(): ImageGenConfig {
   return {
@@ -152,8 +143,6 @@ export function getClassifyConfig(): ClassifyConfig {
 }
 
 export {
-  DEFAULT_EMBEDDING_DIMENSIONALITY,
-  DEFAULT_EMBEDDING_MODEL,
   DEFAULT_IMAGE_ASPECT_RATIO,
   DEFAULT_IMAGE_BRIEF_MODEL,
   DEFAULT_IMAGE_GEN_MODEL,

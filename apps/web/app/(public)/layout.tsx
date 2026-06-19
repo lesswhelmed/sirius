@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { formatDateLong } from "../../lib/datetime";
 import { getSessionOrNull } from "../../lib/session";
+import { SiriusLogo } from "../_chrome/sirius-logo";
 import {
   SIGNED_IN_NAV,
   SIGNED_OUT_NAV,
@@ -32,15 +33,7 @@ export default function PublicLayout({
           </div>
 
           <div className="flex items-end justify-between gap-6 pt-5 pb-5">
-            <Link
-              href="/catalog"
-              aria-label="Sirius — back to catalog"
-              className="block font-display leading-none tracking-[-0.02em] text-[var(--color-ink)]"
-            >
-              <span className="block italic text-[40px] sm:text-[48px] lg:text-[56px]">
-                Sirius<span className="text-[var(--color-accent)]">.</span>
-              </span>
-            </Link>
+            <SiriusLogo href="/catalog" ariaLabel="Sirius — back to catalog" />
             <div className="hidden items-baseline gap-3 pb-1 sm:flex">
               <ThemeMenu />
               <span

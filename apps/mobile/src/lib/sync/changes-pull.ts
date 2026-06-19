@@ -8,11 +8,15 @@ import { eq } from "drizzle-orm";
 import { apiGet } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { syncMeta } from "@/lib/db/schema";
-import { triggerReindexIfReady } from "@/lib/research/build-index";
 import type { PostChangesResult } from "./events";
 import { applyTombstone, reconcileUpsert } from "./reconcile";
 
-const SINCE_KEY = "posts.changes.since";
+// Bumped to v2 when post deltas began carrying the server embedding vector (for
+// "ask my posts" — see reconcile.mirrorPostVector). The new key starts at EPOCH,
+// so every existing device does ONE idempotent full re-pull to backfill vectors
+// for posts it already had (their updatedAt didn't change, so the old cursor would
+// never re-deliver them). Reconcile is upsert-by-id, so the re-pull is harmless.
+const SINCE_KEY = "posts.changes.since.v2";
 const EPOCH = new Date(0).toISOString();
 
 async function getSince(): Promise<string> {
@@ -58,10 +62,9 @@ export function pullChanges(): Promise<void> {
       // back empty (no cursor to advance past).
       if (!result.hasMore || result.changes.length === 0) break;
     }
-    // Keep the on-device search index fresh for edited/new posts. No-op (and no
-    // model load) unless the embedding model is already downloaded; never awaited
-    // so it can't slow the pull.
-    void triggerReindexIfReady();
+    // Post vectors for "ask my posts" are mirrored into the on-device index by
+    // reconcileUpsert as each post is applied above (they ride the delta as the
+    // server's gemini embedding) — there is no separate on-device indexing pass.
   })().finally(() => {
     pulling = null;
   });

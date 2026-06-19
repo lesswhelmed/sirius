@@ -201,6 +201,7 @@ export default function SignInScreen() {
       >
         <View style={styles.container}>
           <PageHeader
+            brandMark
             eyebrow="Sirius — A field journal"
             title="Sign in"
             titleAccent="."

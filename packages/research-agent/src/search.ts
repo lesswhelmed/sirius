@@ -19,7 +19,13 @@ export interface SearchOptions {
   // Prefix prepended to the query before embedding, for models trained with
   // asymmetric task instructions (e.g. nomic-embed's "search_query: "). Must pair
   // with the document-side prefix used when the index was built. Empty by default.
+  // Ignored when `queryVector` is supplied (the host already embedded the query).
   queryPrefix?: string;
+  // A precomputed query vector. When provided, the query is NOT embedded here
+  // (ports.embeddingModel is not used) — the host embedded it elsewhere, e.g. the
+  // mobile client embeds the query server-side in the same space as the synced
+  // document vectors. Must share the dimensionality of the stored vectors.
+  queryVector?: ArrayLike<number>;
   abortSignal?: AbortSignal;
 }
 
@@ -47,12 +53,24 @@ export async function searchPosts(
     return [];
   }
 
-  const { embedding } = await embed({
-    model: ports.embeddingModel,
-    value: `${opts.queryPrefix ?? ""}${trimmed}`,
-    abortSignal: opts.abortSignal,
-  });
-  const queryVec = embedding;
+  // Prefer a host-supplied query vector (server-side embed). Otherwise embed
+  // on-device with the injected model.
+  let queryVec: ArrayLike<number>;
+  if (opts.queryVector) {
+    queryVec = opts.queryVector;
+  } else {
+    if (!ports.embeddingModel) {
+      throw new Error(
+        "searchPosts: provide opts.queryVector or ports.embeddingModel",
+      );
+    }
+    const { embedding } = await embed({
+      model: ports.embeddingModel,
+      value: `${opts.queryPrefix ?? ""}${trimmed}`,
+      abortSignal: opts.abortSignal,
+    });
+    queryVec = embedding;
+  }
 
   return stored
     .map((row) => ({

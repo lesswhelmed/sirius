@@ -181,18 +181,36 @@ async function getPreparedModel(id: string): Promise<PreparedModel> {
     await releaseModel();
     const model: PreparedModel =
       spec.capability === "embedding"
-        ? // nomic-embed is a non-causal ENCODER: llama.cpp asserts
-          // `n_ubatch >= n_tokens` (llama-context.cpp encode) because an encoder
-          // can't split a sequence across micro-batches. The lib default n_ubatch
-          // is 512, but build-index embeds up to MAX_EMBED_CHARS (4000) of text —
-          // any post past ~512 tokens overruns it. In the optimized build the
-          // assert is compiled out, so instead of erroring it segfaults in batch
-          // allocation (EXC_BAD_ACCESS in llama_batch_allocr::init). Size n_ctx +
-          // both batch dims to 4096 so a whole 4000-char input (tokens <= chars)
-          // always fits one ubatch; nomic-embed-v1.5 supports long context, so
-          // this is within spec.
+        ? // DORMANT: on-device embedding is no longer used. "Ask my posts" now
+          // embeds the query server-side and ranks against the worker's gemini
+          // vectors synced into post_vectors (see lib/research/ask + sync/
+          // reconcile), because on-device document indexing crashed the encoder
+          // (the segfault below) and was slow. Nothing downloads the nomic model
+          // or calls withEmbeddingModel anymore, so this branch is unreachable —
+          // kept (with its hard-won crash fixes) for a future fully-offline mode.
+          //
+          // nomic-embed is a non-causal ENCODER. Two native crashes to avoid here,
+          // both in the encode() graph for this BERT model:
+          //   1. llama.cpp asserts `n_ubatch >= n_tokens` (an encoder can't split a
+          //      sequence across micro-batches). The lib default n_ubatch is 512,
+          //      but a long input past ~512 tokens overruns it; in the optimized
+          //      build the
+          //      assert is compiled out so it segfaults in llama_batch_allocr::init.
+          //      Fix: size n_ctx + both batch dims to 4096 so a whole 4000-char
+          //      input (tokens <= chars) always fits one ubatch (nomic-embed-v1.5
+          //      supports long context, so this is within spec).
+          //   2. flash_attn_type defaults to "auto", which picks flash attention for
+          //      the nomic-BERT attention graph and then aborts in
+          //      lm_ggml_flash_attn_ext_set_prec (SIGABRT, llama-graph build_attn_mha).
+          //      Flash attn is a no-op win for a tiny embedding model, so force it
+          //      "off" → the standard attention path, which is supported here.
           llama.textEmbeddingModel(getModelPath(spec.hfPath), {
-            contextParams: { n_ctx: 4096, n_batch: 4096, n_ubatch: 4096 },
+            contextParams: {
+              n_ctx: 4096,
+              n_batch: 4096,
+              n_ubatch: 4096,
+              flash_attn_type: "off",
+            },
           })
         : llama.languageModel(getModelPath(spec.hfPath), {
             ...(spec.projectorHfPath

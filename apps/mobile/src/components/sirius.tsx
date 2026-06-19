@@ -2,6 +2,7 @@
 // the paper-and-ink language (see constants/theme.ts) consistent across
 // screens without pulling in a styling library. Everything is built on plain
 // react-native + StyleSheet.create per the project's RN conventions.
+import { Image } from "expo-image";
 import { SymbolView } from "expo-symbols";
 import {
   forwardRef,
@@ -82,6 +83,7 @@ export function PageHeader({
   subtitle,
   count,
   countLabel,
+  brandMark,
 }: {
   eyebrow?: string;
   title: string;
@@ -89,10 +91,21 @@ export function PageHeader({
   subtitle?: string;
   count?: number | string;
   countLabel?: string;
+  // Renders the rounded Sirius brand mark above the eyebrow. Reserved for
+  // brand-entry surfaces (e.g. sign-in, the share tray) — not every page header.
+  brandMark?: boolean;
 }) {
   return (
     <View style={styles.header}>
       <View style={styles.headerMain}>
+        {brandMark ? (
+          <Image
+            source={require("@/assets/images/icon.png")}
+            style={styles.brandMark}
+            contentFit="cover"
+            accessibilityIgnoresInvertColors
+          />
+        ) : null}
         {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
         <Title accent={titleAccent}>{title}</Title>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -711,6 +724,12 @@ const styles = StyleSheet.create({
     gap: Sirius.space.lg,
   },
   headerMain: { flex: 1, gap: Sirius.space.xs },
+  brandMark: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    marginBottom: Sirius.space.sm,
+  },
   eyebrow: {
     fontFamily: Sirius.font.mono,
     fontSize: 10,

@@ -15,12 +15,9 @@ import { and, isNotNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { posts as postsTable } from "@/lib/db/schema";
 import { answerFromPosts, searchMyPosts } from "@/lib/research/ask";
-import { buildPostIndex } from "@/lib/research/build-index";
-import { sqliteVectorStore } from "@/lib/research/vector-store";
 
 import { canDraftOnDevice, draftNotePost, draftUrlPost } from "./curate";
-import { isModelReady } from "./engine";
-import { DEFAULT_TEXT_MODEL_ID, EMBEDDING_MODEL_ID } from "./models";
+import { DEFAULT_TEXT_MODEL_ID } from "./models";
 import { getLlmSettings } from "./settings";
 
 export type DraftFixture = { id: string; label: string; notes: string };
@@ -255,16 +252,9 @@ export async function runPostSearchTest(): Promise<FixtureResult> {
     return result;
   };
 
-  // 1. Embedding model present?
-  const embedReady = await isModelReady(EMBEDDING_MODEL_ID);
-  checks.push({
-    name: "embed-model-ready",
-    pass: embedReady,
-    detail: embedReady ? "downloaded" : "enable post search on /llm first",
-  });
-  if (!embedReady) return finish(false);
-
-  // 2. Real synced posts to test against.
+  // 1. Real synced posts to test against. Documents are embedded server-side
+  // (gemini) and their vectors arrive via post sync — there's no on-device
+  // embedding model to check anymore (see lib/research/ask + sync/reconcile).
   const rows = await db
     .select({
       serverId: postsTable.serverId,
@@ -290,17 +280,10 @@ export async function runPostSearchTest(): Promise<FixtureResult> {
   });
   if (usable.length === 0) return finish(false);
 
-  // 3. Build/refresh the index, then confirm vectors exist.
-  const prog = await buildPostIndex();
-  const vectors = await sqliteVectorStore.allVectors(EMBEDDING_MODEL_ID);
-  checks.push({
-    name: "index-built",
-    pass: vectors.length > 0,
-    detail: `${vectors.length} vectors (embedded ${prog.done} this run)`,
-  });
-  if (vectors.length === 0) return finish(false);
-
-  // 4. Self-retrieval over a spread of samples.
+  // 2. Self-retrieval over a spread of samples. searchMyPosts embeds the query
+  // server-side and ranks it against the synced vectors — so this end-to-end
+  // check also proves the vectors arrived and the spaces line up (no separate
+  // "index built" step now that documents aren't embedded on-device).
   const samples = pickSpread(usable, Math.min(3, usable.length));
   let retrieved = 0;
   let firstResults: Awaited<ReturnType<typeof searchMyPosts>> = [];

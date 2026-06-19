@@ -22,6 +22,15 @@ export type PostDelta = {
   // so the catalog row can render the repo chip without re-fetching the source.
   providerId: string;
   contentDigest: Record<string, unknown> | null;
+  // Server-computed (gemini-embedding-2) retrieval vector. Mirrored into the
+  // on-device post_vectors index by reconcile so "ask my posts" can semantic-search
+  // WITHOUT embedding documents on-device. Null until the worker has embedded the
+  // post. embeddingModel + embeddingDim identify the vector space (the same id the
+  // query-embed endpoint returns) so the device ranks a query only against
+  // same-space document vectors.
+  embedding: number[] | null;
+  embeddingModel: string | null;
+  embeddingDim: number | null;
   createdAt: string;
   updatedAt: string;
 };

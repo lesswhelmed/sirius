@@ -145,6 +145,7 @@ export default function ShareIntentScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <PageHeader
+            brandMark
             eyebrow="Shared with Sirius"
             title="Queue this"
             titleAccent="."

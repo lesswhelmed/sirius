@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { formatDateLong } from "../../lib/datetime";
 import { requireSession } from "../../lib/session";
+import { SiriusLogo } from "../_chrome/sirius-logo";
 import { SIGNED_IN_NAV, SiteNav, SiteNavFallback } from "../_chrome/site-nav";
 import { ThemeMenu } from "../_theme/theme-menu";
 import { SignOutLink } from "./_chrome/sign-out-link";
@@ -28,15 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-end justify-between gap-6 pt-5 pb-5">
-            <Link
-              href="/ingest"
-              aria-label="Sirius — return home"
-              className="block font-display leading-none tracking-[-0.02em] text-[var(--color-ink)]"
-            >
-              <span className="block italic text-[40px] sm:text-[48px] lg:text-[56px]">
-                Sirius<span className="text-[var(--color-accent)]">.</span>
-              </span>
-            </Link>
+            <SiriusLogo href="/ingest" ariaLabel="Sirius — return home" />
             <div className="hidden items-baseline gap-3 pb-1 sm:flex">
               <ThemeMenu />
               <span

@@ -19,6 +19,11 @@ export {
   streamResearchAnswer,
 } from "./answer";
 export { cosineSim } from "./cosine";
+export {
+  DECIDE_SYSTEM_PROMPT,
+  decideResearch,
+  type ResearchDecision,
+} from "./decide";
 export { contentHash } from "./hash";
 export type {
   PostRef,

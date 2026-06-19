@@ -45,6 +45,7 @@ export * from "./archive";
 export * from "./categories";
 export * from "./comments";
 export * from "./classify";
+export * from "./embed-client";
 export * from "./embeddings";
 export * from "./ingest";
 export * from "./notify";
