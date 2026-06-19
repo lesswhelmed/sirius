@@ -59,6 +59,7 @@ import {
   urlMaterialsFromText,
   type VideoMaterial,
 } from "@/lib/materials";
+import { discardStagedCopy, stageBinaryCopy } from "@/lib/outbox";
 import { kickSync } from "@/lib/sync/engine";
 
 // A material staged in the tray, with a stable id for keys + removal.
@@ -178,7 +179,22 @@ export default function ComposerScreen() {
   }
 
   function removeFromTray(uid: string) {
-    setTray((prev) => prev.filter((entry) => entry.uid !== uid));
+    setTray((prev) => {
+      const entry = prev.find((e) => e.uid === uid);
+      const m = entry?.material;
+      // File-backed kinds hold a durable copy in the outbox — delete it so disk
+      // never retains content the user dropped.
+      if (
+        m &&
+        (m.kind === "image" ||
+          m.kind === "video" ||
+          m.kind === "audio" ||
+          m.kind === "document")
+      ) {
+        void discardStagedCopy(m.uri);
+      }
+      return prev.filter((e) => e.uid !== uid);
+    });
   }
 
   // Open the "Add details" sheet for freshly-picked file materials so the user
@@ -189,12 +205,19 @@ export default function ComposerScreen() {
     setPendingCapture({ summary, materials });
   }
 
-  // Confirm the "Add details" sheet: stamp the shared note onto each pending
-  // material and stage them.
-  function confirmPending() {
+  // Confirm the "Add details" sheet: copy each material's bytes into the outbox
+  // (rewriting uri to the durable path), stamp the shared note, then stage.
+  async function confirmPending() {
     if (!pendingCapture) return;
     const note = pendingNotes.trim() || undefined;
-    addToTray(pendingCapture.materials.map((m) => ({ ...m, notes: note })));
+    const staged = await Promise.all(
+      pendingCapture.materials.map(async (m) => ({
+        ...m,
+        uri: await stageBinaryCopy(m.uri, m.name),
+        notes: note,
+      })),
+    );
+    addToTray(staged);
     setPendingCapture(null);
     setPendingNotes("");
   }
@@ -516,8 +539,8 @@ export default function ComposerScreen() {
 
     if (queued > 0) {
       Alert.alert(
-        "Saved offline",
-        `${queued} note${queued === 1 ? "" : "s"} queued on this device — they'll submit automatically when you're back online.`,
+        "Saved on this device",
+        `${queued} item${queued === 1 ? "" : "s"} queued — they'll finish uploading automatically when you're back online.`,
       );
     }
 
@@ -873,7 +896,7 @@ export default function ComposerScreen() {
               onChangeText={setPendingNotes}
             />
             <KeyboardDoneButton style={styles.keyboardDone} />
-            <PrimaryButton label="Add to tray" onPress={confirmPending} />
+            <PrimaryButton label="Add to tray" onPress={() => void confirmPending()} />
             <View style={styles.sheetCancel}>
               <TextLink
                 label="Cancel"
