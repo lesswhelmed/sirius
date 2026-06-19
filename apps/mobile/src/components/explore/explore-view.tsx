@@ -7,7 +7,7 @@
 // so the hero highlights the SAME node + its neighbors — the card and the 3D map
 // can never disagree (one source of truth, like web's Observatory).
 import { useRouter } from "expo-router";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   PanResponder,
   Pressable,
@@ -17,23 +17,43 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { subtreeIndex } from "@repo/embedding-scene/scene-queries";
 import type { LinkedPost } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
 
-import { Sirius } from "@/constants/theme";
+import { BottomTabInset, Sirius } from "@/constants/theme";
 import { ConstellationHero } from "@/components/explore/constellation-scene";
 import { useExploreFocus } from "@/components/explore/explore-focus";
 
 // Horizontal travel (px) past which a release counts as a sibling swipe.
 const SWIPE_THRESHOLD = 48;
+const SHEET_SWIPE_THRESHOLD = 36;
 
 export function ExploreView({ scene }: { scene: EmbeddingScene }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const heroHeight = Math.round(Math.max(240, Math.min(360, height * 0.4)));
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const usableHeight = viewportHeight || height;
+  const maxHeroHeight = Math.max(
+    104,
+    usableHeight - (sheetExpanded ? 340 : 220),
+  );
+  const targetHeroHeight = sheetExpanded
+    ? usableHeight * 0.22
+    : usableHeight * 0.56;
+  const heroHeight = Math.round(
+    Math.max(
+      104,
+      Math.min(sheetExpanded ? 160 : 360, targetHeroHeight, maxHeroHeight),
+    ),
+  );
+  const bottomInset = BottomTabInset + insets.bottom;
+  const postBodyPaddingBottom = Math.max(140, bottomInset + Sirius.space.xxl);
 
   const focus = useExploreFocus(scene);
   const { focused, parent, children, index, count, next, prev } = focus;
@@ -52,13 +72,19 @@ export function ExploreView({ scene }: { scene: EmbeddingScene }) {
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_e, g) =>
-          Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.4,
+          (Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.4) ||
+          (Math.abs(g.dy) > 12 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2),
         onPanResponderRelease: (_e, g) => {
+          if (Math.abs(g.dy) > Math.abs(g.dx) * 1.2) {
+            if (g.dy <= -SHEET_SWIPE_THRESHOLD) setSheetExpanded(true);
+            else if (g.dy >= SHEET_SWIPE_THRESHOLD) setSheetExpanded(false);
+            return;
+          }
           if (g.dx <= -SWIPE_THRESHOLD) next();
           else if (g.dx >= SWIPE_THRESHOLD) prev();
         },
       }),
-    [next, prev]
+    [next, prev],
   );
 
   // Posts under the focused node + its subtree (deduped), flattened for the card.
@@ -80,7 +106,8 @@ export function ExploreView({ scene }: { scene: EmbeddingScene }) {
     return (
       <View style={styles.emptyWrap}>
         <Text style={styles.empty}>
-          No analysis branches yet. Capture a few posts and they&apos;ll map here.
+          No analysis branches yet. Capture a few posts and they&apos;ll map
+          here.
         </Text>
       </View>
     );
@@ -91,7 +118,10 @@ export function ExploreView({ scene }: { scene: EmbeddingScene }) {
     : "Root";
 
   return (
-    <View style={styles.root}>
+    <View
+      style={styles.root}
+      onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+    >
       <ConstellationHero
         scene={scene}
         focused={focused}
@@ -103,6 +133,22 @@ export function ExploreView({ scene }: { scene: EmbeddingScene }) {
       <View style={styles.card}>
         {/* Header zone owns the swipe; the posts list scrolls independently. */}
         <View style={styles.header} {...pan.panHandlers}>
+          <Pressable
+            onPress={() => setSheetExpanded((expanded) => !expanded)}
+            accessibilityRole="button"
+            accessibilityLabel={
+              sheetExpanded ? "Lower post index" : "Raise post index"
+            }
+            accessibilityState={{ expanded: sheetExpanded }}
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.handleHit,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={styles.handle} />
+          </Pressable>
+
           <Pressable
             onPress={focus.up}
             disabled={!parent}
@@ -125,7 +171,9 @@ export function ExploreView({ scene }: { scene: EmbeddingScene }) {
               accessibilityLabel="Previous sibling"
               style={({ pressed }) => [styles.chev, pressed && styles.pressed]}
             >
-              <Text style={[styles.chevGlyph, count < 2 && styles.chevDisabled]}>
+              <Text
+                style={[styles.chevGlyph, count < 2 && styles.chevDisabled]}
+              >
                 ‹
               </Text>
             </Pressable>
@@ -140,7 +188,9 @@ export function ExploreView({ scene }: { scene: EmbeddingScene }) {
               accessibilityLabel="Next sibling"
               style={({ pressed }) => [styles.chev, pressed && styles.pressed]}
             >
-              <Text style={[styles.chevGlyph, count < 2 && styles.chevDisabled]}>
+              <Text
+                style={[styles.chevGlyph, count < 2 && styles.chevDisabled]}
+              >
                 ›
               </Text>
             </Pressable>
@@ -181,11 +231,17 @@ export function ExploreView({ scene }: { scene: EmbeddingScene }) {
 
         <ScrollView
           style={styles.postScroll}
-          contentContainerStyle={styles.postBody}
+          contentContainerStyle={[
+            styles.postBody,
+            { paddingBottom: postBodyPaddingBottom },
+          ]}
           showsVerticalScrollIndicator={false}
+          scrollIndicatorInsets={{ bottom: bottomInset }}
         >
           {posts.length === 0 ? (
-            <Text style={styles.empty}>Nothing filed under this branch yet.</Text>
+            <Text style={styles.empty}>
+              Nothing filed under this branch yet.
+            </Text>
           ) : (
             posts.map((entry, i) => (
               <PostRow
@@ -197,7 +253,10 @@ export function ExploreView({ scene }: { scene: EmbeddingScene }) {
             ))
           )}
           <Text style={styles.hint}>
-            Swipe ‹ › siblings · tap a child to drill in
+            Swipe ‹ › siblings ·{" "}
+            {sheetExpanded
+              ? "pull handle down for map"
+              : "pull handle up for posts"}
           </Text>
         </ScrollView>
       </View>
@@ -247,11 +306,25 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: PAD,
-    paddingTop: Sirius.space.md,
+    paddingTop: Sirius.space.sm,
     paddingBottom: Sirius.space.sm,
     gap: Sirius.space.sm,
   },
-  breadcrumbRow: { flexDirection: "row", alignItems: "center", gap: Sirius.space.sm },
+  handleHit: {
+    alignSelf: "center",
+    paddingHorizontal: Sirius.space.lg,
+    paddingVertical: Sirius.space.xs,
+  },
+  handle: {
+    width: 44,
+    height: 3,
+    backgroundColor: Sirius.color.ruleStrong,
+  },
+  breadcrumbRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.sm,
+  },
   breadcrumb: {
     flex: 1,
     fontFamily: Sirius.font.mono,
@@ -260,10 +333,22 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: Sirius.color.inkSubtle,
   },
-  breadcrumbUp: { fontFamily: Sirius.font.mono, fontSize: 12, color: Sirius.color.inkSubtle },
-  titleRow: { flexDirection: "row", alignItems: "center", gap: Sirius.space.md },
+  breadcrumbUp: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 12,
+    color: Sirius.color.inkSubtle,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.md,
+  },
   chev: { width: 32, alignItems: "center", justifyContent: "center" },
-  chevGlyph: { fontFamily: Sirius.font.serif, fontSize: 32, color: Sirius.color.accent },
+  chevGlyph: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 32,
+    color: Sirius.color.accent,
+  },
   chevDisabled: { color: Sirius.color.inkFaint },
   pressed: { opacity: 0.55 },
   title: {
@@ -305,9 +390,13 @@ const styles = StyleSheet.create({
     color: Sirius.color.inkMuted,
     maxWidth: 180,
   },
-  divider: { height: 1, backgroundColor: Sirius.color.rule, marginHorizontal: PAD },
+  divider: {
+    height: 1,
+    backgroundColor: Sirius.color.rule,
+    marginHorizontal: PAD,
+  },
   postScroll: { flex: 1 },
-  postBody: { paddingHorizontal: PAD, paddingTop: Sirius.space.xs, paddingBottom: 140 },
+  postBody: { paddingHorizontal: PAD, paddingTop: Sirius.space.xs },
   postRow: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -322,7 +411,12 @@ const styles = StyleSheet.create({
     color: Sirius.color.inkSubtle,
     fontVariant: ["tabular-nums"],
   },
-  postLabel: { flex: 1, fontFamily: Sirius.font.serif, fontSize: 15, color: Sirius.color.ink },
+  postLabel: {
+    flex: 1,
+    fontFamily: Sirius.font.serif,
+    fontSize: 15,
+    color: Sirius.color.ink,
+  },
   postScore: {
     fontFamily: Sirius.font.mono,
     fontSize: 10,
