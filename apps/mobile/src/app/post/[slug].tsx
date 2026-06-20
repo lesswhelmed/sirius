@@ -13,6 +13,7 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,6 +22,7 @@ import {
 import { CommentsSection } from "@/components/comments-section";
 import { PostMarkdown } from "@/components/post-markdown";
 import { KindLabel, Screen, Title } from "@/components/sirius";
+import { VisibilitySheet } from "@/components/visibility-sheet";
 import { PostTypeTone, Sirius } from "@/constants/theme";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
@@ -128,6 +130,7 @@ export default function PostDetailScreen() {
     slug: string;
     from?: string;
   }>();
+  const [visibilityOpen, setVisibilityOpen] = useState(false);
 
   // Local mirror first. `localRows === undefined` means the live query hasn't
   // resolved yet; an empty array means there's genuinely no local copy.
@@ -212,6 +215,20 @@ export default function PostDetailScreen() {
         ))}
         <KindLabel tone={tone}>{TYPE_LABEL[view.type] ?? view.type}</KindLabel>
         <Title accent=".">{view.title}</Title>
+        {/* Visibility is editable only for the user's OWN posts — a mirror-backed
+            row is always owned (the mirror holds only the owner's posts). A
+            deep-linked, server-only post hides the control. */}
+        {localRow ? (
+          <Pressable
+            onPress={() => setVisibilityOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Change visibility"
+            style={({ pressed }) => [styles.visRow, pressed && styles.visPressed]}
+          >
+            <Text style={styles.visLabel}>Visibility</Text>
+            <Text style={styles.visValue}>Edit ▸</Text>
+          </Pressable>
+        ) : null}
         {view.tags.length > 0 ? (
           <View style={styles.tagsRow}>
             {view.tags.map((tag) => (
@@ -235,6 +252,13 @@ export default function PostDetailScreen() {
 				    always a real server post. */}
         <CommentsSection postSlug={slug} />
       </ScrollView>
+      {localRow ? (
+        <VisibilitySheet
+          slug={slug}
+          visible={visibilityOpen}
+          onClose={() => setVisibilityOpen(false)}
+        />
+      ) : null}
     </Screen>
   );
 }
@@ -271,6 +295,31 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: "uppercase",
     color: Sirius.color.inkMuted,
+  },
+  visRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    paddingHorizontal: Sirius.space.md,
+    paddingVertical: Sirius.space.sm,
+    marginTop: Sirius.space.xs,
+  },
+  visPressed: { opacity: 0.6 },
+  visLabel: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: Sirius.color.inkSubtle,
+  },
+  visValue: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: Sirius.color.accent,
   },
   tagsRow: {
     flexDirection: "row",

@@ -1,4 +1,9 @@
-import type { PostListItem, PostStatus, PostType } from "@repo/db";
+import type {
+  PostListItem,
+  PostStatus,
+  PostType,
+  PostVisibility,
+} from "@repo/db";
 import Link from "next/link";
 import { DateDisplay } from "../../../lib/date-display";
 import { PostImage } from "../../_chrome/post-image";
@@ -35,6 +40,28 @@ function StatusPip({ status }: { status: PostStatus }) {
         className={`inline-block h-1.5 w-1.5 ${STATUS_PIP[status]}`}
       />
       {status.toLowerCase()}
+    </span>
+  );
+}
+
+// Quiet badge for non-private posts. PRIVATE is the default and the norm in the
+// owner catalog, so showing it would be noise — only FRIENDS/PUBLIC get a mark.
+const VIS_BADGE: Partial<
+  Record<PostVisibility, { glyph: string; label: string; tone: string }>
+> = {
+  FRIENDS: { glyph: "◐", label: "friends", tone: "text-[var(--color-sage)]" },
+  PUBLIC: { glyph: "◯", label: "public", tone: "text-[var(--color-accent)]" },
+};
+
+function VisibilityBadge({ visibility }: { visibility: PostVisibility }) {
+  const badge = VIS_BADGE[visibility];
+  if (!badge) return null;
+  return (
+    <span
+      className={`flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-[0.18em] ${badge.tone}`}
+    >
+      <span aria-hidden="true">{badge.glyph}</span>
+      {badge.label}
     </span>
   );
 }
@@ -93,9 +120,18 @@ function TaxonomyFooter({
 // skeleton — a fixed plate slot on the left and the text block on the right —
 // so an entry with no image keeps the column aligned and reads as deliberate
 // rather than broken. The plate slot falls back to a quiet typographic mark.
-export function CatalogCard({ post }: { post: PostListItem }) {
+export function CatalogCard({
+  post,
+  showAuthor = false,
+}: {
+  post: PostListItem;
+  // In the Friends feed each row belongs to a different author, so surface whose
+  // post it is; in the owner's own catalog every post is theirs, so omit it.
+  showAuthor?: boolean;
+}) {
   const host = sourceHost(post.originalUrl);
   const href = `/posts/${post.slug}`;
+  const author = post.submittedBy;
   // A post carries exactly one category in the shipped model; take the first.
   const category = post.categories?.[0];
   const tags = post.tags ?? [];
@@ -137,7 +173,10 @@ export function CatalogCard({ post }: { post: PostListItem }) {
             >
               {TYPE_LABEL[post.type]}
             </span>
-            <StatusPip status={post.status} />
+            <span className="flex items-center gap-3">
+              <VisibilityBadge visibility={post.visibility} />
+              <StatusPip status={post.status} />
+            </span>
           </div>
 
           <h2 className="mt-1.5 font-display text-[22px] leading-tight tracking-[-0.005em] text-balance text-[var(--fg)] transition-colors group-hover:text-[var(--color-accent)] sm:text-[26px]">
@@ -152,7 +191,14 @@ export function CatalogCard({ post }: { post: PostListItem }) {
         </Link>
 
         <div className="mt-auto flex items-baseline justify-between gap-3 pt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
-          <DateDisplay value={post.originalDate ?? post.createdAt} />
+          <span className="flex items-baseline gap-3">
+            <DateDisplay value={post.originalDate ?? post.createdAt} />
+            {showAuthor && author ? (
+              <span className="text-[var(--fg-muted)]">
+                {author.handle ? `@${author.handle}` : author.name}
+              </span>
+            ) : null}
+          </span>
           {post.providerId === "github" ? (
             <RepoChip
               providerId={post.providerId}

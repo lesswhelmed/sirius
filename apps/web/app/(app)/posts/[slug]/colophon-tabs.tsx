@@ -12,6 +12,7 @@ import {
 import { DeletePostButton } from "./delete-post-button";
 import { SaveButton } from "./save-button";
 import { ShareButton } from "./share-button";
+import { type Visibility, VisibilityControl } from "./_components/visibility-control";
 
 export interface SourceFile {
   submissionId: string;
@@ -43,6 +44,7 @@ export interface ColophonPost {
   sourceRecordId: string | null;
   sourceHash: string | null;
   syncStatus: string;
+  visibility: Visibility;
   originalUrl: string | null;
   imageUrl: string | null;
   createdAt: DateInput;
@@ -68,6 +70,7 @@ export function ColophonTabs({
   canSave = false,
   projects = [],
   canAssign = false,
+  canEditVisibility = false,
   isOwner = false,
   sourceFiles = [],
 }: {
@@ -77,6 +80,7 @@ export function ColophonTabs({
   canSave?: boolean;
   projects?: ProjectOption[];
   canAssign?: boolean;
+  canEditVisibility?: boolean;
   isOwner?: boolean;
   sourceFiles?: SourceFile[];
 }) {
@@ -142,10 +146,13 @@ export function ColophonTabs({
             projects={projects}
             canAssign={canAssign}
           />
-          {/* Share copies a public /listing/<slug> link; hidden while the
-              public catalog is private (PUBLIC_CATALOG_ENABLED) since non-owners
-              would only be bounced to sign-in. */}
-          {PUBLIC_CATALOG_ENABLED ? <ShareButton slug={post.slug} /> : null}
+          {/* Share copies a public /listing/<slug> link; shown only for posts
+              actually shareable to other signed-in users — i.e. PUBLIC posts
+              while the cross-user catalog is on. FRIENDS/PRIVATE posts have no
+              public link, so Share would only bounce a non-friend to sign-in. */}
+          {PUBLIC_CATALOG_ENABLED && post.visibility === "PUBLIC" ? (
+            <ShareButton slug={post.slug} />
+          ) : null}
           <a
             href={`/api/app/posts/${post.slug}/export?format=json`}
             download
@@ -163,6 +170,16 @@ export function ColophonTabs({
             MD
           </a>
         </div>
+
+        {canEditVisibility ? (
+          <div className="pt-1">
+            <VisibilityControl
+              slug={post.slug}
+              currentVisibility={post.visibility}
+              canEdit={canEditVisibility}
+            />
+          </div>
+        ) : null}
 
         {isOwner ? (
           <div className="space-y-2 pt-1">

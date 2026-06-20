@@ -14,6 +14,8 @@ import {
   View,
 } from "react-native";
 
+import { FriendsFeedList } from "@/components/friends-feed-list";
+import { Segment, SegmentedControl } from "@/components/segmented";
 import { KindLabel, PageHeader, Screen } from "@/components/sirius";
 import { PostTypeTone, Sirius } from "@/constants/theme";
 import { resolveMediaUrl } from "@/lib/api";
@@ -71,6 +73,9 @@ export default function LibraryScreen() {
   // no extra query. Available facets + counts are derived from the loaded rows.
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeTags, setActiveTags] = useState<string[]>([]);
+  // Mine = the offline mirror (own posts); Friends = the networked feed of
+  // posts friends shared with you (online-only, never mirrored).
+  const [scope, setScope] = useState<"mine" | "friends">("mine");
 
   const categoryFacets = useMemo(() => {
     const counts = new Map<string, number>();
@@ -242,6 +247,23 @@ export default function LibraryScreen() {
     );
   }, []);
 
+  const scopeToggle = (
+    <SegmentedControl value={scope} onChange={setScope}>
+      <Segment value="mine" label="Mine" />
+      <Segment value="friends" label="Friends" />
+    </SegmentedControl>
+  );
+
+  // Friends scope is networked + online-only — it has its own list component and
+  // does not touch the offline mirror.
+  if (scope === "friends") {
+    return (
+      <Screen>
+        <FriendsFeedList header={scopeToggle} />
+      </Screen>
+    );
+  }
+
   // The live query surfaces a query error only if SQLite itself fails (the
   // tables are migrated before first paint, so this is rare).
   if (error) {
@@ -270,6 +292,7 @@ export default function LibraryScreen() {
         }
         ListHeaderComponent={
           <View style={styles.header}>
+            <View style={styles.scopeBar}>{scopeToggle}</View>
             <PageHeader
               eyebrow="Section II — Catalogue"
               title="The Catalog"
@@ -440,6 +463,7 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   header: { marginBottom: Sirius.space.lg },
+  scopeBar: { marginBottom: Sirius.space.lg },
 
   // Category segmented bar.
   categoryBarScroll: {

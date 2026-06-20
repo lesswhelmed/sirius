@@ -194,6 +194,7 @@ export default async function PostDetailPage({
             sourceRecordId: post.sourceRecordId,
             sourceHash: post.sourceHash,
             syncStatus: post.syncStatus,
+            visibility: post.visibility,
             originalUrl: post.originalUrl,
             imageUrl: post.imageUrl,
             createdAt: post.createdAt,
@@ -217,6 +218,7 @@ export default async function PostDetailPage({
           canSave={userId != null}
           projects={projectOptions}
           canAssign={canAssign}
+          canEditVisibility={isOwner}
           isOwner={isOwner}
           sourceFiles={sourceFiles}
         />

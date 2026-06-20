@@ -201,6 +201,15 @@ export default function RootLayout() {
                     }}
                   />
                   <Stack.Screen
+                    name="friends"
+                    options={{
+                      headerShown: true,
+                      title: "Friends",
+                      // Reached only from the Account/Settings tab.
+                      headerBackTitle: "Account",
+                    }}
+                  />
+                  <Stack.Screen
                     name="llm"
                     options={{
                       headerShown: true,

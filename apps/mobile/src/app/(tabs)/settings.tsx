@@ -137,6 +137,16 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Company — friends + sharing. */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Company</Text>
+          <SecondaryButton
+            label="Friends"
+            symbol="person.2"
+            onPress={() => router.push("/friends")}
+          />
+        </View>
+
         {/* Your voice — NOT gated by the on-device flag; voice applies to
             server drafting too. */}
         <View style={styles.section}>

@@ -19,7 +19,8 @@ export const SIGNED_IN_NAV: readonly NavItem[] = [
   { href: "/queue", label: "Queue", folio: "III" },
   { href: "/projects", label: "Focus", folio: "IV" },
   { href: "/space", label: "Space", folio: "V" },
-  { href: "/settings", label: "Settings", folio: "VI" },
+  { href: "/friends", label: "Friends", folio: "VI" },
+  { href: "/settings", label: "Settings", folio: "VII" },
 ];
 
 // Empty while the public catalog is hidden (see PUBLIC_CATALOG_ENABLED): there

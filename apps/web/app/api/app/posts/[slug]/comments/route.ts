@@ -5,11 +5,15 @@ import {
   notifyCommentChanged,
 } from "@repo/db";
 import { commentCreateSchema } from "../../../../../../lib/comments/schema";
+import { canReadPost } from "../../../../../../lib/post-access";
 import { getSessionOrNull } from "../../../../../../lib/session";
 
-// Comments on a post. Owner-only today: both reading and writing require that the
-// signed-in user owns the post (post.submittedById === session.user.id), matching
-// the owner-scoped catalog model. Widen here when public/friends visibility lands.
+// Comments on a post. Read AND write are gated by canReadPost (the single read
+// policy): anyone who may SEE the post may read its thread and add to it, so
+// friends with whom a FRIENDS post is shared can participate. Moderation stays
+// owner-scoped (softDeleteComment allows the post owner or the comment author
+// only). Realtime nudges always target the POST OWNER (post.submittedById),
+// since the comment delta feed is owner-scoped.
 //
 // No route segment config exports: Next 16 Cache Components rejects `dynamic`.
 // Both handlers are already dynamic (they read the session from headers).
@@ -28,11 +32,8 @@ export async function GET(
   }
   const { slug } = await params;
   const post = await findPostAttributionBySlug(slug);
-  if (!post) {
+  if (!post || !(await canReadPost(post, session.user.id))) {
     return jsonError(404, "not-found");
-  }
-  if (post.submittedById !== session.user.id) {
-    return jsonError(403, "forbidden");
   }
   const url = new URL(request.url);
   const cursor = url.searchParams.get("cursor") ?? undefined;
@@ -56,11 +57,8 @@ export async function POST(
   }
   const { slug } = await params;
   const post = await findPostAttributionBySlug(slug);
-  if (!post) {
+  if (!post || !(await canReadPost(post, session.user.id))) {
     return jsonError(404, "not-found");
-  }
-  if (post.submittedById !== session.user.id) {
-    return jsonError(403, "forbidden");
   }
   let raw: unknown;
   try {
@@ -79,15 +77,18 @@ export async function POST(
     body: parsed.data.body,
   });
 
-  // Best-effort realtime nudge to the owner's connected devices (SSE → delta
-  // pull). A notify failure must not fail the write.
-  void notifyCommentChanged({
-    op: "upsert",
-    commentId: comment.id,
-    postId: post.id,
-    ownerId: session.user.id,
-    updatedAt: comment.updatedAt.toISOString(),
-  }).catch(() => {});
+  // Best-effort realtime nudge to the POST OWNER's connected devices (SSE → delta
+  // pull) — the comment delta feed is owner-scoped, so a friend's comment must
+  // notify the owner, not the commenter. A notify failure must not fail the write.
+  if (post.submittedById) {
+    void notifyCommentChanged({
+      op: "upsert",
+      commentId: comment.id,
+      postId: post.id,
+      ownerId: post.submittedById,
+      updatedAt: comment.updatedAt.toISOString(),
+    }).catch(() => {});
+  }
 
   return Response.json({ comment }, { status: 201 });
 }

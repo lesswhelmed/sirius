@@ -1,3 +1,4 @@
+import { friendshipState } from "@repo/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCachedStorefront } from "../../../../lib/cached";
@@ -6,6 +7,7 @@ import { DateDisplay } from "../../../../lib/date-display";
 import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
 import { getSessionOrNull } from "../../../../lib/session";
 import { PostImage } from "../../../_chrome/post-image";
+import { AddFriendButton } from "./add-friend-button";
 
 export default async function PublicCatalogPage({
   params,
@@ -18,16 +20,22 @@ export default async function PublicCatalogPage({
     notFound();
   }
 
+  const viewerId = (await getSessionOrNull())?.user.id ?? null;
+
   // While the public catalog is disabled, a storefront is only its owner's
   // (published-only) self-preview. Everyone else is redirected.
-  if (!PUBLIC_CATALOG_ENABLED) {
-    const viewerId = (await getSessionOrNull())?.user.id ?? null;
-    if (viewerId == null || result.user.id !== viewerId) {
-      denyCatalogAccess(viewerId, `/catalog/${handle}`);
-    }
+  if (!PUBLIC_CATALOG_ENABLED && (viewerId == null || result.user.id !== viewerId)) {
+    denyCatalogAccess(viewerId, `/catalog/${handle}`);
   }
 
   const { user, posts } = result;
+  // Friendship CTA: only when a signed-in, non-owner viewer is looking. (Today
+  // only the owner reaches this page while the catalog is disabled, so the button
+  // renders null for them — it goes live for visitors once the catalog opens.)
+  const relState =
+    viewerId != null && viewerId !== user.id
+      ? await friendshipState(viewerId, user.id)
+      : null;
 
   return (
     <section>
@@ -52,13 +60,22 @@ export default async function PublicCatalogPage({
           ) : null}
         </div>
 
-        <div className="flex items-baseline gap-2">
-          <span className="font-display italic text-[36px] leading-none text-[var(--color-accent)] nums-oldstyle">
-            {posts.items.length}
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-            entries
-          </span>
+        <div className="flex flex-col items-end gap-3">
+          <div className="flex items-baseline gap-2">
+            <span className="font-display italic text-[36px] leading-none text-[var(--color-accent)] nums-oldstyle">
+              {posts.items.length}
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+              entries
+            </span>
+          </div>
+          {relState && user.handle ? (
+            <AddFriendButton
+              userId={user.id}
+              handle={user.handle}
+              initialState={relState}
+            />
+          ) : null}
         </div>
       </header>
 

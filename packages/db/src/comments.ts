@@ -155,20 +155,21 @@ export async function listCommentsChangedSince(opts: {
 }
 
 // Soft delete: flips status to "tombstone" and bumps updatedAt so the change
-// rides the delta feed to every mirror. Gated on POST OWNERSHIP via updateMany's
-// where (`post.submittedById = ownerId`) — the post owner moderates their own
-// thread, so this also covers deleting a future AGENT comment (authorId null) the
-// owner didn't author. A non-owner request matches zero rows and returns false.
-// Returns whether a row was actually tombstoned.
+// rides the delta feed to every mirror. Allowed for the POST OWNER (moderates the
+// whole thread, incl. a future AGENT comment) OR the COMMENT AUTHOR (deletes
+// their own) — both encoded in the updateMany where so a third party matches zero
+// rows. With friends sharing, a friend who commented can retract their comment
+// without granting them moderation over others'. Returns whether a row was
+// actually tombstoned.
 export async function softDeleteComment(
   commentId: string,
-  ownerId: string,
+  actorId: string,
 ): Promise<boolean> {
   const result = await prisma.comment.updateMany({
     where: {
       id: commentId,
-      post: { submittedById: ownerId },
       status: "active",
+      OR: [{ post: { submittedById: actorId } }, { authorId: actorId }],
     },
     data: { status: "tombstone", deletedAt: new Date() },
   });
