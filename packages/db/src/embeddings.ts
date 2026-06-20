@@ -119,11 +119,24 @@ export async function upsertPostEmbedding(
   input: UpsertPostEmbeddingInput,
 ): Promise<PostEmbedding> {
   const { postId, ...rest } = input;
-  return prisma.postEmbedding.upsert({
-    where: { postId },
-    create: { postId, ...rest },
-    update: rest,
-  });
+  // Write the vector AND bump the post's sync cursor atomically. The embedding is
+  // produced in a LATER pipeline stage (assignOrg) than the post row + its sync
+  // nudge (writePost), so a mobile client that already pulled the post with a null
+  // embedding has advanced its cursor past it; without bumping Post.updatedAt the
+  // post never re-delivers and its vector never reaches the device's post_vectors
+  // index → "ask my posts" silently can't find it. Touch ONLY updatedAt via raw
+  // SQL: a normal prisma.post.update would also reset `lastEdited` (a second
+  // @updatedAt column that IS user-facing — the "Last edited" colophon), which we
+  // must leave intact. updatedAt is the sync field and is not shown to users.
+  const [embedding] = await prisma.$transaction([
+    prisma.postEmbedding.upsert({
+      where: { postId },
+      create: { postId, ...rest },
+      update: rest,
+    }),
+    prisma.$executeRaw`UPDATE "Post" SET "updatedAt" = now() WHERE "id" = ${postId}`,
+  ]);
+  return embedding;
 }
 
 // Replace the post's category linkage with the latest classify result.
