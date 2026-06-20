@@ -45,7 +45,7 @@ function DesktopNavList({
     return null;
   }
   return (
-    <nav aria-label="Primary" className="hidden sm:block">
+    <nav aria-label="Primary" className="hidden lg:block">
       <ul className="hairline-t hairline-b flex items-stretch">
         {items.map((item, idx) => {
           const active =
@@ -151,7 +151,7 @@ function MobileBubbleNav({
 
   return (
     <div
-      className={`mobile-bubble-nav sm:hidden ${open ? "is-open" : ""}`}
+      className={`mobile-bubble-nav lg:hidden ${open ? "is-open" : ""}`}
       data-open={open ? "true" : "false"}
     >
       <button

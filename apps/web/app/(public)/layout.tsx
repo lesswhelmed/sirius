@@ -34,7 +34,7 @@ export default function PublicLayout({
 
           <div className="flex items-end justify-between gap-6 pt-5 pb-5">
             <SiriusLogo href="/catalog" ariaLabel="Sirius — back to catalog" />
-            <div className="hidden items-baseline gap-3 pb-1 sm:flex">
+            <div className="hidden items-baseline gap-3 pb-1 lg:flex">
               <ThemeMenu />
               <span
                 aria-hidden="true"
@@ -52,7 +52,7 @@ export default function PublicLayout({
             <PublicNavSlot />
           </Suspense>
 
-          <div className="flex items-center justify-end pt-2 sm:hidden">
+          <div className="flex items-center justify-end pt-2 lg:hidden">
             <ThemeMenu />
           </div>
         </header>

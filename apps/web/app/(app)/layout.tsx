@@ -30,7 +30,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           <div className="flex items-end justify-between gap-6 pt-5 pb-5">
             <SiriusLogo href="/ingest" ariaLabel="Sirius — return home" />
-            <div className="hidden items-baseline gap-3 pb-1 sm:flex">
+            <div className="hidden items-baseline gap-3 pb-1 lg:flex">
               <ThemeMenu />
               <span
                 aria-hidden="true"
@@ -55,7 +55,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <SiteNav items={SIGNED_IN_NAV} />
           </Suspense>
 
-          <div className="flex items-center justify-between gap-3 pt-2 sm:hidden">
+          <div className="flex items-center justify-between gap-3 pt-2 lg:hidden">
             <ThemeMenu />
             <SignOutLink />
           </div>
