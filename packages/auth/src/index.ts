@@ -42,6 +42,15 @@ const devTrustedOrigins = isProduction
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   trustedOrigins: [...extraTrustedOrigins, ...devTrustedOrigins],
+  // Surface the public-profile `handle` column on the session user so clients
+  // (mobile especially, which only has the session — no DB access) can read it.
+  // `input: false` keeps it read-only through the auth API: the handle is written
+  // exclusively by setUserHandle (Prisma) via /setup-handle and /api/app/me/handle.
+  user: {
+    additionalFields: {
+      handle: { type: "string", required: false, input: false },
+    },
+  },
   advanced: {
     useSecureCookies: isProduction,
   },
