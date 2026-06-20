@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import {
+  CaptureDone,
   Field,
   KeyboardDoneButton,
   PageHeader,
@@ -26,6 +27,7 @@ import {
 } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import { useSession } from "@/lib/auth-client";
+import { dismissModal } from "@/lib/dismiss-modal";
 import { trayTag } from "@/lib/material-kinds";
 import {
   applyNote,
@@ -41,6 +43,7 @@ export default function ShareIntentScreen() {
     useShareIntentContext();
   const { data: session, isPending } = useSession();
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   // One optional note applied to every shared item for the LLM to build on.
   const [note, setNote] = useState("");
 
@@ -50,9 +53,14 @@ export default function ShareIntentScreen() {
   );
   const submittable = materials.filter((m) => m.kind !== "unsupported");
 
+  // Clear the share payload whenever this pane leaves — including a native
+  // swipe-down dismiss, which never runs `dismiss()`. Without this `hasShareIntent`
+  // stays true and `ShareIntentNavigator` (app/_layout.tsx) re-pushes the pane.
+  useEffect(() => () => resetShareIntent(), [resetShareIntent]);
+
   function dismiss() {
     resetShareIntent();
-    router.replace("/(tabs)/queue");
+    dismissModal();
   }
 
   async function submit() {
@@ -76,8 +84,7 @@ export default function ShareIntentScreen() {
 
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
-    resetShareIntent();
-    router.replace("/(tabs)/queue");
+    setDone(true);
   }
 
   if (isPending) {
@@ -85,6 +92,15 @@ export default function ShareIntentScreen() {
       <Screen style={styles.centered}>
         <ActivityIndicator color={Sirius.color.accent} />
       </Screen>
+    );
+  }
+
+  if (done) {
+    return (
+      <CaptureDone
+        message="Your share is in the queue. The worker takes it from here."
+        onClose={dismiss}
+      />
     );
   }
 
@@ -110,10 +126,7 @@ export default function ShareIntentScreen() {
         <Text style={styles.muted}>
           Share a link, note, or image to Sirius to queue it.
         </Text>
-        <SecondaryButton
-          label="Go to queue"
-          onPress={() => router.replace("/(tabs)/queue")}
-        />
+        <SecondaryButton label="Close" onPress={dismiss} />
       </Screen>
     );
   }

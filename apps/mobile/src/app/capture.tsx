@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import {
+  CaptureDone,
   Field,
   KeyboardDoneButton,
   PageHeader,
@@ -24,6 +25,7 @@ import {
 } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import { useSession } from "@/lib/auth-client";
+import { dismissModal } from "@/lib/dismiss-modal";
 import { trayTag } from "@/lib/material-kinds";
 import {
   applyNote,
@@ -38,6 +40,7 @@ export default function CaptureScreen() {
   const params = useLocalSearchParams<{ text?: string }>();
   const { data: session, isPending } = useSession();
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const [note, setNote] = useState("");
 
   const incoming = typeof params.text === "string" ? params.text : "";
@@ -66,7 +69,7 @@ export default function CaptureScreen() {
     }
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
-    router.replace("/(tabs)/queue");
+    setDone(true);
   }
 
   if (isPending) {
@@ -74,6 +77,15 @@ export default function CaptureScreen() {
       <Screen style={styles.centered}>
         <ActivityIndicator color={Sirius.color.accent} />
       </Screen>
+    );
+  }
+
+  if (done) {
+    return (
+      <CaptureDone
+        message="Your capture is in the queue. The worker takes it from here."
+        onClose={dismissModal}
+      />
     );
   }
 
@@ -99,10 +111,7 @@ export default function CaptureScreen() {
         <Text style={styles.muted}>
           Run &ldquo;Capture in Sirius&rdquo; with a note or link to queue it.
         </Text>
-        <SecondaryButton
-          label="Go to queue"
-          onPress={() => router.replace("/(tabs)/queue")}
-        />
+        <SecondaryButton label="Close" onPress={dismissModal} />
       </Screen>
     );
   }
@@ -153,7 +162,7 @@ export default function CaptureScreen() {
           <TextLink
             label="Cancel"
             tone={Sirius.color.inkMuted}
-            onPress={() => router.replace("/(tabs)/queue")}
+            onPress={dismissModal}
             disabled={busy}
           />
         </ScrollView>
