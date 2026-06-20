@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useShareIntentContext } from "expo-share-intent";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -56,7 +56,14 @@ export default function ShareIntentScreen() {
   // Clear the share payload whenever this pane leaves — including a native
   // swipe-down dismiss, which never runs `dismiss()`. Without this `hasShareIntent`
   // stays true and `ShareIntentNavigator` (app/_layout.tsx) re-pushes the pane.
-  useEffect(() => () => resetShareIntent(), [resetShareIntent]);
+  // `resetShareIntent` isn't memoised by expo-share-intent (fresh identity each
+  // provider render), so hold it in a ref and reset on real unmount only —
+  // otherwise a provider re-render would wipe the payload mid-edit.
+  const resetRef = useRef(resetShareIntent);
+  useEffect(() => {
+    resetRef.current = resetShareIntent;
+  });
+  useEffect(() => () => resetRef.current(), []);
 
   function dismiss() {
     resetShareIntent();
