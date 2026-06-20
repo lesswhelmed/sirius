@@ -18,6 +18,11 @@ model Post {
   excerpt       String?
   type          PostType
   status        PostStatus @default(DRAFT)
+  // Who may READ this post. PRIVATE (owner only) is the safe default; FRIENDS
+  // opens it to the owner's accepted friends; PUBLIC opens it to any signed-in
+  // user (gated by PUBLIC_CATALOG_ENABLED at the surface). The read decision
+  // lives in canReadPost() (apps/web/lib/post-access.ts) — never hardcode it.
+  visibility    PostVisibility @default(PRIVATE)
   filePath      String
   fileHash      String
   findingsCount Int?
@@ -75,6 +80,10 @@ model Post {
   @@index([syncStatus])
   @@index([submittedById])
   @@index([submittedById, status, createdAt])
+  // friends-feed query: a viewer's friends' FRIENDS posts, newest first
+  @@index([submittedById, visibility, createdAt])
+  // PUBLIC catalog scan (when enabled) without a full table scan
+  @@index([visibility, status, createdAt])
   @@index([projectId])
 }
 
@@ -90,6 +99,12 @@ enum PostStatus {
   PUBLISHED
   DRAFT
   ARCHIVED
+}
+
+enum PostVisibility {
+  PRIVATE // owner only (default — safe)
+  FRIENDS // owner + the owner's accepted friends
+  PUBLIC // any signed-in user (gated by PUBLIC_CATALOG_ENABLED at the surface)
 }
 
 model Tag {
@@ -398,9 +413,48 @@ model User {
   archiveRequests ArchiveRequest[] @relation("UserArchiveRequests")
   comments    Comment[]          @relation("UserComments")
 
+  // Friendships are stored as ONE canonically-ordered row per pair (userAId <
+  // userBId). A user therefore appears as either side, so two back-relations.
+  friendshipsA Friendship[] @relation("FriendshipA")
+  friendshipsB Friendship[] @relation("FriendshipB")
+
   @@index([email])
   @@index([handle])
   @@map("user")
+}
+
+// A mutual friendship between two users, in any lifecycle state. Stored as a
+// SINGLE row per pair with a canonical ordering (userAId < userBId, string
+// compare) so "are A and B friends" is one unique-key lookup regardless of who
+// asked. `requestedById` remembers direction (incoming vs outgoing). A request
+// and an accepted friendship are the same row in different `status` states, so
+// accept/decline are atomic updates — no row move, no A↔B duplicate possible.
+// The canonical ordering is computed by ONE helper (orderPair in
+// packages/db/src/friends.ts); no caller builds the pair by hand.
+model Friendship {
+  id            String           @id @default(cuid())
+  userAId       String
+  userBId       String
+  userA         User             @relation("FriendshipA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB         User             @relation("FriendshipB", fields: [userBId], references: [id], onDelete: Cascade)
+  status        FriendshipStatus @default(PENDING)
+  requestedById String // always one of userAId/userBId — who sent the request
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  acceptedAt    DateTime? // set when status first becomes ACCEPTED
+
+  @@unique([userAId, userBId]) // one relationship row per pair; DB-enforced dedup
+  @@index([userAId, status])
+  @@index([userBId, status])
+  @@index([requestedById])
+  @@map("friendship")
+}
+
+enum FriendshipStatus {
+  PENDING // requestedById asked the other; awaiting accept/decline
+  ACCEPTED // mutual friends
+  DECLINED // recipient declined; kept (not deleted) to throttle re-spam
+  BLOCKED // reserved for a future block feature; sendFriendRequest refuses it
 }
 
 // ─── Organization (lesswhelmed Aspiration Core) ─────────────────────────────

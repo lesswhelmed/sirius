@@ -1,13 +1,23 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import {
   CommentAuthorKind,
+  FriendshipStatus,
   PostStatus,
   PostType,
+  PostVisibility,
   Prisma,
   PrismaClient,
 } from "../generated/prisma";
 
-export { CommentAuthorKind, PostStatus, PostType, Prisma, PrismaClient };
+export {
+  CommentAuthorKind,
+  FriendshipStatus,
+  PostStatus,
+  PostType,
+  PostVisibility,
+  Prisma,
+  PrismaClient,
+};
 
 // Model row types come off the generated namespace; re-exporting them by name
 // keeps Turbopack happy (it warns on `export *` from CJS) while still giving
@@ -39,6 +49,7 @@ export type ArchiveRequest = Prisma.ArchiveRequestGetPayload<
   Record<string, never>
 >;
 export type Comment = Prisma.CommentGetPayload<Record<string, never>>;
+export type Friendship = Prisma.FriendshipGetPayload<Record<string, never>>;
 
 export * from "./analytics";
 export * from "./archive";
@@ -47,6 +58,7 @@ export * from "./comments";
 export * from "./classify";
 export * from "./embed-client";
 export * from "./embeddings";
+export * from "./friends";
 export * from "./ingest";
 export * from "./notify";
 export * from "./post-delete";

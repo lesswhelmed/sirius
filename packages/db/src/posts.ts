@@ -1,6 +1,11 @@
 // Read queries for the Post table. Writes are owned by the worker
 // (post-writer.ts) — keep this file query-only.
-import { PostStatus, PostType, type Prisma } from "../generated/prisma";
+import {
+  PostStatus,
+  PostType,
+  PostVisibility,
+  type Prisma,
+} from "../generated/prisma";
 import { type Category, type Post, prisma, type Tag } from "./index";
 import type { PageResult } from "./ingest";
 import { findUserByHandle } from "./users";
@@ -131,6 +136,78 @@ export function listOwnerPosts(
   return listPosts({ ...opts, submittedById: ownerId });
 }
 
+// ---------------------------------------------------------------------------
+// Friends feed: posts a signed-in viewer may BROWSE that aren't (only) their own.
+//
+// This is a distinct query from listOwnerPosts (which is owner-forced and must
+// never widen). The visibility predicate is fundamentally an OR across
+// ownership/sharing tiers, composed via AND with the normal filters so q/type/
+// tag still apply. friendIds come from friendIdsOf() (friends.ts), looked up
+// once per request by the caller.
+// ---------------------------------------------------------------------------
+
+// "posts that are mine, OR a friend's FRIENDS post, OR PUBLIC (when enabled)".
+export function visibilityWhereForViewer(
+  viewerId: string,
+  friendIds: string[],
+  includePublic: boolean,
+): Prisma.PostWhereInput {
+  const or: Prisma.PostWhereInput[] = [{ submittedById: viewerId }];
+  if (friendIds.length > 0) {
+    or.push({
+      visibility: PostVisibility.FRIENDS,
+      submittedById: { in: friendIds },
+    });
+  }
+  if (includePublic) {
+    or.push({ visibility: PostVisibility.PUBLIC });
+  }
+  return { OR: or };
+}
+
+export interface ListVisibleOptions extends PostFilters {
+  viewerId: string;
+  friendIds: string[];
+  includePublic: boolean;
+  limit?: number;
+  cursor?: string;
+}
+
+// A cursor feed of everything a signed-in viewer is allowed to browse beyond the
+// owner cockpit. AND-clamped to PUBLISHED so a friend never sees drafts/archived
+// even if a draft was mis-marked FRIENDS. Always includes the submitter so the
+// card can show whose post it is.
+export async function listVisibleToViewer(
+  opts: ListVisibleOptions,
+): Promise<PageResult<PostWithSubmitter>> {
+  const take = Math.min(MAX_PAGE, Math.max(1, opts.limit ?? DEFAULT_PAGE));
+  const where: Prisma.PostWhereInput = {
+    AND: [
+      buildPostWhere(opts),
+      visibilityWhereForViewer(opts.viewerId, opts.friendIds, opts.includePublic),
+      { status: PostStatus.PUBLISHED },
+    ],
+  };
+  const items = await prisma.post.findMany({
+    where,
+    take: take + 1,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    include: {
+      submittedBy: {
+        select: { id: true, name: true, handle: true, image: true },
+      },
+    },
+    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+  });
+  const hasMore = items.length > take;
+  const trimmed = hasMore ? items.slice(0, take) : items;
+  const last = trimmed[trimmed.length - 1];
+  return {
+    items: trimmed as PostWithSubmitter[],
+    nextCursor: hasMore && last ? last.id : null,
+  };
+}
+
 // Numbered (offset) pagination for the catalog ledger. Distinct from the
 // cursor-based listPosts so each contract stays unambiguous.
 export type PostSort = "newest" | "oldest" | "title";
@@ -222,14 +299,19 @@ export async function findPostIdBySlug(slug: string): Promise<string | null> {
   return row?.id ?? null;
 }
 
-// id + owner, for routes that gate behavior on authorship (e.g. excluding the
-// owner's own views from analytics).
-export async function findPostAttributionBySlug(
-  slug: string,
-): Promise<{ id: string; submittedById: string | null } | null> {
+// id + owner + the fields canReadPost needs, for routes that gate behavior on
+// authorship/visibility (analytics view-exclusion, comments read/write,
+// visibility mutation). Returns visibility + status so the caller can run the
+// shared read policy without a second query.
+export async function findPostAttributionBySlug(slug: string): Promise<{
+  id: string;
+  submittedById: string | null;
+  visibility: PostVisibility;
+  status: PostStatus;
+} | null> {
   return prisma.post.findUnique({
     where: { slug },
-    select: { id: true, submittedById: true },
+    select: { id: true, submittedById: true, visibility: true, status: true },
   });
 }
 
@@ -284,6 +366,10 @@ export type PostDelta = {
   excerpt: string | null;
   type: PostType;
   status: PostStatus;
+  // The owner's own visibility setting, mirrored so the device can render the
+  // visibility badge on their own posts offline. Friends' posts are never
+  // mirrored (online-only), so this always reflects the owner's choice.
+  visibility: PostVisibility;
   imageUrl: string | null;
   images: Prisma.JsonValue | null;
   tags: string[];
@@ -357,6 +443,7 @@ export async function listPostsChangedSince(opts: {
             excerpt: p.excerpt,
             type: p.type,
             status: p.status,
+            visibility: p.visibility,
             imageUrl: p.imageUrl,
             images: p.images,
             tags: p.tags.map((t) => t.name),

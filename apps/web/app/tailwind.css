@@ -326,3 +326,25 @@
 		1px 2px 0 rgb(28 22 18 / 0.05),
 		0 24px 40px -28px rgb(28 22 18 / 0.2);
 }
+
+/* Gentle entrance for swapped panels (e.g. the Settings section switcher). */
+@keyframes panel-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@utility panel-in {
+	animation: panel-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.panel-in {
+		animation: none;
+	}
+}
