@@ -337,7 +337,9 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                           <TextLink
                             label="Open →"
                             onPress={() =>
-                              router.push(`/post/${previewPost.slug}`)
+                              router.push(
+                                `/post/${previewPost.slug}?from=Explore`,
+                              )
                             }
                           />
                         ) : (
@@ -401,7 +403,9 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                       key={entry.node.id}
                       entry={entry}
                       n={i + 1}
-                      onOpen={(slug) => slug && router.push(`/post/${slug}`)}
+                      onOpen={(slug) =>
+                        slug && router.push(`/post/${slug}?from=Explore`)
+                      }
                     />
                   ))
                 )}
