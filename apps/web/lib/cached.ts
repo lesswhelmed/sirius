@@ -23,6 +23,13 @@ export async function getCachedPost(
   // (if canReadPost is widened or a publish/unpublish toggle is ever added and
   // a revalidate is missed) stays small. Per-request access is still gated by
   // canReadPost / the PUBLISHED check at every call site.
+  //
+  // IMPORTANT (friends sharing): the post body is the same bytes for everyone, so
+  // caching it is fine — but the READ DECISION is per-viewer and depends on the
+  // viewer↔owner friendship, which is NOT in this cache key. A friendship change
+  // (accept/unfriend) deliberately does NOT invalidate this cache; canReadPost
+  // re-checks areFriends() live per request. NEVER return this object without
+  // pairing it with `await canReadPost(post, viewerId)`.
   cacheLife("minutes");
   cacheTag(`post-${slug}`);
   return findPostBySlug(slug);
