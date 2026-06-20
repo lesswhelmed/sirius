@@ -151,6 +151,26 @@ function fileNameFor(path: string, fallback: string): string {
   return tail && tail.length > 0 ? tail : fallback;
 }
 
+// Parse a single free-text string into materials: pull an embedded URL out if
+// present (remainder becomes a note), otherwise the whole string is a note.
+// Shared by the share-intent flow and the App Intent /capture screen.
+export function materialsFromText(text: string): Material[] {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return [];
+  const materials: Material[] = [];
+  const match = trimmed.match(URL_IN_TEXT_REGEX)?.[0];
+  if (match) {
+    materials.push({ kind: "url", url: match });
+    const remainder = trimmed.replace(match, "").trim();
+    if (remainder.length > 0) {
+      materials.push({ kind: "note", text: remainder });
+    }
+  } else {
+    materials.push({ kind: "note", text: trimmed });
+  }
+  return materials;
+}
+
 // Normalizes a raw share intent into an extensible list of materials. Order of
 // checks is deliberate: explicit files first, then a web URL, then plain text.
 export function materialsFromShareIntent(shareIntent: ShareIntent): Material[] {
@@ -195,20 +215,31 @@ export function materialsFromShareIntent(shareIntent: ShareIntent): Material[] {
   for (const text of noteCandidates) {
     // Skip text that's just the URL we already captured.
     if (webUrl && text.includes(webUrl)) continue;
-    // Pull an embedded URL if present, otherwise treat the whole thing as a note.
-    const match = !webUrl ? text.match(URL_IN_TEXT_REGEX)?.[0] : undefined;
-    if (match) {
-      materials.push({ kind: "url", url: match });
-      const remainder = text.replace(match, "").trim();
-      if (remainder.length > 0) {
-        materials.push({ kind: "note", text: remainder });
-      }
-    } else {
+    if (webUrl) {
+      // We already have the link; the text is a note alongside it.
       materials.push({ kind: "note", text });
+    } else {
+      materials.push(...materialsFromText(text));
     }
   }
 
   return materials;
+}
+
+// Apply an optional note to every material: stamp it onto kinds that carry a
+// `notes` field, and merge it into a note's text (its text IS the content).
+export function applyNote(
+  materials: Material[],
+  note: string | undefined,
+): Material[] {
+  if (!note) return materials;
+  return materials.map((m) => {
+    if (m.kind === "note") {
+      return { ...m, text: `${m.text}\n\nAuthor's notes: ${note}` };
+    }
+    if (m.kind === "unsupported") return m;
+    return { ...m, notes: note };
+  });
 }
 
 export function describeMaterial(material: Material): string {
