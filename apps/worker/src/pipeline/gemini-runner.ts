@@ -25,8 +25,10 @@ import { generateText, Output } from "ai";
 import { getAIConfig } from "../lib/ai-config";
 import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseYouTubeUrl } from "../lib/youtube-url";
+import { runDocumentGemini } from "./document/runner";
 import { runGitHubGemini } from "./github/runner";
 import { runInstagramGemini } from "./instagram/runner";
+import { extractImageOcr } from "./ocr/extract";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 import { runYouTubeGemini } from "./youtube/runner";
 
@@ -323,21 +325,65 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
 
   if (input.kind === "image") {
     const imageParts = input.images.map(loadImagePart);
-    const { output } = await generateText({
-      model,
-      temperature: config.temperature,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: prompt }, ...imageParts],
-        },
-      ],
-      output: Output.object({ schema: SightDraftSchema }),
-    });
-    return toGeminiOutput(output, "SIGHT", {
+    // OCR pre-pass runs concurrently with the SIGHT draft (independent calls).
+    // Master switch OCR_ENABLED (default ON); set to "false" to disable.
+    const ocrEnabled = process.env.OCR_ENABLED !== "false";
+    const [draftResult, ocrText] = await Promise.all([
+      generateText({
+        model,
+        temperature: config.temperature,
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: prompt }, ...imageParts],
+          },
+        ],
+        output: Output.object({ schema: SightDraftSchema }),
+      }),
+      ocrEnabled
+        ? extractImageOcr(input.images, config.apiKey, config.model).catch(
+            (error) => {
+              console.warn(
+                `[ocr] extraction failed, omitting extracted text: ${error instanceof Error ? error.message : String(error)}`,
+              );
+              return null;
+            },
+          )
+        : Promise.resolve(null),
+    ]);
+    const { output } = draftResult;
+    const result = toGeminiOutput(output, "SIGHT", {
       excerpt: output.excerpt,
       imageAlts: output.imageAlts,
     });
+    // Non-null OCR text becomes embeddable/searchable: appended to the body as
+    // an "Extracted text" section and recorded in frontmatter.ocr_text. Empty
+    // (null) results leave the post untouched.
+    if (ocrText) {
+      const appended = `${result.body.trimEnd()}\n\n---\n\n**Extracted text:**\n\n${ocrText}\n`;
+      result.body = appended;
+      result.rawMdx = appended;
+      result.frontmatter.ocr_text = ocrText;
+    }
+    return result;
+  }
+
+  // Document kind: try the dedicated structured runner first (PDF structure
+  // extraction / DOCX via mammoth → second structuring call). On throw or null
+  // it falls through to the shared direct-Gemini-file approach below so prior
+  // behavior is preserved (and DOCX, which Gemini can't natively read, still
+  // gets a fallback attempt).
+  if (input.kind === "document") {
+    try {
+      const result = await runDocumentGemini(input);
+      if (result) {
+        return result;
+      }
+    } catch (error) {
+      console.warn(
+        `[document] dedicated path failed, falling back to direct Gemini file: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   if (
