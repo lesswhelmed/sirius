@@ -15,9 +15,8 @@ import type { LinkedPost } from "@repo/embedding-scene/scene-queries";
 import { subtreeIndex } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,13 +24,16 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConstellationHero } from "@/components/explore/constellation-scene";
+import type { ConstellationHeroHandle } from "@/components/explore/constellation-scene";
 import { useExploreFocus } from "@/components/explore/explore-focus";
 import { Eyebrow, KindLabel, TextLink } from "@/components/sirius";
 import { BottomTabInset, Sirius } from "@/constants/theme";
@@ -86,8 +88,8 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
   // The tapped node — the camera's gentle fly target, the ring/label in 3D, and
   // (for posts) the preview card.
   const [previewNode, setPreviewNode] = useState<SceneNode | null>(null);
-  // Bumped to ask the hero to lean the camera in on the look-at node.
-  const [frameTick, setFrameTick] = useState(0);
+  // Imperative handle to the hero: gently flies the camera in on a node (Frame).
+  const heroRef = useRef<ConstellationHeroHandle>(null);
 
   // Drive shared selection so the constellation lights the focused node + neighbors.
   const { select, neighborIds } = useSceneSelection(scene);
@@ -98,55 +100,48 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
   // Tree navigation drops any stale post preview, then moves focus. (Clearing
   // lives in these handlers rather than a focus-change effect to avoid a
   // setState-in-effect cascade.)
-  const goNext = useCallback(() => {
+  const goNext = () => {
     setPreviewNode(null);
     next();
-  }, [next]);
-  const goPrev = useCallback(() => {
+  };
+  const goPrev = () => {
     setPreviewNode(null);
     prev();
-  }, [prev]);
-  const goUp = useCallback(() => {
+  };
+  const goUp = () => {
     setPreviewNode(null);
     up();
-  }, [up]);
+  };
 
   const stepUp = () =>
     setSnap((s) => (s === "collapsed" ? "peek" : "expanded"));
   const stepDown = () =>
     setSnap((s) => (s === "expanded" ? "peek" : "collapsed"));
 
-  // PanResponder on the sheet header: horizontal release cycles siblings,
-  // vertical steps the sheet snap. next/prev are stable between swipes.
-  const pan = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_e, g) =>
-          (Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.4) ||
-          (Math.abs(g.dy) > 12 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2),
-        onPanResponderRelease: (_e, g) => {
-          if (Math.abs(g.dy) > Math.abs(g.dx) * 1.2) {
-            if (g.dy <= -SHEET_SWIPE_THRESHOLD) stepUp();
-            else if (g.dy >= SHEET_SWIPE_THRESHOLD) stepDown();
-            return;
-          }
-          if (g.dx <= -SWIPE_THRESHOLD) goNext();
-          else if (g.dx >= SWIPE_THRESHOLD) goPrev();
-        },
-      }),
-    [goNext, goPrev],
-  );
+  // Pan on the sheet header: horizontal release cycles siblings, vertical steps
+  // the sheet snap. The gesture runs on the UI thread, so the JS handlers are
+  // dispatched via runOnJS. Built inline (no ref/memo) so the worklet captures
+  // the CURRENT closures — `goNext`/`goPrev` must see the live `next`/`prev` for
+  // the drilled-in sibling set, not a frozen initial-render copy. React Compiler
+  // memoizes it; GestureDetector reconciles a fresh gesture between renders, and
+  // no re-render happens mid-drag so the active gesture stays stable.
+  const pan = Gesture.Pan().onEnd((e) => {
+    "worklet";
+    const { translationX: dx, translationY: dy } = e;
+    if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+      if (dy <= -SHEET_SWIPE_THRESHOLD) runOnJS(stepUp)();
+      else if (dy >= SHEET_SWIPE_THRESHOLD) runOnJS(stepDown)();
+      return;
+    }
+    if (dx <= -SWIPE_THRESHOLD) runOnJS(goNext)();
+    else if (dx >= SWIPE_THRESHOLD) runOnJS(goPrev)();
+  });
 
   // Posts under the focused node + its subtree (deduped), flattened for the sheet.
-  const posts = useMemo<LinkedPost[]>(() => {
-    if (!focused) return [];
-    const idx = subtreeIndex(scene, focused.id);
-    return idx ? idx.groups.flatMap((g) => g.posts) : [];
-  }, [scene, focused]);
-  const subtreePostIds = useMemo(
-    () => new Set(posts.map((p) => p.node.id)),
-    [posts],
-  );
+  const posts: LinkedPost[] = focused
+    ? (subtreeIndex(scene, focused.id)?.groups.flatMap((g) => g.posts) ?? [])
+    : [];
+  const subtreePostIds = new Set(posts.map((p) => p.node.id));
 
   const onPickNode = (node: SceneNode) => {
     setPreviewNode(node);
@@ -168,13 +163,13 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
     >
       {/* The constellation fills the whole screen behind the sheet. */}
       <ConstellationHero
+        ref={heroRef}
         scene={scene}
         focused={focused}
         neighborIds={neighborIds}
         subtreePostIds={subtreePostIds}
         selectedNode={previewNode}
         onPickNode={onPickNode}
-        frameTick={frameTick}
         style={StyleSheet.absoluteFill}
       />
 
@@ -224,133 +219,140 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
           ) : (
             <>
               {/* Header zone owns the swipe; the posts list scrolls independently. */}
-              <View style={styles.header} {...pan.panHandlers}>
-                <Pressable
-                  onPress={() => setSnap(expanded ? "peek" : "expanded")}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    expanded ? "Lower post index" : "Raise post index"
-                  }
-                  accessibilityState={{ expanded }}
-                  hitSlop={10}
-                  style={({ pressed }) => [
-                    styles.handleHit,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <View style={styles.handle} />
-                </Pressable>
-
-                {/* Context line: where you are (tap = up) + position + Frame. */}
-                <View style={styles.contextRow}>
+              <GestureDetector gesture={pan}>
+                <View style={styles.header}>
                   <Pressable
-                    onPress={goUp}
-                    disabled={!parent}
+                    onPress={() => setSnap(expanded ? "peek" : "expanded")}
                     accessibilityRole="button"
                     accessibilityLabel={
-                      parent ? `Up to ${parent.label}` : "At root"
+                      expanded ? "Lower post index" : "Raise post index"
                     }
-                    style={styles.breadcrumbRow}
-                  >
-                    {parent ? <Text style={styles.breadcrumbUp}>↑</Text> : null}
-                    <Text style={styles.breadcrumb} numberOfLines={1}>
-                      {parent
-                        ? (parent.path ?? parent.label).split("/").join(" / ")
-                        : "Root"}
-                    </Text>
-                  </Pressable>
-                  {count > 1 ? (
-                    <Text style={styles.position}>
-                      {index + 1}/{count}
-                    </Text>
-                  ) : null}
-                  <Pressable
-                    onPress={() => setFrameTick((t) => t + 1)}
+                    accessibilityState={{ expanded }}
                     hitSlop={10}
-                    accessibilityRole="button"
-                    accessibilityLabel="Frame this node in the map"
                     style={({ pressed }) => [
-                      styles.frameBtn,
+                      styles.handleHit,
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Text style={styles.frameBtnText}>Frame</Text>
+                    <View style={styles.handle} />
                   </Pressable>
-                </View>
 
-                <View style={styles.titleRow}>
-                  <Pressable
-                    onPress={goPrev}
-                    disabled={count < 2}
-                    hitSlop={16}
-                    accessibilityRole="button"
-                    accessibilityLabel="Previous sibling"
-                    style={({ pressed }) => [
-                      styles.chev,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.chevGlyph,
-                        count < 2 && styles.chevDisabled,
+                  {/* Context line: where you are (tap = up) + position + Frame. */}
+                  <View style={styles.contextRow}>
+                    <Pressable
+                      onPress={goUp}
+                      disabled={!parent}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        parent ? `Up to ${parent.label}` : "At root"
+                      }
+                      style={styles.breadcrumbRow}
+                    >
+                      {parent ? (
+                        <Text style={styles.breadcrumbUp}>↑</Text>
+                      ) : null}
+                      <Text style={styles.breadcrumb} numberOfLines={1}>
+                        {parent
+                          ? (parent.path ?? parent.label).split("/").join(" / ")
+                          : "Root"}
+                      </Text>
+                    </Pressable>
+                    {count > 1 ? (
+                      <Text style={styles.position}>
+                        {index + 1}/{count}
+                      </Text>
+                    ) : null}
+                    <Pressable
+                      onPress={() => {
+                        const node = previewNode ?? focused;
+                        if (node) heroRef.current?.frameNode(node);
+                      }}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel="Frame this node in the map"
+                      style={({ pressed }) => [
+                        styles.frameBtn,
+                        pressed && styles.pressed,
                       ]}
                     >
-                      ‹
-                    </Text>
-                  </Pressable>
-                  <Text style={styles.title} numberOfLines={2}>
-                    {focused.label}
-                  </Text>
-                  <Pressable
-                    onPress={goNext}
-                    disabled={count < 2}
-                    hitSlop={16}
-                    accessibilityRole="button"
-                    accessibilityLabel="Next sibling"
-                    style={({ pressed }) => [
-                      styles.chev,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.chevGlyph,
-                        count < 2 && styles.chevDisabled,
-                      ]}
-                    >
-                      ›
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* Tapped-post preview — what this dot is, with a quick Open. */}
-                {previewPost ? (
-                  <View style={styles.previewCard}>
-                    <KindLabel tone={Sirius.color.accent}>Post</KindLabel>
-                    <Text style={styles.previewTitle} numberOfLines={2}>
-                      {previewPost.label}
-                    </Text>
-                    <View style={styles.previewActions}>
-                      {previewPost.slug ? (
-                        <TextLink
-                          label="Open →"
-                          onPress={() =>
-                            router.push(`/post/${previewPost.slug}`)
-                          }
-                        />
-                      ) : (
-                        <Text style={styles.previewNoOpen}>No page yet</Text>
-                      )}
-                      <TextLink
-                        label="Dismiss"
-                        tone={Sirius.color.inkSubtle}
-                        onPress={() => setPreviewNode(null)}
-                      />
-                    </View>
+                      <Text style={styles.frameBtnText}>Frame</Text>
+                    </Pressable>
                   </View>
-                ) : null}
-              </View>
+
+                  <View style={styles.titleRow}>
+                    <Pressable
+                      onPress={goPrev}
+                      disabled={count < 2}
+                      hitSlop={16}
+                      accessibilityRole="button"
+                      accessibilityLabel="Previous sibling"
+                      style={({ pressed }) => [
+                        styles.chev,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chevGlyph,
+                          count < 2 && styles.chevDisabled,
+                        ]}
+                      >
+                        ‹
+                      </Text>
+                    </Pressable>
+                    <Text style={styles.title} numberOfLines={2}>
+                      {focused.label}
+                    </Text>
+                    <Pressable
+                      onPress={goNext}
+                      disabled={count < 2}
+                      hitSlop={16}
+                      accessibilityRole="button"
+                      accessibilityLabel="Next sibling"
+                      style={({ pressed }) => [
+                        styles.chev,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chevGlyph,
+                          count < 2 && styles.chevDisabled,
+                        ]}
+                      >
+                        ›
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  {/* Tapped-post preview — what this dot is, with a quick Open. */}
+                  {previewPost ? (
+                    <View style={styles.previewCard}>
+                      <KindLabel tone={Sirius.color.accent}>Post</KindLabel>
+                      <Text style={styles.previewTitle} numberOfLines={2}>
+                        {previewPost.label}
+                      </Text>
+                      <View style={styles.previewActions}>
+                        {previewPost.slug ? (
+                          <TextLink
+                            label="Open →"
+                            onPress={() =>
+                              router.push(`/post/${previewPost.slug}`)
+                            }
+                          />
+                        ) : (
+                          <Text style={styles.previewNoOpen}>No page yet</Text>
+                        )}
+                        <TextLink
+                          label="Dismiss"
+                          tone={Sirius.color.inkSubtle}
+                          onPress={() => setPreviewNode(null)}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              </GestureDetector>
 
               <View style={styles.divider} />
 
@@ -405,7 +407,8 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                 )}
                 {expanded ? (
                   <Text style={styles.hint}>
-                    tap a dot to inspect · ‹ › siblings · pinch zoom · drag orbit
+                    tap a dot to inspect · ‹ › siblings · pinch zoom · drag
+                    orbit
                   </Text>
                 ) : null}
               </ScrollView>

@@ -21,7 +21,13 @@ import type { ThreeEvent } from "@react-three/fiber";
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import type { RefObject } from "react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
 import type { SharedValue } from "react-native-reanimated";
 import Animated, {
   useAnimatedStyle,
@@ -29,7 +35,15 @@ import Animated, {
 } from "react-native-reanimated";
 import type { StyleProp, ViewStyle } from "react-native";
 import { StyleSheet, Text, View } from "react-native";
-import { BackSide, type Camera, type Mesh, Vector3 } from "three";
+import {
+  BackSide,
+  type Camera,
+  Color,
+  type InstancedMesh,
+  Matrix4,
+  type Mesh,
+  Vector3,
+} from "three";
 import { Sirius } from "@/constants/theme";
 
 type Vec3 = [number, number, number];
@@ -97,7 +111,11 @@ function computeBounds(nodes: SceneNode[]): Bounds {
     if (y > maxY) maxY = y;
     if (z > maxZ) maxZ = z;
   }
-  const center: Vec3 = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+  const center: Vec3 = [
+    (minX + maxX) / 2,
+    (minY + maxY) / 2,
+    (minZ + maxZ) / 2,
+  ];
   let r = 0;
   for (const n of nodes) {
     const dx = n.position[0] - center[0];
@@ -167,8 +185,8 @@ function SceneBoundary({ center, radius }: Bounds) {
   );
 }
 
-// Invisible larger hit halo + a visible dot + (for the selected post) an oxblood
-// ring. Every node — category, post, project — carries a full-size halo so even
+// Every node — category, post, project — is drawn as ONE instance in two shared
+// instanced meshes: a visible opaque dot + a full-size invisible hit halo so even
 // dimmed/slug-less posts stay tappable. Single tap selects; double tap frames.
 const HIT_FACTOR = 3.5;
 const HIT_MIN = 0.55;
@@ -179,24 +197,15 @@ const KIND_BASE: Record<string, number> = {
 };
 const DOUBLE_TAP_MS = 300;
 
-function NodeDot({
-  node,
-  focused,
-  neighbor,
-  inSubtree,
-  selected,
-  onPick,
-  onFrame,
-}: {
-  node: SceneNode;
-  focused: boolean;
-  neighbor: boolean;
-  inSubtree: boolean;
-  selected: boolean;
-  onPick: (node: SceneNode) => void;
-  onFrame: (node: SceneNode) => void;
-}) {
-  const lastTap = useRef(0);
+// Per-instance visual tier: the radius scale, the dot color, and how far to lerp
+// that color toward PAPER (= the prior opacity tier, since an opaque instanced
+// mesh can't do per-instance opacity — on paper a ~55% lerp reads like 0.55).
+function nodeStyle(
+  node: SceneNode,
+  focused: boolean,
+  neighbor: boolean,
+  inSubtree: boolean,
+): { radius: number; color: string; fade: number } {
   const base = KIND_BASE[node.kind] ?? 0.1;
   const radius = focused ? base * 1.9 : neighbor ? base * 1.15 : base;
 
@@ -206,42 +215,122 @@ function NodeDot({
   else if (node.kind === "project") color = MARK;
   else if (node.kind === "post") color = inSubtree ? INK : INK_MUTED;
 
+  // Prior opacity tiers, expressed as a lerp-toward-PAPER amount (1 - opacity).
   let opacity = Math.max(0.45, base); // floor so nothing ever "blacks out"
   if (focused) opacity = 1;
   else if (neighbor) opacity = 0.9;
   else if (inSubtree) opacity = 0.7;
+  return { radius, color, fade: 1 - opacity };
+}
+
+// The instanced visible dots + invisible hit halos. Matrices + per-instance
+// colors are (re)uploaded whenever the scene or any selection-driven tier set
+// changes; clicks resolve through e.instanceId back to scene.nodes.
+function NodeDots({
+  scene,
+  focusedId,
+  neighborIds,
+  subtreePostIds,
+  onPick,
+  onFrame,
+}: {
+  scene: EmbeddingScene;
+  focusedId: string | null;
+  neighborIds: Set<string>;
+  subtreePostIds: Set<string>;
+  onPick: (node: SceneNode) => void;
+  onFrame: (node: SceneNode) => void;
+}) {
+  const dotsRef = useRef<InstancedMesh>(null);
+  const hitRef = useRef<InstancedMesh>(null);
+  // Double-tap tracking per instance id.
+  const lastTap = useRef<{ id: number; t: number }>({ id: -1, t: 0 });
+
+  const count = scene.nodes.length;
+
+  useEffect(() => {
+    const dots = dotsRef.current;
+    const hit = hitRef.current;
+    if (!dots || !hit || count === 0) return;
+    const m = new Matrix4();
+    const paper = new Color(PAPER);
+    const col = new Color();
+    for (let i = 0; i < count; i++) {
+      const node = scene.nodes[i]!;
+      const focused = node.id === focusedId;
+      const neighbor = neighborIds.has(node.id);
+      const inSubtree = node.kind === "post" && subtreePostIds.has(node.id);
+      const { radius, color, fade } = nodeStyle(
+        node,
+        focused,
+        neighbor,
+        inSubtree,
+      );
+      const [x, y, z] = node.position;
+      // Visible dot: unit sphere scaled by the tier radius.
+      m.makeScale(radius, radius, radius);
+      m.setPosition(x, y, z);
+      dots.setMatrixAt(i, m);
+      // Color, dimmed by lerping toward the paper background.
+      col.set(color).lerp(paper, fade);
+      dots.setColorAt(i, col);
+      // Hit halo: generous tap target, even for tiny dimmed posts.
+      const hr = Math.max(radius * HIT_FACTOR, HIT_MIN);
+      m.makeScale(hr, hr, hr);
+      m.setPosition(x, y, z);
+      hit.setMatrixAt(i, m);
+    }
+    dots.instanceMatrix.needsUpdate = true;
+    if (dots.instanceColor) dots.instanceColor.needsUpdate = true;
+    hit.instanceMatrix.needsUpdate = true;
+  }, [scene.nodes, focusedId, neighborIds, subtreePostIds, count]);
+
+  if (count === 0) return null;
 
   return (
-    <group position={node.position}>
-      <mesh
+    <>
+      <instancedMesh ref={dotsRef} args={[undefined, undefined, count]}>
+        <sphereGeometry args={[1, 16, 16]} />
+        <meshBasicMaterial toneMapped={false} />
+      </instancedMesh>
+      <instancedMesh
+        ref={hitRef}
+        args={[undefined, undefined, count]}
         onClick={(e: ThreeEvent<MouseEvent>) => {
+          const id = e.instanceId;
+          if (id == null) return;
+          const node = scene.nodes[id];
+          if (!node) return;
           e.stopPropagation();
           const now = Date.now();
-          if (now - lastTap.current < DOUBLE_TAP_MS) onFrame(node);
+          const prev = lastTap.current;
+          if (prev.id === id && now - prev.t < DOUBLE_TAP_MS) onFrame(node);
           else onPick(node);
-          lastTap.current = now;
+          lastTap.current = { id, t: now };
         }}
       >
-        <sphereGeometry args={[Math.max(radius * HIT_FACTOR, HIT_MIN), 8, 8]} />
+        <sphereGeometry args={[1, 16, 16]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[radius, 16, 16]} />
-        <meshBasicMaterial color={color} transparent opacity={opacity} />
-      </mesh>
-      {selected && !focused ? (
-        <mesh>
-          <sphereGeometry args={[radius * 2.2, 16, 16]} />
-          <meshBasicMaterial
-            color={OXBLOOD}
-            wireframe
-            transparent
-            opacity={0.6}
-            depthWrite={false}
-          />
-        </mesh>
-      ) : null}
-    </group>
+      </instancedMesh>
+    </>
+  );
+}
+
+// The selected post's oxblood ring — a single mesh (only 0-1 ever shown), kept
+// separate from the instanced dots.
+function SelectedRing({ node }: { node: SceneNode }) {
+  const base = KIND_BASE[node.kind] ?? 0.1;
+  return (
+    <mesh position={node.position}>
+      <sphereGeometry args={[base * 2.2, 16, 16]} />
+      <meshBasicMaterial
+        color={OXBLOOD}
+        wireframe
+        transparent
+        opacity={0.6}
+        depthWrite={false}
+      />
+    </mesh>
   );
 }
 
@@ -386,7 +475,8 @@ function CameraRig({
     for (let i = 0; i < 3; i++) {
       c[i] += (target.current[i]! - c[i]!) * DAMPING;
     }
-    curRadius.current += (fitRadius * zoom.current - curRadius.current) * DAMPING;
+    curRadius.current +=
+      (fitRadius * zoom.current - curRadius.current) * DAMPING;
     const r = curRadius.current;
     state.camera.position.set(
       c[0]! + r * Math.cos(o.pitch) * Math.sin(o.yaw),
@@ -530,24 +620,33 @@ export interface ConstellationHeroProps {
   selectedNode: SceneNode | null;
   // A node was tapped in the 3D map (host selects categories / previews posts).
   onPickNode: (node: SceneNode) => void;
-  // Bumped by the host's "Frame" button to lean the camera in on the current
-  // look-at node.
-  frameTick: number;
   style?: StyleProp<ViewStyle>;
 }
 
+// SHARED INTERFACE CONTRACT — exported here, imported by the map-view host. The
+// host calls frameNode() (its "Frame" action) instead of bumping a prop tick.
+export type ConstellationHeroHandle = {
+  /** Gently fly the camera in close on a node (the "Frame" action). */
+  frameNode: (node: SceneNode) => void;
+};
+
 // Self-contained 3D hero. Mount it at a fixed height; it fills its container.
-export function ConstellationHero({
-  scene,
-  focused,
-  neighborIds,
-  subtreePostIds,
-  selectedNode,
-  onPickNode,
-  frameTick,
-  style,
-}: ConstellationHeroProps) {
-  const bounds = useMemo(() => computeBounds(scene.nodes), [scene.nodes]);
+export const ConstellationHero = forwardRef<
+  ConstellationHeroHandle,
+  ConstellationHeroProps
+>(function ConstellationHero(
+  {
+    scene,
+    focused,
+    neighborIds,
+    subtreePostIds,
+    selectedNode,
+    onPickNode,
+    style,
+  },
+  ref,
+) {
+  const bounds = computeBounds(scene.nodes);
   const fitRadius = bounds.radius * FIT_MULT;
   const panLimit = bounds.radius * PAN_LIMIT_MULT;
 
@@ -587,17 +686,13 @@ export function ConstellationHero({
     if (lookAtNode) target.current = [...lookAtNode.position];
   }, [lookAtId, lookAtNode]);
 
-  // Explicit "Frame" — fly in close on the current look-at node.
-  const frameNode = useCallback((node: SceneNode) => {
+  // Explicit "Frame" — fly in close on a node. Exposed imperatively to the host
+  // (its "Frame" button calls ref.frameNode(...)) and reused by double-tap.
+  const frameNode = (node: SceneNode) => {
     target.current = [...node.position];
     zoom.current = Math.max(ZOOM_MIN, FRAME_ZOOM);
-  }, []);
-  const prevTick = useRef(frameTick);
-  useEffect(() => {
-    if (frameTick === prevTick.current) return;
-    prevTick.current = frameTick;
-    if (lookAtNode) frameNode(lookAtNode);
-  }, [frameTick, lookAtNode, frameNode]);
+  };
+  useImperativeHandle(ref, () => ({ frameNode }));
 
   useEffect(() => {
     logGesture(
@@ -618,7 +713,10 @@ export function ConstellationHero({
   };
 
   const onZoom = (factor: number) => {
-    zoom.current = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom.current * factor));
+    zoom.current = Math.min(
+      ZOOM_MAX,
+      Math.max(ZOOM_MIN, zoom.current * factor),
+    );
   };
 
   // Map a screen-space (NDC) midpoint delta to a world pan in the camera's
@@ -647,23 +745,20 @@ export function ConstellationHero({
   };
 
   const focusedId = focused?.id ?? null;
-  const selectedId = selectedNode?.id ?? null;
 
   // Which nodes get an overlay label: all categories/projects (capped so a huge
   // taxonomy doesn't clutter — then we keep focus + neighbors + parent), plus
   // the currently selected post.
   const projected = useSharedValue<Record<string, ProjectedLabel>>({});
-  const labelNodes = useMemo(() => {
-    const structural = scene.nodes.filter((n) => n.kind !== "post");
-    let kept = structural;
-    if (structural.length > MAX_CATEGORY_LABELS) {
-      kept = structural.filter(
-        (n) => n.id === focusedId || neighborIds.has(n.id),
-      );
-    }
-    if (selectedNode?.kind === "post") kept = [...kept, selectedNode];
-    return kept;
-  }, [scene.nodes, focusedId, neighborIds, selectedNode]);
+  const structuralLabels = scene.nodes.filter((n) => n.kind !== "post");
+  let keptLabels = structuralLabels;
+  if (structuralLabels.length > MAX_CATEGORY_LABELS) {
+    keptLabels = structuralLabels.filter(
+      (n) => n.id === focusedId || neighborIds.has(n.id),
+    );
+  }
+  const labelNodes =
+    selectedNode?.kind === "post" ? [...keptLabels, selectedNode] : keptLabels;
 
   return (
     <View style={[styles.hero, style]}>
@@ -686,18 +781,17 @@ export function ConstellationHero({
         <SceneBoundary center={bounds.center} radius={bounds.radius} />
         <EdgeLines scene={scene} focusedId={focusedId} onlyFocus={false} />
         <EdgeLines scene={scene} focusedId={focusedId} onlyFocus />
-        {scene.nodes.map((node) => (
-          <NodeDot
-            key={node.id}
-            node={node}
-            focused={node.id === focusedId}
-            neighbor={neighborIds.has(node.id)}
-            inSubtree={node.kind === "post" && subtreePostIds.has(node.id)}
-            selected={node.id === selectedId}
-            onPick={onPickNode}
-            onFrame={frameNode}
-          />
-        ))}
+        <NodeDots
+          scene={scene}
+          focusedId={focusedId}
+          neighborIds={neighborIds}
+          subtreePostIds={subtreePostIds}
+          onPick={onPickNode}
+          onFrame={frameNode}
+        />
+        {selectedNode && selectedNode.id !== focusedId ? (
+          <SelectedRing node={selectedNode} />
+        ) : null}
         {focused ? <PulseHalo position={focused.position} /> : null}
       </Canvas>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -712,7 +806,7 @@ export function ConstellationHero({
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   hero: { backgroundColor: PAPER, overflow: "hidden" },

@@ -14,6 +14,7 @@ import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { StyleSheet, Text, useColorScheme } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { Screen } from "@/components/sirius";
@@ -119,100 +120,102 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { ready, error } = useDbReady();
   return (
-    <ShareIntentProvider
-      options={{
-        debug: __DEV__,
-        resetOnBackground: true,
-      }}
-    >
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider
-          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-        >
-          <AnimatedSplashOverlay />
-          <StatusBar style="auto" />
-          {error ? (
-            <Screen style={styles.centeredPad}>
-              <Text style={styles.errorTitle}>
-                {"Couldn't start the database"}
-              </Text>
-              <Text style={styles.errorBody}>{error.message}</Text>
-            </Screen>
-          ) : ready ? (
-            <>
-              <ShareIntentNavigator />
-              <SyncRunner />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="(auth)" />
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen
-                  name="shareintent"
-                  options={{ presentation: "modal" }}
-                />
-                <Stack.Screen
-                  name="post/[slug]"
-                  options={{ headerShown: true, title: "" }}
-                />
-                <Stack.Screen
-                  name="post/local/[localId]"
-                  options={{
-                    headerShown: true,
-                    title: "",
-                    // Only reachable from the Catalog tab; pin the back label
-                    // so it isn't the "(tabs)" route-name fallback.
-                    headerBackTitle: "Catalog",
-                  }}
-                />
-                <Stack.Screen
-                  name="tree/[...node]"
-                  options={{
-                    headerShown: true,
-                    title: "Index",
-                    // The back button label is derived from the previous
-                    // route, which is the `(tabs)` navigator — it has no
-                    // title, so iOS falls back to the literal route-group
-                    // name "(tabs)". Pin it to where the user came from.
-                    headerBackTitle: "Tree",
-                  }}
-                />
-                <Stack.Screen
-                  name="focus"
-                  options={{
-                    headerShown: true,
-                    title: "Focus",
-                    // Reached only from the Capture tab.
-                    headerBackTitle: "Capture",
-                  }}
-                />
-                <Stack.Screen
-                  name="space"
-                  options={{
-                    headerShown: true,
-                    title: "Space",
-                    // Reached only from the Catalog tab.
-                    headerBackTitle: "Catalog",
-                  }}
-                />
-                <Stack.Screen
-                  name="llm"
-                  options={{
-                    headerShown: true,
-                    title: "On-device AI",
-                    // Reached only from the Capture tab.
-                    headerBackTitle: "Capture",
-                  }}
-                />
-                <Stack.Screen
-                  name="llm-test"
-                  options={{ headerShown: true, title: "Draft test bench" }}
-                />
-              </Stack>
-            </>
-          ) : null}
-        </ThemeProvider>
-      </QueryClientProvider>
-    </ShareIntentProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ShareIntentProvider
+        options={{
+          debug: __DEV__,
+          resetOnBackground: true,
+        }}
+      >
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider
+            value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+          >
+            <AnimatedSplashOverlay />
+            <StatusBar style="auto" />
+            {error ? (
+              <Screen style={styles.centeredPad}>
+                <Text style={styles.errorTitle}>
+                  {"Couldn't start the database"}
+                </Text>
+                <Text style={styles.errorBody}>{error.message}</Text>
+              </Screen>
+            ) : ready ? (
+              <>
+                <ShareIntentNavigator />
+                <SyncRunner />
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="index" />
+                  <Stack.Screen name="(auth)" />
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen
+                    name="shareintent"
+                    options={{ presentation: "modal" }}
+                  />
+                  <Stack.Screen
+                    name="post/[slug]"
+                    options={{ headerShown: true, title: "" }}
+                  />
+                  <Stack.Screen
+                    name="post/local/[localId]"
+                    options={{
+                      headerShown: true,
+                      title: "",
+                      // Only reachable from the Catalog tab; pin the back label
+                      // so it isn't the "(tabs)" route-name fallback.
+                      headerBackTitle: "Catalog",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="tree/[...node]"
+                    options={{
+                      headerShown: true,
+                      title: "Index",
+                      // The back button label is derived from the previous
+                      // route, which is the `(tabs)` navigator — it has no
+                      // title, so iOS falls back to the literal route-group
+                      // name "(tabs)". Pin it to where the user came from.
+                      headerBackTitle: "Tree",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="focus"
+                    options={{
+                      headerShown: true,
+                      title: "Focus",
+                      // Reached only from the Capture tab.
+                      headerBackTitle: "Capture",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="space"
+                    options={{
+                      headerShown: true,
+                      title: "Space",
+                      // Reached only from the Catalog tab.
+                      headerBackTitle: "Catalog",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="llm"
+                    options={{
+                      headerShown: true,
+                      title: "On-device AI",
+                      // Reached only from the Capture tab.
+                      headerBackTitle: "Capture",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="llm-test"
+                    options={{ headerShown: true, title: "Draft test bench" }}
+                  />
+                </Stack>
+              </>
+            ) : null}
+          </ThemeProvider>
+        </QueryClientProvider>
+      </ShareIntentProvider>
+    </GestureHandlerRootView>
   );
 }
 
