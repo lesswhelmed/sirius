@@ -153,6 +153,10 @@ export default function RootLayout() {
                     options={{ presentation: "modal" }}
                   />
                   <Stack.Screen
+                    name="capture"
+                    options={{ presentation: "modal" }}
+                  />
+                  <Stack.Screen
                     name="post/[slug]"
                     options={{ headerShown: true, title: "" }}
                   />

@@ -151,6 +151,26 @@ export function StatusPip({ label, color }: { label: string; color: string }) {
   );
 }
 
+// Terminal confirmation for the share/capture modals: once an item is queued
+// the pane's only job is to let the user close it. Shared by `shareintent` and
+// `capture` so both read identically.
+export function CaptureDone({
+  title = "Queued",
+  message,
+  onClose,
+}: {
+  title?: string;
+  message?: string;
+  onClose: () => void;
+}) {
+  return (
+    <Screen style={styles.captureDone}>
+      <PageHeader brandMark title={title} titleAccent="." subtitle={message} />
+      <PrimaryButton label="Done" onPress={onClose} />
+    </Screen>
+  );
+}
+
 const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
   function Field(
     { label, style, multiline, accessibilityLabel, ...rest },
@@ -717,6 +737,11 @@ export function SubmitBar({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Sirius.color.paper },
+  captureDone: {
+    justifyContent: "center",
+    paddingHorizontal: Sirius.space.xl,
+    gap: Sirius.space.lg,
+  },
   header: {
     flexDirection: "row",
     alignItems: "flex-end",
