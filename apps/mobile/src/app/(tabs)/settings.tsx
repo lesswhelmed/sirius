@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -22,7 +23,7 @@ import {
 } from "@/components/sirius";
 import { VoiceSection } from "@/components/voice-section";
 import { Sirius } from "@/constants/theme";
-import { signIn, signOut, useSession } from "@/lib/auth-client";
+import { authBaseURL, signIn, signOut, useSession } from "@/lib/auth-client";
 import {
   type BiometricType,
   biometricLabel,
@@ -109,6 +110,15 @@ export default function SettingsScreen() {
     }
   }
 
+  async function handleShareInvite() {
+    if (!handle) return;
+    // Share the web invite URL — it works in any browser, and a signed-in
+    // recipient lands on /u/<handle> to add you as a friend.
+    await Share.share({
+      message: `Add me on Sirius: ${authBaseURL}/u/${handle}`,
+    });
+  }
+
   async function handleSignOut() {
     // Wipe the biometric vault on sign-out so a saved password never outlives
     // the session on a shared device.
@@ -145,6 +155,13 @@ export default function SettingsScreen() {
             symbol="person.2"
             onPress={() => router.push("/friends")}
           />
+          {handle ? (
+            <SecondaryButton
+              label="Share invite link"
+              symbol="square.and.arrow.up"
+              onPress={handleShareInvite}
+            />
+          ) : null}
         </View>
 
         {/* Your voice — NOT gated by the on-device flag; voice applies to

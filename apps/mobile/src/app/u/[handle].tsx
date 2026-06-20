@@ -1,0 +1,142 @@
+// In-app friend-invite landing: reached via siriusapp://u/<handle> (see
+// +native-intent.ts). Resolves the handle through the same search endpoint the
+// AddFriendSheet uses — it returns the target plus the viewer's relationship
+// state — and lets the viewer send a friend request.
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Stack, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+
+import { Eyebrow, PrimaryButton, Screen, Title } from "@/components/sirius";
+import { Sirius } from "@/constants/theme";
+import { ApiError, apiGet, apiPostJson } from "@/lib/api";
+
+type SearchResult = {
+  id: string;
+  name: string;
+  handle: string | null;
+  state: "self" | "none" | "outgoing" | "incoming" | "friends";
+};
+
+const STATE_LABEL: Record<SearchResult["state"], string> = {
+  self: "This is your invite link.",
+  none: "",
+  outgoing: "Request pending.",
+  incoming: "Wants to connect — accept in Friends.",
+  friends: "Friends ✓",
+};
+
+export default function InviteScreen() {
+  const { handle: rawHandle } = useLocalSearchParams<{ handle: string }>();
+  const handle = (rawHandle ?? "").replace(/^@/, "").trim();
+  const qc = useQueryClient();
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const searchQ = useQuery({
+    queryKey: ["friend-search", handle],
+    queryFn: () =>
+      apiGet<{ results: SearchResult[] }>(
+        `/api/app/friends/search?q=${encodeURIComponent(handle)}`,
+      ),
+    enabled: handle.length > 0,
+  });
+  const result = searchQ.data?.results[0] ?? null;
+
+  async function send() {
+    if (!result?.handle) return;
+    setSending(true);
+    setError(null);
+    try {
+      await apiPostJson("/api/app/friends/requests", { handle: result.handle });
+      void qc.invalidateQueries({ queryKey: ["friends"] });
+      void qc.invalidateQueries({ queryKey: ["friend-requests"] });
+      void searchQ.refetch();
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Couldn’t send the request.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Screen>
+      <Stack.Screen options={{ title: "Add a friend" }} />
+      <View style={styles.body}>
+        <Eyebrow>{handle ? `Add a friend · @${handle}` : "Add a friend"}</Eyebrow>
+
+        {searchQ.isLoading ? (
+          <View style={styles.loading}>
+            <ActivityIndicator color={Sirius.color.accent} />
+          </View>
+        ) : result ? (
+          <>
+            <Title accent="." accessibilityRole="header">
+              {result.name}
+            </Title>
+            {result.handle ? (
+              <Text style={styles.handle}>@{result.handle}</Text>
+            ) : null}
+
+            <View style={styles.action}>
+              {result.state === "none" && result.handle ? (
+                <PrimaryButton
+                  label="Add friend"
+                  busy={sending}
+                  onPress={send}
+                />
+              ) : (
+                <Text style={styles.stateLabel}>
+                  {STATE_LABEL[result.state]}
+                </Text>
+              )}
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+            </View>
+          </>
+        ) : (
+          <Text style={styles.empty}>
+            {handle
+              ? "No one found with that handle."
+              : "No handle in this link."}
+          </Text>
+        )}
+      </View>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  body: {
+    paddingHorizontal: Sirius.space.xl,
+    paddingTop: Sirius.space.xl,
+    gap: Sirius.space.md,
+  },
+  loading: { paddingVertical: 48, alignItems: "center" },
+  handle: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 13,
+    color: Sirius.color.inkSubtle,
+  },
+  action: { marginTop: Sirius.space.lg, gap: Sirius.space.sm },
+  stateLabel: {
+    fontFamily: Sirius.font.serif,
+    fontStyle: "italic",
+    fontSize: 16,
+    color: Sirius.color.inkMuted,
+  },
+  error: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    color: Sirius.color.accent,
+  },
+  empty: {
+    fontFamily: Sirius.font.serif,
+    fontStyle: "italic",
+    fontSize: 18,
+    color: Sirius.color.inkMuted,
+    marginTop: Sirius.space.lg,
+  },
+});

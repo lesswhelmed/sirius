@@ -1,8 +1,10 @@
-import { getVoiceProfile, listArchiveRequests } from "@repo/db";
+import { getUserHandle, getVoiceProfile, listArchiveRequests } from "@repo/db";
+import Link from "next/link";
 import { DateDisplay } from "../../../lib/date-display";
 import { requireSession } from "../../../lib/session";
 import { RequestArchiveButton } from "./request-archive-button";
 import { SettingsShell, type SettingsSection } from "./settings-shell";
+import { ShareHandle } from "./share-handle";
 import { VoiceSection } from "./voice-section";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -31,15 +33,62 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
 
 export default async function SettingsPage() {
   const session = await requireSession("/settings");
-  const requests = await listArchiveRequests(session.user.id);
-  const voiceProfile = await getVoiceProfile(session.user.id);
+  const [requests, voiceProfile, handle] = await Promise.all([
+    listArchiveRequests(session.user.id),
+    getVoiceProfile(session.user.id),
+    getUserHandle(session.user.id),
+  ]);
   const now = Date.now();
 
   const sections: SettingsSection[] = [
     {
+      id: "profile",
+      label: "Profile",
+      folio: "i",
+      blurb: "Your handle and invite link.",
+      content: (
+        <div className="space-y-7">
+          <SectionHeader eyebrow="Profile" title="Your handle" />
+          {handle ? (
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+                  Handle
+                </p>
+                <p className="font-display italic text-[28px] leading-none text-[var(--fg)]">
+                  @{handle}
+                </p>
+              </div>
+              <div className="space-y-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
+                  Invite a friend
+                </p>
+                <p className="max-w-[60ch] font-body text-[15px] leading-[1.7] text-[var(--fg-muted)]">
+                  Share this link. Anyone signed in can open it and add you as a
+                  friend.
+                </p>
+                <ShareHandle handle={handle} />
+              </div>
+            </div>
+          ) : (
+            <p className="max-w-[60ch] font-body text-[15px] leading-[1.7] text-[var(--fg-muted)]">
+              You don’t have a handle yet.{" "}
+              <Link
+                href="/setup-handle"
+                className="underline decoration-[var(--color-rule-strong)] underline-offset-4 transition-colors hover:text-[var(--color-accent)] hover:decoration-[var(--color-accent)]"
+              >
+                Choose one
+              </Link>{" "}
+              to get your invite link.
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
       id: "writing-persona",
       label: "Writing Persona",
-      folio: "i",
+      folio: "ii",
       blurb: "Shape how your posts are written.",
       content: (
         <div className="space-y-7">
@@ -51,7 +100,7 @@ export default async function SettingsPage() {
     {
       id: "data-export",
       label: "Data Export",
-      folio: "ii",
+      folio: "iii",
       blurb: "Your originals and downloadable archives.",
       content: (
         <div className="space-y-10">

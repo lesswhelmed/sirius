@@ -100,6 +100,22 @@ export function refreshSession(): Promise<boolean> {
   return recheckSession();
 }
 
+// Last-resort recovery for a caller wedged behind a toxic stored cookie that
+// can't reach runWithAuthRetry (the SSE channel). Clears the persisted auth
+// storage ONLY when the cookie is genuinely suspicious — corrupt bytes or
+// abnormally large (a header-size failure) — AND a bare cookie-free probe shows
+// the server is reachable (so we never wipe auth just because we're offline).
+// Returns true if it cleared (the caller should then sign out so the gate routes
+// to sign-in). Mirrors the transport-failure branch of runWithAuthRetry.
+export async function recoverWedgedAuthCookie(reason: string): Promise<boolean> {
+  const cookie = inspectStoredCookie();
+  const suspicious = cookie.toxic || cookie.len > 4096;
+  if (!suspicious) return false;
+  if (!(await serverReachableWithoutCookie())) return false;
+  await clearAuthStorage(reason);
+  return true;
+}
+
 // Core retry runner. `perform` is a thunk that runs ONE attempt and either
 // returns the parsed result or throws — an ApiError carrying status 401/403
 // triggers the retry/logout policy; anything else propagates immediately. The

@@ -9,7 +9,7 @@
 // can rotate) and uses exponential backoff + jitter.
 import EventSource from "react-native-sse";
 
-import { checkServerSession } from "@/lib/api";
+import { checkServerSession, recoverWedgedAuthCookie } from "@/lib/api";
 import { authBaseURL, authClient, signOut } from "@/lib/auth-client";
 import { pullChanges } from "./changes-pull";
 import { pullCommentChanges } from "./comment-changes-pull";
@@ -17,6 +17,9 @@ import { pullCommentChanges } from "./comment-changes-pull";
 const STREAM_PATH = "/api/app/posts/stream";
 const MAX_BACKOFF_MS = 30_000;
 const PULL_DEBOUNCE_MS = 300;
+// Reconnect attempts of persistent "unknown" session checks before we treat the
+// stored cookie as wedged and attempt a toxic-cookie reset (≈15s of backoff).
+const STUCK_RESET_AFTER_ATTEMPTS = 4;
 
 let source: EventSource<"change"> | null = null;
 let active = false;
@@ -60,22 +63,37 @@ function scheduleReconnect(): void {
 
 async function open(): Promise<void> {
   if (!active) return;
-  // On a reconnect (a prior connection errored — most often a 401 from a cookie
-  // that rotated server-side), force a single-flight session re-check first so
-  // getCookie() below returns the refreshed token. Without this the stream just
-  // reconnects with the same stale cookie and 401-loops. EventSource gives us no
-  // status code, so we can't tell a 401 from any other drop — re-checking on
-  // every reconnect is cheap (single-flight, shared with apiGet) and harmless.
+  // Confirm the session against the server before EVERY (re)open — including the
+  // first. useSession() shows the locally cached session, so the stored cookie
+  // can already be stale server-side on a cold start / foreground; opening blind
+  // would 401 on every app-open before recovery kicks in. The check is a
+  // single-flight (shared with apiGet) and refreshes getCookie() below to the
+  // rotated token. EventSource gives us no status code, so we can't tell a 401
+  // from any other drop — re-checking is cheap and harmless.
   //
-  // If that check is AUTHORITATIVELY "none" (server replied: no session), stop
-  // reconnecting with a dead cookie and clear local auth so the gate routes to
-  // sign-in instead of looping forever. A transient "unknown" (network) result
-  // falls through to the normal backoff reconnect so a flaky network never logs
-  // the user out.
-  if (attempts > 0) {
-    const state = await checkServerSession();
-    if (!active) return; // disconnected while awaiting the recheck
-    if (state === "none") {
+  // AUTHORITATIVELY "none" (server replied: no session) → stop reconnecting with
+  // a dead cookie and clear local auth so the gate routes to sign-in instead of
+  // looping. A transient "unknown" (network) falls through to an optimistic
+  // open + normal backoff so a flaky network never logs the user out.
+  const state = await checkServerSession();
+  if (!active) return; // disconnected while awaiting the recheck
+  if (state === "none") {
+    disconnectSse();
+    void signOut().catch(() => {});
+    return;
+  }
+  // Circuit breaker for the toxic-cookie loop: when we've been reconnecting a
+  // while and the session check keeps throwing ("unknown" — never a clean
+  // "none"), a corrupt/oversized stored cookie is wedging every request and the
+  // stream would 401-reconnect forever. recoverWedgedAuthCookie clears that
+  // storage ONLY when the cookie is genuinely suspicious AND the server is
+  // reachable without it (offline stays untouched); on success, sign out so the
+  // user re-auths cleanly. EventSource bypasses apiGet's runWithAuthRetry, so
+  // this is the only place the SSE path gets that recovery.
+  if (state === "unknown" && attempts >= STUCK_RESET_AFTER_ATTEMPTS) {
+    const recovered = await recoverWedgedAuthCookie("sse-stuck-loop");
+    if (!active) return;
+    if (recovered) {
       disconnectSse();
       void signOut().catch(() => {});
       return;

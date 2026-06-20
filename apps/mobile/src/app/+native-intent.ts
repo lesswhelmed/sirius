@@ -25,6 +25,13 @@ export function redirectSystemPath({
     if (base === "capture" || base.endsWith("/capture")) {
       return query ? `/capture?${query}` : "/capture";
     }
+    // Friend invite links: siriusapp://u/<handle> opens the in-app add-friend
+    // screen for that handle. (Custom-scheme parsing yields host "u" + path
+    // "/<handle>", normalized above to the single segment string "u/<handle>".)
+    if (base.startsWith("u/")) {
+      const handle = base.slice(2).replace(/^\/+/, "");
+      if (handle) return `/u/${handle}`;
+    }
     return path;
   } catch {
     return "/";
