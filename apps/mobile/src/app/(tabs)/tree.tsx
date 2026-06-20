@@ -7,8 +7,11 @@
 
 import {
   categoryChildren,
+  filterTree,
+  type MatchRange,
   nodeCounts,
   projectNodes,
+  type TreeFilter,
 } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +25,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
@@ -90,9 +94,18 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
   const [tab, setTab] = useState<Tab>("map");
   const [refreshing, setRefreshing] = useState(false);
 
+  // Live filter: `query` updates synchronously with the input (no input lag);
+  // `debouncedQuery` trails it so the tree only re-filters once typing settles.
+  const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounced(query, 120);
+
   const childrenMap = useMemo(() => categoryChildren(scene), [scene]);
   const projects = useMemo(() => projectNodes(scene), [scene]);
   const counts = useMemo(() => nodeCounts(scene), [scene]);
+  const filter = useMemo(
+    () => filterTree(childrenMap, projects, debouncedQuery),
+    [childrenMap, projects, debouncedQuery],
+  );
   const categoryCount = useMemo(
     () =>
       scene.nodes.reduce(
@@ -178,6 +191,12 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
       <View style={styles.head}>
         <Eyebrow accessibilityRole="header">Section V — The Observatory</Eyebrow>
         {segments}
+        {/* Sticky filter — only meaningful for the two outline subtabs (the Map
+            has its own controls). Narrows the tree as you type and clears back
+            to the persisted state when emptied. */}
+        {tab !== "map" ? (
+          <SearchField value={query} onChange={setQuery} />
+        ) : null}
       </View>
 
       {/* Keyed remount drives the crossfade (opacity only — GPU-cheap) and
@@ -194,6 +213,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
             childrenMap={childrenMap}
             counts={counts.subtree}
             expanded={expandedSet}
+            filter={filter}
             onToggle={toggleExpanded}
             onPick={open}
             refreshing={refreshing}
@@ -203,6 +223,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
           <FocusView
             projects={projects}
             counts={counts.direct}
+            filter={filter}
             onPick={open}
             refreshing={refreshing}
             onRefresh={onRefresh}
@@ -210,6 +231,109 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
         )}
       </Animated.View>
     </Screen>
+  );
+}
+
+// Trailing-edge debounce of a string value. Keeps `filterTree` off the keypress
+// path so typing on a deep taxonomy stays smooth.
+function useDebounced(value: string, delayMs: number): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(id);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+// Sticky typewriter-styled filter field — mirrors sirius.tsx Field's bordered
+// input, with a leading magnifier and a clear button that snaps the tree back to
+// its persisted state. Single-line, no submit; filtering is live as you type.
+function SearchField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <View style={styles.search}>
+      <SymbolView
+        name="magnifyingglass"
+        size={13}
+        weight="semibold"
+        tintColor={Sirius.color.inkSubtle}
+        fallback={
+          <Text style={styles.searchGlyph} accessibilityElementsHidden>
+            {"⌕"}
+          </Text>
+        }
+      />
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder="Filter the tree…"
+        placeholderTextColor={Sirius.color.inkSubtle}
+        selectionColor={Sirius.color.accent}
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="search"
+        clearButtonMode="never"
+        accessibilityLabel="Filter the tree"
+        style={styles.searchInput}
+      />
+      {value.length > 0 ? (
+        <Pressable
+          onPress={() => onChange("")}
+          accessibilityRole="button"
+          accessibilityLabel="Clear filter"
+          hitSlop={8}
+          style={({ pressed }) => [styles.searchClear, pressed && styles.pressed]}
+        >
+          <SymbolView
+            name="xmark.circle.fill"
+            size={15}
+            tintColor={Sirius.color.inkSubtle}
+            fallback={
+              <Text style={styles.searchGlyph} accessibilityElementsHidden>
+                {"✕"}
+              </Text>
+            }
+          />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+// A label that bolds the [start,end) slice that matched the live filter. With no
+// range it renders a plain single segment — identical to a bare <Text>.
+function HighlightedLabel({
+  label,
+  range,
+  style,
+  numberOfLines = 1,
+}: {
+  label: string;
+  range?: MatchRange;
+  style: object;
+  numberOfLines?: number;
+}) {
+  if (!range || range.start >= range.end) {
+    return (
+      <Text style={style} numberOfLines={numberOfLines}>
+        {label}
+      </Text>
+    );
+  }
+  const before = label.slice(0, range.start);
+  const hit = label.slice(range.start, range.end);
+  const after = label.slice(range.end);
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {before}
+      <Text style={styles.highlight}>{hit}</Text>
+      {after}
+    </Text>
   );
 }
 
@@ -228,6 +352,7 @@ function CategoriesView({
   childrenMap,
   counts,
   expanded,
+  filter,
   onToggle,
   onPick,
   refreshing,
@@ -236,15 +361,19 @@ function CategoriesView({
   childrenMap: Map<string | null, SceneNode[]>;
   counts: Map<string, number>;
   expanded: Set<string>;
+  filter: TreeFilter;
   onToggle: (path: string) => void;
   onPick: (id: string) => void;
   refreshing: boolean;
   onRefresh: () => void;
 }) {
   const empty = (childrenMap.get(null) ?? []).length === 0;
+  const noMatches = filter.active && filter.visible.size === 0;
   return (
     <ScrollView
       contentContainerStyle={styles.scrollBody}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={pullRefresh(refreshing, onRefresh)}
     >
       {empty ? (
@@ -252,12 +381,15 @@ function CategoriesView({
           No analysis branches yet. Tap a node to open its index of posts, or
           explore the map.
         </Text>
+      ) : noMatches ? (
+        <Text style={styles.empty}>No branches match that search.</Text>
       ) : (
         <TreeBranch
           parent={null}
           childrenMap={childrenMap}
           counts={counts}
           expanded={expanded}
+          filter={filter}
           onToggle={onToggle}
           onPick={onPick}
         />
@@ -269,32 +401,42 @@ function CategoriesView({
 function FocusView({
   projects,
   counts,
+  filter,
   onPick,
   refreshing,
   onRefresh,
 }: {
   projects: SceneNode[];
   counts: Map<string, number>;
+  filter: TreeFilter;
   onPick: (id: string) => void;
   refreshing: boolean;
   onRefresh: () => void;
 }) {
+  const shown = filter.active
+    ? projects.filter((p) => filter.projects.has(p.id))
+    : projects;
   return (
     <ScrollView
       contentContainerStyle={styles.scrollBody}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={pullRefresh(refreshing, onRefresh)}
     >
       {projects.length === 0 ? (
         <Text style={styles.empty}>
           No focus areas yet. Assign posts to a project to see it here.
         </Text>
+      ) : shown.length === 0 ? (
+        <Text style={styles.empty}>No focus areas match that search.</Text>
       ) : (
         <View style={styles.focusList}>
-          {projects.map((p) => (
+          {shown.map((p) => (
             <FocusCard
               key={p.id}
               node={p}
               count={counts.get(p.id) ?? 0}
+              range={filter.ranges.get(p.id)}
               onPress={() => onPick(p.id)}
             />
           ))}
@@ -312,6 +454,7 @@ function TreeBranch({
   childrenMap,
   counts,
   expanded,
+  filter,
   onToggle,
   onPick,
 }: {
@@ -319,10 +462,16 @@ function TreeBranch({
   childrenMap: Map<string | null, SceneNode[]>;
   counts: Map<string, number>;
   expanded: Set<string>;
+  filter: TreeFilter;
   onToggle: (path: string) => void;
   onPick: (id: string) => void;
 }) {
-  const nodes = childrenMap.get(parent) ?? [];
+  const all = childrenMap.get(parent) ?? [];
+  // When filtering, drop nodes outside the visible set entirely — only matches
+  // and their ancestors survive. With no query the full level renders.
+  const nodes = filter.active
+    ? all.filter((n) => filter.visible.has(n.id))
+    : all;
   if (nodes.length === 0) return null;
   return (
     <View style={parent == null ? undefined : styles.branch}>
@@ -330,7 +479,12 @@ function TreeBranch({
         const path = n.path ?? null;
         const hasChildren =
           path != null && (childrenMap.get(path) ?? []).length > 0;
-        const isOpen = path != null && expanded.has(path);
+        // While filtering, the persisted expand state is overridden: a branch is
+        // open iff it leads to a match (filter.expand). On clear we fall back to
+        // the user's persisted `expanded` set untouched.
+        const isOpen = filter.active
+          ? filter.expand.has(n.id)
+          : path != null && expanded.has(path);
         return (
           <View key={n.id}>
             <NodeRow
@@ -338,6 +492,7 @@ function TreeBranch({
               count={counts.get(n.id) ?? 0}
               hasChildren={hasChildren}
               isOpen={isOpen}
+              range={filter.ranges.get(n.id)}
               onToggle={
                 hasChildren && path != null ? () => onToggle(path) : undefined
               }
@@ -349,6 +504,7 @@ function TreeBranch({
                 childrenMap={childrenMap}
                 counts={counts}
                 expanded={expanded}
+                filter={filter}
                 onToggle={onToggle}
                 onPick={onPick}
               />
@@ -365,6 +521,7 @@ function NodeRow({
   count,
   hasChildren,
   isOpen,
+  range,
   onToggle,
   onPress,
 }: {
@@ -372,6 +529,8 @@ function NodeRow({
   count: number;
   hasChildren: boolean;
   isOpen: boolean;
+  // Highlight span when this row is a search match; undefined otherwise.
+  range?: MatchRange;
   // undefined for leaves — they have no caret affordance.
   onToggle?: () => void;
   onPress: () => void;
@@ -413,9 +572,11 @@ function NodeRow({
         }
         style={({ pressed }) => [styles.nodeHit, pressed && styles.pressed]}
       >
-        <Text style={styles.nodeLabel} numberOfLines={1}>
-          {node.label}
-        </Text>
+        <HighlightedLabel
+          label={node.label}
+          range={range}
+          style={styles.nodeLabel}
+        />
         {count > 0 ? (
           <Text style={styles.nodeCount}>{count}</Text>
         ) : (
@@ -434,10 +595,12 @@ function NodeRow({
 function FocusCard({
   node,
   count,
+  range,
   onPress,
 }: {
   node: SceneNode;
   count: number;
+  range?: MatchRange;
   onPress: () => void;
 }) {
   return (
@@ -451,9 +614,12 @@ function FocusCard({
     >
       <View style={styles.focusText}>
         <Eyebrow>Focus area</Eyebrow>
-        <Text style={styles.focusTitle} numberOfLines={2}>
-          {node.label}
-        </Text>
+        <HighlightedLabel
+          label={node.label}
+          range={range}
+          style={styles.focusTitle}
+          numberOfLines={2}
+        />
       </View>
       <Text style={styles.focusCount}>
         {count} {count === 1 ? "post" : "posts"}
@@ -478,6 +644,33 @@ const styles = StyleSheet.create({
     gap: Sirius.space.md,
   },
   viewport: { flex: 1 },
+  search: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.xs,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    borderRadius: Sirius.radius.none,
+    backgroundColor: Sirius.color.paperRaised,
+    paddingHorizontal: Sirius.space.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: Sirius.font.mono,
+    fontSize: 13,
+    color: Sirius.color.ink,
+    paddingVertical: Sirius.space.sm,
+  },
+  searchGlyph: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 13,
+    color: Sirius.color.inkSubtle,
+  },
+  searchClear: { padding: 2 },
+  highlight: {
+    color: Sirius.color.accent,
+    fontWeight: "700",
+  },
   scrollBody: {
     paddingHorizontal: HEAD_PAD,
     paddingTop: Sirius.space.xs,

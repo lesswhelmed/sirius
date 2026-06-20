@@ -173,6 +173,130 @@ export function subtreeIndex(
   return { root, total, multiNode: groups.length > 1, groups };
 }
 
+// ---------------------------------------------------------------------------
+// Fuzzy outline filter (host-agnostic, pure). Powers the Tree tab's live search
+// field: as the user types we narrow the outline to nodes whose label (or, as a
+// fallback, path) subsequence-matches the query, keep every ancestor of a match
+// visible+open, and report the matched character ranges so the host can
+// highlight them. Empty query => empty result (the host then renders the full
+// persisted tree). Cheap enough to run on every keystroke for a realistic
+// taxonomy (a few hundred nodes).
+
+// A contiguous [start,end) slice of a label to highlight. We surface ONE
+// contiguous range (the tightest run covering the match) rather than scattered
+// per-character spans so the host can render a single <Text> highlight segment.
+export interface MatchRange {
+  start: number;
+  end: number; // exclusive
+}
+
+export interface TreeFilter {
+  // Whether a query is active at all (non-blank). When false the host should
+  // ignore the other fields and render its normal persisted tree.
+  active: boolean;
+  // Category nodes (by id) that should be VISIBLE: every direct match plus all
+  // ancestors leading to a match. Render a node iff its id is in here.
+  visible: Set<string>;
+  // Category nodes (by id) whose branch must be force-OPEN so matches below are
+  // reachable — i.e. every ancestor of a match (matches themselves included so
+  // a matched parent reveals its matched descendants).
+  expand: Set<string>;
+  // Project ("focus area") nodes (by id) that match — the Focus subtab filters
+  // to these when a query is active.
+  projects: Set<string>;
+  // id -> highlight range within that node's label (only for direct matches).
+  ranges: Map<string, MatchRange>;
+}
+
+// Case-insensitive subsequence match: do the query's characters appear in
+// `text` in order (not necessarily contiguous)? Returns the tightest covering
+// range, or null if no match. "fdbk" matches "Feedback" → range over the run.
+export function fuzzyMatch(text: string, query: string): MatchRange | null {
+  if (query.length === 0) return null;
+  const hay = text.toLowerCase();
+  const needle = query.toLowerCase();
+  let qi = 0;
+  let start = -1;
+  let end = -1;
+  for (let i = 0; i < hay.length && qi < needle.length; i++) {
+    if (hay[i] === needle[qi]) {
+      if (start === -1) start = i;
+      end = i + 1;
+      qi++;
+    }
+  }
+  return qi === needle.length ? { start, end } : null;
+}
+
+// Build the visible/expand/highlight sets for `query` over a category children
+// map (as returned by `categoryChildren`) plus the project list. A category
+// matches on its label first; if that misses we try the LAST path segment so a
+// rename-free path still finds it. A match drags its whole ancestor chain into
+// `visible`+`expand`. Projects match on label only (flat list, no ancestors).
+export function filterTree(
+  childrenMap: Map<string | null, SceneNode[]>,
+  projects: SceneNode[],
+  query: string,
+): TreeFilter {
+  const trimmed = query.trim();
+  const empty: TreeFilter = {
+    active: false,
+    visible: new Set(),
+    expand: new Set(),
+    projects: new Set(),
+    ranges: new Map(),
+  };
+  if (trimmed.length === 0) return empty;
+
+  const visible = new Set<string>();
+  const expand = new Set<string>();
+  const ranges = new Map<string, MatchRange>();
+
+  // path -> node, so we can walk parentPath chains to mark ancestors.
+  const byPath = new Map<string, SceneNode>();
+  for (const list of childrenMap.values()) {
+    for (const n of list) if (n.path != null) byPath.set(n.path, n);
+  }
+
+  const markAncestors = (node: SceneNode): void => {
+    let cur: SceneNode | undefined = node;
+    const seen = new Set<string>(); // guard against any malformed cycle
+    while (cur && cur.path != null && !seen.has(cur.path)) {
+      seen.add(cur.path);
+      visible.add(cur.id);
+      expand.add(cur.id);
+      const parentPath: string | null | undefined = cur.parentPath;
+      cur = parentPath != null ? byPath.get(parentPath) : undefined;
+    }
+  };
+
+  for (const node of byPath.values()) {
+    let range = fuzzyMatch(node.label, trimmed);
+    if (!range && node.path != null) {
+      const seg = node.path.slice(node.path.lastIndexOf("/") + 1);
+      // Path-segment hits don't map cleanly onto label offsets, so we record
+      // visibility but no highlight range (the host falls back to no highlight).
+      if (fuzzyMatch(seg, trimmed)) range = null;
+      else continue;
+    } else if (!range) {
+      continue;
+    }
+    if (range) ranges.set(node.id, range);
+    markAncestors(node);
+  }
+
+  const matchedProjects = new Set<string>();
+  for (const p of projects) {
+    const range = fuzzyMatch(p.label, trimmed);
+    if (range) {
+      matchedProjects.add(p.id);
+      ranges.set(p.id, range);
+    }
+  }
+
+  return { active: true, visible, expand, projects: matchedProjects, ranges };
+}
+
 export interface NodeCounts {
   // Posts filed *directly* on a node — for a category, distinct posts with a
   // `match` edge straight to it (matches `linkedPosts(scene, id).length`); for
