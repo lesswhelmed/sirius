@@ -9,10 +9,10 @@
 //     <Segment value="focus" label="Focus" count={6} />
 //   </SegmentedControl>
 //
-// The active segment fills solid oxblood with paper text; inactive segments are
-// transparent paper with muted ink. Sharp 0px corners, 1px hairline rules — no
-// pills, no shadows. Selection state flows through context so a <Segment> needs
-// only its own value.
+// The active segment is marked by a 2px oxblood underline and ink-colored label;
+// inactive segments sit quiet in muted ink over the bar's single bottom hairline.
+// Sharp 0px corners, no fills, no pills, no shadows. Selection state flows through
+// context so a <Segment> needs only its own value.
 import { createContext, type ReactNode, useContext } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -88,10 +88,9 @@ export function Segment<T extends string>({
 const styles = StyleSheet.create({
   track: {
     flexDirection: "row",
-    borderWidth: 1,
-    borderColor: Sirius.color.ruleStrong,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paper,
+    borderBottomWidth: 1,
+    borderColor: Sirius.color.rule,
+    backgroundColor: "transparent",
   },
   segment: {
     flex: 1,
@@ -99,28 +98,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: Sirius.space.sm,
-    paddingVertical: 11,
+    paddingVertical: 10,
     paddingHorizontal: Sirius.space.md,
     minHeight: 44,
+    // Reserve the underline's space on every segment so the label never shifts
+    // when selection moves; only the active segment colors it in.
+    borderBottomWidth: 2,
+    borderColor: "transparent",
   },
-  // The active fill bleeds to the track edge; the divider between segments is
-  // the track's own border showing through the inactive segment's transparency.
-  segmentActive: { backgroundColor: Sirius.color.accent },
-  segmentPressed: { backgroundColor: Sirius.color.accentSoft },
+  // Active state is a 2px oxblood underline sitting over the track hairline.
+  segmentActive: { borderColor: Sirius.color.accent },
+  segmentPressed: { opacity: 0.6 },
   label: {
     fontFamily: Sirius.font.mono,
     fontSize: 11,
     letterSpacing: 1.6,
     textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
+    color: Sirius.color.inkSubtle,
   },
-  labelActive: { color: Sirius.color.onAccent },
+  labelActive: { color: Sirius.color.ink },
   count: {
     fontFamily: Sirius.font.mono,
     fontSize: 10,
     letterSpacing: 0.5,
-    color: Sirius.color.inkSubtle,
+    color: Sirius.color.inkFaint,
     fontVariant: ["tabular-nums"],
   },
-  countActive: { color: Sirius.color.onAccent, opacity: 0.85 },
+  countActive: { color: Sirius.color.inkSubtle },
 });

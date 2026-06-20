@@ -158,26 +158,36 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
               <View style={styles.handle} />
             </Pressable>
 
-            <Pressable
-              onPress={focus.up}
-              disabled={!parent}
-              accessibilityRole="button"
-              accessibilityLabel={parent ? `Up to ${parent.label}` : "At root"}
-              style={styles.breadcrumbRow}
-            >
-              <Text style={styles.breadcrumb} numberOfLines={1}>
-                {parent
-                  ? (parent.path ?? parent.label).split("/").join(" / ")
-                  : "Root"}
-              </Text>
-              {parent ? <Text style={styles.breadcrumbUp}>↑</Text> : null}
-            </Pressable>
+            {/* Context line: where you are (tap = up) + sibling position. */}
+            <View style={styles.contextRow}>
+              <Pressable
+                onPress={focus.up}
+                disabled={!parent}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  parent ? `Up to ${parent.label}` : "At root"
+                }
+                style={styles.breadcrumbRow}
+              >
+                {parent ? <Text style={styles.breadcrumbUp}>↑</Text> : null}
+                <Text style={styles.breadcrumb} numberOfLines={1}>
+                  {parent
+                    ? (parent.path ?? parent.label).split("/").join(" / ")
+                    : "Root"}
+                </Text>
+              </Pressable>
+              {count > 1 ? (
+                <Text style={styles.position}>
+                  {index + 1}/{count}
+                </Text>
+              ) : null}
+            </View>
 
             <View style={styles.titleRow}>
               <Pressable
                 onPress={focus.prev}
                 disabled={count < 2}
-                hitSlop={12}
+                hitSlop={16}
                 accessibilityRole="button"
                 accessibilityLabel="Previous sibling"
                 style={({ pressed }) => [styles.chev, pressed && styles.pressed]}
@@ -194,7 +204,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
               <Pressable
                 onPress={focus.next}
                 disabled={count < 2}
-                hitSlop={12}
+                hitSlop={16}
                 accessibilityRole="button"
                 accessibilityLabel="Next sibling"
                 style={({ pressed }) => [styles.chev, pressed && styles.pressed]}
@@ -206,14 +216,22 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                 </Text>
               </Pressable>
             </View>
+          </View>
 
-            <Text style={styles.caption}>
-              {posts.length} {posts.length === 1 ? "post" : "posts"}
-              {children.length > 0 ? ` · ${children.length} inside` : ""}
-              {count > 1 ? ` · ${index + 1}/${count}` : ""}
-            </Text>
+          <View style={styles.divider} />
 
-            {children.length > 0 ? (
+          <ScrollView
+            style={styles.postScroll}
+            contentContainerStyle={[
+              styles.postBody,
+              { paddingBottom: postBodyPaddingBottom },
+            ]}
+            showsVerticalScrollIndicator={false}
+            scrollIndicatorInsets={{ bottom: bottomInset }}
+          >
+            {/* Child categories — kept out of the peek header (they wrap and
+                shove the list down); shown only once the sheet is raised. */}
+            {sheetExpanded && children.length > 0 ? (
               <View style={styles.chips}>
                 <Text style={styles.chipsLabel}>Inside</Text>
                 <View style={styles.chipRow}>
@@ -236,19 +254,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                 </View>
               </View>
             ) : null}
-          </View>
 
-          <View style={styles.divider} />
-
-          <ScrollView
-            style={styles.postScroll}
-            contentContainerStyle={[
-              styles.postBody,
-              { paddingBottom: postBodyPaddingBottom },
-            ]}
-            showsVerticalScrollIndicator={false}
-            scrollIndicatorInsets={{ bottom: bottomInset }}
-          >
             {posts.length === 0 ? (
               <Text style={styles.empty}>
                 Nothing filed under this branch yet.
@@ -263,12 +269,11 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                 />
               ))
             )}
-            <Text style={styles.hint}>
-              Pinch to zoom · drag to orbit · swipe ‹ › siblings ·{" "}
-              {sheetExpanded
-                ? "pull handle down for map"
-                : "pull handle up for posts"}
-            </Text>
+            {sheetExpanded ? (
+              <Text style={styles.hint}>
+                ‹ › siblings · pinch zoom · drag orbit
+              </Text>
+            ) : null}
           </ScrollView>
         </Animated.View>
       )}
@@ -332,8 +337,8 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: PAD,
     paddingTop: Sirius.space.sm,
-    paddingBottom: Sirius.space.sm,
-    gap: Sirius.space.sm,
+    paddingBottom: Sirius.space.xs,
+    gap: Sirius.space.xs,
   },
   handleHit: {
     alignSelf: "center",
@@ -345,10 +350,16 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: Sirius.color.ruleStrong,
   },
-  breadcrumbRow: {
+  contextRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: Sirius.space.sm,
+  },
+  breadcrumbRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.xs,
   },
   breadcrumb: {
     flex: 1,
@@ -363,6 +374,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Sirius.color.inkSubtle,
   },
+  position: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    color: Sirius.color.inkSubtle,
+    fontVariant: ["tabular-nums"],
+  },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -371,8 +389,8 @@ const styles = StyleSheet.create({
   chev: { width: 32, alignItems: "center", justifyContent: "center" },
   chevGlyph: {
     fontFamily: Sirius.font.serif,
-    fontSize: 32,
-    color: Sirius.color.accent,
+    fontSize: 22,
+    color: Sirius.color.inkSubtle,
   },
   chevDisabled: { color: Sirius.color.inkFaint },
   pressed: { opacity: 0.55 },
@@ -384,16 +402,11 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     color: Sirius.color.ink,
   },
-  caption: {
-    textAlign: "center",
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-    fontVariant: ["tabular-nums"],
+  chips: {
+    gap: Sirius.space.xs,
+    paddingTop: Sirius.space.sm,
+    marginBottom: Sirius.space.sm,
   },
-  chips: { gap: Sirius.space.xs, marginTop: Sirius.space.xs },
   chipsLabel: {
     fontFamily: Sirius.font.mono,
     fontSize: 9,

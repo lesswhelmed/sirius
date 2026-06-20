@@ -27,12 +27,7 @@ import {
 import Animated, { FadeIn } from "react-native-reanimated";
 import { MapView } from "@/components/explore/map-view";
 import { Segment, SegmentedControl } from "@/components/segmented";
-import {
-  Eyebrow,
-  PageHeader,
-  PrimaryButton,
-  Screen,
-} from "@/components/sirius";
+import { Eyebrow, PrimaryButton, Screen } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import { apiGet } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
@@ -176,17 +171,12 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
 
   return (
     <Screen>
-      {/* Map mode goes full-bleed: just a compact segmented-control bar over the
-          canvas. Categories/Focus keep the full editorial header. */}
-      <View style={tab === "map" ? styles.headCompact : styles.head}>
-        {tab === "map" ? null : (
-          <PageHeader
-            eyebrow="Section V — The Observatory"
-            title="The Tree"
-            titleAccent="."
-            subtitle="Every analysis branch and focus area. Tap a node to open its index of posts, or explore the map."
-          />
-        )}
+      {/* One slim header for all three subtabs — the big editorial title is
+          redundant with the bottom tab label, so a single folio eyebrow sits
+          over the segmented control. Same height in every mode (Map included),
+          so switching tabs never shifts the top. */}
+      <View style={styles.head}>
+        <Eyebrow accessibilityRole="header">Section V — The Observatory</Eyebrow>
         {segments}
       </View>
 
@@ -258,7 +248,10 @@ function CategoriesView({
       refreshControl={pullRefresh(refreshing, onRefresh)}
     >
       {empty ? (
-        <Text style={styles.empty}>No analysis branches yet.</Text>
+        <Text style={styles.empty}>
+          No analysis branches yet. Tap a node to open its index of posts, or
+          explore the map.
+        </Text>
       ) : (
         <TreeBranch
           parent={null}
@@ -481,14 +474,8 @@ const styles = StyleSheet.create({
   head: {
     paddingHorizontal: HEAD_PAD,
     paddingTop: 64,
-    paddingBottom: Sirius.space.lg,
-    gap: Sirius.space.xl,
-  },
-  // Compact bar for Map mode — clears the status bar, hands the rest to the canvas.
-  headCompact: {
-    paddingHorizontal: HEAD_PAD,
-    paddingTop: 64,
     paddingBottom: Sirius.space.sm,
+    gap: Sirius.space.md,
   },
   viewport: { flex: 1 },
   scrollBody: {
