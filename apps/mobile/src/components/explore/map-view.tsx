@@ -75,9 +75,10 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
         ? expandedHeight
         : peekHeight;
   useEffect(() => {
-    sheetH.value = withTiming(targetH, { duration: SHEET_ANIM_MS });
+    // `.set()` (not `.value =`) so React Compiler can still memoize MapView.
+    sheetH.set(withTiming(targetH, { duration: SHEET_ANIM_MS }));
   }, [targetH, sheetH]);
-  const sheetStyle = useAnimatedStyle(() => ({ height: sheetH.value }));
+  const sheetStyle = useAnimatedStyle(() => ({ height: sheetH.get() }));
 
   const focus = useExploreFocus(scene);
   const { focused, parent, children, index, count, next, prev, up } = focus;

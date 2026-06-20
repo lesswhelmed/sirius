@@ -286,7 +286,10 @@ function OrbitBackdrop({
   onZoom: (factor: number) => void;
   onPan: (dx: number, dy: number) => void;
 }) {
-  const pts = useRef<Map<number, { x: number; y: number }>>(new Map());
+  // Lazy ref init — `useRef(new Map())` would rebuild + discard a Map every
+  // render; this allocates exactly once.
+  const ptsRef = useRef<Map<number, { x: number; y: number }> | null>(null);
+  const pts = (ptsRef.current ??= new Map<number, { x: number; y: number }>());
   const pinchDist = useRef<number | null>(null);
   const pinchMid = useRef<{ x: number; y: number } | null>(null);
   const resetPinch = () => {
@@ -296,12 +299,12 @@ function OrbitBackdrop({
   return (
     <mesh
       onPointerDown={(e: ThreeEvent<PointerEvent>) => {
-        pts.current.set(e.pointerId, { x: e.pointer.x, y: e.pointer.y });
+        pts.set(e.pointerId, { x: e.pointer.x, y: e.pointer.y });
         resetPinch();
-        logGesture("down", "id=", e.pointerId, "active=", pts.current.size);
+        logGesture("down", "id=", e.pointerId, "active=", pts.size);
       }}
       onPointerMove={(e: ThreeEvent<PointerEvent>) => {
-        const map = pts.current;
+        const map = pts;
         const prev = map.get(e.pointerId);
         if (!prev) return;
         const cur = { x: e.pointer.x, y: e.pointer.y };
@@ -334,12 +337,12 @@ function OrbitBackdrop({
         pinchMid.current = mid;
       }}
       onPointerUp={(e: ThreeEvent<PointerEvent>) => {
-        pts.current.delete(e.pointerId);
+        pts.delete(e.pointerId);
         resetPinch();
-        logGesture("up", "id=", e.pointerId, "active=", pts.current.size);
+        logGesture("up", "id=", e.pointerId, "active=", pts.size);
       }}
       onPointerLeave={(e: ThreeEvent<PointerEvent>) => {
-        pts.current.delete(e.pointerId);
+        pts.delete(e.pointerId);
         resetPinch();
       }}
     >
@@ -408,7 +411,7 @@ export interface ProjectedLabel {
 // Funnel it through a helper so the React Compiler's immutability check (which
 // freezes the prop where the projector receives it) doesn't flag the assignment.
 function writeShared<T>(sv: SharedValue<T>, value: T) {
-  sv.value = value;
+  sv.set(value);
 }
 
 // Priority-2 useFrame (runs AFTER CameraRig rendered, so camera matrices are
@@ -424,7 +427,10 @@ function LabelProjector({
   projected: SharedValue<Record<string, ProjectedLabel>>;
   fitRadius: number;
 }) {
-  const v = useRef(new Vector3());
+  // Lazy ref init — one Vector3 reused for every projection, not a throwaway
+  // per render.
+  const vRef = useRef<Vector3 | null>(null);
+  const v = (vRef.current ??= new Vector3());
   const lastCam = useRef<Vec3>([Infinity, 0, 0]);
   useFrame((state) => {
     const cam = state.camera;
@@ -447,18 +453,18 @@ function LabelProjector({
       const dy = n.position[1] - cam.position.y;
       const dz = n.position[2] - cam.position.z;
       const dist = Math.hypot(dx, dy, dz);
-      v.current.set(n.position[0], n.position[1], n.position[2]);
+      v.set(n.position[0], n.position[1], n.position[2]);
       // Dual-@types/three identity mismatch (root vs apps/mobile) — cast the
       // fiber camera to this package's three Camera type for .project().
-      v.current.project(cam as unknown as Camera);
+      v.project(cam as unknown as Camera);
       let o = 0;
-      if (v.current.z <= 1) {
+      if (v.z <= 1) {
         o = 1 - (dist - near) / (far - near);
         o = Math.max(0, Math.min(1, o));
       }
       out[n.id] = {
-        x: (v.current.x * 0.5 + 0.5) * w,
-        y: (-v.current.y * 0.5 + 0.5) * h,
+        x: (v.x * 0.5 + 0.5) * w,
+        y: (-v.y * 0.5 + 0.5) * h,
         o,
       };
     }
