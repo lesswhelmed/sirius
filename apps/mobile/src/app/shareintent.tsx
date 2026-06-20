@@ -28,28 +28,12 @@ import { Sirius } from "@/constants/theme";
 import { useSession } from "@/lib/auth-client";
 import { trayTag } from "@/lib/material-kinds";
 import {
+  applyNote,
   describeMaterial,
   type Material,
   materialsFromShareIntent,
   submitMaterials,
 } from "@/lib/materials";
-
-// Apply the user's optional note to every shared material: stamp it onto the
-// file/url kinds that carry a `notes` field, and merge it into a shared note's
-// text (its text IS the content, so there's nowhere else to put it).
-function applyShareNote(
-  materials: Material[],
-  note: string | undefined,
-): Material[] {
-  if (!note) return materials;
-  return materials.map((m) => {
-    if (m.kind === "note") {
-      return { ...m, text: `${m.text}\n\nAuthor's notes: ${note}` };
-    }
-    if (m.kind === "unsupported") return m;
-    return { ...m, notes: note };
-  });
-}
 
 export default function ShareIntentScreen() {
   const queryClient = useQueryClient();
@@ -77,7 +61,7 @@ export default function ShareIntentScreen() {
     let errors: string[] = [];
     try {
       const result = await submitMaterials(
-        applyShareNote(materials, note.trim() || undefined),
+        applyNote(materials, note.trim() || undefined),
         { force: false },
       );
       errors = result.errors;
