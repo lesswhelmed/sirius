@@ -11,11 +11,12 @@ import { syncMeta } from "@/lib/db/schema";
 import type { PostChangesResult } from "./events";
 import { applyTombstone, reconcileUpsert } from "./reconcile";
 
-// Bumped to v2 when post deltas began carrying the server embedding vector. The
-// on-device vector mirror was later removed ("ask my posts" no longer uses
-// embeddings — it queries categories from local SQLite), so the embedding fields
-// in the delta are now simply ignored by reconcile. Key kept at v2; no re-pull needed.
-const SINCE_KEY = "posts.changes.since.v2";
+// Bumped to v3 when "ask my posts" returned to SEMANTIC retrieval: reconcile now
+// mirrors each delta's server embedding vector into the on-device post_vectors
+// index (the v2-era category retrieval ignored it). The bump resets the watermark
+// to EPOCH so every already-synced post re-pulls ONCE and back-fills its vector;
+// thereafter it's a normal incremental cursor.
+const SINCE_KEY = "posts.changes.since.v3";
 const EPOCH = new Date(0).toISOString();
 
 async function getSince(): Promise<string> {

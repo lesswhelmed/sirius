@@ -3,11 +3,13 @@
 // changing its stable localId (so the rendered card updates in place, never
 // duplicates). Shared by the delta pull and the SSE-triggered pull.
 
+import { contentHash } from "@repo/research-agent";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "expo-crypto";
 
 import { db } from "@/lib/db/client";
 import { type PostImage, type PostRow, posts } from "@/lib/db/schema";
+import { sqliteVectorStore } from "@/lib/research/vector-store";
 import type { PostDelta } from "./events";
 
 function normalizeImages(images: unknown): PostImage[] | null {
@@ -97,16 +99,48 @@ export async function reconcileUpsert(post: PostDelta): Promise<void> {
       .update(posts)
       .set(mirrored)
       .where(eq(posts.localId, existing.localId));
-    return;
+  } else {
+    // Brand-new post (created elsewhere, or pulled before any local draft).
+    await db.insert(posts).values({
+      localId: randomUUID(),
+      submissionId: post.sourceRecordId ?? null,
+      createdAt: new Date(post.createdAt),
+      ...mirrored,
+    });
   }
 
-  // Brand-new post (created elsewhere, or pulled before any local draft).
-  await db.insert(posts).values({
-    localId: randomUUID(),
-    submissionId: post.sourceRecordId ?? null,
-    createdAt: new Date(post.createdAt),
-    ...mirrored,
-  });
+  // Mirror the post's retrieval vector now that the row is current.
+  await mirrorPostVector(post);
+}
+
+// Fold the server's gemini embedding (shipped inline on the delta) into the
+// on-device post_vectors index, so "ask my posts" can semantic-search WITHOUT
+// embedding documents on-device. The store key is `${model}:${dim}` — the SAME
+// space tag the query-embed endpoint returns — so a query ranks only against
+// same-space document vectors. No-op until the worker has embedded the post
+// (embedding null); a tombstoned post is already excluded from search by the
+// store's JOIN on sync_state, so no explicit removal is needed here.
+async function mirrorPostVector(post: PostDelta): Promise<void> {
+  if (
+    !post.embedding ||
+    post.embedding.length === 0 ||
+    !post.embeddingModel ||
+    !post.embeddingDim
+  ) {
+    return;
+  }
+  const modelId = `${post.embeddingModel}:${post.embeddingDim}`;
+  await sqliteVectorStore.upsert(
+    [
+      {
+        serverId: post.id,
+        vector: Float32Array.from(post.embedding),
+        dim: post.embeddingDim,
+        contentHash: contentHash(post.title ?? "", post.content ?? ""),
+      },
+    ],
+    modelId,
+  );
 }
 
 // A deleted server post. Keep the row (as a tombstone) so re-deliveries are
