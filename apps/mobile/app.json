@@ -78,7 +78,8 @@
 			],
 			"expo-background-task",
 			"expo-sqlite",
-			"./plugins/with-capture-intents"
+			"./plugins/with-capture-intents",
+			"./plugins/with-cookie-jar-hardening"
 		],
 		"experiments": {
 			"typedRoutes": true,
