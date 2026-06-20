@@ -16,10 +16,11 @@ struct CaptureInSiriusIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let encoded = text.addingPercentEncoding(
-            withAllowedCharacters: .urlQueryAllowed
-        ) ?? ""
-        if let url = URL(string: "siriusapp://capture?text=\(encoded)") {
+        var components = URLComponents()
+        components.scheme = "siriusapp"
+        components.host = "capture"
+        components.queryItems = [URLQueryItem(name: "text", value: text)]
+        if let url = components.url {
             await UIApplication.shared.open(url)
         }
         return .result()
