@@ -343,8 +343,299 @@
 	animation: panel-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.mobile-bubble-nav {
+	position: fixed;
+	left: max(1rem, env(safe-area-inset-left));
+	bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 0.25rem);
+	z-index: 70;
+}
+
+.mobile-bubble-nav__button {
+	position: relative;
+	z-index: 3;
+	display: grid;
+	width: 4rem;
+	height: 4rem;
+	place-items: center;
+	overflow: hidden;
+	border: 1px solid var(--color-rule-emphatic);
+	border-radius: 999px;
+	background:
+		radial-gradient(
+			circle at 32% 24%,
+			var(--color-accent-soft),
+			transparent 42%
+		),
+		var(--color-paper-raised);
+	color: var(--fg);
+	font: inherit;
+	box-shadow:
+		0 0 0 1px rgb(0 0 0 / 0.08),
+		0 22px 50px -28px rgb(0 0 0 / 0.76);
+	transition:
+		width 0.46s cubic-bezier(0.22, 1, 0.36, 1),
+		border-color 0.32s ease,
+		background 0.32s ease,
+		transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mobile-bubble-nav__button:active {
+	transform: scale(0.96);
+}
+
+.mobile-bubble-nav__button-folio {
+	position: absolute;
+	left: 1rem;
+	font-family: var(--font-mono);
+	font-size: 0.58rem;
+	letter-spacing: 0.22em;
+	line-height: 1;
+	text-transform: uppercase;
+	transition:
+		opacity 0.24s ease,
+		transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mobile-bubble-nav__button-mark {
+	position: absolute;
+	right: 1rem;
+	display: grid;
+	width: 0.92rem;
+	height: 0.92rem;
+	place-items: center;
+}
+
+.mobile-bubble-nav__button-mark span {
+	position: absolute;
+	width: 0.92rem;
+	height: 1px;
+	background: var(--color-accent);
+	transition:
+		transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+		background 0.2s ease;
+}
+
+.mobile-bubble-nav__button-mark span:first-child {
+	transform: translateY(-0.18rem);
+}
+
+.mobile-bubble-nav__button-mark span:last-child {
+	transform: translateY(0.18rem);
+}
+
+.mobile-bubble-nav__backfill {
+	position: fixed;
+	inset: 0;
+	z-index: 1;
+	border: 0;
+	background: transparent;
+	pointer-events: none;
+	opacity: 0;
+	padding: 0;
+	transition: opacity 0.18s ease;
+}
+
+.mobile-bubble-nav__backfill::before {
+	position: fixed;
+	left: calc(max(1rem, env(safe-area-inset-left)) + 2rem - 90vmax);
+	bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 2.25rem - 90vmax);
+	width: 180vmax;
+	height: 180vmax;
+	content: "";
+	border-radius: 999px;
+	background:
+		radial-gradient(
+			circle at 50% 50%,
+			var(--color-accent-soft),
+			transparent 32%
+		),
+		rgb(0 0 0 / 0.48);
+	transform: scale(0.04);
+	transition: transform 0.58s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mobile-bubble-nav__sheet {
+	position: fixed;
+	left: max(1rem, env(safe-area-inset-left));
+	bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 5.25rem);
+	z-index: 2;
+	width: min(21rem, calc(100vw - 2rem));
+	max-height: min(30rem, calc(100dvh - 8rem));
+	overflow: auto;
+	overscroll-behavior: contain;
+	border: 1px solid var(--color-rule-strong);
+	background:
+		linear-gradient(160deg, var(--color-accent-soft), transparent 38%),
+		var(--color-paper-raised);
+	box-shadow:
+		0 1px 0 var(--color-rule),
+		0 34px 80px -46px rgb(0 0 0 / 0.86);
+	opacity: 0;
+	pointer-events: none;
+	transform: translateY(18px) scale(0.82);
+	transform-origin: bottom left;
+	transition:
+		opacity 0.26s ease,
+		transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mobile-bubble-nav__kicker {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	border-bottom: 1px solid var(--color-rule);
+	padding: 0.82rem 0.95rem 0.72rem;
+	color: var(--fg-subtle);
+	font-family: var(--font-mono);
+	font-size: 0.58rem;
+	letter-spacing: 0.22em;
+	line-height: 1;
+	text-transform: uppercase;
+}
+
+.mobile-bubble-nav__list {
+	display: grid;
+}
+
+.mobile-bubble-nav__item {
+	border-bottom: 1px solid var(--color-rule);
+	opacity: 0;
+	transform: translateY(-8px);
+	transition:
+		opacity 0.26s ease,
+		transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+	transition-delay: 0ms;
+}
+
+.mobile-bubble-nav__item:last-child {
+	border-bottom: 0;
+}
+
+.mobile-bubble-nav__link {
+	position: relative;
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.9rem 0.95rem;
+	transition:
+		background 0.22s ease,
+		color 0.22s ease;
+}
+
+.mobile-bubble-nav__link:hover {
+	background: var(--color-accent-soft);
+}
+
+.mobile-bubble-nav__folio {
+	color: var(--fg-subtle);
+	font-family: var(--font-mono);
+	font-size: 0.6rem;
+	letter-spacing: 0.22em;
+	line-height: 1;
+	text-transform: uppercase;
+	transition: color 0.22s ease;
+}
+
+.mobile-bubble-nav__label {
+	color: var(--fg);
+	font-family: var(--font-display);
+	font-size: 1.75rem;
+	font-style: italic;
+	letter-spacing: -0.03em;
+	line-height: 0.9;
+	transition: color 0.22s ease;
+}
+
+.mobile-bubble-nav__rule {
+	position: absolute;
+	inset-block: 0;
+	left: 0;
+	width: 2px;
+	background: transparent;
+	transition: background 0.22s ease;
+}
+
+.mobile-bubble-nav__rule.is-active {
+	background: var(--color-accent);
+}
+
+.mobile-bubble-nav__link[aria-current="page"] {
+	background: rgb(255 255 255 / 0.03);
+}
+
+.mobile-bubble-nav__link[aria-current="page"] .mobile-bubble-nav__folio,
+.mobile-bubble-nav__link[aria-current="page"] .mobile-bubble-nav__label {
+	color: var(--color-accent);
+}
+
+.mobile-bubble-nav.is-open .mobile-bubble-nav__button {
+	width: 5.2rem;
+	border-color: var(--color-accent);
+	background:
+		radial-gradient(
+			circle at 50% 50%,
+			var(--color-accent-soft),
+			transparent 50%
+		),
+		var(--color-paper-raised);
+}
+
+.mobile-bubble-nav.is-open .mobile-bubble-nav__button-folio {
+	opacity: 0.76;
+	transform: translateX(0.1rem);
+}
+
+.mobile-bubble-nav.is-open
+	.mobile-bubble-nav__button-mark
+	span:first-child {
+	transform: rotate(45deg);
+}
+
+.mobile-bubble-nav.is-open
+	.mobile-bubble-nav__button-mark
+	span:last-child {
+	transform: rotate(-45deg);
+}
+
+.mobile-bubble-nav.is-open .mobile-bubble-nav__backfill {
+	pointer-events: auto;
+	opacity: 1;
+}
+
+.mobile-bubble-nav.is-open .mobile-bubble-nav__backfill::before {
+	transform: scale(1);
+}
+
+.mobile-bubble-nav.is-open .mobile-bubble-nav__sheet {
+	opacity: 1;
+	pointer-events: auto;
+	transform: translateY(0) scale(1);
+}
+
+.mobile-bubble-nav.is-open .mobile-bubble-nav__item {
+	opacity: 1;
+	transform: translateY(0);
+	transition-delay: calc(90ms + var(--mobile-nav-index) * 34ms);
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.panel-in {
 		animation: none;
+	}
+
+	.mobile-bubble-nav__button,
+	.mobile-bubble-nav__button-folio,
+	.mobile-bubble-nav__button-mark span,
+	.mobile-bubble-nav__backfill,
+	.mobile-bubble-nav__backfill::before,
+	.mobile-bubble-nav__sheet,
+	.mobile-bubble-nav__item,
+	.mobile-bubble-nav__link,
+	.mobile-bubble-nav__folio,
+	.mobile-bubble-nav__label,
+	.mobile-bubble-nav__rule {
+		transition: none;
 	}
 }

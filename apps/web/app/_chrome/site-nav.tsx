@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { CSSProperties } from "react";
+import { useEffect, useId, useState } from "react";
 
 export interface NavItem {
   href: string;
   label: string;
   folio: string;
 }
+
+type MobileNavItemStyle = CSSProperties & {
+  "--mobile-nav-index": number;
+};
 
 // Single source of truth for primary navigation. Signed-in users see the same
 // bar everywhere — (app) routes and (public) catalog/listing alike — so the
@@ -28,7 +34,7 @@ export const SIGNED_IN_NAV: readonly NavItem[] = [
 // public/shared browsing returns.
 export const SIGNED_OUT_NAV: readonly NavItem[] = [];
 
-function NavList({
+function DesktopNavList({
   items,
   pathname,
 }: {
@@ -39,7 +45,7 @@ function NavList({
     return null;
   }
   return (
-    <nav aria-label="Primary">
+    <nav aria-label="Primary" className="hidden sm:block">
       <ul className="hairline-t hairline-b flex items-stretch">
         {items.map((item, idx) => {
           const active =
@@ -92,10 +98,133 @@ function NavList({
 
 export function SiteNav({ items }: { items: readonly NavItem[] }) {
   const pathname = usePathname();
-  return <NavList items={items} pathname={pathname} />;
+  return (
+    <>
+      <DesktopNavList items={items} pathname={pathname} />
+      <MobileBubbleNav items={items} pathname={pathname} />
+    </>
+  );
 }
 
 // Prerendered shell variant — no usePathname (dynamic), so no active state.
 export function SiteNavFallback({ items }: { items: readonly NavItem[] }) {
-  return <NavList items={items} pathname={null} />;
+  return (
+    <>
+      <DesktopNavList items={items} pathname={null} />
+      <MobileBubbleNav items={items} pathname={null} />
+    </>
+  );
+}
+
+function MobileBubbleNav({
+  items,
+  pathname,
+}: {
+  items: readonly NavItem[];
+  pathname: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`mobile-bubble-nav sm:hidden ${open ? "is-open" : ""}`}
+      data-open={open ? "true" : "false"}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={open ? "Close navigation" : "Open navigation"}
+        className="mobile-bubble-nav__button"
+        onClick={() => setOpen((next) => !next)}
+      >
+        <span aria-hidden="true" className="mobile-bubble-nav__button-folio">
+          Nav
+        </span>
+        <span aria-hidden="true" className="mobile-bubble-nav__button-mark">
+          <span />
+          <span />
+        </span>
+      </button>
+
+      <button
+        type="button"
+        aria-label="Close navigation"
+        tabIndex={open ? 0 : -1}
+        className="mobile-bubble-nav__backfill"
+        onClick={() => setOpen(false)}
+      />
+
+      <nav
+        id={panelId}
+        aria-label="Primary"
+        aria-hidden={!open}
+        className="mobile-bubble-nav__sheet"
+      >
+        <div className="mobile-bubble-nav__kicker">
+          <span>Primary</span>
+          <span aria-hidden="true">Dispatch</span>
+        </div>
+        <ul className="mobile-bubble-nav__list">
+          {items.map((item, idx) => {
+            const active =
+              pathname != null &&
+              (pathname === item.href || pathname.startsWith(`${item.href}/`));
+            return (
+              <li
+                key={item.href}
+                className="mobile-bubble-nav__item"
+                style={{ "--mobile-nav-index": idx } as MobileNavItemStyle}
+              >
+                <Link
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  tabIndex={open ? undefined : -1}
+                  className="mobile-bubble-nav__link"
+                  onClick={() => setOpen(false)}
+                >
+                  <span className="mobile-bubble-nav__folio">
+                    {item.folio}
+                  </span>
+                  <span className="mobile-bubble-nav__label">
+                    {item.label}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={`mobile-bubble-nav__rule ${
+                      active ? "is-active" : ""
+                    }`}
+                  />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </div>
+  );
 }
