@@ -48,7 +48,11 @@
       "channel": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_AUTH_BASE_URL": "https://lesswhelmed.com"
+        "EXPO_PUBLIC_AUTH_BASE_URL": "https://lesswhelmed.com",
+        // Master JS switch for on-device LLM (drafting, /llm download+chat).
+        // Native llama.rn JSI bridge is always bundled + verified by
+        // `verify:native-ai`, so flipping this needs no native change.
+        "EXPO_PUBLIC_ON_DEVICE_AI": "true"
       },
       "node": "22.12.0"
       // REPRODUCIBILITY: pin "image" here too once chosen (see preview note).
