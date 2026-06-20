@@ -1,20 +1,21 @@
 // Map mode (the Explore tab's primary view): the full-screen 3D constellation as
 // the canvas, with a floating bottom sheet drilling into the focused node's
-// posts. One taxonomy node is in focus; pinch to zoom, drag to orbit, two-finger
-// drag to pan (all handled inside the R3F scene — see constellation-scene.tsx).
-// Tap a node to refocus (category) or open it (post); swipe ◄► (or the chevrons)
-// to cycle siblings; raise the sheet for the full post index.
+// posts. The camera is free-but-bounded (orbit / pinch / two-finger pan, gently
+// flying to a tapped node without locking — see constellation-scene.tsx). Tapping
+// a node SELECTS it: a category drives the drill tree, a post reveals a preview
+// (title + Open) before navigation. A top-left legend says what the dots mean.
 //
-// Selection sync: whenever focus changes we drive the shared useSceneSelection so
-// the constellation highlights the SAME node + its neighbors — the sheet and the
-// 3D map can never disagree (one source of truth, like web's Observatory).
+// Selection sync: tapping any node and focus changes both drive the shared
+// useSceneSelection so the constellation highlights the SAME node + neighbors —
+// the sheet, labels and 3D map can never disagree (one source, like web's
+// Observatory).
 
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
 import type { LinkedPost } from "@repo/embedding-scene/scene-queries";
 import { subtreeIndex } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   PanResponder,
   Pressable,
@@ -32,25 +33,30 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConstellationHero } from "@/components/explore/constellation-scene";
 import { useExploreFocus } from "@/components/explore/explore-focus";
+import { Eyebrow, KindLabel, TextLink } from "@/components/sirius";
 import { BottomTabInset, Sirius } from "@/constants/theme";
 
 // Horizontal travel (px) past which a release counts as a sibling swipe; vertical
-// past which it raises/lowers the sheet.
+// past which it steps the sheet between snaps.
 const SWIPE_THRESHOLD = 48;
 const SHEET_SWIPE_THRESHOLD = 36;
-// Sheet snap heights as a fraction of the usable viewport, clamped for sanity.
-const PEEK_FRACTION = 0.36;
-const PEEK_MIN = 220;
-const PEEK_MAX = 320;
-const EXPANDED_FRACTION = 0.72;
+// Sheet snap heights. Collapsed is a slim pill (handle + title) so the map stays
+// almost fully explorable; expanded caps at 55% so the canvas is never swallowed.
+const COLLAPSED_HEIGHT = 64;
+const PEEK_FRACTION = 0.28;
+const PEEK_MIN = 180;
+const PEEK_MAX = 260;
+const EXPANDED_FRACTION = 0.55;
 const SHEET_ANIM_MS = 240;
+
+type SheetSnap = "collapsed" | "peek" | "expanded";
 
 export function MapView({ scene }: { scene: EmbeddingScene }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [viewportHeight, setViewportHeight] = useState(0);
-  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const [snap, setSnap] = useState<SheetSnap>("peek");
   const usableHeight = viewportHeight || height;
 
   const peekHeight = Math.round(
@@ -60,17 +66,27 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
   const bottomInset = BottomTabInset + insets.bottom;
   const postBodyPaddingBottom = Math.max(140, bottomInset + Sirius.space.xxl);
 
-  // Animated sheet height: snaps between peek and expanded with an eased tween.
+  // Animated sheet height: eased tween between the three snaps.
   const sheetH = useSharedValue(peekHeight);
+  const targetH =
+    snap === "collapsed"
+      ? COLLAPSED_HEIGHT
+      : snap === "expanded"
+        ? expandedHeight
+        : peekHeight;
   useEffect(() => {
-    sheetH.value = withTiming(sheetExpanded ? expandedHeight : peekHeight, {
-      duration: SHEET_ANIM_MS,
-    });
-  }, [sheetExpanded, peekHeight, expandedHeight, sheetH]);
+    sheetH.value = withTiming(targetH, { duration: SHEET_ANIM_MS });
+  }, [targetH, sheetH]);
   const sheetStyle = useAnimatedStyle(() => ({ height: sheetH.value }));
 
   const focus = useExploreFocus(scene);
-  const { focused, parent, children, index, count, next, prev } = focus;
+  const { focused, parent, children, index, count, next, prev, up } = focus;
+
+  // The tapped node — the camera's gentle fly target, the ring/label in 3D, and
+  // (for posts) the preview card.
+  const [previewNode, setPreviewNode] = useState<SceneNode | null>(null);
+  // Bumped to ask the hero to lean the camera in on the look-at node.
+  const [frameTick, setFrameTick] = useState(0);
 
   // Drive shared selection so the constellation lights the focused node + neighbors.
   const { select, neighborIds } = useSceneSelection(scene);
@@ -78,11 +94,29 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
     select(focused?.id ?? null);
   }, [focused, select]);
 
-  // PanResponder (built-in — no GestureHandlerRootView needed) on the sheet
-  // header: horizontal release cycles siblings, vertical release raises/lowers
-  // the sheet. next/prev are stable between swipes (change only after focus
-  // moves, never mid-gesture), so rebuilding on their identity keeps the closure
-  // fresh.
+  // Tree navigation drops any stale post preview, then moves focus. (Clearing
+  // lives in these handlers rather than a focus-change effect to avoid a
+  // setState-in-effect cascade.)
+  const goNext = useCallback(() => {
+    setPreviewNode(null);
+    next();
+  }, [next]);
+  const goPrev = useCallback(() => {
+    setPreviewNode(null);
+    prev();
+  }, [prev]);
+  const goUp = useCallback(() => {
+    setPreviewNode(null);
+    up();
+  }, [up]);
+
+  const stepUp = () =>
+    setSnap((s) => (s === "collapsed" ? "peek" : "expanded"));
+  const stepDown = () =>
+    setSnap((s) => (s === "expanded" ? "peek" : "collapsed"));
+
+  // PanResponder on the sheet header: horizontal release cycles siblings,
+  // vertical steps the sheet snap. next/prev are stable between swipes.
   const pan = useMemo(
     () =>
       PanResponder.create({
@@ -91,15 +125,15 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
           (Math.abs(g.dy) > 12 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2),
         onPanResponderRelease: (_e, g) => {
           if (Math.abs(g.dy) > Math.abs(g.dx) * 1.2) {
-            if (g.dy <= -SHEET_SWIPE_THRESHOLD) setSheetExpanded(true);
-            else if (g.dy >= SHEET_SWIPE_THRESHOLD) setSheetExpanded(false);
+            if (g.dy <= -SHEET_SWIPE_THRESHOLD) stepUp();
+            else if (g.dy >= SHEET_SWIPE_THRESHOLD) stepDown();
             return;
           }
-          if (g.dx <= -SWIPE_THRESHOLD) next();
-          else if (g.dx >= SWIPE_THRESHOLD) prev();
+          if (g.dx <= -SWIPE_THRESHOLD) goNext();
+          else if (g.dx >= SWIPE_THRESHOLD) goPrev();
         },
       }),
-    [next, prev],
+    [goNext, goPrev],
   );
 
   // Posts under the focused node + its subtree (deduped), flattened for the sheet.
@@ -108,14 +142,23 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
     const idx = subtreeIndex(scene, focused.id);
     return idx ? idx.groups.flatMap((g) => g.posts) : [];
   }, [scene, focused]);
+  const subtreePostIds = useMemo(
+    () => new Set(posts.map((p) => p.node.id)),
+    [posts],
+  );
 
   const onPickNode = (node: SceneNode) => {
-    if (node.kind === "post") {
-      if (node.slug) router.push(`/post/${node.slug}`);
-    } else if (node.kind === "category") {
+    setPreviewNode(node);
+    select(node.id);
+    if (node.kind === "category") {
       focus.focus(node.id);
+    } else if (node.kind === "post" && snap === "collapsed") {
+      setSnap("peek"); // surface the preview card
     }
   };
+
+  const previewPost = previewNode?.kind === "post" ? previewNode : null;
+  const expanded = snap === "expanded";
 
   return (
     <View
@@ -127,9 +170,30 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
         scene={scene}
         focused={focused}
         neighborIds={neighborIds}
+        subtreePostIds={subtreePostIds}
+        selectedNode={previewNode}
         onPickNode={onPickNode}
+        frameTick={frameTick}
         style={StyleSheet.absoluteFill}
       />
+
+      {/* Legend / "you are here" — what the dots mean + where you are. */}
+      {focused ? (
+        <View
+          style={[styles.legend, { top: insets.top + Sirius.space.sm }]}
+          pointerEvents="none"
+        >
+          <Eyebrow>You are here</Eyebrow>
+          <Text style={styles.legendPath} numberOfLines={2}>
+            {(focused.path ?? focused.label).split("/").join(" / ")}
+          </Text>
+          <View style={styles.legendKeys}>
+            <KeyRow shape="focus" label="Focused" />
+            <KeyRow shape="category" label="Category" />
+            <KeyRow shape="post" label="Post" />
+          </View>
+        </View>
+      ) : null}
 
       {!focused ? (
         <View style={styles.emptyWrap} pointerEvents="none">
@@ -140,143 +204,238 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
         </View>
       ) : (
         <Animated.View style={[styles.sheet, sheetStyle]}>
-          {/* Header zone owns the swipe; the posts list scrolls independently. */}
-          <View style={styles.header} {...pan.panHandlers}>
+          {snap === "collapsed" ? (
             <Pressable
-              onPress={() => setSheetExpanded((expanded) => !expanded)}
+              onPress={() => setSnap("peek")}
               accessibilityRole="button"
-              accessibilityLabel={
-                sheetExpanded ? "Lower post index" : "Raise post index"
-              }
-              accessibilityState={{ expanded: sheetExpanded }}
-              hitSlop={10}
+              accessibilityLabel="Raise post index"
+              accessibilityState={{ expanded: false }}
               style={({ pressed }) => [
-                styles.handleHit,
+                styles.collapsedBar,
                 pressed && styles.pressed,
               ]}
             >
               <View style={styles.handle} />
-            </Pressable>
-
-            {/* Context line: where you are (tap = up) + sibling position. */}
-            <View style={styles.contextRow}>
-              <Pressable
-                onPress={focus.up}
-                disabled={!parent}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  parent ? `Up to ${parent.label}` : "At root"
-                }
-                style={styles.breadcrumbRow}
-              >
-                {parent ? <Text style={styles.breadcrumbUp}>↑</Text> : null}
-                <Text style={styles.breadcrumb} numberOfLines={1}>
-                  {parent
-                    ? (parent.path ?? parent.label).split("/").join(" / ")
-                    : "Root"}
-                </Text>
-              </Pressable>
-              {count > 1 ? (
-                <Text style={styles.position}>
-                  {index + 1}/{count}
-                </Text>
-              ) : null}
-            </View>
-
-            <View style={styles.titleRow}>
-              <Pressable
-                onPress={focus.prev}
-                disabled={count < 2}
-                hitSlop={16}
-                accessibilityRole="button"
-                accessibilityLabel="Previous sibling"
-                style={({ pressed }) => [styles.chev, pressed && styles.pressed]}
-              >
-                <Text
-                  style={[styles.chevGlyph, count < 2 && styles.chevDisabled]}
-                >
-                  ‹
-                </Text>
-              </Pressable>
-              <Text style={styles.title} numberOfLines={2}>
+              <Text style={styles.collapsedTitle} numberOfLines={1}>
                 {focused.label}
               </Text>
-              <Pressable
-                onPress={focus.next}
-                disabled={count < 2}
-                hitSlop={16}
-                accessibilityRole="button"
-                accessibilityLabel="Next sibling"
-                style={({ pressed }) => [styles.chev, pressed && styles.pressed]}
-              >
-                <Text
-                  style={[styles.chevGlyph, count < 2 && styles.chevDisabled]}
+            </Pressable>
+          ) : (
+            <>
+              {/* Header zone owns the swipe; the posts list scrolls independently. */}
+              <View style={styles.header} {...pan.panHandlers}>
+                <Pressable
+                  onPress={() => setSnap(expanded ? "peek" : "expanded")}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    expanded ? "Lower post index" : "Raise post index"
+                  }
+                  accessibilityState={{ expanded }}
+                  hitSlop={10}
+                  style={({ pressed }) => [
+                    styles.handleHit,
+                    pressed && styles.pressed,
+                  ]}
                 >
-                  ›
-                </Text>
-              </Pressable>
-            </View>
-          </View>
+                  <View style={styles.handle} />
+                </Pressable>
 
-          <View style={styles.divider} />
+                {/* Context line: where you are (tap = up) + position + Frame. */}
+                <View style={styles.contextRow}>
+                  <Pressable
+                    onPress={goUp}
+                    disabled={!parent}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      parent ? `Up to ${parent.label}` : "At root"
+                    }
+                    style={styles.breadcrumbRow}
+                  >
+                    {parent ? <Text style={styles.breadcrumbUp}>↑</Text> : null}
+                    <Text style={styles.breadcrumb} numberOfLines={1}>
+                      {parent
+                        ? (parent.path ?? parent.label).split("/").join(" / ")
+                        : "Root"}
+                    </Text>
+                  </Pressable>
+                  {count > 1 ? (
+                    <Text style={styles.position}>
+                      {index + 1}/{count}
+                    </Text>
+                  ) : null}
+                  <Pressable
+                    onPress={() => setFrameTick((t) => t + 1)}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Frame this node in the map"
+                    style={({ pressed }) => [
+                      styles.frameBtn,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.frameBtnText}>Frame</Text>
+                  </Pressable>
+                </View>
 
-          <ScrollView
-            style={styles.postScroll}
-            contentContainerStyle={[
-              styles.postBody,
-              { paddingBottom: postBodyPaddingBottom },
-            ]}
-            showsVerticalScrollIndicator={false}
-            scrollIndicatorInsets={{ bottom: bottomInset }}
-          >
-            {/* Child categories — kept out of the peek header (they wrap and
-                shove the list down); shown only once the sheet is raised. */}
-            {sheetExpanded && children.length > 0 ? (
-              <View style={styles.chips}>
-                <Text style={styles.chipsLabel}>Inside</Text>
-                <View style={styles.chipRow}>
-                  {children.map((c) => (
-                    <Pressable
-                      key={c.id}
-                      onPress={() => focus.focus(c.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${c.label}`}
-                      style={({ pressed }) => [
-                        styles.chip,
-                        pressed && styles.chipPressed,
+                <View style={styles.titleRow}>
+                  <Pressable
+                    onPress={goPrev}
+                    disabled={count < 2}
+                    hitSlop={16}
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous sibling"
+                    style={({ pressed }) => [
+                      styles.chev,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.chevGlyph,
+                        count < 2 && styles.chevDisabled,
                       ]}
                     >
-                      <Text style={styles.chipText} numberOfLines={1}>
-                        {c.label}
-                      </Text>
-                    </Pressable>
-                  ))}
+                      ‹
+                    </Text>
+                  </Pressable>
+                  <Text style={styles.title} numberOfLines={2}>
+                    {focused.label}
+                  </Text>
+                  <Pressable
+                    onPress={goNext}
+                    disabled={count < 2}
+                    hitSlop={16}
+                    accessibilityRole="button"
+                    accessibilityLabel="Next sibling"
+                    style={({ pressed }) => [
+                      styles.chev,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.chevGlyph,
+                        count < 2 && styles.chevDisabled,
+                      ]}
+                    >
+                      ›
+                    </Text>
+                  </Pressable>
                 </View>
-              </View>
-            ) : null}
 
-            {posts.length === 0 ? (
-              <Text style={styles.empty}>
-                Nothing filed under this branch yet.
-              </Text>
-            ) : (
-              posts.map((entry, i) => (
-                <PostRow
-                  key={entry.node.id}
-                  entry={entry}
-                  n={i + 1}
-                  onOpen={(slug) => slug && router.push(`/post/${slug}`)}
-                />
-              ))
-            )}
-            {sheetExpanded ? (
-              <Text style={styles.hint}>
-                ‹ › siblings · pinch zoom · drag orbit
-              </Text>
-            ) : null}
-          </ScrollView>
+                {/* Tapped-post preview — what this dot is, with a quick Open. */}
+                {previewPost ? (
+                  <View style={styles.previewCard}>
+                    <KindLabel tone={Sirius.color.accent}>Post</KindLabel>
+                    <Text style={styles.previewTitle} numberOfLines={2}>
+                      {previewPost.label}
+                    </Text>
+                    <View style={styles.previewActions}>
+                      {previewPost.slug ? (
+                        <TextLink
+                          label="Open →"
+                          onPress={() =>
+                            router.push(`/post/${previewPost.slug}`)
+                          }
+                        />
+                      ) : (
+                        <Text style={styles.previewNoOpen}>No page yet</Text>
+                      )}
+                      <TextLink
+                        label="Dismiss"
+                        tone={Sirius.color.inkSubtle}
+                        onPress={() => setPreviewNode(null)}
+                      />
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.divider} />
+
+              <ScrollView
+                style={styles.postScroll}
+                contentContainerStyle={[
+                  styles.postBody,
+                  { paddingBottom: postBodyPaddingBottom },
+                ]}
+                showsVerticalScrollIndicator={false}
+                scrollIndicatorInsets={{ bottom: bottomInset }}
+              >
+                {/* Child categories — kept out of the peek header (they wrap and
+                    shove the list down); shown only once the sheet is raised. */}
+                {expanded && children.length > 0 ? (
+                  <View style={styles.chips}>
+                    <Text style={styles.chipsLabel}>Inside</Text>
+                    <View style={styles.chipRow}>
+                      {children.map((c) => (
+                        <Pressable
+                          key={c.id}
+                          onPress={() => focus.focus(c.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open ${c.label}`}
+                          style={({ pressed }) => [
+                            styles.chip,
+                            pressed && styles.chipPressed,
+                          ]}
+                        >
+                          <Text style={styles.chipText} numberOfLines={1}>
+                            {c.label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                {posts.length === 0 ? (
+                  <Text style={styles.empty}>
+                    Nothing filed under this branch yet.
+                  </Text>
+                ) : (
+                  posts.map((entry, i) => (
+                    <PostRow
+                      key={entry.node.id}
+                      entry={entry}
+                      n={i + 1}
+                      onOpen={(slug) => slug && router.push(`/post/${slug}`)}
+                    />
+                  ))
+                )}
+                {expanded ? (
+                  <Text style={styles.hint}>
+                    tap a dot to inspect · ‹ › siblings · pinch zoom · drag orbit
+                  </Text>
+                ) : null}
+              </ScrollView>
+            </>
+          )}
         </Animated.View>
       )}
+    </View>
+  );
+}
+
+// A single legend key: a shape swatch + a mono label.
+function KeyRow({
+  shape,
+  label,
+}: {
+  shape: "focus" | "category" | "post";
+  label: string;
+}) {
+  return (
+    <View style={styles.keyRow}>
+      <View style={styles.keySwatch}>
+        <View
+          style={[
+            shape === "focus" && styles.keyFocus,
+            shape === "category" && styles.keyCategory,
+            shape === "post" && styles.keyPost,
+          ]}
+        />
+      </View>
+      <Text style={styles.keyLabel}>{label}</Text>
     </View>
   );
 }
@@ -323,6 +482,55 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: PAD,
   },
+  // Top-left legend overlay.
+  legend: {
+    position: "absolute",
+    left: Sirius.space.lg,
+    maxWidth: 200,
+    gap: 3,
+    paddingHorizontal: Sirius.space.md,
+    paddingVertical: Sirius.space.sm,
+    backgroundColor: Sirius.color.paperRaised,
+    borderWidth: 1,
+    borderColor: Sirius.color.rule,
+    opacity: 0.94,
+  },
+  legendPath: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: Sirius.color.inkMuted,
+  },
+  legendKeys: { gap: 4, marginTop: 4 },
+  keyRow: { flexDirection: "row", alignItems: "center", gap: Sirius.space.sm },
+  keySwatch: { width: 12, alignItems: "center", justifyContent: "center" },
+  keyFocus: {
+    width: 11,
+    height: 11,
+    borderRadius: Sirius.radius.pill,
+    backgroundColor: Sirius.color.accent,
+  },
+  keyCategory: {
+    width: 10,
+    height: 10,
+    borderRadius: Sirius.radius.pill,
+    borderWidth: 1.5,
+    borderColor: Sirius.color.ink,
+  },
+  keyPost: {
+    width: 6,
+    height: 6,
+    borderRadius: Sirius.radius.pill,
+    backgroundColor: Sirius.color.inkMuted,
+  },
+  keyLabel: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 9,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: Sirius.color.inkSubtle,
+  },
   // Floating sheet pinned to the bottom, layered over the canvas.
   sheet: {
     position: "absolute",
@@ -333,6 +541,17 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: Sirius.color.rule,
     backgroundColor: Sirius.color.paperRaised,
+  },
+  collapsedBar: {
+    alignItems: "center",
+    gap: Sirius.space.xs,
+    paddingTop: Sirius.space.sm,
+    paddingHorizontal: PAD,
+  },
+  collapsedTitle: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 16,
+    color: Sirius.color.ink,
   },
   header: {
     paddingHorizontal: PAD,
@@ -381,6 +600,19 @@ const styles = StyleSheet.create({
     color: Sirius.color.inkSubtle,
     fontVariant: ["tabular-nums"],
   },
+  frameBtn: {
+    borderWidth: 1,
+    borderColor: Sirius.color.ruleStrong,
+    paddingHorizontal: Sirius.space.sm,
+    paddingVertical: 3,
+  },
+  frameBtnText: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 9,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: Sirius.color.accent,
+  },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -401,6 +633,33 @@ const styles = StyleSheet.create({
     fontSize: 26,
     lineHeight: 30,
     color: Sirius.color.ink,
+  },
+  previewCard: {
+    marginTop: Sirius.space.xs,
+    borderWidth: 1,
+    borderColor: Sirius.color.accentRing,
+    backgroundColor: Sirius.color.paper,
+    paddingHorizontal: Sirius.space.md,
+    paddingVertical: Sirius.space.sm,
+    gap: Sirius.space.xs,
+  },
+  previewTitle: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 16,
+    lineHeight: 20,
+    color: Sirius.color.ink,
+  },
+  previewActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Sirius.space.lg,
+  },
+  previewNoOpen: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: Sirius.color.inkSubtle,
   },
   chips: {
     gap: Sirius.space.xs,

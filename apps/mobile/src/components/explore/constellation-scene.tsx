@@ -4,20 +4,32 @@
 // mobile-only scene on purpose — the shared @repo/embedding-scene SpaceScene uses
 // type-only fiber imports so it can't host the per-frame pulse, and recoloring it
 // would risk the web look. This file imports the native fiber runtime directly,
-// so it can drive its own camera rig + focus pulse.
+// so it can drive its own camera rig + focus pulse + projected labels.
 //
-// Camera "flies to" the focused node: the rig eases both the orbit (yaw/pitch
-// from drag) AND a look-at center toward the focused node's position every
-// frame, then does the mandatory synchronous expo-gl flush (see CameraRig).
+// CAMERA: free-but-bounded. The rig orbits a single eased look-at `target` that
+// the USER controls (one-finger orbit, pinch zoom, two-finger pan — all bounded
+// to the scene's extent). Selecting a node gently flies the target to it without
+// locking (the next gesture just overrides it). First load frames the whole map.
+//
+// LABELS: rendered as an RN overlay (no 3D text lib on mobile). A priority-2
+// useFrame projects each labeled node's world position to screen space into a
+// Reanimated shared value; absolutely-positioned <Text> reads it on the UI
+// thread — zero per-frame React re-render, and the single GL flush stays in
+// CameraRig.
 
 import type { ThreeEvent } from "@react-three/fiber";
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import type { RefObject } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { SharedValue } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import type { StyleProp, ViewStyle } from "react-native";
-import { StyleSheet, View } from "react-native";
-import { BackSide, type Mesh } from "three";
+import { StyleSheet, Text, View } from "react-native";
+import { BackSide, type Camera, type Mesh, Vector3 } from "three";
 import { Sirius } from "@/constants/theme";
 
 type Vec3 = [number, number, number];
@@ -25,30 +37,33 @@ type Vec3 = [number, number, number];
 // Editorial palette — ink dots on paper, oxblood for the one focused node.
 const PAPER = Sirius.color.paper;
 const INK = Sirius.color.ink;
+const INK_MUTED = Sirius.color.inkMuted;
 const INK_FAINT = Sirius.color.inkFaint;
 const OXBLOOD = Sirius.color.accent;
+const MARK = Sirius.color.mark;
 
-// Camera framing distance from the focused node. Small enough to feel "zoomed
-// in" on it, wide enough that its neighbors stay in frame. This is the *neutral*
-// distance (zoom === 1); pinch scales it live between ZOOM_MIN..ZOOM_MAX.
-const FRAME_RADIUS = 9;
-const DAMPING = 0.16; // orbit + center + radius easing per frame (OrbitControls feel)
+const DAMPING = 0.16; // orbit + target + radius easing per frame (OrbitControls feel)
 
-// Pinch multiplier bounds on FRAME_RADIUS. <1 = closer (zoomed in), >1 = farther
-// out. ~3x each way keeps a single node legible without losing the whole map.
-const ZOOM_MIN = 0.35;
-const ZOOM_MAX = 3;
-// Two-finger pan: NDC-delta → world units, scaled by the live radius so a drag
-// moves the same on-screen distance whether zoomed in or out.
-const PAN_SCALE = 0.9;
+// Camera framing, all DERIVED from the scene's own extent (radius R) so any map
+// — tiny or sprawling — is framed sensibly. FIT_MULT*R is the zoom=1 distance
+// that frames the whole sphere (~17% margin at fov 52). Pinch scales it live.
+const FIT_MULT = 2.4;
+const ZOOM_MIN = 0.18; // closest: lean in on a single node
+const ZOOM_MAX = 1.15; // farthest: never pull back past the whole-scene fit
+const PAN_LIMIT_MULT = 1.1; // look-at target may stray at most R*1.1 from center
+const PAN_SCALE = 0.9; // NDC-delta → world units (scaled by live radius)
+const FRAME_ZOOM = 0.3; // zoom the explicit "Frame" action leans to
+
+// Label overlay geometry: each label box is centered on its node's projected
+// point and lifted above the dot.
+const LABEL_W = 144;
+const LABEL_OFFSET_Y = 22;
+const MAX_CATEGORY_LABELS = 14; // past this, only focus + neighbors + parent
 
 // Gesture instrumentation for the ONE path we can't statically prove: that
 // react-three-fiber/native actually delivers two simultaneous pointers (with
 // distinct pointerIds) through the expo-gl GLView — the prerequisite for pinch.
-// Dev-only, logged on gesture TRANSITIONS only (down / pinch-begin / up), never
-// per-frame, so Metro stays readable. If you pinch and never see "[constellation]
-// pinch:begin" with active=2, multi-touch isn't reaching the scene → fall back to
-// a gesture-handler Pinch (see docs/plan). Matches the repo's [tag] log style.
+// Dev-only, logged on gesture TRANSITIONS only (down / pinch-begin / up).
 const logGesture = (...args: unknown[]) => {
   if (__DEV__) console.log("[constellation]", ...args);
 };
@@ -56,6 +71,42 @@ const logGesture = (...args: unknown[]) => {
 interface Orbit {
   yaw: number;
   pitch: number;
+}
+
+interface Bounds {
+  center: Vec3;
+  radius: number;
+}
+
+// Axis-aligned center + bounding radius over all node positions. Floors the
+// radius so a single-node / degenerate scene still frames sanely.
+function computeBounds(nodes: SceneNode[]): Bounds {
+  if (nodes.length === 0) return { center: [0, 0, 0], radius: 3 };
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  for (const n of nodes) {
+    const [x, y, z] = n.position;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    if (z > maxZ) maxZ = z;
+  }
+  const center: Vec3 = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+  let r = 0;
+  for (const n of nodes) {
+    const dx = n.position[0] - center[0];
+    const dy = n.position[1] - center[1];
+    const dz = n.position[2] - center[2];
+    const d = Math.hypot(dx, dy, dz);
+    if (d > r) r = d;
+  }
+  return { center, radius: Math.max(r, 2) };
 }
 
 // All edges of one visual weight, as a single line-segment geometry. `onlyFocus`
@@ -70,10 +121,6 @@ function EdgeLines({
   focusedId: string | null;
   onlyFocus: boolean;
 }) {
-  // Build positions as a plain Float32Array and declare the geometry in JSX
-  // (rather than constructing BufferGeometry + passing it as a prop) — that
-  // sidesteps the dual-@types/three identity mismatch inside apps/mobile. Keyed
-  // so the attribute rebuilds when the edge set changes (focus moves).
   const positions = useMemo(() => {
     const byId = new Map(scene.nodes.map((n) => [n.id, n.position]));
     const verts: number[] = [];
@@ -101,32 +148,78 @@ function EdgeLines({
   );
 }
 
-// Invisible larger hit halo + a visible dot. Focused = oxblood (the pulse halo
-// is a separate mesh below); neighbors = ink; everything else fades to faint.
+// A faint wireframe globe marking the map's confines. One static low-seg sphere
+// at the scene center — reads like a drafting/armillary outline, not a neon dome.
+// Wireframe MATERIAL (not edgesGeometry) sidesteps this file's dual-@types/three
+// geometry-instance quirk.
+function SceneBoundary({ center, radius }: Bounds) {
+  return (
+    <mesh position={center}>
+      <sphereGeometry args={[radius * 1.05, 16, 12]} />
+      <meshBasicMaterial
+        color={INK_FAINT}
+        wireframe
+        transparent
+        opacity={0.1}
+        depthWrite={false}
+      />
+    </mesh>
+  );
+}
+
+// Invisible larger hit halo + a visible dot + (for the selected post) an oxblood
+// ring. Every node — category, post, project — carries a full-size halo so even
+// dimmed/slug-less posts stay tappable. Single tap selects; double tap frames.
 const HIT_FACTOR = 3.5;
-const HIT_MIN = 0.5;
+const HIT_MIN = 0.55;
+const KIND_BASE: Record<string, number> = {
+  category: 0.13,
+  post: 0.075,
+  project: 0.11,
+};
+const DOUBLE_TAP_MS = 300;
+
 function NodeDot({
   node,
   focused,
   neighbor,
-  dim,
+  inSubtree,
+  selected,
   onPick,
+  onFrame,
 }: {
   node: SceneNode;
   focused: boolean;
   neighbor: boolean;
-  dim: boolean;
+  inSubtree: boolean;
+  selected: boolean;
   onPick: (node: SceneNode) => void;
+  onFrame: (node: SceneNode) => void;
 }) {
-  const base = node.kind === "post" ? 0.08 : 0.13;
-  const radius = focused ? base * 1.9 : base;
-  const color = focused ? OXBLOOD : neighbor ? INK : INK_FAINT;
+  const lastTap = useRef(0);
+  const base = KIND_BASE[node.kind] ?? 0.1;
+  const radius = focused ? base * 1.9 : neighbor ? base * 1.15 : base;
+
+  let color: string = INK_FAINT;
+  if (focused) color = OXBLOOD;
+  else if (neighbor) color = INK;
+  else if (node.kind === "project") color = MARK;
+  else if (node.kind === "post") color = inSubtree ? INK : INK_MUTED;
+
+  let opacity = Math.max(0.45, base); // floor so nothing ever "blacks out"
+  if (focused) opacity = 1;
+  else if (neighbor) opacity = 0.9;
+  else if (inSubtree) opacity = 0.7;
+
   return (
     <group position={node.position}>
       <mesh
         onClick={(e: ThreeEvent<MouseEvent>) => {
           e.stopPropagation();
-          onPick(node);
+          const now = Date.now();
+          if (now - lastTap.current < DOUBLE_TAP_MS) onFrame(node);
+          else onPick(node);
+          lastTap.current = now;
         }}
       >
         <sphereGeometry args={[Math.max(radius * HIT_FACTOR, HIT_MIN), 8, 8]} />
@@ -134,12 +227,20 @@ function NodeDot({
       </mesh>
       <mesh>
         <sphereGeometry args={[radius, 16, 16]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={focused ? 1 : neighbor ? 0.85 : dim ? 0.3 : 0.55}
-        />
+        <meshBasicMaterial color={color} transparent opacity={opacity} />
       </mesh>
+      {selected && !focused ? (
+        <mesh>
+          <sphereGeometry args={[radius * 2.2, 16, 16]} />
+          <meshBasicMaterial
+            color={OXBLOOD}
+            wireframe
+            transparent
+            opacity={0.6}
+            depthWrite={false}
+          />
+        </mesh>
+      ) : null}
     </group>
   );
 }
@@ -174,14 +275,8 @@ function PulseHalo({ position }: { position: Vec3 }) {
 
 // Drag surface for orbit + pinch-zoom + two-finger pan. The Canvas claims every
 // touch before any RN responder on an ancestor can, so ALL gestures must live
-// INSIDE the R3F event system (an ancestor GestureDetector never sees these
-// touches): an inside-out sphere catches drags that miss every node; node halos
-// still win the raycast (nearer hit). Builds on app/space.tsx's orbit approach.
-//
-// Multi-touch: we track each live pointer by its pointerId in NDC ([-1,1]). One
-// pointer → orbit (yaw/pitch delta). Two pointers → pinch (their distance ratio
-// scales zoom) + pan (their midpoint delta moves the look-at center). Transitions
-// reset the pinch baseline so finger lifts don't snap the camera.
+// INSIDE the R3F event system: an inside-out sphere catches drags that miss
+// every node; node halos still win the raycast (nearer hit).
 function OrbitBackdrop({
   onOrbit,
   onZoom,
@@ -215,20 +310,16 @@ function OrbitBackdrop({
           onOrbit(cur.x - prev.x, cur.y - prev.y);
           return;
         }
-        // Two (or more) fingers: pinch + pan off the first two live pointers.
         const [a, b] = [...map.values()];
         if (!a || !b) return;
         const dist = Math.hypot(a.x - b.x, a.y - b.y);
         const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         if (pinchDist.current != null && dist > 0) {
-          // Fingers apart → dist grows → factor < 1 → smaller radius → zoom in.
           onZoom(pinchDist.current / dist);
           if (pinchMid.current) {
             onPan(mid.x - pinchMid.current.x, mid.y - pinchMid.current.y);
           }
         } else {
-          // First frame of a 2-pointer gesture (baseline). If you never see this,
-          // multi-touch isn't reaching the GLView — pinch can't work as built.
           logGesture(
             "pinch:begin",
             "active=",
@@ -250,10 +341,9 @@ function OrbitBackdrop({
       onPointerLeave={(e: ThreeEvent<PointerEvent>) => {
         pts.current.delete(e.pointerId);
         resetPinch();
-        logGesture("leave", "id=", e.pointerId, "active=", pts.current.size);
       }}
     >
-      <sphereGeometry args={[60, 8, 8]} />
+      <sphereGeometry args={[120, 8, 8]} />
       <meshBasicMaterial
         side={BackSide}
         transparent
@@ -264,36 +354,36 @@ function OrbitBackdrop({
   );
 }
 
-// The single priority-1 useFrame subscriber (priority > 0 = we own rendering).
-// Each frame: ease the orbit toward the drag target, ease the look-at center
-// toward the focused node (plus any pan offset), ease the radius toward
-// FRAME_RADIUS * zoom, place the camera on the orbit sphere around that center,
-// render, then force the synchronous GL round-trip expo-gl needs or the view
-// freezes on the last frame / stays black (see app/space.tsx:80-83).
+// The single priority-1 useFrame subscriber that OWNS rendering (priority > 0 =
+// we take over the loop). Each frame: ease orbit toward the drag target, ease
+// the look-at center toward `target`, ease radius toward fitRadius * zoom, place
+// the camera on the orbit sphere around that center, render, then force the
+// synchronous GL round-trip expo-gl needs or the view freezes / stays black.
 function CameraRig({
   orbit,
-  center,
-  pan,
+  target,
   zoom,
+  fitRadius,
+  initialTarget,
 }: {
   orbit: RefObject<Orbit>;
-  center: RefObject<Vec3>;
-  pan: RefObject<Vec3>;
+  target: RefObject<Vec3>;
   zoom: RefObject<number>;
+  fitRadius: number;
+  initialTarget: Vec3;
 }) {
   const curOrbit = useRef<Orbit>({ ...orbit.current });
-  const curCenter = useRef<Vec3>([...center.current] as Vec3);
-  const curRadius = useRef<number>(FRAME_RADIUS * zoom.current);
+  const curTarget = useRef<Vec3>([...initialTarget] as Vec3);
+  const curRadius = useRef<number>(fitRadius * zoom.current);
   useFrame((state) => {
     const o = curOrbit.current;
     o.yaw += (orbit.current.yaw - o.yaw) * DAMPING;
     o.pitch += (orbit.current.pitch - o.pitch) * DAMPING;
-    const c = curCenter.current;
+    const c = curTarget.current;
     for (let i = 0; i < 3; i++) {
-      c[i] += (center.current[i]! + pan.current[i]! - c[i]!) * DAMPING;
+      c[i] += (target.current[i]! - c[i]!) * DAMPING;
     }
-    curRadius.current +=
-      (FRAME_RADIUS * zoom.current - curRadius.current) * DAMPING;
+    curRadius.current += (fitRadius * zoom.current - curRadius.current) * DAMPING;
     const r = curRadius.current;
     state.camera.position.set(
       c[0]! + r * Math.cos(o.pitch) * Math.sin(o.yaw),
@@ -308,12 +398,135 @@ function CameraRig({
   return null;
 }
 
+export interface ProjectedLabel {
+  x: number;
+  y: number;
+  o: number;
+}
+
+// Writing a Reanimated shared value is a legitimate JS→UI-thread side effect.
+// Funnel it through a helper so the React Compiler's immutability check (which
+// freezes the prop where the projector receives it) doesn't flag the assignment.
+function writeShared<T>(sv: SharedValue<T>, value: T) {
+  sv.value = value;
+}
+
+// Priority-2 useFrame (runs AFTER CameraRig rendered, so camera matrices are
+// fresh). Projects each labeled node to screen px + a distance/clip opacity and
+// writes the map into a shared value. NEVER calls gl.render — CameraRig stays the
+// only renderer. No React state per frame.
+function LabelProjector({
+  nodes,
+  projected,
+  fitRadius,
+}: {
+  nodes: SceneNode[];
+  projected: SharedValue<Record<string, ProjectedLabel>>;
+  fitRadius: number;
+}) {
+  const v = useRef(new Vector3());
+  const lastCam = useRef<Vec3>([Infinity, 0, 0]);
+  useFrame((state) => {
+    const cam = state.camera;
+    // Skip the (expensive-ish) shared-value write when the camera is at rest.
+    const moved =
+      Math.abs(cam.position.x - lastCam.current[0]) +
+        Math.abs(cam.position.y - lastCam.current[1]) +
+        Math.abs(cam.position.z - lastCam.current[2]) >
+      0.0006;
+    if (!moved) return;
+    lastCam.current = [cam.position.x, cam.position.y, cam.position.z];
+
+    const w = state.size?.width ?? 0;
+    const h = state.size?.height ?? 0;
+    const near = fitRadius * 0.5;
+    const far = fitRadius * 1.9;
+    const out: Record<string, ProjectedLabel> = {};
+    for (const n of nodes) {
+      const dx = n.position[0] - cam.position.x;
+      const dy = n.position[1] - cam.position.y;
+      const dz = n.position[2] - cam.position.z;
+      const dist = Math.hypot(dx, dy, dz);
+      v.current.set(n.position[0], n.position[1], n.position[2]);
+      // Dual-@types/three identity mismatch (root vs apps/mobile) — cast the
+      // fiber camera to this package's three Camera type for .project().
+      v.current.project(cam as unknown as Camera);
+      let o = 0;
+      if (v.current.z <= 1) {
+        o = 1 - (dist - near) / (far - near);
+        o = Math.max(0, Math.min(1, o));
+      }
+      out[n.id] = {
+        x: (v.current.x * 0.5 + 0.5) * w,
+        y: (-v.current.y * 0.5 + 0.5) * h,
+        o,
+      };
+    }
+    writeShared(projected, out);
+  }, 2);
+  return null;
+}
+
+// One RN overlay label, positioned + faded purely on the UI thread from the
+// shared projection map. pointerEvents none so it never steals orbit gestures.
+function NodeLabel({
+  node,
+  projected,
+  focused,
+}: {
+  node: SceneNode;
+  projected: SharedValue<Record<string, ProjectedLabel>>;
+  focused: boolean;
+}) {
+  const style = useAnimatedStyle(() => {
+    const p = projected.value[node.id];
+    if (!p) return { opacity: 0, transform: [{ translateX: -9999 }] };
+    return {
+      opacity: p.o,
+      transform: [
+        { translateX: p.x - LABEL_W / 2 },
+        { translateY: p.y - LABEL_OFFSET_Y },
+      ],
+    };
+  });
+  const isPost = node.kind === "post";
+  const isProject = node.kind === "project";
+  return (
+    <Animated.View style={[styles.labelWrap, style]} pointerEvents="none">
+      {isPost ? (
+        <View style={styles.labelChip}>
+          <Text style={styles.labelPost} numberOfLines={1}>
+            {node.label}
+          </Text>
+        </View>
+      ) : (
+        <Text
+          style={[
+            isProject ? styles.labelProject : styles.labelCat,
+            focused && styles.labelFocused,
+          ]}
+          numberOfLines={1}
+        >
+          {node.label}
+        </Text>
+      )}
+    </Animated.View>
+  );
+}
+
 export interface ConstellationHeroProps {
   scene: EmbeddingScene;
   focused: SceneNode | null;
   neighborIds: Set<string>;
-  // A node was tapped in the 3D map (host refocuses categories / opens posts).
+  subtreePostIds: Set<string>;
+  // The tapped/preview node — gets the oxblood ring + a label, and is what the
+  // camera gently flies toward (falls back to `focused`).
+  selectedNode: SceneNode | null;
+  // A node was tapped in the 3D map (host selects categories / previews posts).
   onPickNode: (node: SceneNode) => void;
+  // Bumped by the host's "Frame" button to lean the camera in on the current
+  // look-at node.
+  frameTick: number;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -322,28 +535,64 @@ export function ConstellationHero({
   scene,
   focused,
   neighborIds,
+  subtreePostIds,
+  selectedNode,
   onPickNode,
+  frameTick,
   style,
 }: ConstellationHeroProps) {
-  const orbit = useRef<Orbit>({ yaw: 0.6, pitch: 0.32 });
-  // Live pinch multiplier on FRAME_RADIUS (kept across focus changes so the
-  // user's chosen zoom level survives drilling to a new node).
-  const zoom = useRef<number>(1);
-  // The focused node's position, eased toward by the camera each frame. Updated
-  // in an effect (not during render) so the rig's useFrame reads the latest.
-  const center = useRef<Vec3>(focused?.position ?? [0, 0, 0]);
-  // Accumulated two-finger pan offset, added on top of `center`. Reset whenever
-  // focus moves so each newly-focused node recenters in frame.
-  const pan = useRef<Vec3>([0, 0, 0]);
-  useEffect(() => {
-    if (focused) {
-      center.current = focused.position;
-      pan.current = [0, 0, 0];
-    }
-  }, [focused]);
+  const bounds = useMemo(() => computeBounds(scene.nodes), [scene.nodes]);
+  const fitRadius = bounds.radius * FIT_MULT;
+  const panLimit = bounds.radius * PAN_LIMIT_MULT;
 
-  // One-time scene summary so an empty/sparse map can be diagnosed as "no nodes
-  // arrived" vs. a render bug (the scene is owner-scoped — see CLAUDE.md).
+  const orbit = useRef<Orbit>({ yaw: 0.6, pitch: 0.32 });
+  // Live pinch multiplier on fitRadius, kept across selection so the user's zoom
+  // survives flying to a new node.
+  const zoom = useRef<number>(1);
+  // The eased look-at point. Init at scene center (whole-map fit); moved only by
+  // the user's pan and by gentle fly-to — never hard-snapped on selection.
+  const target = useRef<Vec3>([...bounds.center]);
+
+  // One-time whole-scene framing.
+  const didInit = useRef(false);
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    target.current = [...bounds.center];
+    zoom.current = 1;
+  }, [bounds]);
+
+  // The node the camera should be looking at: the explicit selection, else the
+  // focused category.
+  const lookAtNode = selectedNode ?? focused;
+  const lookAtId = lookAtNode?.id ?? null;
+
+  // Gentle fly-to whenever the look-at node changes — keeps zoom, no pan reset,
+  // and is interruptible (the next pan/orbit just overrides `target`). The first
+  // value is swallowed so the initial focus never overrides the whole-map fit.
+  const prevLookId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (prevLookId.current === undefined) {
+      prevLookId.current = lookAtId;
+      return;
+    }
+    if (lookAtId == null || lookAtId === prevLookId.current) return;
+    prevLookId.current = lookAtId;
+    if (lookAtNode) target.current = [...lookAtNode.position];
+  }, [lookAtId, lookAtNode]);
+
+  // Explicit "Frame" — fly in close on the current look-at node.
+  const frameNode = useCallback((node: SceneNode) => {
+    target.current = [...node.position];
+    zoom.current = Math.max(ZOOM_MIN, FRAME_ZOOM);
+  }, []);
+  const prevTick = useRef(frameTick);
+  useEffect(() => {
+    if (frameTick === prevTick.current) return;
+    prevTick.current = frameTick;
+    if (lookAtNode) frameNode(lookAtNode);
+  }, [frameTick, lookAtNode, frameNode]);
+
   useEffect(() => {
     logGesture(
       "scene",
@@ -351,10 +600,10 @@ export function ConstellationHero({
       scene.nodes.length,
       "edges=",
       scene.edges.length,
-      "model=",
-      scene.modelVersion,
+      "R=",
+      bounds.radius.toFixed(2),
     );
-  }, [scene]);
+  }, [scene, bounds]);
 
   const onOrbitDelta = (dx: number, dy: number) => {
     const t = orbit.current;
@@ -367,28 +616,68 @@ export function ConstellationHero({
   };
 
   // Map a screen-space (NDC) midpoint delta to a world pan in the camera's
-  // horizontal plane. Right vector for the current yaw is (-cos, 0, sin); we
-  // move the center opposite the drag so content tracks the fingers. Vertical
-  // drag pans along world up. Scaled by the live radius for consistent feel.
+  // horizontal plane, then clamp the resulting look-at within R*1.1 of center so
+  // the camera can never fly off into the void.
   const onPan = (dx: number, dy: number) => {
     const yaw = orbit.current.yaw;
-    const k = PAN_SCALE * FRAME_RADIUS * zoom.current;
+    const k = PAN_SCALE * fitRadius * zoom.current;
     const rightX = -Math.cos(yaw);
     const rightZ = Math.sin(yaw);
-    const p = pan.current;
-    p[0] = p[0]! - rightX * dx * k;
-    p[1] = p[1]! + dy * k;
-    p[2] = p[2]! - rightZ * dx * k;
+    const t = target.current;
+    let nx = t[0]! - rightX * dx * k;
+    let ny = t[1]! + dy * k;
+    let nz = t[2]! - rightZ * dx * k;
+    const ox = nx - bounds.center[0];
+    const oy = ny - bounds.center[1];
+    const oz = nz - bounds.center[2];
+    const len = Math.hypot(ox, oy, oz);
+    if (len > panLimit) {
+      const s = panLimit / len;
+      nx = bounds.center[0] + ox * s;
+      ny = bounds.center[1] + oy * s;
+      nz = bounds.center[2] + oz * s;
+    }
+    target.current = [nx, ny, nz];
   };
 
   const focusedId = focused?.id ?? null;
+  const selectedId = selectedNode?.id ?? null;
+
+  // Which nodes get an overlay label: all categories/projects (capped so a huge
+  // taxonomy doesn't clutter — then we keep focus + neighbors + parent), plus
+  // the currently selected post.
+  const projected = useSharedValue<Record<string, ProjectedLabel>>({});
+  const labelNodes = useMemo(() => {
+    const structural = scene.nodes.filter((n) => n.kind !== "post");
+    let kept = structural;
+    if (structural.length > MAX_CATEGORY_LABELS) {
+      kept = structural.filter(
+        (n) => n.id === focusedId || neighborIds.has(n.id),
+      );
+    }
+    if (selectedNode?.kind === "post") kept = [...kept, selectedNode];
+    return kept;
+  }, [scene.nodes, focusedId, neighborIds, selectedNode]);
+
   return (
     <View style={[styles.hero, style]}>
       <Canvas camera={{ fov: 52 }}>
         <color attach="background" args={[PAPER]} />
-        <CameraRig orbit={orbit} center={center} pan={pan} zoom={zoom} />
+        <CameraRig
+          orbit={orbit}
+          target={target}
+          zoom={zoom}
+          fitRadius={fitRadius}
+          initialTarget={bounds.center}
+        />
+        <LabelProjector
+          nodes={labelNodes}
+          projected={projected}
+          fitRadius={fitRadius}
+        />
         <OrbitBackdrop onOrbit={onOrbitDelta} onZoom={onZoom} onPan={onPan} />
         <ambientLight intensity={1} />
+        <SceneBoundary center={bounds.center} radius={bounds.radius} />
         <EdgeLines scene={scene} focusedId={focusedId} onlyFocus={false} />
         <EdgeLines scene={scene} focusedId={focusedId} onlyFocus />
         {scene.nodes.map((node) => (
@@ -397,16 +686,67 @@ export function ConstellationHero({
             node={node}
             focused={node.id === focusedId}
             neighbor={neighborIds.has(node.id)}
-            dim={focusedId != null && !neighborIds.has(node.id)}
+            inSubtree={node.kind === "post" && subtreePostIds.has(node.id)}
+            selected={node.id === selectedId}
             onPick={onPickNode}
+            onFrame={frameNode}
           />
         ))}
         {focused ? <PulseHalo position={focused.position} /> : null}
       </Canvas>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        {labelNodes.map((n) => (
+          <NodeLabel
+            key={n.id}
+            node={n}
+            projected={projected}
+            focused={n.id === focusedId}
+          />
+        ))}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   hero: { backgroundColor: PAPER, overflow: "hidden" },
+  labelWrap: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: LABEL_W,
+    alignItems: "center",
+  },
+  labelCat: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 13,
+    lineHeight: 16,
+    color: Sirius.color.inkMuted,
+    textAlign: "center",
+  },
+  labelFocused: {
+    fontSize: 15,
+    lineHeight: 18,
+    color: Sirius.color.ink,
+  },
+  labelProject: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: Sirius.color.inkSubtle,
+    textAlign: "center",
+  },
+  labelChip: {
+    borderWidth: 1,
+    borderColor: Sirius.color.accentRing,
+    backgroundColor: Sirius.color.paper,
+    paddingHorizontal: Sirius.space.sm,
+    paddingVertical: 3,
+  },
+  labelPost: {
+    fontFamily: Sirius.font.serif,
+    fontSize: 13,
+    color: Sirius.color.ink,
+  },
 });
