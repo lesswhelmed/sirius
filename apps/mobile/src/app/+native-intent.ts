@@ -16,6 +16,15 @@ export function redirectSystemPath({
     if (path.includes(`dataUrl=${getShareExtensionKey()}`)) {
       return "/shareintent";
     }
+    // App Intents (Shortcuts/Siri "Capture in Sirius") open the app on
+    // siriusapp://capture?text=<encoded>. Custom-scheme parsing can place
+    // "capture" as host or first path segment, so normalize either form to the
+    // /capture route and forward the query string verbatim.
+    const [rawBase, query] = path.split("?");
+    const base = rawBase.replace(/^.*?:\/\//, "").replace(/^\/+/, "");
+    if (base === "capture" || base.endsWith("/capture")) {
+      return query ? `/capture?${query}` : "/capture";
+    }
     return path;
   } catch {
     return "/";
