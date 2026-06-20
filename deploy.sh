@@ -15,7 +15,6 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 WEB_BUILDS_DIR="apps/web/.next-builds"
-DEPLOY_ID="$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
 KEEP_BUILDS=3
 
 # The worker extracts video poster frames via ffmpeg (apps/worker/src/pipeline/
@@ -41,6 +40,11 @@ fi
 
 echo "==> git pull"
 git pull --ff-only origin main
+
+# Compute DEPLOY_ID AFTER the pull so the .next-builds/<id> dir is labeled with the
+# commit actually checked out + built (not the pre-pull HEAD). Mislabeling here was
+# purely cosmetic but misleading during incident triage.
+DEPLOY_ID="$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
 
 echo "==> bun install"
 bun install --frozen-lockfile
