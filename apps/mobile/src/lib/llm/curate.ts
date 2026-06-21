@@ -187,6 +187,12 @@ export async function draftNotePost(
                 buildVoiceInstruction(settings.voiceProfile),
               ),
               temperature: 0.7,
+              // Set EXPLICITLY: the on-device provider maps maxOutputTokens →
+              // the native context's n_predict per call, and an undefined value
+              // inherits a stale cap left by a prior short completion (e.g. the
+              // ask flow's selection step), which truncates the draft. A full
+              // JSON draft needs room, so 1024.
+              maxOutputTokens: 1024,
               abortSignal: controller.signal,
             }),
           );
@@ -270,6 +276,9 @@ export async function draftUrlPost(
                 buildVoiceInstruction(settings.voiceProfile),
               ),
               temperature: 0.7,
+              // Explicit cap — see draftNotePost (avoids inheriting a stale
+              // n_predict from a prior short on-device completion).
+              maxOutputTokens: 1024,
               abortSignal: controller.signal,
             }),
           );
@@ -398,6 +407,8 @@ export async function draftSightPost(
                 },
               ],
               temperature: 0.7,
+              // Explicit cap — see draftNotePost.
+              maxOutputTokens: 1024,
               abortSignal: controller.signal,
             }),
           );
