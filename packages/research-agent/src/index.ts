@@ -14,6 +14,13 @@ export {
   runResearchAgent,
 } from "./agent";
 export {
+  type AskAgentArgs,
+  type AskAgentDeps,
+  type AskAgentRun,
+  type Candidate,
+  runAskAgent,
+} from "./ask-agent";
+export {
   type ResearchStream,
   type StreamAnswerArgs,
   streamResearchAnswer,
