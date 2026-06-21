@@ -89,8 +89,10 @@ mutated turn to turn. This is the precondition for KV-cache reuse.
   same llama context across successive `streamText` calls. If it tears the context down
   per call, that is the true "reload" and the fix is to hold a persistent llama.rn
   context we own. (Verified in Phase 0.)
-- **New conversation:** new thread row + a `resetContext` engine primitive that clears the
-  conversation KV **without** unloading the model (stays warm, just forgets the thread).
+- **New conversation:** a fresh (empty) message thread. A conversation's "memory" *is*
+  the messages array we pass the model, so an empty thread already clears it — no native
+  KV reset is needed (the KV cache is a transparent prefix cache, not retained content).
+  This was simplified from an earlier `resetContext` idea during planning.
 
 ## Components & changes
 
@@ -113,18 +115,16 @@ mutated turn to turn. This is the precondition for KV-cache reuse.
   Sources.
 
 ### `engine.ts`
-- `resetContext()` — clear the resident context's conversation KV without `unload()`.
 - `prewarm(modelId)` — ensure the context is prepared (and warm) ahead of first use.
-- Confirm/handle context reuse across `streamText` calls.
+- Confirm context reuse across `streamText` calls (Phase 0); if the adapter tears the
+  context down per call, own the llama.rn context directly.
 
-### Mobile SQLite schema (`schema.ts` + a migration)
-- Add `parts_json` to `chat_messages`: the structured AI-SDK message parts (tool-call /
-  tool-result / text) so tool turns persist and a reopened thread restores exact context.
-  `content` stays as the plain-text render for the bubble; `sources_json` stays for the
-  Source cards. Backward compatible: old rows have null `parts_json` and reconstruct a
-  plain text turn.
-- `chat.ts`: persist/restore `parts_json`; `createConversation` already exists; wire
-  `resetContext()` into the "New" path.
+### Persistence (no schema change)
+- **Decided in planning:** no `parts_json` migration. Re-feeding old tool-call/tool-result
+  parts every turn would bloat context for no benefit; persisting user/assistant **text**
+  turns + `sources_json` (both columns already exist) is sufficient. Each continued turn
+  re-runs the tools fresh, and old turns' Sources restore from `sources_json`. `chat.ts`
+  and the schema are unchanged.
 
 ### `llm.tsx`
 - Drive the agentic loop; "New" → new thread + `resetContext()`; pre-warm on mount.
@@ -150,8 +150,8 @@ assumed to work.
 0. Spike: tool-calling reliability + context-reuse verification on the sim.
 1. `@repo/research-agent`: `get_post` tool/schema/port + agentic runner + stable prompt.
 2. mobile `tools.ts` full-post fetch; `engine.ts` `resetContext` + `prewarm`.
-3. schema migration (`parts_json`) + `chat.ts` persistence.
-4. `ask.ts` rewired to the chosen runner; `llm.tsx` (new-conversation reset, pre-warm).
+3. `ask.ts` rewired to the chosen runner.
+4. `llm.tsx` pre-warm on mount (new-conversation already clears the thread).
 5. Verify end to end on the sim: speed (no per-turn long pause), selective sources,
    single-post depth, new-conversation memory clear.
 
