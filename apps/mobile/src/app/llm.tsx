@@ -9,6 +9,7 @@ import { streamText } from "ai";
 import { asc, desc, eq } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { router, Stack } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -560,21 +561,24 @@ function Chat({
         options={{
           headerRight: () => (
             <View style={styles.headerBtns}>
+              {/* Icon buttons (not words) so the two actions read as distinct
+                  taps instead of one cluttered text blob inside iOS 26's grouped
+                  header pill. Text fallback covers Android/web (no SF Symbols). */}
               <Pressable
                 onPress={newChat}
                 disabled={Boolean(busy)}
                 accessibilityRole="button"
                 accessibilityLabel="New chat"
                 hitSlop={8}
+                style={busy ? styles.headerActionDisabled : null}
               >
-                <Text
-                  style={[
-                    styles.headerAction,
-                    busy ? styles.headerActionDisabled : null,
-                  ]}
-                >
-                  New
-                </Text>
+                <SymbolView
+                  name="square.and.pencil"
+                  size={22}
+                  weight="semibold"
+                  tintColor={Sirius.color.ink}
+                  fallback={<Text style={styles.headerAction}>New</Text>}
+                />
               </Pressable>
               <Pressable
                 onPress={() => setChatsOpen(true)}
@@ -582,7 +586,13 @@ function Chat({
                 accessibilityLabel="Chats"
                 hitSlop={8}
               >
-                <Text style={styles.headerAction}>Chats</Text>
+                <SymbolView
+                  name="list.bullet"
+                  size={22}
+                  weight="semibold"
+                  tintColor={Sirius.color.ink}
+                  fallback={<Text style={styles.headerAction}>Chats</Text>}
+                />
               </Pressable>
             </View>
           ),
