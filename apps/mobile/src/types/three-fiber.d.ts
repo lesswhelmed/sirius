@@ -1,0 +1,35 @@
+// Register React Three Fiber's `ThreeElements` into the JSX intrinsic-elements
+// namespace that TypeScript resolves under React 19 (`react/jsx-runtime`).
+//
+// Why this shim is needed: R3F v9 ships its `IntrinsicElements extends
+// ThreeElements` augmentation in `@react-three/fiber/dist/.../three-types.d.ts`,
+// but that augmentation only enters the program when fiber is imported as a
+// *value* (side-effecting). The shared `@repo/embedding-scene` scene and several
+// screens reach fiber through `import type { ... } from "@react-three/fiber"`,
+// which is erased — so the augmentation never loads and every Three element
+// (`mesh`, `sphereGeometry`, ...) reports TS2339. This file forces the
+// augmentation in via a side-effecting import and re-declares the merge so it is
+// guaranteed to be present regardless of which fiber entry the app code touches.
+//
+// Mobile mounts the native entry, so we side-effect-import `/native` (which
+// re-exports the three-types augmentation). Do NOT change this to `import type`.
+import "@react-three/fiber/native";
+import type { ThreeElements } from "@react-three/fiber";
+
+declare module "react" {
+  namespace JSX {
+    interface IntrinsicElements extends ThreeElements {}
+  }
+}
+
+declare module "react/jsx-runtime" {
+  namespace JSX {
+    interface IntrinsicElements extends ThreeElements {}
+  }
+}
+
+declare module "react/jsx-dev-runtime" {
+  namespace JSX {
+    interface IntrinsicElements extends ThreeElements {}
+  }
+}

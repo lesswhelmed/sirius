@@ -66,7 +66,8 @@ const FORM_COPY: Record<
   link: {
     title: "Add link",
     label: "URLs (one per line)",
-    placeholder: "https://example.com/post\nhttps://instagram.com/p/…",
+    placeholder:
+      "https://example.com/post\nhttps://instagram.com/p/…\nhttps://x.com/user/status/…",
   },
   note: {
     title: "Add note",
@@ -429,6 +430,7 @@ export function Composer() {
     [tray],
   );
   const igCount = urlPreview.filter((p) => p.kind === "instagram").length;
+  const xCount = urlPreview.filter((p) => p.kind === "x").length;
   const otherUrlCount = urlPreview.filter((p) => p.kind === "other").length;
 
   const addPill = useCallback((kind: PillKind, label: string) => {
@@ -783,7 +785,7 @@ export function Composer() {
         <details open className="surface-raised">
           <summary className="cursor-pointer border-b border-[var(--color-rule)] px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
             Preview ({urlPreview.length} URL
-            {urlPreview.length === 1 ? "" : "s"} · {igCount} IG ·{" "}
+            {urlPreview.length === 1 ? "" : "s"} · {igCount} IG · {xCount} X ·{" "}
             {otherUrlCount} other)
           </summary>
           <ol className="max-h-64 overflow-y-auto">
@@ -797,12 +799,16 @@ export function Composer() {
                 </span>
                 <span
                   className={`shrink-0 font-bold uppercase tracking-[0.16em] ${
-                    entry.kind === "instagram"
+                    entry.kind === "instagram" || entry.kind === "x"
                       ? "text-[var(--color-accent)]"
                       : "text-[var(--fg-muted)]"
                   }`}
                 >
-                  {entry.kind === "instagram" ? "IG" : "URL"}
+                  {entry.kind === "instagram"
+                    ? "IG"
+                    : entry.kind === "x"
+                      ? "X"
+                      : "URL"}
                 </span>
                 <span className="truncate text-[var(--fg-muted)]">
                   {entry.raw}

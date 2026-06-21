@@ -24,11 +24,13 @@ import {
 import { generateText, Output } from "ai";
 import { getAIConfig } from "../lib/ai-config";
 import { parseInstagramUrl } from "../lib/instagram-url";
+import { parseTwitterUrl } from "../lib/twitter-url";
 import { parseYouTubeUrl } from "../lib/youtube-url";
 import { runDocumentGemini } from "./document/runner";
 import { runGitHubGemini } from "./github/runner";
 import { runInstagramGemini } from "./instagram/runner";
 import { extractImageOcr } from "./ocr/extract";
+import { runTwitterGemini } from "./twitter/runner";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 import { runYouTubeGemini } from "./youtube/runner";
 
@@ -251,6 +253,26 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
       } catch (error) {
         console.warn(
           `[instagram] dedicated path failed, falling back to url_context: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    const twitterUrls = input.urls.filter((u) => parseTwitterUrl(u));
+    const nonTwitterUrls = input.urls.filter((u) => !parseTwitterUrl(u));
+    // Single-URL X / Twitter ingest: take the dedicated Apify path. Mixed
+    // batches fall through to url_context so we don't lose the others.
+    if (twitterUrls.length === 1 && nonTwitterUrls.length === 0) {
+      try {
+        const result = await runTwitterGemini({
+          url: twitterUrls[0]!,
+          notes: input.notes,
+          voiceProfile,
+        });
+        if (result) {
+          return result.output;
+        }
+      } catch (error) {
+        console.warn(
+          `[twitter] dedicated path failed, falling back to url_context: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }

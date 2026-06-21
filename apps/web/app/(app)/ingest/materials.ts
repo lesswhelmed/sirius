@@ -158,14 +158,23 @@ export function describeMaterial(material: Material): string {
 export const INSTAGRAM_URL_REGEX =
   /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|tv)\/[A-Za-z0-9_-]+\/?/i;
 
+// An X / Twitter status (tweet) URL — /<user>/status/<id> or /i/web/status/<id>.
+// The worker detects the same host+path and takes its dedicated Apify path.
+export const X_URL_REGEX =
+  /^https?:\/\/(www\.|mobile\.)?(x|twitter)\.com\/[^/]+\/status\/\d{15,20}/i;
+
 export type ParsedUrl =
   | { kind: "instagram"; raw: string }
+  | { kind: "x"; raw: string }
   | { kind: "other"; raw: string }
   | { kind: "invalid"; raw: string; reason: string };
 
 export function classifyUrl(raw: string): ParsedUrl {
   if (INSTAGRAM_URL_REGEX.test(raw)) {
     return { kind: "instagram", raw };
+  }
+  if (X_URL_REGEX.test(raw)) {
+    return { kind: "x", raw };
   }
   if (/^https?:\/\//i.test(raw)) {
     return { kind: "other", raw };

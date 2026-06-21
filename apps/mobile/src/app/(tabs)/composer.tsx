@@ -84,7 +84,8 @@ const FORM_COPY: Record<
   link: {
     title: "Add link",
     label: "URLs (one per line)",
-    placeholder: "https://example.com/post\nhttps://instagram.com/p/…",
+    placeholder:
+      "https://example.com/post\nhttps://instagram.com/p/…\nhttps://x.com/user/status/…",
   },
   note: {
     title: "Add note",

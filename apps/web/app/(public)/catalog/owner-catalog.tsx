@@ -202,11 +202,11 @@ export async function OwnerCatalog({
       <div className="hairline-t mt-7 flex flex-col gap-8 pt-7 lg:flex-row lg:gap-12">
         {ownerCategories.length > 0 || ownerTags.length > 0 ? (
           <aside className="lg:w-[260px] lg:shrink-0">
-            {/* The rail can hold many categories + tags; cap its height to the
-                viewport and let it scroll within itself (mirrors the result
-                region on the right) so a long taxonomy never stretches the page
-                past the posts column. */}
-            <div className="flex flex-col gap-8 lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto lg:pr-2 lg:[scrollbar-color:var(--color-rule-strong)_transparent] lg:[scrollbar-width:thin]">
+            {/* Each filter box (categories, tags) caps its OWN height and scrolls
+                internally, so the rail itself doesn't need to scroll as a whole —
+                a long taxonomy stays inside the categories box without pushing the
+                tag filter off-screen. The rail just sticks alongside the list. */}
+            <div className="flex flex-col gap-8 lg:sticky lg:top-8">
               {ownerCategories.length > 0 ? (
                 <CategoryIndex
                   categories={ownerCategories}
