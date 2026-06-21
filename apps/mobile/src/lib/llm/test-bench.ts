@@ -18,8 +18,11 @@ import type { ScoredPost } from "@repo/research-agent";
 
 import { askMyPosts, type AskPhase } from "@/lib/research/ask";
 
+import { generateText, tool } from "ai";
+import { z } from "zod";
+
 import { draftNotePost, draftUrlPost } from "./curate";
-import { isModelReady } from "./engine";
+import { isModelReady, withPreparedModel } from "./engine";
 import { DEFAULT_TEXT_MODEL_ID } from "./models";
 import { getLlmSettings } from "./settings";
 
@@ -373,4 +376,44 @@ export async function runAskFlowTest(): Promise<FixtureResult> {
   });
 
   return finish(checks.every((c) => c.pass));
+}
+
+// ── Phase-0 spike: does Qwen-3B emit structured tool calls on-device? ─────────
+// Registers a no-execute tool and a prompt that SHOULD trigger it, then logs
+// whether result.toolCalls is populated. Decides full-agentic vs fallback runner.
+export async function runToolProbe(): Promise<void> {
+  const settings = await getLlmSettings();
+  const id = settings.modelId || DEFAULT_TEXT_MODEL_ID;
+  if (!(await isModelReady(id))) {
+    console.log(
+      `[llm-test] ${JSON.stringify({ id: "toolprobe-call", ok: false, detail: `model not ready (${id})` })}`,
+    );
+    return;
+  }
+  const searchTool = tool({
+    description:
+      "Search the user's own saved posts by meaning. Call this whenever the user asks about their own notes or posts.",
+    inputSchema: z.object({ query: z.string() }),
+  });
+  try {
+    const r = await withPreparedModel(id, "chat", (model) =>
+      generateText({
+        model,
+        system:
+          "You can call tools. Call search_posts whenever the user asks about their own saved posts.",
+        messages: [
+          { role: "user", content: "What did I save about hiking in Japan?" },
+        ],
+        tools: { search_posts: searchTool },
+      }),
+    );
+    const calls = r.toolCalls.map((c) => ({ name: c.toolName, input: c.input }));
+    console.log(
+      `[llm-test] ${JSON.stringify({ id: "toolprobe-call", ok: calls.length > 0, calls, text: r.text.slice(0, 80) })}`,
+    );
+  } catch (err) {
+    console.log(
+      `[llm-test] ${JSON.stringify({ id: "toolprobe-call", ok: false, detail: err instanceof Error ? err.message : String(err) })}`,
+    );
+  }
 }

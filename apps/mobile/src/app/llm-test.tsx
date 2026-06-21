@@ -36,6 +36,7 @@ import {
   type FixtureResult,
   runAskFlowTest,
   runDraftFixture,
+  runToolProbe,
   runTranscriptDraft,
   runUrlDraft,
   URL_EXTRACT_FIXTURE,
@@ -45,6 +46,11 @@ import {
   prepareTranscription,
   transcribeAudio,
 } from "@/lib/llm/transcribe";
+
+const TOOL_PROBE_FIXTURE = {
+  id: "toolprobe",
+  label: "Tool-calling probe (Phase 0 spike)",
+} as const;
 
 export default function LlmTestScreen() {
   if (!__DEV__ || !ON_DEVICE_AI_ENABLED) {
@@ -110,6 +116,36 @@ function Bench() {
     }
   }
 
+  async function runToolProbeRun() {
+    if (runningId) {
+      return;
+    }
+    setRunningId(TOOL_PROBE_FIXTURE.id);
+    const start = Date.now();
+    try {
+      await runToolProbe();
+      const sentinel: FixtureResult = {
+        id: TOOL_PROBE_FIXTURE.id,
+        ok: true,
+        ms: Date.now() - start,
+        draft: null,
+        checks: [],
+      };
+      setResults((prev) => ({ ...prev, [TOOL_PROBE_FIXTURE.id]: sentinel }));
+    } catch {
+      const sentinel: FixtureResult = {
+        id: TOOL_PROBE_FIXTURE.id,
+        ok: false,
+        ms: Date.now() - start,
+        draft: null,
+        checks: [],
+      };
+      setResults((prev) => ({ ...prev, [TOOL_PROBE_FIXTURE.id]: sentinel }));
+    } finally {
+      setRunningId(null);
+    }
+  }
+
   async function runAll() {
     if (runningId) {
       return;
@@ -125,6 +161,7 @@ function Bench() {
     }
     await runUrl();
     await runAskFlow();
+    await runToolProbeRun();
     console.log("[llm-test] run-all-done");
   }
 
@@ -137,11 +174,17 @@ function Bench() {
       return;
     }
     const run = params.run;
-    // "ask" does its own model-readiness gating inside the runner (isModelReady),
-    // so it doesn't wait on the canDraftOnDevice `ready` gate the draft fixtures need.
+    // "ask" / "toolprobe" do their own model-readiness gating inside the runner
+    // (isModelReady), so they don't wait on the canDraftOnDevice `ready` gate the
+    // draft fixtures need.
     if (run === "ask") {
       autoran.current = true;
       const t = setTimeout(() => void runAskFlow(), 0);
+      return () => clearTimeout(t);
+    }
+    if (run === "toolprobe") {
+      autoran.current = true;
+      const t = setTimeout(() => void runToolProbeRun(), 0);
       return () => clearTimeout(t);
     }
     if (ready.data !== true) {
@@ -358,6 +401,54 @@ function Bench() {
               {check.pass ? "✓" : "✗"} {check.name} — {check.detail}
             </Text>
           ))}
+        </Pressable>
+        <MetaText style={styles.eyebrow}>
+          Tool-calling probe (Phase 0 spike)
+        </MetaText>
+        <PrimaryButton
+          label={
+            runningId === TOOL_PROBE_FIXTURE.id
+              ? "Probing…"
+              : "Run tool-calling probe"
+          }
+          onPress={() => void runToolProbeRun()}
+          disabled={Boolean(runningId)}
+        />
+        <Pressable
+          style={styles.card}
+          onLongPress={() => void runToolProbeRun()}
+        >
+          <View style={styles.cardHeader}>
+            <StatusPip
+              label={
+                runningId === TOOL_PROBE_FIXTURE.id
+                  ? "running"
+                  : results[TOOL_PROBE_FIXTURE.id]
+                    ? results[TOOL_PROBE_FIXTURE.id]!.ok
+                      ? "pass"
+                      : "fail"
+                    : "idle"
+              }
+              color={
+                runningId === TOOL_PROBE_FIXTURE.id
+                  ? Sirius.color.accent
+                  : results[TOOL_PROBE_FIXTURE.id]
+                    ? results[TOOL_PROBE_FIXTURE.id]!.ok
+                      ? "#2c7a4b"
+                      : "#a33"
+                    : Sirius.color.inkSubtle
+              }
+            />
+            <Text style={styles.cardTitle}>
+              {TOOL_PROBE_FIXTURE.label} — check Metro for{" "}
+              {`{"id":"toolprobe-call","ok":...}`}
+            </Text>
+            {results[TOOL_PROBE_FIXTURE.id] ? (
+              <Text style={styles.dim}>
+                {(results[TOOL_PROBE_FIXTURE.id]!.ms / 1000).toFixed(1)}s
+              </Text>
+            ) : null}
+          </View>
         </Pressable>
         {done.length > 0 ? (
           <Text style={styles.summary}>
