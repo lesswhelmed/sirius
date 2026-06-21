@@ -12,6 +12,8 @@ import { type SearchOptions, searchPosts } from "./search";
 
 export const POST_SEARCH_TOOL_NAME = "search_posts";
 
+export const GET_POST_TOOL_NAME = "get_post";
+
 export function createPostSearchTool(
   ports: SearchPorts,
   defaults: Pick<SearchOptions, "topK" | "minScore"> = {},

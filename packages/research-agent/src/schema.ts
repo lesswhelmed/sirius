@@ -36,3 +36,14 @@ export const PostSearchOutputSchema = z.object({
 });
 
 export type PostSearchOutput = z.infer<typeof PostSearchOutputSchema>;
+
+export const GetPostInputSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .describe(
+      "The id of a post to open in full, taken from a search_posts result.",
+    ),
+});
+
+export type GetPostInput = z.infer<typeof GetPostInputSchema>;

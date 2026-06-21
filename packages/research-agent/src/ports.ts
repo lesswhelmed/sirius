@@ -20,6 +20,22 @@ export interface ScoredPost extends PostRef {
   score: number;
 }
 
+// A single post opened in full by the agent (get_post tool). Carries the whole
+// body + metadata so the model can answer in depth about one post, unlike the
+// excerpt-only candidates search_posts returns. `id` is the server id; `slug`
+// deep-links the Sources card. `createdAt` is an ISO string (host-formatted) so
+// this stays runtime-agnostic.
+export interface FullPost {
+  id: string;
+  slug: string;
+  title: string;
+  body: string;
+  excerpt: string | null;
+  tags: string[];
+  categories: string[];
+  createdAt: string | null;
+}
+
 // A post's stored vector, as returned by the vector store for ranking. The vector
 // is a Float32Array (compact, matches how it round-trips through a SQLite blob).
 export interface StoredVector extends PostRef {

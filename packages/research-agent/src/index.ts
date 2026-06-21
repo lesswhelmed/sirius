@@ -26,6 +26,7 @@ export {
 } from "./decide";
 export { contentHash } from "./hash";
 export type {
+  FullPost,
   PostRef,
   PostVectorStore,
   ResearchPorts,
@@ -34,8 +35,15 @@ export type {
   StoredVector,
   VectorUpsert,
 } from "./ports";
-export { buildAnswerSystem, formatPostsBlock, SYSTEM_PROMPT } from "./prompt";
 export {
+  AGENT_SYSTEM_PROMPT,
+  buildAnswerSystem,
+  formatPostsBlock,
+  SYSTEM_PROMPT,
+} from "./prompt";
+export {
+  type GetPostInput,
+  GetPostInputSchema,
   type PostSearchInput,
   PostSearchInputSchema,
   type PostSearchOutput,
@@ -43,4 +51,4 @@ export {
   ScoredPostSchema,
 } from "./schema";
 export { type SearchOptions, searchPosts } from "./search";
-export { createPostSearchTool, POST_SEARCH_TOOL_NAME } from "./tool";
+export { createPostSearchTool, GET_POST_TOOL_NAME, POST_SEARCH_TOOL_NAME } from "./tool";
