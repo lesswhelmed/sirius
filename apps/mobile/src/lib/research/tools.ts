@@ -5,16 +5,13 @@
 // for the source cards, and the (capped) post body for the answer context so the
 // model can describe real details instead of just restating a title.
 import type { FullPost } from "@repo/research-agent";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { posts } from "@/lib/db/schema";
 
-// Source cards stay compact; the answer model gets the fuller body (below).
+// Source cards stay compact; the answer model gets the full body (fullPostById).
 const EXCERPT_CAP = 240;
-// Per-post body slice handed to the answer model. Wide enough to carry real
-// detail, capped so a handful of posts still fit the 3B model's context.
-const BODY_CAP = 1000;
 
 function clip(text: string, cap: number): string {
   const t = text.trim();
@@ -27,15 +24,10 @@ export function trimExcerpt(excerpt: string | null): string | null {
   return clip(excerpt, EXCERPT_CAP);
 }
 
-// Capped post bodies keyed by serverId, for the retrieved posts only. Used to
-// enrich the answer context (formatPostsBlock renders each post's `excerpt` slot,
-// so ask.ts swaps in these bodies for the answer-only copy of the posts).
-
-// Reads ONE post in full for the get_post tool: the whole body (not the BODY_CAP
-// slice the old answer context used) plus tags/categories/date, so the agent can
-// answer in depth about a single post. Returns null if the post is missing, has no
-// slug (can't deep-link), or is empty. Matches on serverId — the id the agent gets
-// from a search_posts candidate.
+// Reads ONE post in full: the whole body plus tags/categories/date, so the answer
+// can go deep on a single post instead of restating a blurb. Returns null if the
+// post is missing, has no slug (can't deep-link), or is empty. Matches on serverId
+// — the id carried by a search candidate.
 export async function fullPostById(id: string): Promise<FullPost | null> {
   const [row] = await db
     .select({
@@ -63,21 +55,4 @@ export async function fullPostById(id: string): Promise<FullPost | null> {
     categories: row.categories ?? [],
     createdAt: row.createdAt ? row.createdAt.toISOString() : null,
   };
-}
-
-export async function bodiesByServerIds(
-  serverIds: string[],
-): Promise<Map<string, string>> {
-  if (serverIds.length === 0) return new Map();
-  const rows = await db
-    .select({ serverId: posts.serverId, body: posts.body })
-    .from(posts)
-    .where(inArray(posts.serverId, serverIds));
-  const out = new Map<string, string>();
-  for (const r of rows) {
-    if (r.serverId && r.body && r.body.trim().length > 0) {
-      out.set(r.serverId, clip(r.body, BODY_CAP));
-    }
-  }
-  return out;
 }

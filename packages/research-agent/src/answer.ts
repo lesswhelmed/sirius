@@ -29,6 +29,13 @@ export interface StreamAnswerArgs {
   posts: ScoredPost[];
   // Lower than free chat (0.7): grounded answers should stick to the sources.
   temperature?: number;
+  // Output budget for the answer. Set EXPLICITLY (default 800 ≈ a few
+  // paragraphs) rather than left undefined: the on-device llama provider maps
+  // maxOutputTokens → the native context's n_predict, and an undefined value can
+  // inherit a stale cap left by a prior short completion — which truncated
+  // answers to a single token. An explicit value both prevents that and bounds
+  // runaway generation.
+  maxOutputTokens?: number;
   abortSignal?: AbortSignal;
 }
 
@@ -40,6 +47,7 @@ export function streamResearchAnswer(args: StreamAnswerArgs): ResearchStream {
     system: buildAnswerSystem(args.posts),
     messages: args.messages,
     temperature: args.temperature ?? 0.4,
+    maxOutputTokens: args.maxOutputTokens ?? 800,
     abortSignal: args.abortSignal,
   }) as unknown as ResearchStream;
 }

@@ -5,7 +5,6 @@
 
 import type { ScoredPost } from "@repo/research-agent";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { streamText } from "ai";
 import { asc, desc, eq } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { router, Stack } from "expo-router";
@@ -37,7 +36,6 @@ import {
   createConversation,
   deleteConversation,
   getMostRecentConversationId,
-  setConversationMode,
 } from "@/lib/db/chat";
 import { db } from "@/lib/db/client";
 import { chatConversations, chatMessages } from "@/lib/db/schema";
@@ -48,7 +46,6 @@ import {
   isModelReady,
   modelBusyBy,
   prewarm,
-  withPreparedModel,
 } from "@/lib/llm/engine";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { formatSize, modelSpec, textModels } from "@/lib/llm/models";
@@ -59,14 +56,10 @@ import {
 } from "@/lib/llm/transcribe";
 import { askMyPosts } from "@/lib/research/ask";
 
-// Chat modes: "ask" grounds answers in the user's own posts (on-device semantic
-// search + cited Sources); "chat" is the original free on-device conversation.
-type ChatMode = "ask" | "chat";
-
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
-  // Posts the answer was grounded in (ask mode only) — rendered as tappable Sources.
+  // The posts the assistant chose to ground this answer in — tappable Sources.
   sources?: ScoredPost[];
 };
 
@@ -365,7 +358,6 @@ function Chat({
   // SQLite, so leaving and returning to this screen restores where you were
   // instead of resetting to empty.
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [mode, setMode] = useState<ChatMode>("ask");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<BusyState>(null);
   const [error, setError] = useState<string | null>(null);
@@ -383,22 +375,21 @@ function Chat({
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 44;
 
-  // "Ask my posts" needs no on-device model: the query is embedded server-side
-  // (same gemini space as the synced post vectors — see lib/research/ask) and
-  // documents arrive pre-embedded via post sync. So ask mode is always available;
-  // the only requirement is the chat model the outer screen already gated on.
+  // The assistant always grounds in the user's own posts when relevant: it
+  // searches the library, picks the posts that matter, and cites them — and just
+  // answers directly when the question doesn't need them. No mode to choose. The
+  // query is embedded server-side (same gemini space as the synced post vectors,
+  // see lib/research/ask), so the only requirement is the chat model the outer
+  // screen already gated on.
 
-  // Restore the most recent conversation (and its last mode) once on mount.
+  // Restore the most recent conversation once on mount.
   const restored = useRef(false);
   useEffect(() => {
     if (restored.current) return;
     restored.current = true;
     void (async () => {
       const id = await getMostRecentConversationId();
-      if (id) {
-        setConversationId(id);
-        await loadConversationMode(id);
-      }
+      if (id) setConversationId(id);
     })();
   }, []);
 
@@ -436,20 +427,6 @@ function Chat({
     return base;
   }, [messageRows, busy, streamingText]);
 
-  async function loadConversationMode(id: string) {
-    const [row] = await db
-      .select({ mode: chatConversations.mode })
-      .from(chatConversations)
-      .where(eq(chatConversations.id, id))
-      .limit(1);
-    if (row?.mode) setMode(row.mode);
-  }
-
-  const onChangeMode = (m: ChatMode) => {
-    setMode(m);
-    if (conversationId) void setConversationMode(conversationId, m);
-  };
-
   const newChat = () => {
     if (busy) return;
     setConversationId(null);
@@ -460,7 +437,6 @@ function Chat({
     setConversationId(id);
     setChatsOpen(false);
     setError(null);
-    void loadConversationMode(id);
   };
 
   // Removing the open thread drops us back to the empty state.
@@ -480,7 +456,7 @@ function Chat({
     // Ensure a thread exists (lazy create on the first message of a new chat).
     let convoId = conversationId;
     if (!convoId) {
-      convoId = await createConversation(mode);
+      convoId = await createConversation();
       setConversationId(convoId);
     }
 
@@ -496,57 +472,36 @@ function Chat({
     setStreamingText("");
 
     try {
-      if (mode === "ask") {
-        // Qwen-driven router: the chat model parses the question and decides
-        // whether to search the library (via a search_posts tool call) before
-        // answering — the embedding search runs only if it asks for it. The
-        // "waiting" phase means curation currently holds the single model.
-        setBusy("deciding");
-        let assistant = "";
-        const { sources } = await askMyPosts({
-          chatModelId: modelId,
-          messages: modelMessages,
-          onPhase: (phase) =>
-            setBusy(
-              phase === "searching"
-                ? "searching"
-                : phase === "waiting"
-                  ? "waiting"
-                  : phase === "answering"
-                    ? "preparing"
-                    : "deciding",
-            ),
-          onDelta: (delta) => {
-            assistant += delta;
-            setBusy("generating");
-            setStreamingText(assistant);
-          },
-        });
-        await appendMessage(convoId, {
-          role: "assistant",
-          content: assistant,
-          sources,
-        });
-      } else {
-        setBusy(modelBusyBy() === "draft" ? "waiting" : "preparing");
-        let assistant = "";
-        await withPreparedModel(modelId, "chat", async (model) => {
+      // The assistant searches the library, picks the posts that matter, and
+      // streams a grounded answer citing them — or just answers when the question
+      // doesn't need them. The "waiting" phase means a draft currently holds the
+      // single model slot.
+      setBusy("deciding");
+      let assistant = "";
+      const { sources } = await askMyPosts({
+        chatModelId: modelId,
+        messages: modelMessages,
+        onPhase: (phase) =>
+          setBusy(
+            phase === "searching"
+              ? "searching"
+              : phase === "waiting"
+                ? "waiting"
+                : phase === "answering"
+                  ? "generating"
+                  : "deciding",
+          ),
+        onDelta: (delta) => {
+          assistant += delta;
           setBusy("generating");
-          const { textStream } = streamText({
-            model,
-            messages: modelMessages,
-            temperature: 0.7,
-          });
-          for await (const delta of textStream) {
-            assistant += delta;
-            setStreamingText(assistant);
-          }
-        });
-        await appendMessage(convoId, {
-          role: "assistant",
-          content: assistant,
-        });
-      }
+          setStreamingText(assistant);
+        },
+      });
+      await appendMessage(convoId, {
+        role: "assistant",
+        content: assistant,
+        sources,
+      });
     } catch (err) {
       setError(describeLlmError(err));
     } finally {
@@ -604,11 +559,6 @@ function Chat({
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
         >
-          <ModeToggle
-            mode={mode}
-            onChange={onChangeMode}
-            disabled={Boolean(busy)}
-          />
           <ScrollView
             ref={scrollRef}
             style={styles.flex}
@@ -623,9 +573,8 @@ function Chat({
               <View style={styles.empty}>
                 <MetaText style={styles.cardEyebrow}>{modelLabel}</MetaText>
                 <Text style={styles.modelDetail}>
-                  {mode === "ask"
-                    ? "Ask anything about your own posts. Answers are grounded in your library and link back to the sources — all on this device."
-                    : "Running locally on this device. Nothing you type here leaves the phone."}
+                  Ask anything about your own posts. Answers are grounded in your
+                  library and link back to the sources — all on this device.
                 </Text>
                 <TranscriptionAssets />
                 {__DEV__ ? (
@@ -674,9 +623,7 @@ function Chat({
               style={styles.input}
               value={input}
               onChangeText={setInput}
-              placeholder={
-                mode === "ask" ? "Ask about your posts…" : "Say something…"
-              }
+              placeholder="Ask about your posts…"
               placeholderTextColor={Sirius.color.inkSubtle}
               accessibilityLabel="Message"
               multiline
@@ -769,9 +716,6 @@ function ChatsModal({
                   <Text style={styles.chatRowTitle} numberOfLines={1}>
                     {c.title ?? "New chat"}
                   </Text>
-                  <MetaText>
-                    {c.mode === "ask" ? "Ask my posts" : "Chat"}
-                  </MetaText>
                 </Pressable>
                 <Pressable
                   onPress={() => onDelete(c.id)}
@@ -787,49 +731,6 @@ function ChatsModal({
         </ScrollView>
       </Screen>
     </Modal>
-  );
-}
-
-// Segmented control between grounding answers in the user's posts and free chat.
-function ModeToggle({
-  mode,
-  onChange,
-  disabled,
-}: {
-  mode: ChatMode;
-  onChange: (m: ChatMode) => void;
-  disabled?: boolean;
-}) {
-  const options: { id: ChatMode; label: string }[] = [
-    { id: "ask", label: "Ask my posts" },
-    { id: "chat", label: "Chat" },
-  ];
-  return (
-    <View style={styles.toggle}>
-      {options.map((o) => {
-        const active = o.id === mode;
-        return (
-          <Pressable
-            key={o.id}
-            style={[styles.toggleBtn, active ? styles.toggleBtnActive : null]}
-            onPress={() => onChange(o.id)}
-            disabled={disabled}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={o.label}
-          >
-            <Text
-              style={[
-                styles.toggleLabel,
-                active ? styles.toggleLabelActive : null,
-              ]}
-            >
-              {o.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
   );
 }
 

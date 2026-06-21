@@ -5,7 +5,12 @@ const {
 const fs = require("fs");
 const path = require("path");
 
-const SWIFT_FILES = ["CaptureInSiriusIntent.swift", "SiriusShortcuts.swift"];
+const SWIFT_FILES = [
+  "CaptureInSiriusIntent.swift",
+  "QuickCaptureIntent.swift",
+  "SiriusCredentialStore.swift",
+  "SiriusShortcuts.swift",
+];
 
 // Copy the App Intent Swift sources into the prebuilt iOS app target and
 // register them in the Sources build phase. ios/ is gitignored and regenerated

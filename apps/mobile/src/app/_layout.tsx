@@ -8,7 +8,6 @@ import {
   router,
   Stack,
   ThemeProvider,
-  usePathname,
 } from "expo-router";
 import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
@@ -20,6 +19,10 @@ import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { Screen } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import { useSession } from "@/lib/auth-client";
+import {
+  clearCaptureCredentials,
+  syncCaptureCredentials,
+} from "@/lib/capture-credentials";
 import { runMigrations } from "@/lib/db/client";
 import { ensureLocalOwner } from "@/lib/db/owner";
 // Side-effect import: defines the background sync task at global scope so
@@ -59,6 +62,9 @@ function SyncRunner() {
   useEffect(() => {
     if (!userId) {
       stopSync();
+      // Drop the mirrored Siri-capture cookie so a background dictation can't
+      // submit as the signed-out user.
+      clearCaptureCredentials();
       return;
     }
     let cancelled = false;
@@ -70,6 +76,8 @@ function SyncRunner() {
       }
       if (!cancelled) startSync();
     })();
+    // Mirror the freshly-signed-in cookie for hands-free Siri capture.
+    syncCaptureCredentials();
     return () => {
       cancelled = true;
     };
@@ -107,12 +115,25 @@ function useDbReady(): { ready: boolean; error: Error | null } {
 
 function ShareIntentNavigator() {
   const { hasShareIntent } = useShareIntentContext();
-  const pathname = usePathname();
+  // Edge-trigger the push: open the share pane exactly ONCE per share, on the
+  // rising edge of hasShareIntent. The old code level-triggered on
+  // `hasShareIntent && pathname !== "/shareintent"`, but resetShareIntent() is
+  // async — on Done/dismiss we navigate away synchronously while hasShareIntent
+  // is still true for one render, so the pathname change re-fired this effect and
+  // re-pushed an already-emptied pane → the spurious "Nothing shared" sheet (and,
+  // on a cold-launch share, the extra bounce to a tab). The latch clears when
+  // hasShareIntent goes false, so the next genuine share still opens the pane.
+  const pushed = React.useRef(false);
   useEffect(() => {
-    if (hasShareIntent && pathname !== "/shareintent") {
-      router.push("/shareintent");
+    if (hasShareIntent) {
+      if (!pushed.current) {
+        pushed.current = true;
+        router.push("/shareintent");
+      }
+    } else {
+      pushed.current = false;
     }
-  }, [hasShareIntent, pathname]);
+  }, [hasShareIntent]);
   return null;
 }
 

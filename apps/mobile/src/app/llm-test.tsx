@@ -31,11 +31,15 @@ import { Sirius } from "@/constants/theme";
 import { canDraftOnDevice } from "@/lib/llm/curate";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import {
+  ANSWER_QUALITY_FIXTURE,
   ASK_FLOW_FIXTURE,
   DRAFT_FIXTURES,
   type FixtureResult,
+  GEN_DIAG_FIXTURE,
+  runAnswerQualityTest,
   runAskFlowTest,
   runDraftFixture,
+  runGenDiagnostic,
   runToolProbe,
   runTranscriptDraft,
   runUrlDraft,
@@ -116,6 +120,32 @@ function Bench() {
     }
   }
 
+  async function runGenDiag() {
+    if (runningId) {
+      return;
+    }
+    setRunningId(GEN_DIAG_FIXTURE.id);
+    try {
+      const result = await runGenDiagnostic();
+      setResults((prev) => ({ ...prev, [GEN_DIAG_FIXTURE.id]: result }));
+    } finally {
+      setRunningId(null);
+    }
+  }
+
+  async function runAnswerQuality() {
+    if (runningId) {
+      return;
+    }
+    setRunningId(ANSWER_QUALITY_FIXTURE.id);
+    try {
+      const result = await runAnswerQualityTest();
+      setResults((prev) => ({ ...prev, [ANSWER_QUALITY_FIXTURE.id]: result }));
+    } finally {
+      setRunningId(null);
+    }
+  }
+
   async function runToolProbeRun() {
     if (runningId) {
       return;
@@ -160,6 +190,8 @@ function Bench() {
       }
     }
     await runUrl();
+    await runGenDiag();
+    await runAnswerQuality();
     await runAskFlow();
     await runToolProbeRun();
     console.log("[llm-test] run-all-done");
@@ -185,6 +217,16 @@ function Bench() {
     if (run === "toolprobe") {
       autoran.current = true;
       const t = setTimeout(() => void runToolProbeRun(), 0);
+      return () => clearTimeout(t);
+    }
+    if (run === "gen-diag") {
+      autoran.current = true;
+      const t = setTimeout(() => void runGenDiag(), 0);
+      return () => clearTimeout(t);
+    }
+    if (run === "answer") {
+      autoran.current = true;
+      const t = setTimeout(() => void runAnswerQuality(), 0);
       return () => clearTimeout(t);
     }
     if (ready.data !== true) {
@@ -342,6 +384,113 @@ function Bench() {
               )}
             </Text>
           ) : null}
+        </Pressable>
+        <MetaText style={styles.eyebrow}>Answers clearly about a post</MetaText>
+        <PrimaryButton
+          label={
+            runningId === ANSWER_QUALITY_FIXTURE.id
+              ? "Asking…"
+              : "Run answer-quality test"
+          }
+          onPress={() => void runAnswerQuality()}
+          disabled={Boolean(runningId)}
+        />
+        <Pressable
+          style={styles.card}
+          onLongPress={() => void runAnswerQuality()}
+        >
+          <View style={styles.cardHeader}>
+            <StatusPip
+              label={
+                runningId === ANSWER_QUALITY_FIXTURE.id
+                  ? "running"
+                  : results[ANSWER_QUALITY_FIXTURE.id]
+                    ? results[ANSWER_QUALITY_FIXTURE.id]!.ok
+                      ? "pass"
+                      : "fail"
+                    : "idle"
+              }
+              color={
+                runningId === ANSWER_QUALITY_FIXTURE.id
+                  ? Sirius.color.accent
+                  : results[ANSWER_QUALITY_FIXTURE.id]
+                    ? results[ANSWER_QUALITY_FIXTURE.id]!.ok
+                      ? "#2c7a4b"
+                      : "#a33"
+                    : Sirius.color.inkSubtle
+              }
+            />
+            <Text style={styles.cardTitle}>
+              {ANSWER_QUALITY_FIXTURE.label} — real askMyPosts answers
+              substantively (not the 1-char regression) + cites the post
+            </Text>
+            {results[ANSWER_QUALITY_FIXTURE.id] ? (
+              <Text style={styles.dim}>
+                {(results[ANSWER_QUALITY_FIXTURE.id]!.ms / 1000).toFixed(1)}s
+              </Text>
+            ) : null}
+          </View>
+          {results[ANSWER_QUALITY_FIXTURE.id]?.checks.map((check) => (
+            <Text
+              key={check.name}
+              style={check.pass ? styles.checkPass : styles.checkFail}
+            >
+              {check.pass ? "✓" : "✗"} {check.name} — {check.detail}
+            </Text>
+          ))}
+        </Pressable>
+        <MetaText style={styles.eyebrow}>
+          Generation isn&apos;t truncated (n_predict)
+        </MetaText>
+        <PrimaryButton
+          label={
+            runningId === GEN_DIAG_FIXTURE.id
+              ? "Running…"
+              : "Run generation diagnostic"
+          }
+          onPress={() => void runGenDiag()}
+          disabled={Boolean(runningId)}
+        />
+        <Pressable style={styles.card} onLongPress={() => void runGenDiag()}>
+          <View style={styles.cardHeader}>
+            <StatusPip
+              label={
+                runningId === GEN_DIAG_FIXTURE.id
+                  ? "running"
+                  : results[GEN_DIAG_FIXTURE.id]
+                    ? results[GEN_DIAG_FIXTURE.id]!.ok
+                      ? "pass"
+                      : "fail"
+                    : "idle"
+              }
+              color={
+                runningId === GEN_DIAG_FIXTURE.id
+                  ? Sirius.color.accent
+                  : results[GEN_DIAG_FIXTURE.id]
+                    ? results[GEN_DIAG_FIXTURE.id]!.ok
+                      ? "#2c7a4b"
+                      : "#a33"
+                    : Sirius.color.inkSubtle
+              }
+            />
+            <Text style={styles.cardTitle}>
+              {GEN_DIAG_FIXTURE.label} — uncapped, then 1-token, then uncapped
+              again (the last must stay full)
+            </Text>
+            {results[GEN_DIAG_FIXTURE.id] ? (
+              <Text style={styles.dim}>
+                {(results[GEN_DIAG_FIXTURE.id]!.ms / 1000).toFixed(1)}s
+              </Text>
+            ) : null}
+          </View>
+          {results[GEN_DIAG_FIXTURE.id]?.checks.map((check) => (
+            <Text
+              key={check.name}
+              style={check.pass ? styles.checkPass : styles.checkFail}
+            >
+              {check.pass ? "✓" : "✗"} {check.name} — {check.detail}
+            </Text>
+          ))}
         </Pressable>
         <MetaText style={styles.eyebrow}>Ask my posts (full chat flow)</MetaText>
         <PrimaryButton

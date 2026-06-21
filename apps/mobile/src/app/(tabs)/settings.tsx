@@ -2,6 +2,8 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Linking,
+  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -119,6 +121,31 @@ export default function SettingsScreen() {
     });
   }
 
+  function handleSetupSiriCapture() {
+    // Apple has no in-app "record a phrase" control for App Intents, so we guide
+    // the user to the Shortcuts app where they add the "Quick Capture" action and
+    // record ANY trigger phrase ("note to self", "jot this") — no app name
+    // required. Saying it then runs the background intent hands-free.
+    Alert.alert(
+      "Hands-free capture with Siri",
+      'In Shortcuts, tap +, add "Quick Capture" from Sirius, then tap the action and record your own phrase — like "note to self". Say it anytime and Siri will ask what to capture, no tapping.',
+      [
+        { text: "Not now", style: "cancel" },
+        {
+          text: "Open Shortcuts",
+          onPress: () => {
+            void Linking.openURL("shortcuts://").catch(() => {
+              Alert.alert(
+                "Couldn’t open Shortcuts",
+                "Open the Shortcuts app manually to set up your phrase.",
+              );
+            });
+          },
+        },
+      ],
+    );
+  }
+
   async function handleSignOut() {
     // Wipe the biometric vault on sign-out so a saved password never outlives
     // the session on a shared device.
@@ -169,6 +196,26 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <VoiceSection />
         </View>
+
+        {/* Hands-free capture — say your own phrase, dictate, and it queues
+            without opening the app. iOS/Siri only. */}
+        {Platform.OS === "ios" ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Hands-free capture</Text>
+            <View style={styles.card}>
+              <Text style={styles.toggleSub}>
+                Say a phrase to Siri and dictate a note straight into your queue —
+                no tapping, the app stays closed. Pick your own phrase like “note
+                to self”.
+              </Text>
+            </View>
+            <SecondaryButton
+              label="Set up Siri capture"
+              symbol="mic"
+              onPress={handleSetupSiriCapture}
+            />
+          </View>
+        ) : null}
 
         {/* Security */}
         <View style={styles.section}>

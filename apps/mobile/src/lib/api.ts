@@ -2,6 +2,7 @@ import { FileSystemUploadType, uploadAsync } from "expo-file-system/legacy";
 
 import { authBaseURL, authClient, getSession, signOut } from "./auth-client";
 import { clearAuthStorage, inspectStoredCookie } from "./auth-recovery";
+import { syncCaptureCredentials } from "./capture-credentials";
 
 type Json = string | number | boolean | null | { [k: string]: Json } | Json[];
 
@@ -79,7 +80,15 @@ export type SessionState = "valid" | "none" | "unknown";
 export function checkServerSession(): Promise<SessionState> {
   if (!inFlightState) {
     inFlightState = getSession({ query: { disableCookieCache: true } })
-      .then(({ data }): SessionState => (data != null ? "valid" : "none"))
+      .then(({ data }): SessionState => {
+        if (data != null) {
+          // A valid re-check just refreshed the stored cookie; re-mirror it so
+          // the hands-free Siri capture intent uses the rotated value.
+          syncCaptureCredentials();
+          return "valid";
+        }
+        return "none";
+      })
       .catch((): SessionState => "unknown")
       .finally(() => {
         inFlightState = null;

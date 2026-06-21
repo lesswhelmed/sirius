@@ -26,13 +26,18 @@ function deriveTitle(text: string): string {
   return `${trimmed.slice(0, TITLE_MAX - 1).trimEnd()}…`;
 }
 
-/** Create a new (empty, untitled) conversation and return its id. */
-export async function createConversation(mode: ChatMode): Promise<string> {
+/**
+ * Create a new (empty, untitled) conversation and return its id. The `mode`
+ * column is retained at its "ask" default for back-compat with existing rows —
+ * the chat is a single unified assistant now (no ask/chat toggle), so it's no
+ * longer a user choice.
+ */
+export async function createConversation(): Promise<string> {
   const id = randomUUID();
   const now = new Date();
   await db
     .insert(chatConversations)
-    .values({ id, title: null, mode, createdAt: now, updatedAt: now });
+    .values({ id, title: null, mode: "ask", createdAt: now, updatedAt: now });
   return id;
 }
 
@@ -69,17 +74,6 @@ export async function appendMessage(
   await db
     .update(chatConversations)
     .set(update)
-    .where(eq(chatConversations.id, conversationId));
-}
-
-/** Remember the last selected mode so the toggle restores when the thread reopens. */
-export async function setConversationMode(
-  conversationId: string,
-  mode: ChatMode,
-): Promise<void> {
-  await db
-    .update(chatConversations)
-    .set({ mode })
     .where(eq(chatConversations.id, conversationId));
 }
 

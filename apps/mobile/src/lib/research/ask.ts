@@ -1,31 +1,44 @@
-// Query-time half of "ask my posts" — SEMANTIC retrieval over the user's own
-// posts. The query is embedded SERVER-SIDE (the device has no working text encoder
-// — see engine.ts) and ranked against the gemini document vectors synced into the
-// local post_vectors index (filled by sync/reconcile from the post delta). That
-// returns the few genuinely-relevant posts — not a category dump — which then
-// ground a streamed answer. The answer model sees each retrieved post's capped
-// BODY (not just its title) so it can describe real detail.
+// Query-time "ask my posts" — SEMANTIC retrieval over the user's own posts, with
+// the chat model CHOOSING which retrieved posts actually matter before it answers.
 //
-// Two model phases? No — retrieval needs no model at all (a server embed + a local
-// cosine scan), so only the answer step uses the resident chat-model slot.
+// Flow (single resident model, no model-initiated tool calls — robust on a small
+// on-device model):
+//   1. search  — embed the query SERVER-SIDE (the device has no text encoder) and
+//                cosine-rank the local post_vectors index → a handful of candidates.
+//   2. select  — the model picks which candidates are relevant (plain-text reply,
+//                NOT tool-calling / Output.object, both of which misbehave on
+//                llama.rn 0.12.4). Only the chosen posts get opened in full.
+//   3. answer  — stream a grounded answer over ONLY the opened posts' full bodies,
+//                so context stays lean and the answer can go deep on one post.
+// Sources shown = exactly the posts the model chose (not the whole candidate set).
+//
+// If the query-embed call fails (offline), surface a clear message rather than a
+// silent empty result — semantic search has no offline fallback by design.
 import {
   type ScoredPost,
   searchPosts,
   streamResearchAnswer,
 } from "@repo/research-agent";
-import type { ModelMessage } from "ai";
+import { generateText, type ModelMessage } from "ai";
 
 import { modelBusyBy, withPreparedModel } from "@/lib/llm/engine";
 
 import { embedQuery, EmbedQueryError } from "./embed-query";
-import { bodiesByServerIds, trimExcerpt } from "./tools";
+import { fullPostById, trimExcerpt } from "./tools";
 import { sqliteVectorStore } from "./vector-store";
 
-// Retrieval knobs. topK few enough to fit the 3B model's context; minScore drops
-// weak matches so an off-topic question returns nothing (and the model says "I
-// couldn't find anything") instead of citing noise.
+// Retrieval knobs. topK few enough to fit the model's context; minScore drops weak
+// matches so an off-topic question returns nothing (and the model says so) instead
+// of citing noise.
 const TOP_K = 6;
 const MIN_SCORE = 0.25;
+// The model opens at most this many posts in full — keeps the answer context lean.
+const MAX_OPENED = 3;
+
+// Progress phases the UI surfaces. "deciding" = the model is choosing which posts
+// matter; "waiting" = a draft holds the single model slot; "searching" = embed +
+// rank; "answering" = answer tokens are streaming.
+export type AskPhase = "deciding" | "waiting" | "searching" | "answering";
 
 // The user's latest question text, for embedding. Concatenates the text parts of a
 // multi-part user turn.
@@ -42,34 +55,34 @@ function lastUserText(messages: ModelMessage[]): string {
   return "";
 }
 
-// Progress phases the UI surfaces while a research turn runs. Unchanged so
-// llm.tsx's onPhase mapping needs no edits ("searching" = embed + rank posts).
-export type AskPhase = "deciding" | "waiting" | "searching" | "answering";
+// Parse a comma/space/line separated list of 1-based candidate numbers out of the
+// model's selection reply, clamped to range and de-duped. "NONE" / no digits → [].
+function parseSelection(text: string, count: number): number[] {
+  const nums = (text.match(/\d+/g) ?? [])
+    .map((n) => Number.parseInt(n, 10))
+    .filter((n) => n >= 1 && n <= count)
+    .map((n) => n - 1);
+  return [...new Set(nums)];
+}
 
-// The full "ask my posts" turn:
-//   1. search  — embed the query server-side, rank local post vectors (no model).
-//   2. answer  — stream a grounded answer citing the retrieved posts, feeding the
-//                model each post's capped body so it can give real detail.
-// If the query-embed call fails (offline), surface a clear message rather than a
-// silent empty result — semantic search has no offline fallback by design.
 export async function askMyPosts(args: {
   chatModelId: string;
   messages: ModelMessage[];
   onDelta: (text: string) => void;
   onPhase?: (phase: AskPhase) => void;
-  // Reports routing for the dev test bench: "search" if we retrieved posts to
-  // ground on, else "answer". Production UI ignores this.
+  // Reports routing for the dev bench: "search" once retrieval ran. Production
+  // UI ignores this.
   onDecision?: (decision: { kind: "answer" | "search"; query?: string }) => void;
   signal?: AbortSignal;
 }): Promise<{ sources: ScoredPost[] }> {
   const query = lastUserText(args.messages);
 
-  // 1. retrieve (server embed + local cosine scan — no model slot needed).
+  // 1. Search (no model): embed the query server-side, cosine-rank the local index.
   args.onPhase?.("searching");
-  let sources: ScoredPost[] = [];
+  let candidates: ScoredPost[] = [];
   try {
     const { vector, modelId } = await embedQuery(query, args.signal);
-    sources = await searchPosts(
+    candidates = await searchPosts(
       { store: sqliteVectorStore, embeddingModelId: modelId },
       query,
       {
@@ -90,23 +103,66 @@ export async function askMyPosts(args: {
     throw err;
   }
 
-  // Two views of the same retrieved posts: compact excerpts for the Sources cards,
-  // and capped bodies for the answer model (folded into the `excerpt` slot that
-  // formatPostsBlock renders, so the shared prompt builder needs no change).
-  const uiSources: ScoredPost[] = sources.map((p) => ({
-    ...p,
-    excerpt: trimExcerpt(p.excerpt),
-  }));
-  const bodies = await bodiesByServerIds(sources.map((p) => p.serverId));
-  const answerPosts: ScoredPost[] = sources.map((p) => ({
-    ...p,
-    excerpt: bodies.get(p.serverId) ?? p.excerpt,
-  }));
+  // Nothing matched — stream a grounded "couldn't find anything" answer.
+  if (candidates.length === 0) {
+    args.onPhase?.(modelBusyBy() === "draft" ? "waiting" : "answering");
+    await withPreparedModel(args.chatModelId, "chat", async (model) => {
+      args.onPhase?.("answering");
+      const { textStream } = streamResearchAnswer({
+        llm: model,
+        messages: args.messages,
+        posts: [],
+        abortSignal: args.signal,
+      });
+      for await (const delta of textStream) args.onDelta(delta);
+    });
+    args.onDecision?.({ kind: "search", query });
+    return { sources: [] };
+  }
 
-  // 2. grounded answer (streamed) under the chat-model slot. If a draft is using
-  // the model, the UI shows "waiting" until the slot frees.
-  args.onPhase?.(modelBusyBy() === "draft" ? "waiting" : "answering");
+  // 2. Select + 3. Answer — both under ONE model slot so we don't re-acquire the
+  // mutex between them (and the model stays resident across the two calls).
+  args.onPhase?.(modelBusyBy() === "draft" ? "waiting" : "deciding");
+  let opened: ScoredPost[] = [];
   await withPreparedModel(args.chatModelId, "chat", async (model) => {
+    const list = candidates
+      .map(
+        (p, i) =>
+          `${i + 1}. ${p.title}${p.excerpt ? ` — ${trimExcerpt(p.excerpt)}` : ""}`,
+      )
+      .join("\n");
+    const sel = await generateText({
+      model,
+      system:
+        "You pick which of the user's saved posts are relevant to their " +
+        `question. Reply with ONLY the numbers of the relevant posts (comma-` +
+        `separated), or NONE. Pick at most ${MAX_OPENED}; pick none if none are ` +
+        "relevant.",
+      messages: [
+        ...args.messages,
+        { role: "user", content: `Candidate posts:\n${list}` },
+      ],
+      temperature: 0,
+      // Tiny: the reply is just a few numbers. Also bounds generation explicitly
+      // (see answer.ts note on the on-device n_predict cap).
+      maxOutputTokens: 24,
+      abortSignal: args.signal,
+    });
+    const picks = parseSelection(sel.text, candidates.length).slice(0, MAX_OPENED);
+    // If the model picked nothing parseable, fall back to the single top hit so a
+    // clearly-relevant question still gets grounded instead of an empty answer.
+    const chosen = (picks.length > 0 ? picks : [0]).map((i) => candidates[i]!);
+
+    // Open the chosen posts in full; the full body grounds the answer, the trimmed
+    // excerpt feeds the Sources card.
+    const answerPosts: ScoredPost[] = [];
+    opened = [];
+    for (const c of chosen) {
+      const full = await fullPostById(c.serverId);
+      opened.push({ ...c, excerpt: trimExcerpt(c.excerpt) });
+      answerPosts.push({ ...c, excerpt: full ? full.body : c.excerpt });
+    }
+
     args.onPhase?.("answering");
     const { textStream } = streamResearchAnswer({
       llm: model,
@@ -114,13 +170,9 @@ export async function askMyPosts(args: {
       posts: answerPosts,
       abortSignal: args.signal,
     });
-    for await (const delta of textStream) {
-      args.onDelta(delta);
-    }
+    for await (const delta of textStream) args.onDelta(delta);
   });
 
-  args.onDecision?.(
-    sources.length > 0 ? { kind: "search", query } : { kind: "answer" },
-  );
-  return { sources: uiSources };
+  args.onDecision?.({ kind: "search", query });
+  return { sources: opened };
 }

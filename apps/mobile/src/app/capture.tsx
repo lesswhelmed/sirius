@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -37,7 +37,7 @@ import {
 
 export default function CaptureScreen() {
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ text?: string }>();
+  const params = useLocalSearchParams<{ text?: string; autosubmit?: string }>();
   const { data: session, isPending } = useSession();
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -71,6 +71,24 @@ export default function CaptureScreen() {
     queryClient.invalidateQueries({ queryKey: ["posts"] });
     setDone(true);
   }
+
+  // Hands-free fallback: the background Siri intent (QuickCaptureIntent) opens
+  // the app with autosubmit=1 when it can't submit directly (signed out / expired
+  // cookie). Once a session is present, queue the dictated text automatically so
+  // the user never has to tap — and exactly once.
+  const autoSubmitted = useRef(false);
+  useEffect(() => {
+    if (params.autosubmit !== "1") return;
+    if (autoSubmitted.current) return;
+    if (isPending || !session || busy || done) return;
+    if (submittable.length === 0) return;
+    autoSubmitted.current = true;
+    // Defer out of the effect body so submit()'s setState isn't synchronous.
+    const id = setTimeout(() => void submit(), 0);
+    return () => clearTimeout(id);
+    // submit() is stable enough for this one-shot; deps cover the gating signals.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.autosubmit, isPending, session, busy, done, submittable.length]);
 
   if (isPending) {
     return (

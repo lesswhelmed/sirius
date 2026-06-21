@@ -16,7 +16,9 @@
 		"ios": {
 			"bundleIdentifier": "dev.copt.sirius",
 			"infoPlist": {
-				"ITSAppUsesNonExemptEncryption": false
+				"ITSAppUsesNonExemptEncryption": false,
+				"CFBundleSpokenName": "Sirius app",
+				"NSSpeechRecognitionUsageDescription": "Allow Sirius to turn what you dictate into a capture for your queue."
 			},
 			"entitlements": {
 				"com.apple.developer.kernel.increased-memory-limit": true,

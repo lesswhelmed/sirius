@@ -18,7 +18,7 @@ import type { ScoredPost } from "@repo/research-agent";
 
 import { askMyPosts, type AskPhase } from "@/lib/research/ask";
 
-import { generateText, tool } from "ai";
+import { generateText, streamText, tool } from "ai";
 import { z } from "zod";
 
 import { draftNotePost, draftUrlPost } from "./curate";
@@ -416,4 +416,213 @@ export async function runToolProbe(): Promise<void> {
       `[llm-test] ${JSON.stringify({ id: "toolprobe-call", ok: false, detail: err instanceof Error ? err.message : String(err) })}`,
     );
   }
+}
+
+// ── Generation-truncation diagnostic ─────────────────────────────────────────
+// Confirms the "first letter only" bug's mechanism: the on-device provider maps
+// maxOutputTokens → the native context's n_predict per call, and a prior call
+// with a tiny cap can leave that cap on the context so a later UNCAPPED call is
+// truncated to one token. Runs three completions on the SAME resident model:
+//   1. uncapped baseline      — should be many words
+//   2. capped to 1 token      — should be ~1 word (proves the cap path works)
+//   3. uncapped again         — MUST be many words; if it is ~1, a stale cap
+//                               leaked (the bug). With prewarm no longer running
+//                               a capped warm-up, this should pass.
+export const GEN_DIAG_FIXTURE = {
+  id: "gen-diag",
+  label: "Generation isn't truncated (n_predict)",
+};
+
+const GEN_PROMPT = "Write three full sentences about why people keep journals.";
+
+export async function runGenDiagnostic(): Promise<FixtureResult> {
+  const start = Date.now();
+  const checks: DraftCheck[] = [];
+  const finish = (ok: boolean): FixtureResult => {
+    const result: FixtureResult = {
+      id: GEN_DIAG_FIXTURE.id,
+      ok,
+      ms: Date.now() - start,
+      draft: null,
+      checks,
+    };
+    console.log(
+      `[llm-test] ${JSON.stringify({
+        id: result.id,
+        ok: result.ok,
+        ms: result.ms,
+        checks: checks.map((c) => ({ n: c.name, p: c.pass, d: c.detail })),
+      })}`,
+    );
+    return result;
+  };
+
+  const settings = await getLlmSettings();
+  const id = settings.modelId || DEFAULT_TEXT_MODEL_ID;
+  if (!(await isModelReady(id))) {
+    checks.push({
+      name: "model-ready",
+      pass: false,
+      detail: `download the chat model first (${id})`,
+    });
+    return finish(false);
+  }
+
+  const gen = (maxOutputTokens?: number): Promise<string> =>
+    withPreparedModel(id, "chat", async (model) => {
+      const { textStream } = streamText({
+        model,
+        prompt: GEN_PROMPT,
+        temperature: 0.7,
+        ...(maxOutputTokens ? { maxOutputTokens } : {}),
+      });
+      let text = "";
+      for await (const delta of textStream) text += delta;
+      return text;
+    });
+
+  const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+
+  const uncapped1 = await gen();
+  checks.push({
+    name: "uncapped-baseline",
+    pass: words(uncapped1) >= 10,
+    detail: `${words(uncapped1)} words: "${uncapped1.slice(0, 50)}"`,
+  });
+
+  const capped = await gen(1);
+  checks.push({
+    name: "cap-1-respected",
+    pass: words(capped) <= 3,
+    detail: `${words(capped)} words (expected ~1)`,
+  });
+
+  // The regression check: a fresh uncapped call AFTER a 1-token call must still
+  // produce full text. If it's ~1 word, the cap leaked onto the context.
+  const uncapped2 = await gen();
+  checks.push({
+    name: "no-stale-cap",
+    pass: words(uncapped2) >= 10,
+    detail: `${words(uncapped2)} words: "${uncapped2.slice(0, 50)}"`,
+  });
+
+  return finish(checks.every((c) => c.pass));
+}
+
+// ── Answers clearly about a post ─────────────────────────────────────────────
+// The end-to-end guard the user asked for: run the REAL askMyPosts over a real
+// synced post and assert the answer is a substantial, grounded response — not the
+// single-character "M" regression. Picks a post with a non-empty body, asks about
+// it, and checks: the answer is many words (not one char), it's grounded in that
+// post (the post is among the cited Sources), and retrieval ran.
+export const ANSWER_QUALITY_FIXTURE = {
+  id: "answer-quality",
+  label: "Answers clearly about a post",
+};
+
+export async function runAnswerQualityTest(): Promise<FixtureResult> {
+  const start = Date.now();
+  const checks: DraftCheck[] = [];
+  const finish = (ok: boolean): FixtureResult => {
+    const result: FixtureResult = {
+      id: ANSWER_QUALITY_FIXTURE.id,
+      ok,
+      ms: Date.now() - start,
+      draft: null,
+      checks,
+    };
+    console.log(
+      `[llm-test] ${JSON.stringify({
+        id: result.id,
+        ok: result.ok,
+        ms: result.ms,
+        checks: checks.map((c) => ({ n: c.name, p: c.pass, d: c.detail })),
+      })}`,
+    );
+    return result;
+  };
+
+  const settings = await getLlmSettings();
+  const chatModelId = settings.modelId || DEFAULT_TEXT_MODEL_ID;
+  if (!(await isModelReady(chatModelId))) {
+    checks.push({
+      name: "chat-model-ready",
+      pass: false,
+      detail: `download the chat model first (${chatModelId})`,
+    });
+    return finish(false);
+  }
+
+  // A real synced post with an actual body to ask about.
+  const rows = await db
+    .select({
+      serverId: postsTable.serverId,
+      title: postsTable.title,
+      body: postsTable.body,
+    })
+    .from(postsTable)
+    .where(
+      and(isNotNull(postsTable.serverId), ne(postsTable.syncState, "tombstone")),
+    )
+    .limit(500);
+  const target = rows.find(
+    (r): r is { serverId: string; title: string; body: string } =>
+      Boolean(r.serverId) &&
+      r.title.trim().length > 0 &&
+      Boolean(r.body) &&
+      r.body.trim().length > 80,
+  );
+  checks.push({
+    name: "has-a-post",
+    pass: Boolean(target),
+    detail: target ? `asking about "${target.title}"` : "no synced post w/ body",
+  });
+  if (!target) return finish(false);
+
+  const question = `Tell me about "${target.title}". What is it about?`;
+  let answer = "";
+  let sources: ScoredPost[] = [];
+  const captured: {
+    decision: { kind: "answer" | "search"; query?: string } | null;
+  } = { decision: null };
+  try {
+    const res = await askMyPosts({
+      chatModelId,
+      messages: [{ role: "user", content: question }],
+      onDecision: (d) => {
+        captured.decision = d;
+      },
+      onDelta: (d) => {
+        answer += d;
+      },
+    });
+    sources = res.sources;
+  } catch (err) {
+    checks.push({
+      name: "ask-ran",
+      pass: false,
+      detail: err instanceof Error ? err.message : "askMyPosts threw",
+    });
+    return finish(false);
+  }
+
+  const answerWords = answer.trim().split(/\s+/).filter(Boolean).length;
+  // The crux: a real, multi-word answer (the "M"/"[" regression was 1 char).
+  checks.push({
+    name: "answer-substantive",
+    pass: answerWords >= 15,
+    detail: `${answerWords} words, ${answer.trim().length} chars: "${answer.slice(0, 60)}"`,
+  });
+  checks.push({
+    name: "grounded-in-post",
+    pass: sources.some((p) => p.serverId === target.serverId),
+    detail: `${sources.length} sources${sources.some((p) => p.serverId === target.serverId) ? " (target ✓)" : " (target ✗)"}`,
+  });
+  checks.push({
+    name: "retrieval-ran",
+    pass: captured.decision?.kind === "search",
+    detail: `decision=${captured.decision?.kind ?? "none"}`,
+  });
+
+  return finish(checks.every((c) => c.pass));
 }
