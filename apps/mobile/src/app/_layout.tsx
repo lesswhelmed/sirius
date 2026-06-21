@@ -216,11 +216,22 @@ export default function RootLayout() {
                       title: "On-device AI",
                       // Reached only from the Capture tab.
                       headerBackTitle: "Capture",
+                      // Force the paper header (like post/[slug]) so the custom
+                      // ink-colored header buttons ("New"/"Chats") stay legible —
+                      // otherwise in OS dark mode the nav theme paints a dark
+                      // header and the near-black buttons vanish into it.
+                      headerStyle: { backgroundColor: Sirius.color.paper },
+                      headerTintColor: Sirius.color.ink,
                     }}
                   />
                   <Stack.Screen
                     name="llm-test"
-                    options={{ headerShown: true, title: "Draft test bench" }}
+                    options={{
+                      headerShown: true,
+                      title: "Draft test bench",
+                      headerStyle: { backgroundColor: Sirius.color.paper },
+                      headerTintColor: Sirius.color.ink,
+                    }}
                   />
                 </Stack>
               </>
