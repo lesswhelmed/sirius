@@ -103,13 +103,24 @@ export default async function PostDetailPage({
   return (
     <article className="mx-auto max-w-[920px]">
       <ViewBeacon slug={post.slug} />
-      <Link
-        href="/catalog"
-        className="inline-flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] transition-colors hover:text-[var(--color-accent)]"
-      >
-        <span aria-hidden="true">←</span>
-        Return to Catalog
-      </Link>
+      <div className="flex items-baseline justify-between gap-4">
+        <Link
+          href="/catalog"
+          className="inline-flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)] transition-colors hover:text-[var(--color-accent)]"
+        >
+          <span aria-hidden="true">←</span>
+          Return to Catalog
+        </Link>
+        {isOwner ? (
+          <Link
+            href={`/posts/${post.slug}/edit`}
+            className="inline-flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--color-accent)] transition-colors hover:text-[var(--color-accent-deep)]"
+          >
+            Edit
+            <span aria-hidden="true">↗</span>
+          </Link>
+        ) : null}
+      </div>
 
       <header className="mt-8">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-y border-[var(--color-rule-emphatic)] py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-muted)]">

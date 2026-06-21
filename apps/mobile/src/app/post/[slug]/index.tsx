@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { and, eq, ne } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Image } from "expo-image";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -131,6 +131,7 @@ export default function PostDetailScreen() {
     from?: string;
   }>();
   const [visibilityOpen, setVisibilityOpen] = useState(false);
+  const router = useRouter();
 
   // Local mirror first. `localRows === undefined` means the live query hasn't
   // resolved yet; an empty array means there's genuinely no local copy.
@@ -226,6 +227,19 @@ export default function PostDetailScreen() {
             style={({ pressed }) => [styles.visRow, pressed && styles.visPressed]}
           >
             <Text style={styles.visLabel}>Visibility</Text>
+            <Text style={styles.visValue}>Edit ▸</Text>
+          </Pressable>
+        ) : null}
+        {/* Body editor — owner-only, so gated on a mirror-backed (owned) row,
+            exactly like the visibility control above. */}
+        {localRow ? (
+          <Pressable
+            onPress={() => router.push(`/post/${slug}/edit`)}
+            accessibilityRole="button"
+            accessibilityLabel="Edit post"
+            style={({ pressed }) => [styles.visRow, pressed && styles.visPressed]}
+          >
+            <Text style={styles.visLabel}>Content</Text>
             <Text style={styles.visValue}>Edit ▸</Text>
           </Pressable>
         ) : null}

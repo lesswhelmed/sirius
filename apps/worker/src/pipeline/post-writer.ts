@@ -303,7 +303,12 @@ function originalDateFromFrontmatter(
 export async function writePost(
   parsed: GeminiOutput,
   input: PipelineInput,
+  opts?: { status?: PostStatus },
 ): Promise<WriteResult> {
+  // Default PUBLISHED preserves the original behavior. The over-limit "manual
+  // stub" path passes DRAFT so the post lands unpublished for the user to write.
+  const status = opts?.status ?? PostStatus.PUBLISHED;
+  const isDraft = status === PostStatus.DRAFT;
   const body = escapeMdxProse(parsed.body);
   let imagePaths: string[] = [];
   // SIGHT gallery: [{ url, alt }] in upload order. Empty for non-image posts.
@@ -442,6 +447,10 @@ export async function writePost(
     lastSyncedAt: new Date(),
     ...(input.submittedById ? { submittedById: input.submittedById } : {}),
     ...(input.projectId ? { projectId: input.projectId } : {}),
+    // Only the over-limit stub path drives status on re-process. The default
+    // (PUBLISHED) path leaves status/published untouched so a manual edit or
+    // archival a user made after the first write is never clobbered.
+    ...(isDraft ? { status, published: false } : {}),
     tags: { connectOrCreate: tagConnects },
     categories: { connectOrCreate: categoryConnects },
   };
@@ -464,7 +473,7 @@ export async function writePost(
           content: body,
           excerpt,
           type: parsed.type as PostType,
-          status: PostStatus.PUBLISHED,
+          status,
           filePath,
           fileHash,
           originalDate,
@@ -474,7 +483,7 @@ export async function writePost(
             ? { images: sightImages as unknown as Prisma.InputJsonValue }
             : {}),
           ...(contentDigest !== null ? { contentDigest } : {}),
-          published: true,
+          published: !isDraft,
           sourceType: "ingest",
           providerId,
           sourceRecordId,

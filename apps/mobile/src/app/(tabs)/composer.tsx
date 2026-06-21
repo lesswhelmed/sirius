@@ -60,7 +60,10 @@ import {
   type VideoMaterial,
 } from "@/lib/materials";
 import { discardStagedCopy, stageBinaryCopy } from "@/lib/outbox";
+import { presentPaywall } from "@/lib/purchases";
+import { useAiUsage } from "@/lib/purchases/use-usage";
 import { kickSync } from "@/lib/sync/engine";
+import { UsageMeter } from "@/components/subscription-section";
 
 // A material staged in the tray, with a stable id for keys + removal.
 type StagedMaterial = { uid: string; material: Material };
@@ -149,6 +152,7 @@ export default function ComposerScreen() {
     enabled: Boolean(llmSettings.data?.modelId),
   });
   const curationOn = llmSettings.data?.onDeviceCuration === true;
+  const { data: usage } = useAiUsage();
 
   async function toggleCuration(value: boolean) {
     await updateLlmSettings({ onDeviceCuration: value });
@@ -504,6 +508,22 @@ export default function ComposerScreen() {
 
   async function submit() {
     if (busy || tray.length === 0) return;
+    // Rigid, safe flow: ingest is ALWAYS free. But when this batch will use the
+    // SERVER AI draft (on-device curation off) and a free user is out of weekly
+    // generations, offer the paywall first. Whatever the user decides we still
+    // submit — over-limit ingests land as editable drafts, never lost.
+    const willUseServerAI = !(curationOn && llmReady.data === true);
+    if (
+      willUseServerAI &&
+      usage &&
+      !usage.isPro &&
+      (usage.remaining ?? 0) <= 0
+    ) {
+      const becamePro = await presentPaywall();
+      if (becamePro) {
+        queryClient.invalidateQueries({ queryKey: ["ai-usage"] });
+      }
+    }
     setBusy(true);
     let errors: string[] = [];
     let failed: Material[] = [];
@@ -732,6 +752,14 @@ export default function ComposerScreen() {
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Weekly AI-draft budget — shown to free users with a staged tray so the
+          cap is transparent before they submit. Hidden for Pro / empty tray. */}
+      {tray.length > 0 && usage && !usage.isPro ? (
+        <View style={styles.usageBar}>
+          <UsageMeter usage={usage} />
+        </View>
+      ) : null}
 
       {/* Pinned tray summary + Submit CTA, always visible above the tab bar so
           submission is discoverable without scrolling to the bottom. */}
@@ -1010,6 +1038,13 @@ function RepoPreviewCard({ preview }: { preview: RepoPreview }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  usageBar: {
+    paddingHorizontal: Sirius.space.xl,
+    paddingVertical: Sirius.space.sm,
+    backgroundColor: Sirius.color.paper,
+    borderTopWidth: 1,
+    borderTopColor: Sirius.color.rule,
+  },
   container: {
     padding: Sirius.space.xl,
     paddingTop: 64,

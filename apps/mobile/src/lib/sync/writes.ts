@@ -108,6 +108,41 @@ export async function deleteLocalDraft(localId: string): Promise<void> {
 }
 
 /**
+ * Optimistically apply an owner's body edit to a SYNCED mirror row so the change
+ * shows instantly (useLiveQuery) before the PATCH round-trips. Deliberately does
+ * NOT touch serverUpdatedAt — that must only ever be set from the server's
+ * authoritative Post.updatedAt (see commitLocalPostEdit), or the LWW guard in
+ * reconcile.ts could drop the real server delta. Guarded to `synced` so it never
+ * races a draft/pending row.
+ */
+export async function applyLocalPostEdit(
+  localId: string,
+  fields: { title: string; excerpt: string | null; body: string },
+): Promise<void> {
+  await db
+    .update(posts)
+    .set({ title: fields.title, excerpt: fields.excerpt, body: fields.body })
+    .where(and(eq(posts.localId, localId), eq(posts.syncState, "synced")));
+}
+
+/**
+ * Commit the server's authoritative updatedAt onto the row AFTER a successful
+ * PATCH. This keeps the LWW watermark correct: a later delta carrying the same
+ * timestamp re-applies identical bytes (harmless), and any newer server change
+ * still wins. Never set serverUpdatedAt to a client-guessed time.
+ */
+export async function commitLocalPostEdit(
+  localId: string,
+  serverUpdatedAtIso: string,
+): Promise<void> {
+  const ts = new Date(serverUpdatedAtIso);
+  await db
+    .update(posts)
+    .set({ serverUpdatedAt: ts, updatedAt: ts })
+    .where(eq(posts.localId, localId));
+}
+
+/**
  * Mark an optimistic row failed by localId, whether it is still a local_draft
  * or already linked to a pending submission. Used when the backing upload is
  * discarded before the batch could complete. Never clobbers a row that already

@@ -3,12 +3,18 @@
 // (copt-dev's git branch + commit + push + gh PR steps are intentionally
 // dropped — see the migration plan.)
 
+import {
+  checkAiGenerationAllowed,
+  PostStatus,
+  recordAiGeneration,
+} from "@repo/db";
 import { buildClassificationInput } from "./classification/adapters";
 import { assignOrg, sceneRowWarning } from "./classification/assign-org";
 import { tryClientDraft } from "./draft-runner";
 import { runGemini } from "./gemini-runner";
+import { buildManualStub } from "./manual-stub";
 import { writePost } from "./post-writer";
-import type { PipelineInput, PipelineResult } from "./types";
+import type { GeminiOutput, PipelineInput, PipelineResult } from "./types";
 
 export type StageLogger = (
   stage: string,
@@ -41,24 +47,73 @@ export async function processIngest(
   input: PipelineInput,
   logger: StageLogger = noopLogger,
 ): Promise<PipelineResult> {
-  // A valid client-supplied draft (drafted on-device by the mobile app) skips
-  // the Gemini stage entirely; an absent or invalid draft falls through.
+  // Three drafting paths, in priority order:
+  //   1. A valid client-supplied draft (drafted on-device by the mobile app)
+  //      skips Gemini entirely and is FREE — never metered.
+  //   2. Otherwise, gate the SERVER (Gemini) generation on the user's weekly
+  //      quota. Pro users (and unattributed bearer ingests) always pass.
+  //   3. A free user over the limit gets a DRAFT stub (no AI body) instead of a
+  //      failure, so the ingest still lands and they can write it themselves.
+  const userId = input.submittedById;
   const drafted = tryClientDraft(input);
-  const parsed =
-    drafted ?? (await timed("gemini", logger, () => runGemini(input)));
-  logger(drafted ? "draft:client" : "gemini:parsed", {
-    title: parsed.title,
-    slug: parsed.slug,
-    type: parsed.type,
-  });
+  let parsed: GeminiOutput;
+  let stub = false;
+  let consumedQuota = false;
+
+  if (drafted) {
+    parsed = drafted;
+    logger("draft:client", {
+      title: parsed.title,
+      slug: parsed.slug,
+      type: parsed.type,
+    });
+  } else {
+    // Bearer ingests (iOS Shortcut, no user) are unmetered: no one to attribute.
+    const decision =
+      userId == null ? null : await checkAiGenerationAllowed(userId);
+    if (decision == null || decision.allowed) {
+      parsed = await timed("gemini", logger, () => runGemini(input));
+      consumedQuota = userId != null;
+      logger("gemini:parsed", {
+        title: parsed.title,
+        slug: parsed.slug,
+        type: parsed.type,
+        isPro: decision?.isPro ?? null,
+      });
+    } else {
+      parsed = buildManualStub(input);
+      stub = true;
+      logger("quota:over-limit", {
+        userId,
+        used: decision.used,
+        limit: decision.limit,
+        title: parsed.title,
+        type: parsed.type,
+      });
+    }
+  }
+
   const written = await timed("post:write", logger, () =>
-    writePost(parsed, input),
+    writePost(parsed, input, stub ? { status: PostStatus.DRAFT } : undefined),
   );
   logger("post:write:done", {
     postId: written.postId,
     slug: written.slug,
     images: written.imagePaths.length,
+    stub,
   });
+
+  // Record the consumed generation only AFTER the Gemini call AND the write
+  // succeeded — a failure earlier throws and never reaches here, so a model or
+  // write error never burns the user's weekly quota.
+  if (consumedQuota && userId != null) {
+    await recordAiGeneration({
+      userId,
+      kind: input.kind,
+      resultPostId: written.postId,
+    });
+    logger("quota:recorded", { userId, kind: input.kind });
+  }
 
   // Auto-org: file unscoped, user-attributed ingests under a Project. Runs here
   // (after writePost, before the worker deletes staged files) so image batches

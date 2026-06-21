@@ -1,5 +1,11 @@
-import { getUserHandle, getVoiceProfile, listArchiveRequests } from "@repo/db";
+import {
+  getAiUsage,
+  getUserHandle,
+  getVoiceProfile,
+  listArchiveRequests,
+} from "@repo/db";
 import Link from "next/link";
+import { AiUsageCard } from "../../_chrome/ai-usage-card";
 import { DateDisplay } from "../../../lib/date-display";
 import { requireSession } from "../../../lib/session";
 import { RequestArchiveButton } from "./request-archive-button";
@@ -33,10 +39,11 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
 
 export default async function SettingsPage() {
   const session = await requireSession("/settings");
-  const [requests, voiceProfile, handle] = await Promise.all([
+  const [requests, voiceProfile, handle, usage] = await Promise.all([
     listArchiveRequests(session.user.id),
     getVoiceProfile(session.user.id),
     getUserHandle(session.user.id),
+    getAiUsage(session.user.id),
   ]);
   const now = Date.now();
 
@@ -86,9 +93,28 @@ export default async function SettingsPage() {
       ),
     },
     {
+      id: "subscription",
+      label: "Subscription",
+      folio: "ii",
+      blurb: "Your plan and weekly AI-draft usage.",
+      content: (
+        <div className="space-y-7">
+          <SectionHeader eyebrow="Subscription" title="Sirius AI Pro" />
+          <p className="max-w-[60ch] font-body text-[15px] leading-[1.7] text-[var(--fg-muted)]">
+            Ingesting is always free. The free plan includes a weekly allotment
+            of AI-written drafts; Sirius AI Pro removes the cap. Manage your
+            subscription in the Sirius app.
+          </p>
+          <div className="max-w-[420px]">
+            <AiUsageCard usage={usage} />
+          </div>
+        </div>
+      ),
+    },
+    {
       id: "writing-persona",
       label: "Writing Persona",
-      folio: "ii",
+      folio: "iii",
       blurb: "Shape how your posts are written.",
       content: (
         <div className="space-y-7">
@@ -100,7 +126,7 @@ export default async function SettingsPage() {
     {
       id: "data-export",
       label: "Data Export",
-      folio: "iii",
+      folio: "iv",
       blurb: "Your originals and downloadable archives.",
       content: (
         <div className="space-y-10">

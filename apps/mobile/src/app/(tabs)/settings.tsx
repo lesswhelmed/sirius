@@ -23,6 +23,7 @@ import {
   TextLink,
   Title,
 } from "@/components/sirius";
+import { SubscriptionSection } from "@/components/subscription-section";
 import { VoiceSection } from "@/components/voice-section";
 import { Sirius } from "@/constants/theme";
 import { authBaseURL, signIn, signOut, useSession } from "@/lib/auth-client";
@@ -190,6 +191,9 @@ export default function SettingsScreen() {
             />
           ) : null}
         </View>
+
+        {/* Subscription — Sirius AI Pro + weekly AI-draft usage. */}
+        <SubscriptionSection />
 
         {/* Your voice — NOT gated by the on-device flag; voice applies to
             server drafting too. */}

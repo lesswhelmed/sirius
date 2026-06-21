@@ -418,9 +418,60 @@ model User {
   friendshipsA Friendship[] @relation("FriendshipA")
   friendshipsB Friendship[] @relation("FriendshipB")
 
+  // Freemium: RevenueCat-sourced "Sirius AI Pro" entitlement (1:1) + the ledger
+  // of server (Gemini) AI generations this user has consumed (for the weekly cap).
+  entitlement   UserEntitlement?    @relation("UserEntitlement")
+  aiGenerations AiGenerationEvent[] @relation("UserAiGenerations")
+
   @@index([email])
   @@index([handle])
   @@map("user")
+}
+
+// ─── Freemium (RevenueCat entitlement + AI-generation metering) ──────────────
+// Server AI drafting (the worker's Gemini call) is capped per week for free
+// users; paying for "Sirius AI Pro" lifts the cap. RevenueCat is the source of
+// truth — its webhook writes UserEntitlement; the worker reads it. On-device
+// drafting is free local compute and is NOT metered.
+
+// One row per user, created lazily on the first RevenueCat webhook (or first
+// entitlement check). isPro is the worker's bypass switch; expiresAt lets a
+// lapsed sub self-expire even if the EXPIRATION webhook is missed. rcAppUserId
+// is RevenueCat's app_user_id, which we require to equal our User.id so a
+// server-to-server webhook can resolve back to the user.
+model UserEntitlement {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation("UserEntitlement", fields: [userId], references: [id], onDelete: Cascade)
+  isPro         Boolean   @default(false)
+  rcAppUserId   String?   @unique
+  rcCustomerId  String?
+  entitlementId String? // e.g. "Sirius AI Pro"
+  productId     String?
+  store         String? // RevenueCat event.store: "APP_STORE" | "PLAY_STORE" | ...
+  expiresAt     DateTime? // entitlement expiration; null = no active sub (or lifetime)
+  // Idempotency / ordering guard for webhook replays + out-of-order delivery.
+  lastEventId   String?
+  lastEventAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([rcAppUserId])
+  @@index([expiresAt])
+}
+
+// One row per SERVER (Gemini) generation actually performed. Weekly usage is a
+// COUNT(*) over a time window — no bucket row to race on — and the table doubles
+// as an audit trail. resultPostId is a soft reference (no FK) to the produced post.
+model AiGenerationEvent {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation("UserAiGenerations", fields: [userId], references: [id], onDelete: Cascade)
+  kind         String // ingest kind: "url"|"note"|"image"|"video"|"audio"|"document"
+  resultPostId String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // A mutual friendship between two users, in any lifecycle state. Stored as a

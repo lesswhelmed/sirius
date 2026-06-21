@@ -50,6 +50,12 @@ export type ArchiveRequest = Prisma.ArchiveRequestGetPayload<
 >;
 export type Comment = Prisma.CommentGetPayload<Record<string, never>>;
 export type Friendship = Prisma.FriendshipGetPayload<Record<string, never>>;
+export type UserEntitlement = Prisma.UserEntitlementGetPayload<
+  Record<string, never>
+>;
+export type AiGenerationEvent = Prisma.AiGenerationEventGetPayload<
+  Record<string, never>
+>;
 
 export * from "./analytics";
 export * from "./archive";
@@ -58,10 +64,12 @@ export * from "./comments";
 export * from "./classify";
 export * from "./embed-client";
 export * from "./embeddings";
+export * from "./entitlement";
 export * from "./friends";
 export * from "./ingest";
 export * from "./notify";
 export * from "./post-delete";
+export * from "./post-update";
 export * from "./posts";
 export * from "./projects";
 export * from "./saved";

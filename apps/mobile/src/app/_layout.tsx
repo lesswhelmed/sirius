@@ -28,6 +28,11 @@ import { ensureLocalOwner } from "@/lib/db/owner";
 // Side-effect import: defines the background sync task at global scope so
 // headless background launches can run it.
 import { registerOutboxTask } from "@/lib/outbox-task";
+import {
+  configurePurchases,
+  identifyUser,
+  resetUser,
+} from "@/lib/purchases";
 import { startSync, stopSync } from "@/lib/sync/engine";
 
 const queryClient = new QueryClient({
@@ -81,6 +86,28 @@ function SyncRunner() {
     return () => {
       cancelled = true;
     };
+  }, [userId]);
+
+  return null;
+}
+
+// Configures RevenueCat once, then binds its app_user_id to the signed-in user
+// (and resets to anonymous on sign-out) so subscription state and the webhook
+// resolve to the right account. No-op when no key is configured.
+function PurchasesRunner() {
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? null;
+
+  useEffect(() => {
+    configurePurchases();
+  }, []);
+
+  useEffect(() => {
+    if (userId) {
+      void identifyUser(userId);
+    } else {
+      void resetUser();
+    }
   }, [userId]);
 
   return null;
@@ -165,6 +192,7 @@ export default function RootLayout() {
               <>
                 <ShareIntentNavigator />
                 <SyncRunner />
+                <PurchasesRunner />
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="index" />
                   <Stack.Screen name="(auth)" />
@@ -178,8 +206,18 @@ export default function RootLayout() {
                     options={{ presentation: "modal" }}
                   />
                   <Stack.Screen
-                    name="post/[slug]"
+                    name="post/[slug]/index"
                     options={{ headerShown: true, title: "" }}
+                  />
+                  <Stack.Screen
+                    name="post/[slug]/edit"
+                    options={{
+                      headerShown: true,
+                      title: "Edit",
+                      headerStyle: { backgroundColor: Sirius.color.paper },
+                      headerTintColor: Sirius.color.ink,
+                      headerBackTitle: "Post",
+                    }}
                   />
                   <Stack.Screen
                     name="post/local/[localId]"
