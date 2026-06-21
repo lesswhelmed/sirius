@@ -4,7 +4,8 @@
 // helpers shape what the answer model and the Sources UI see: a trimmed excerpt
 // for the source cards, and the (capped) post body for the answer context so the
 // model can describe real details instead of just restating a title.
-import { inArray } from "drizzle-orm";
+import type { FullPost } from "@repo/research-agent";
+import { eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { posts } from "@/lib/db/schema";
@@ -29,6 +30,41 @@ export function trimExcerpt(excerpt: string | null): string | null {
 // Capped post bodies keyed by serverId, for the retrieved posts only. Used to
 // enrich the answer context (formatPostsBlock renders each post's `excerpt` slot,
 // so ask.ts swaps in these bodies for the answer-only copy of the posts).
+
+// Reads ONE post in full for the get_post tool: the whole body (not the BODY_CAP
+// slice the old answer context used) plus tags/categories/date, so the agent can
+// answer in depth about a single post. Returns null if the post is missing, has no
+// slug (can't deep-link), or is empty. Matches on serverId — the id the agent gets
+// from a search_posts candidate.
+export async function fullPostById(id: string): Promise<FullPost | null> {
+  const [row] = await db
+    .select({
+      serverId: posts.serverId,
+      slug: posts.slug,
+      title: posts.title,
+      body: posts.body,
+      excerpt: posts.excerpt,
+      tags: posts.tags,
+      categories: posts.categories,
+      createdAt: posts.createdAt,
+    })
+    .from(posts)
+    .where(eq(posts.serverId, id))
+    .limit(1);
+  if (!row || !row.serverId || !row.slug) return null;
+  if (!row.body || row.body.trim().length === 0) return null;
+  return {
+    id: row.serverId,
+    slug: row.slug,
+    title: row.title,
+    body: row.body.trim(),
+    excerpt: row.excerpt,
+    tags: row.tags ?? [],
+    categories: row.categories ?? [],
+    createdAt: row.createdAt ? row.createdAt.toISOString() : null,
+  };
+}
+
 export async function bodiesByServerIds(
   serverIds: string[],
 ): Promise<Map<string, string>> {

@@ -3,6 +3,7 @@
 // requesting a different model releases the current one first. All callers
 // (chat screen, curation) go through getPreparedModel so they share the same
 // loaded context instead of racing to init their own.
+import { streamText } from "ai";
 import {
   downloadModel,
   getModelPath,
@@ -293,6 +294,31 @@ export function withEmbeddingModel<T>(
   fn: (model: LlamaEmbeddingModel) => Promise<T>,
 ): Promise<T> {
   return runExclusive(id, who, (model) => fn(model as LlamaEmbeddingModel));
+}
+
+// Warm the resident model ahead of the first user turn. Runs a 1-token completion
+// inside the inference mutex so the context is prepared (loaded + KV initialized)
+// before the user sends — the first reply then streams without the cold-load pause.
+// Best-effort: any failure (model not ready, bridge missing) is swallowed; the
+// real send path surfaces a legible error. No-op cost when already warm: the
+// mutex + getPreparedModel short-circuit on the resident model.
+export async function prewarm(id: string): Promise<void> {
+  try {
+    await withPreparedModel(id, "chat", async (model) => {
+      const { textStream } = streamText({
+        model,
+        prompt: "Reply with the single word: ready",
+        // A hard ceiling so warm-up can't run away; we only need the prefill.
+        maxOutputTokens: 1,
+      });
+      // Drain (one token) via the iterator protocol — no binding, so lint-clean.
+      const iter = textStream[Symbol.asyncIterator]();
+      await iter.next();
+      await iter.return?.();
+    });
+  } catch {
+    // Warm-up is best-effort; never throw to the screen.
+  }
 }
 
 export async function releaseModel(): Promise<void> {
