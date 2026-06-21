@@ -24,6 +24,15 @@ import { apiDelete, ApiError, apiGet, apiPostJson } from "@/lib/api";
 type Friend = { id: string; name: string; handle: string | null };
 type Request = Friend & { direction: "incoming" | "outgoing" };
 
+// The API returns pending requests as `{ user, direction, createdAt }` with the
+// peer nested under `user` (see packages/db listPendingRequests). Web flattens
+// this server-side in friends/page.tsx; mobile flattens it here so `item.name`
+// renders and the accept/decline POST targets the peer's id (not `undefined`).
+type RawRequest = {
+  user: { id: string; name: string; handle: string | null };
+  direction: "incoming" | "outgoing";
+};
+
 type Tab = "friends" | "requests";
 
 export default function FriendsScreen() {
@@ -38,8 +47,19 @@ export default function FriendsScreen() {
   });
   const requestsQ = useQuery({
     queryKey: ["friend-requests"],
-    queryFn: () =>
-      apiGet<{ requests: Request[] }>("/api/app/friends/requests"),
+    queryFn: async () => {
+      const { requests } = await apiGet<{ requests: RawRequest[] }>(
+        "/api/app/friends/requests",
+      );
+      return {
+        requests: requests.map<Request>((r) => ({
+          id: r.user.id,
+          name: r.user.name,
+          handle: r.user.handle,
+          direction: r.direction,
+        })),
+      };
+    },
   });
 
   const friends = friendsQ.data?.friends ?? [];
