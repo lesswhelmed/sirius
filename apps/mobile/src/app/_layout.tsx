@@ -2,14 +2,8 @@
 import "@/polyfills";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  DarkTheme,
-  DefaultTheme,
-  router,
-  Stack,
-  ThemeProvider,
-} from "expo-router";
-import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
+import { ShareIntentProvider } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { StyleSheet, Text, useColorScheme } from "react-native";
@@ -140,30 +134,6 @@ function useDbReady(): { ready: boolean; error: Error | null } {
   return { ready, error };
 }
 
-function ShareIntentNavigator() {
-  const { hasShareIntent } = useShareIntentContext();
-  // Edge-trigger the push: open the share pane exactly ONCE per share, on the
-  // rising edge of hasShareIntent. The old code level-triggered on
-  // `hasShareIntent && pathname !== "/shareintent"`, but resetShareIntent() is
-  // async — on Done/dismiss we navigate away synchronously while hasShareIntent
-  // is still true for one render, so the pathname change re-fired this effect and
-  // re-pushed an already-emptied pane → the spurious "Nothing shared" sheet (and,
-  // on a cold-launch share, the extra bounce to a tab). The latch clears when
-  // hasShareIntent goes false, so the next genuine share still opens the pane.
-  const pushed = React.useRef(false);
-  useEffect(() => {
-    if (hasShareIntent) {
-      if (!pushed.current) {
-        pushed.current = true;
-        router.push("/shareintent");
-      }
-    } else {
-      pushed.current = false;
-    }
-  }, [hasShareIntent]);
-  return null;
-}
-
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { ready, error } = useDbReady();
@@ -190,7 +160,6 @@ export default function RootLayout() {
               </Screen>
             ) : ready ? (
               <>
-                <ShareIntentNavigator />
                 <SyncRunner />
                 <PurchasesRunner />
                 <Stack screenOptions={{ headerShown: false }}>
