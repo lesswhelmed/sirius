@@ -46,6 +46,7 @@ import {
   downloadModelById,
   isModelReady,
   modelBusyBy,
+  prewarm,
   withPreparedModel,
 } from "@/lib/llm/engine";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
@@ -399,6 +400,16 @@ function Chat({
       }
     })();
   }, []);
+
+  // Warm the resident model on open so the first send streams without the
+  // cold-load pause. Best-effort; runs once. Skipped if a draft is mid-flight
+  // (it already holds/loads the model).
+  const warmed = useRef(false);
+  useEffect(() => {
+    if (warmed.current) return;
+    warmed.current = true;
+    if (modelBusyBy() === null) void prewarm(modelId);
+  }, [modelId]);
 
   // Messages for the active conversation — the source of truth, kept in sync
   // with the DB by useLiveQuery. An empty conversationId matches no rows.
