@@ -37,7 +37,8 @@ import {
   TrayRow,
 } from "@/components/sirius";
 
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
 import { isModelReady } from "@/lib/llm/engine";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
@@ -105,6 +106,8 @@ function pairs<T>(items: T[]): T[][] {
 }
 
 export default function ComposerScreen() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const queryClient = useQueryClient();
   const [tray, setTray] = useState<StagedMaterial[]>([]);
   const [activeKey, setActiveKey] = useState<CaptureKindKey | null>(null);
@@ -115,6 +118,8 @@ export default function ComposerScreen() {
   // Focus picker: file a capture under a Project (mirrors the web composer).
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
+  // Photo/Video chooser sheet: take with the camera or pick from the library.
+  const [mediaSheet, setMediaSheet] = useState<null | "photo" | "video">(null);
   // Audio capture sheet: record a voice memo or pick an audio file.
   const [audioSheetOpen, setAudioSheetOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -264,6 +269,7 @@ export default function ComposerScreen() {
   }
 
   async function pickImages() {
+    setMediaSheet(null);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert(
@@ -292,6 +298,7 @@ export default function ComposerScreen() {
   }
 
   async function pickVideo() {
+    setMediaSheet(null);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert(
@@ -308,6 +315,60 @@ export default function ComposerScreen() {
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0]!;
     const name = asset.fileName ?? "video.mp4";
+    openPending(name, [
+      {
+        kind: "video",
+        uri: asset.uri,
+        name,
+        type: asset.mimeType ?? "video/mp4",
+      },
+    ]);
+  }
+
+  async function capturePhoto() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        "Camera permission needed",
+        "Allow camera access in Settings to take a photo.",
+      );
+      return;
+    }
+    setMediaSheet(null);
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.9,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0]!;
+    const name = asset.fileName ?? `photo-${Date.now()}.jpg`;
+    openPending("1 photo", [
+      {
+        kind: "image",
+        uri: asset.uri,
+        name,
+        type: asset.mimeType ?? "image/jpeg",
+      },
+    ]);
+  }
+
+  async function captureVideo() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        "Camera permission needed",
+        "Allow camera access in Settings to record a video.",
+      );
+      return;
+    }
+    setMediaSheet(null);
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["videos"],
+      quality: 1,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0]!;
+    const name = asset.fileName ?? `video-${Date.now()}.mp4`;
     openPending(name, [
       {
         kind: "video",
@@ -402,11 +463,11 @@ export default function ComposerScreen() {
   function onCardPress(kind: CaptureKind) {
     if (busy) return;
     if (kind.key === "photos") {
-      void pickImages();
+      setMediaSheet("photo");
       return;
     }
     if (kind.key === "video") {
-      void pickVideo();
+      setMediaSheet("video");
       return;
     }
     if (kind.key === "document") {
@@ -595,14 +656,19 @@ export default function ComposerScreen() {
             <View style={styles.headerToolbar}>
               <TextLink
                 label="Manage focus →"
-                tone={Sirius.color.accent}
+                tone={t.color.accent}
                 onPress={() => router.push("/focus")}
+              />
+              <TextLink
+                label="How it works →"
+                tone={t.color.accent}
+                onPress={() => router.push("/help")}
               />
               {/* /llm is fully hidden when on-device AI is off. */}
               {ON_DEVICE_AI_ENABLED ? (
                 <TextLink
                   label="On-device AI →"
-                  tone={Sirius.color.accent}
+                  tone={t.color.accent}
                   onPress={() => router.push("/llm")}
                 />
               ) : null}
@@ -667,7 +733,7 @@ export default function ComposerScreen() {
               <Text style={styles.focusEmptyText}>No focus areas yet.</Text>
               <TextLink
                 label="Create your first focus area →"
-                tone={Sirius.color.accent}
+                tone={t.color.accent}
                 onPress={() => router.push("/focus")}
               />
             </View>
@@ -729,7 +795,7 @@ export default function ComposerScreen() {
               <Switch
                 value={curationOn}
                 onValueChange={(v) => void toggleCuration(v)}
-                trackColor={{ true: Sirius.color.ink }}
+                trackColor={{ true: t.color.ink }}
                 accessibilityLabel="Draft on device"
               />
             </View>
@@ -745,7 +811,7 @@ export default function ComposerScreen() {
                 </Text>
                 <TextLink
                   label="Get the model →"
-                  tone={Sirius.color.accent}
+                  tone={t.color.accent}
                   onPress={() => router.push("/llm")}
                 />
               </View>
@@ -810,12 +876,35 @@ export default function ComposerScreen() {
             <View style={styles.sheetCancel}>
               <TextLink
                 label="Cancel"
-                tone={Sirius.color.inkMuted}
+                tone={t.color.inkMuted}
                 onPress={() => setActiveKey(null)}
               />
             </View>
           </>
         ) : null}
+      </Sheet>
+
+      <Sheet
+        visible={mediaSheet !== null}
+        title={mediaSheet === "video" ? "Video" : "Photo"}
+        onClose={() => setMediaSheet(null)}
+      >
+        <PrimaryButton
+          label={mediaSheet === "video" ? "Record video" : "Take photo"}
+          onPress={mediaSheet === "video" ? captureVideo : capturePhoto}
+        />
+        <PrimaryButton
+          label="Choose from library"
+          onPress={mediaSheet === "video" ? pickVideo : pickImages}
+          style={styles.sheetSecondaryButton}
+        />
+        <View style={styles.sheetCancel}>
+          <TextLink
+            label="Cancel"
+            tone={t.color.inkMuted}
+            onPress={() => setMediaSheet(null)}
+          />
+        </View>
       </Sheet>
 
       <Sheet
@@ -838,7 +927,7 @@ export default function ComposerScreen() {
         <View style={styles.sheetCancel}>
           <TextLink
             label="Cancel"
-            tone={Sirius.color.inkMuted}
+            tone={t.color.inkMuted}
             onPress={() => {
               if (!isRecording) setAudioSheetOpen(false);
             }}
@@ -898,7 +987,7 @@ export default function ComposerScreen() {
         <View style={styles.sheetCancel}>
           <TextLink
             label="Cancel"
-            tone={Sirius.color.inkMuted}
+            tone={t.color.inkMuted}
             onPress={() => {
               if (!repoLoading) setRepoSheetOpen(false);
             }}
@@ -929,7 +1018,7 @@ export default function ComposerScreen() {
             <View style={styles.sheetCancel}>
               <TextLink
                 label="Cancel"
-                tone={Sirius.color.inkMuted}
+                tone={t.color.inkMuted}
                 onPress={() => setPendingCapture(null)}
               />
             </View>
@@ -976,7 +1065,7 @@ export default function ComposerScreen() {
               <View style={styles.sheetCancel}>
                 <TextLink
                   label="Cancel"
-                  tone={Sirius.color.inkMuted}
+                  tone={t.color.inkMuted}
                   onPress={() => setEditingUid(null)}
                 />
               </View>
@@ -991,6 +1080,7 @@ export default function ComposerScreen() {
 // The confirm-preview repo card. Renders the server-fetched RepoPreview so the
 // user sees exactly what "ingest this repo" resolves to before queueing.
 function RepoPreviewCard({ preview }: { preview: RepoPreview }) {
+  const styles = useThemedStyles(makeStyles);
   const meta = [
     `★ ${preview.stars.toLocaleString()}`,
     preview.primaryLanguage,
@@ -1037,177 +1127,179 @@ function RepoPreviewCard({ preview }: { preview: RepoPreview }) {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
   flex: { flex: 1 },
   usageBar: {
-    paddingHorizontal: Sirius.space.xl,
-    paddingVertical: Sirius.space.sm,
-    backgroundColor: Sirius.color.paper,
+    paddingHorizontal: t.space.xl,
+    paddingVertical: t.space.sm,
+    backgroundColor: t.color.paper,
     borderTopWidth: 1,
-    borderTopColor: Sirius.color.rule,
+    borderTopColor: t.color.rule,
   },
   container: {
-    padding: Sirius.space.xl,
+    padding: t.space.xl,
     paddingTop: 64,
     // Clear the floating native tab bar AND the pinned SubmitBar above it, with
     // extra breathing room so the last scroll content (the on-device "Draft on
     // device" toggle) sits clearly above the bar rather than tucked against it.
     paddingBottom: 280,
-    gap: Sirius.space.lg,
+    gap: t.space.lg,
   },
   header: {
-    gap: Sirius.space.lg,
-    marginBottom: Sirius.space.xs,
+    gap: t.space.lg,
+    marginBottom: t.space.xs,
   },
-  headerMain: { gap: Sirius.space.xs },
+  headerMain: { gap: t.space.xs },
   headerToolbar: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: Sirius.space.xl,
+    gap: t.space.xl,
     borderBottomWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingBottom: Sirius.space.md,
+    borderColor: t.color.rule,
+    paddingBottom: t.space.md,
   },
-  focusEmpty: { gap: Sirius.space.sm },
+  focusEmpty: { gap: t.space.sm },
   focusEmptyText: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 15,
     fontStyle: "italic",
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   prompt: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 20,
-    color: Sirius.color.ink,
+    color: t.color.ink,
   },
-  grid: { gap: Sirius.space.md },
-  gridRow: { flexDirection: "row", gap: Sirius.space.md },
+  grid: { gap: t.space.md },
+  gridRow: { flexDirection: "row", gap: t.space.md },
   trayHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     borderBottomWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingBottom: Sirius.space.sm,
-    marginTop: Sirius.space.sm,
+    borderColor: t.color.rule,
+    paddingBottom: t.space.sm,
+    marginTop: t.space.sm,
   },
   emptyTray: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 15,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
     fontStyle: "italic",
   },
-  trayList: { gap: Sirius.space.sm },
+  trayList: { gap: t.space.sm },
   thumb: {
     width: 44,
     height: 44,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperSunken,
+    borderRadius: t.radius.none,
+    backgroundColor: t.color.paperSunken,
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
+    borderColor: t.color.rule,
   },
   sheetInput: { minHeight: 120, textAlignVertical: "top", paddingTop: 12 },
   // Keyboard "Done" sits right-aligned just above the sheet's submit button.
   keyboardDone: { alignSelf: "flex-end" },
   sheetCancel: { alignItems: "center" },
-  sheetSecondaryButton: { marginTop: Sirius.space.sm },
+  sheetSecondaryButton: { marginTop: t.space.sm },
   repoError: {
-    color: Sirius.color.accent,
-    fontFamily: Sirius.font.mono,
+    color: t.color.accent,
+    fontFamily: t.font.mono,
     fontSize: 12,
   },
   repoNotesInput: { minHeight: 64, textAlignVertical: "top", paddingTop: 12 },
   pendingSummary: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 16,
     fontStyle: "italic",
-    color: Sirius.color.inkMuted,
-    marginBottom: Sirius.space.sm,
+    color: t.color.inkMuted,
+    marginBottom: t.space.sm,
   },
   repoCard: {
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    backgroundColor: Sirius.color.paperRaised,
-    padding: Sirius.space.md,
-    gap: Sirius.space.sm,
+    borderColor: t.color.rule,
+    backgroundColor: t.color.paperRaised,
+    padding: t.space.md,
+    gap: t.space.sm,
   },
-  repoCardHead: { flexDirection: "row", gap: Sirius.space.md },
+  repoCardHead: { flexDirection: "row", gap: t.space.md },
   repoAvatar: {
     width: 40,
     height: 40,
-    backgroundColor: Sirius.color.paperSunken,
+    backgroundColor: t.color.paperSunken,
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
+    borderColor: t.color.rule,
   },
   repoName: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 17,
-    color: Sirius.color.ink,
+    color: t.color.ink,
   },
   repoDescription: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 14,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
     marginTop: 2,
   },
   repoMeta: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 12,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   repoReadme: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 13,
     lineHeight: 20,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
     borderLeftWidth: 2,
-    borderLeftColor: Sirius.color.rule,
-    paddingLeft: Sirius.space.sm,
+    borderLeftColor: t.color.rule,
+    paddingLeft: t.space.sm,
   },
   repoFiles: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
   },
   curationRow: {
     alignItems: "center",
-    backgroundColor: Sirius.color.paperRaised,
+    backgroundColor: t.color.paperRaised,
     borderRadius: 10,
     flexDirection: "row",
-    gap: Sirius.space.md,
+    gap: t.space.md,
     justifyContent: "space-between",
-    padding: Sirius.space.md,
+    padding: t.space.md,
   },
-  curationCopy: { flex: 1, gap: Sirius.space.xs },
+  curationCopy: { flex: 1, gap: t.space.xs },
   curationLabel: {
-    color: Sirius.color.ink,
-    fontFamily: Sirius.font.serif,
+    color: t.color.ink,
+    fontFamily: t.font.serif,
     fontSize: 16,
   },
   curationHint: {
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
     fontSize: 13,
   },
-  focusPicker: { gap: Sirius.space.sm },
+  focusPicker: { gap: t.space.sm },
   focusScroll: { flexDirection: "row" },
   focusChip: {
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.xs,
+    paddingHorizontal: t.space.md,
+    paddingVertical: t.space.xs,
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    marginRight: Sirius.space.sm,
+    borderColor: t.color.rule,
+    marginRight: t.space.sm,
   },
   focusChipActive: {
-    borderColor: Sirius.color.accent,
-    backgroundColor: Sirius.color.accent,
+    borderColor: t.color.accent,
+    backgroundColor: t.color.accent,
   },
   focusChipText: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 13,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   focusChipTextActive: {
-    color: Sirius.color.paper,
+    color: t.color.paper,
   },
-});
+  });
+}

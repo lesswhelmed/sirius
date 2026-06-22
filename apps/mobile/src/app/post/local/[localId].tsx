@@ -11,7 +11,12 @@ import { Redirect, Stack, useLocalSearchParams } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { PostMarkdown } from "@/components/post-markdown";
 import { KindLabel, Screen, Title } from "@/components/sirius";
-import { PostTypeTone, Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import {
+  usePostTypeTone,
+  useTheme,
+  useThemedStyles,
+} from "@/constants/theme-context";
 import { resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { posts, type SyncState } from "@/lib/db/schema";
@@ -32,6 +37,9 @@ const STATE_BANNER: Partial<Record<SyncState, string>> = {
 };
 
 export default function LocalPostScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
+  const postTypeTone = usePostTypeTone();
   const { localId, from } = useLocalSearchParams<{
     localId: string;
     from?: string;
@@ -62,7 +70,7 @@ export default function LocalPostScreen() {
     );
   }
 
-  const tone = PostTypeTone[row.type] ?? Sirius.color.inkMuted;
+  const tone = postTypeTone[row.type] ?? t.color.inkMuted;
   const images = row.images ?? [];
   const heroUri = images.length > 0 ? undefined : resolveMediaUrl(row.imageUrl);
   const banner = STATE_BANNER[row.syncState];
@@ -72,8 +80,8 @@ export default function LocalPostScreen() {
       <Stack.Screen
         options={{
           title: TYPE_LABEL[row.type] ?? "Post",
-          headerStyle: { backgroundColor: Sirius.color.paper },
-          headerTintColor: Sirius.color.ink,
+          headerStyle: { backgroundColor: t.color.paper },
+          headerTintColor: t.color.ink,
         }}
       />
       <ScrollView contentContainerStyle={styles.container}>
@@ -135,81 +143,83 @@ export default function LocalPostScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  centeredPad: {
-    justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.sm,
-  },
-  container: { padding: Sirius.space.xl, gap: Sirius.space.md },
-  banner: {
-    backgroundColor: Sirius.color.accentSoft,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    padding: Sirius.space.md,
-  },
-  bannerFailed: { borderColor: Sirius.color.accent },
-  bannerText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    color: Sirius.color.inkMuted,
-  },
-  hero: {
-    width: "100%",
-    aspectRatio: 1,
-    backgroundColor: Sirius.color.paperSunken,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    marginBottom: Sirius.space.sm,
-  },
-  galleryImage: {
-    width: "100%",
-    aspectRatio: 1,
-    backgroundColor: Sirius.color.paperSunken,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-  },
-  tagsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: Sirius.space.sm,
-    marginTop: Sirius.space.xs,
-  },
-  tag: {
-    backgroundColor: Sirius.color.accentSoft,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.xs,
-  },
-  tagText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    color: Sirius.color.accent,
-  },
-  excerpt: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 19,
-    lineHeight: 27,
-    color: Sirius.color.inkMuted,
-    fontStyle: "italic",
-    marginTop: Sirius.space.xs,
-  },
-  errorTitle: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 22,
-    color: Sirius.color.ink,
-  },
-  errorBody: { color: Sirius.color.inkMuted },
-  commentsLocked: {
-    marginTop: Sirius.space.lg,
-    paddingTop: Sirius.space.lg,
-    borderTopWidth: 1,
-    borderTopColor: Sirius.color.rule,
-  },
-  commentsLockedText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    color: Sirius.color.inkSubtle,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    centeredPad: {
+      justifyContent: "center",
+      paddingHorizontal: t.space.xl,
+      gap: t.space.sm,
+    },
+    container: { padding: t.space.xl, gap: t.space.md },
+    banner: {
+      backgroundColor: t.color.accentSoft,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      padding: t.space.md,
+    },
+    bannerFailed: { borderColor: t.color.accent },
+    bannerText: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.inkMuted,
+    },
+    hero: {
+      width: "100%",
+      aspectRatio: 1,
+      backgroundColor: t.color.paperSunken,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      marginBottom: t.space.sm,
+    },
+    galleryImage: {
+      width: "100%",
+      aspectRatio: 1,
+      backgroundColor: t.color.paperSunken,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+    },
+    tagsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: t.space.sm,
+      marginTop: t.space.xs,
+    },
+    tag: {
+      backgroundColor: t.color.accentSoft,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.xs,
+    },
+    tagText: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.accent,
+    },
+    excerpt: {
+      fontFamily: t.font.serif,
+      fontSize: 19,
+      lineHeight: 27,
+      color: t.color.inkMuted,
+      fontStyle: "italic",
+      marginTop: t.space.xs,
+    },
+    errorTitle: {
+      fontFamily: t.font.serif,
+      fontSize: 22,
+      color: t.color.ink,
+    },
+    errorBody: { color: t.color.inkMuted },
+    commentsLocked: {
+      marginTop: t.space.lg,
+      paddingTop: t.space.lg,
+      borderTopWidth: 1,
+      borderTopColor: t.color.rule,
+    },
+    commentsLockedText: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.inkSubtle,
+    },
+  });
+}

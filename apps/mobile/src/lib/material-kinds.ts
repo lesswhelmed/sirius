@@ -63,7 +63,7 @@ export const CAPTURE_KINDS: CaptureKind[] = [
     symbol: "photo.on.rectangle",
     glyph: "▦",
     input: "picker",
-    hint: "Pick photos from your library and add them to the tray",
+    hint: "Take a photo or pick from your library and add it to the tray",
   },
   {
     key: "video",
@@ -71,7 +71,7 @@ export const CAPTURE_KINDS: CaptureKind[] = [
     symbol: "video",
     glyph: "▶",
     input: "picker",
-    hint: "Pick a video from your library and add it to the tray",
+    hint: "Record a video or pick one from your library and add it to the tray",
   },
   {
     key: "document",

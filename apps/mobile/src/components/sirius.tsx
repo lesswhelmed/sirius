@@ -41,7 +41,8 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SFSymbol } from "sf-symbols-typescript";
 
-import { BottomTabInset, Sirius } from "@/constants/theme";
+import { BottomTabInset, type Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 
 // A multiline TextInput grows with its content. Left uncapped it eventually
 // fills (and overruns) the screen, shoving the action buttons behind the
@@ -51,12 +52,14 @@ const MULTILINE_MAX_HEIGHT = Math.round(Dimensions.get("window").height * 0.4);
 
 // Full-bleed paper background. Screens layer their own padding on top.
 export function Screen({ style, ...rest }: ViewProps) {
+  const styles = useThemedStyles(makeStyles);
   return <View style={[styles.screen, style]} {...rest} />;
 }
 
 // Mono uppercase eyebrow/folio label — the recurring "Section II — Catalogue"
 // motif from the web header.
 export function Eyebrow({ style, ...rest }: TextProps) {
+  const styles = useThemedStyles(makeStyles);
   return <Text style={[styles.eyebrow, style]} {...rest} />;
 }
 
@@ -68,6 +71,7 @@ export function Title({
   style,
   ...rest
 }: TextProps & { accent?: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Text style={[styles.title, style]} {...rest}>
       {children}
@@ -95,6 +99,7 @@ export function PageHeader({
   // brand-entry surfaces (e.g. sign-in, the share tray) — not every page header.
   brandMark?: boolean;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.header}>
       <View style={styles.headerMain}>
@@ -124,6 +129,7 @@ export function PageHeader({
 
 // Secondary / metadata text in muted ink.
 export function MetaText({ style, ...rest }: TextProps) {
+  const styles = useThemedStyles(makeStyles);
   return <Text style={[styles.meta, style]} {...rest} />;
 }
 
@@ -133,6 +139,7 @@ export function KindLabel({
   style,
   ...rest
 }: TextProps & { tone?: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Text
       style={[styles.kind, tone ? { color: tone } : null, style]}
@@ -143,6 +150,7 @@ export function KindLabel({
 
 // A small colored dot + uppercase status label, mirroring the web StatusPip.
 export function StatusPip({ label, color }: { label: string; color: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.pipRow}>
       <View style={[styles.pipDot, { backgroundColor: color }]} />
@@ -163,6 +171,7 @@ export function CaptureDone({
   message?: string;
   onClose: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Screen style={styles.captureDone}>
       <PageHeader brandMark title={title} titleAccent="." subtitle={message} />
@@ -176,6 +185,8 @@ const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
     { label, style, multiline, accessibilityLabel, ...rest },
     ref,
   ) {
+    const t = useTheme();
+    const styles = useThemedStyles(makeStyles);
     // Multiline inputs have no return-key dismiss on iOS; screens pair them with
     // a <KeyboardDoneButton/> near the submit control (see useKeyboardVisible).
     return (
@@ -188,8 +199,8 @@ const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
             multiline ? styles.inputMultiline : null,
             style,
           ]}
-          placeholderTextColor={Sirius.color.inkSubtle}
-          selectionColor={Sirius.color.accent}
+          placeholderTextColor={t.color.inkSubtle}
+          selectionColor={t.color.accent}
           multiline={multiline}
           // Associate the visible label with the input so VoiceOver announces it
           // (the label <Text> alone is not programmatically linked). Falls back to
@@ -214,14 +225,16 @@ export function PasswordField({
   ...rest
 }: Omit<TextInputProps, "secureTextEntry"> & { label?: string }) {
   const [hidden, setHidden] = useState(true);
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.field}>
       {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
       <View style={styles.passwordRow}>
         <TextInput
           style={[styles.input, styles.passwordInput, style]}
-          placeholderTextColor={Sirius.color.inkSubtle}
-          selectionColor={Sirius.color.accent}
+          placeholderTextColor={t.color.inkSubtle}
+          selectionColor={t.color.accent}
           secureTextEntry={hidden}
           accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
           {...rest}
@@ -240,7 +253,7 @@ export function PasswordField({
             name={hidden ? "eye" : "eye.slash"}
             size={20}
             weight="regular"
-            tintColor={Sirius.color.inkMuted}
+            tintColor={t.color.inkMuted}
             fallback={
               <Text style={styles.passwordToggleGlyph}>
                 {hidden ? "Show" : "Hide"}
@@ -284,6 +297,8 @@ export const AuthField = forwardRef<
   },
   ref,
 ) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const inputRef = useRef<TextInput>(null);
   const valueRef = useRef<string>(defaultValue ?? "");
   useImperativeHandle(
@@ -304,8 +319,8 @@ export const AuthField = forwardRef<
       <TextInput
         ref={inputRef}
         style={[styles.input, style]}
-        placeholderTextColor={Sirius.color.inkSubtle}
-        selectionColor={Sirius.color.accent}
+        placeholderTextColor={t.color.inkSubtle}
+        selectionColor={t.color.accent}
         defaultValue={defaultValue}
         accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
         onChangeText={(text) => {
@@ -354,6 +369,7 @@ export function KeyboardDoneButton({
   label?: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const visible = useKeyboardVisible();
   if (Platform.OS !== "ios" || !visible) {
     return null;
@@ -391,6 +407,8 @@ export function PrimaryButton({
   style,
   ...rest
 }: ButtonProps) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const isDisabled = Boolean(disabled || busy);
   return (
     <Pressable
@@ -406,7 +424,7 @@ export function PrimaryButton({
       {...rest}
     >
       {busy ? (
-        <ActivityIndicator color={Sirius.color.onAccent} />
+        <ActivityIndicator color={t.color.onAccent} />
       ) : (
         <Text style={styles.primaryButtonText}>{label}</Text>
       )}
@@ -422,6 +440,8 @@ export function SecondaryButton({
   symbol,
   ...rest
 }: ButtonProps & { symbol?: SFSymbol }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const isDisabled = Boolean(disabled || busy);
   return (
     <Pressable
@@ -437,7 +457,7 @@ export function SecondaryButton({
       {...rest}
     >
       {busy ? (
-        <ActivityIndicator color={Sirius.color.accent} />
+        <ActivityIndicator color={t.color.accent} />
       ) : (
         <View style={styles.secondaryButtonContent}>
           {symbol ? (
@@ -445,7 +465,7 @@ export function SecondaryButton({
               name={symbol}
               size={20}
               weight="medium"
-              tintColor={Sirius.color.accent}
+              tintColor={t.color.accent}
               // Android/web have no SF Symbols; the label alone carries meaning.
               fallback={<></>}
             />
@@ -460,9 +480,11 @@ export function SecondaryButton({
 // A bordered text link/button used in footers ("Sign out", "Create account").
 export function TextLink({
   label,
-  tone = Sirius.color.accent,
+  tone,
   ...rest
 }: Omit<PressableProps, "children"> & { label: string; tone?: string }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       accessibilityRole="button"
@@ -470,7 +492,9 @@ export function TextLink({
       style={({ pressed }) => [pressed && styles.linkPressed]}
       {...rest}
     >
-      <Text style={[styles.link, { color: tone }]}>{label}</Text>
+      <Text style={[styles.link, { color: tone ?? t.color.accent }]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -494,6 +518,8 @@ export function ActionCard({
   active?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       accessibilityRole="button"
@@ -512,12 +538,12 @@ export function ActionCard({
         name={symbol}
         size={26}
         weight="regular"
-        tintColor={active ? Sirius.color.accent : Sirius.color.ink}
+        tintColor={active ? t.color.accent : t.color.ink}
         fallback={
           <Text
             style={[
               styles.actionGlyph,
-              active && { color: Sirius.color.accent },
+              active && { color: t.color.accent },
             ]}
             accessibilityElementsHidden
           >
@@ -545,6 +571,8 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   return (
     <Modal
@@ -566,7 +594,7 @@ export function Sheet({
         <View
           style={[
             styles.sheet,
-            { paddingBottom: Sirius.space.xl + insets.bottom },
+            { paddingBottom: t.space.xl + insets.bottom },
           ]}
         >
           <View style={styles.sheetHandle} />
@@ -612,11 +640,13 @@ export function TrayRow({
   removeLabel?: string;
   leading?: ReactNode;
 }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.trayRow}>
       {leading}
       <View style={styles.trayText}>
-        <KindLabel tone={Sirius.color.accent}>{tag}</KindLabel>
+        <KindLabel tone={t.color.accent}>{tag}</KindLabel>
         <Text style={styles.trayDescription} numberOfLines={2}>
           {description}
         </Text>
@@ -675,6 +705,8 @@ export function SubmitBar({
   onSubmit: () => void;
   countLabel?: string;
 }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
   const empty = count === 0;
@@ -707,7 +739,7 @@ export function SubmitBar({
         // Fill paper from the bar content all the way to the screen bottom so
         // the area behind the floating tab bar isn't see-through to scroll
         // content; the content row is pushed up to sit just above the tab bar.
-        { paddingBottom: BottomTabInset + insets.bottom + Sirius.space.md },
+        { paddingBottom: BottomTabInset + insets.bottom + t.space.md },
       ]}
     >
       <View style={styles.submitBarSummary}>
@@ -735,101 +767,102 @@ export function SubmitBar({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Sirius.color.paper },
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: t.color.paper },
   captureDone: {
     justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.lg,
+    paddingHorizontal: t.space.xl,
+    gap: t.space.lg,
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    gap: Sirius.space.lg,
+    gap: t.space.lg,
   },
-  headerMain: { flex: 1, gap: Sirius.space.xs },
+  headerMain: { flex: 1, gap: t.space.xs },
   brandMark: {
     width: 52,
     height: 52,
     borderRadius: 12,
-    marginBottom: Sirius.space.sm,
+    marginBottom: t.space.sm,
   },
   eyebrow: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 10,
     letterSpacing: 2,
     textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
   },
   title: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 40,
     lineHeight: 42,
     letterSpacing: -0.5,
-    color: Sirius.color.ink,
+    color: t.color.ink,
   },
-  titleAccent: { color: Sirius.color.accent },
+  titleAccent: { color: t.color.accent },
   subtitle: {
-    marginTop: Sirius.space.sm,
-    fontFamily: Sirius.font.serif,
+    marginTop: t.space.sm,
+    fontFamily: t.font.serif,
     fontSize: 17,
     lineHeight: 23,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   headerCount: { alignItems: "flex-end" },
   countValue: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 34,
     lineHeight: 36,
-    color: Sirius.color.accent,
+    color: t.color.accent,
   },
   countLabel: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 10,
     letterSpacing: 2,
     textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
   },
   meta: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 12,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   kind: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 10,
     letterSpacing: 1.8,
     textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   pipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  pipDot: { width: 7, height: 7, borderRadius: Sirius.radius.pill },
+  pipDot: { width: 7, height: 7, borderRadius: t.radius.pill },
   pipLabel: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 10,
     letterSpacing: 1.6,
     textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   field: { gap: 6 },
   fieldLabel: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
     fontWeight: "600",
     letterSpacing: 1.2,
     textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   input: {
     borderWidth: 1,
-    borderColor: Sirius.color.ruleStrong,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperRaised,
+    borderColor: t.color.ruleStrong,
+    borderRadius: t.radius.none,
+    backgroundColor: t.color.paperRaised,
     paddingHorizontal: 14,
     paddingVertical: 13,
     fontSize: 16,
-    color: Sirius.color.ink,
+    color: t.color.ink,
     minHeight: 48,
   },
   inputMultiline: {
@@ -849,46 +882,46 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   passwordToggleGlyph: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
     letterSpacing: 1,
     textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   primaryButton: {
-    backgroundColor: Sirius.color.accent,
-    borderRadius: Sirius.radius.none,
+    backgroundColor: t.color.accent,
+    borderRadius: t.radius.none,
     paddingVertical: 15,
     paddingHorizontal: 20,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 50,
   },
-  primaryButtonPressed: { backgroundColor: Sirius.color.accentDeep },
+  primaryButtonPressed: { backgroundColor: t.color.accentDeep },
   primaryButtonText: {
-    color: Sirius.color.onAccent,
+    color: t.color.onAccent,
     fontSize: 16,
     fontWeight: "600",
     letterSpacing: 0.3,
   },
   secondaryButton: {
     borderWidth: 1,
-    borderColor: Sirius.color.accent,
-    borderRadius: Sirius.radius.none,
+    borderColor: t.color.accent,
+    borderRadius: t.radius.none,
     paddingVertical: 14,
     paddingHorizontal: 20,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 48,
   },
-  secondaryButtonPressed: { backgroundColor: Sirius.color.accentSoft },
+  secondaryButtonPressed: { backgroundColor: t.color.accentSoft },
   secondaryButtonContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Sirius.space.sm,
+    gap: t.space.sm,
   },
   secondaryButtonText: {
-    color: Sirius.color.accent,
+    color: t.color.accent,
     fontSize: 16,
     fontWeight: "600",
     letterSpacing: 0.3,
@@ -902,39 +935,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: Sirius.space.lg,
-    backgroundColor: Sirius.color.paper,
+    gap: t.space.lg,
+    backgroundColor: t.color.paper,
     borderTopWidth: 1,
-    borderColor: Sirius.color.ruleStrong,
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: Sirius.space.md,
+    borderColor: t.color.ruleStrong,
+    paddingHorizontal: t.space.xl,
+    paddingTop: t.space.md,
   },
-  submitBarSummary: { gap: Sirius.space.xs },
+  submitBarSummary: { gap: t.space.xs },
   submitBarHint: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 15,
     fontStyle: "italic",
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   submitBarCount: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 30,
     lineHeight: 32,
-    color: Sirius.color.accent,
+    color: t.color.accent,
   },
-  submitBarButton: { paddingHorizontal: Sirius.space.xxl, minWidth: 150 },
+  submitBarButton: { paddingHorizontal: t.space.xxl, minWidth: 150 },
   link: { fontSize: 15, fontWeight: "600" },
   linkPressed: { opacity: 0.6 },
   keyboardDoneBtn: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Sirius.color.paperRaised,
+    backgroundColor: t.color.paperRaised,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 16,
   },
   keyboardDoneBtnText: {
-    color: Sirius.color.accent,
+    color: t.color.accent,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -942,75 +975,75 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 104,
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperRaised,
+    borderColor: t.color.rule,
+    borderRadius: t.radius.none,
+    backgroundColor: t.color.paperRaised,
     alignItems: "center",
     justifyContent: "center",
-    gap: Sirius.space.sm,
-    paddingVertical: Sirius.space.lg,
+    gap: t.space.sm,
+    paddingVertical: t.space.lg,
   },
   actionCardActive: {
-    borderColor: Sirius.color.accent,
-    backgroundColor: Sirius.color.accentSoft,
+    borderColor: t.color.accent,
+    backgroundColor: t.color.accentSoft,
   },
-  actionCardPressed: { backgroundColor: Sirius.color.paperSunken },
+  actionCardPressed: { backgroundColor: t.color.paperSunken },
   actionGlyph: {
     fontSize: 26,
     lineHeight: 30,
-    color: Sirius.color.ink,
-    fontFamily: Sirius.font.serif,
+    color: t.color.ink,
+    fontFamily: t.font.serif,
   },
   actionLabel: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
-  actionLabelActive: { color: Sirius.color.accent },
+  actionLabelActive: { color: t.color.accent },
   sheetScrim: {
     flex: 1,
-    backgroundColor: "rgba(28,22,18,0.4)",
+    backgroundColor: t.color.scrim,
   },
   sheet: {
-    backgroundColor: Sirius.color.paper,
+    backgroundColor: t.color.paper,
     borderTopWidth: 1,
-    borderColor: Sirius.color.ruleStrong,
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: Sirius.space.md,
-    gap: Sirius.space.lg,
+    borderColor: t.color.ruleStrong,
+    paddingHorizontal: t.space.xl,
+    paddingTop: t.space.md,
+    gap: t.space.lg,
     // Never let the sheet swallow the whole screen: leave a tappable scrim gap
     // at the top (the requested top margin) so there's always a way out.
     maxHeight: "88%",
   },
   sheetBody: { flexShrink: 1 },
-  sheetBodyContent: { gap: Sirius.space.lg },
+  sheetBodyContent: { gap: t.space.lg },
   sheetHandle: {
     alignSelf: "center",
     width: 44,
     height: 4,
-    borderRadius: Sirius.radius.pill,
-    backgroundColor: Sirius.color.inkFaint,
+    borderRadius: t.radius.pill,
+    backgroundColor: t.color.inkFaint,
   },
-  sheetTitle: { marginTop: Sirius.space.xs },
+  sheetTitle: { marginTop: t.space.xs },
   trayRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Sirius.space.md,
+    gap: t.space.md,
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperRaised,
-    paddingVertical: Sirius.space.sm,
-    paddingHorizontal: Sirius.space.md,
+    borderColor: t.color.rule,
+    borderRadius: t.radius.none,
+    backgroundColor: t.color.paperRaised,
+    paddingVertical: t.space.sm,
+    paddingHorizontal: t.space.md,
   },
   trayText: { flex: 1, gap: 3 },
   trayDescription: {
     fontSize: 15,
     fontWeight: "500",
-    color: Sirius.color.ink,
-    fontFamily: Sirius.font.serif,
+    color: t.color.ink,
+    fontFamily: t.font.serif,
   },
   trayActions: {
     flexDirection: "row",
@@ -1025,7 +1058,7 @@ const styles = StyleSheet.create({
   trayEditText: {
     fontSize: 18,
     lineHeight: 22,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
     fontWeight: "600",
   },
   trayRemove: {
@@ -1037,7 +1070,8 @@ const styles = StyleSheet.create({
   trayRemoveText: {
     fontSize: 22,
     lineHeight: 24,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
     fontWeight: "600",
   },
-});
+  });
+}

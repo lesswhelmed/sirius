@@ -31,7 +31,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MarkdownToolbar } from "@/components/markdown-toolbar";
 import { Screen } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiGet, apiPatch } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { posts } from "@/lib/db/schema";
@@ -70,6 +71,8 @@ function useKeyboardHeight(): number {
 }
 
 export default function EditPostScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -240,8 +243,8 @@ export default function EditPostScreen() {
       <Stack.Screen
         options={{
           title: isDraft ? "Edit draft" : "Edit",
-          headerStyle: { backgroundColor: Sirius.color.paper },
-          headerTintColor: Sirius.color.ink,
+          headerStyle: { backgroundColor: t.color.paper },
+          headerTintColor: t.color.ink,
           headerLeft: () => (
             <Pressable
               onPress={cancel}
@@ -265,7 +268,7 @@ export default function EditPostScreen() {
               style={({ pressed }) => pressed && styles.pressed}
             >
               {saving ? (
-                <ActivityIndicator color={Sirius.color.accent} />
+                <ActivityIndicator color={t.color.accent} />
               ) : (
                 <Text
                   style={[
@@ -282,7 +285,7 @@ export default function EditPostScreen() {
       />
       {!base ? (
         <View style={styles.centered}>
-          <ActivityIndicator color={Sirius.color.accent} />
+          <ActivityIndicator color={t.color.accent} />
         </View>
       ) : (
         <View
@@ -301,8 +304,8 @@ export default function EditPostScreen() {
               onChangeText={setTitleEdit}
               style={styles.input}
               placeholder="Title"
-              placeholderTextColor={Sirius.color.inkSubtle}
-              selectionColor={Sirius.color.accent}
+              placeholderTextColor={t.color.inkSubtle}
+              selectionColor={t.color.accent}
               accessibilityLabel="Title"
             />
 
@@ -312,8 +315,8 @@ export default function EditPostScreen() {
               onChangeText={setExcerptEdit}
               style={styles.input}
               placeholder="Optional one-line summary"
-              placeholderTextColor={Sirius.color.inkSubtle}
-              selectionColor={Sirius.color.accent}
+              placeholderTextColor={t.color.inkSubtle}
+              selectionColor={t.color.accent}
               accessibilityLabel="Excerpt"
             />
           </View>
@@ -330,8 +333,8 @@ export default function EditPostScreen() {
             onBlur={() => setBodyFocused(false)}
             style={styles.body}
             placeholder="Write your post in Markdown…"
-            placeholderTextColor={Sirius.color.inkSubtle}
-            selectionColor={Sirius.color.accent}
+            placeholderTextColor={t.color.inkSubtle}
+            selectionColor={t.color.accent}
             multiline
             scrollEnabled
             textAlignVertical="top"
@@ -347,65 +350,67 @@ export default function EditPostScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
-  editor: { flex: 1 },
-  fields: {
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: Sirius.space.lg,
-    gap: Sirius.space.sm,
-  },
-  label: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-    marginTop: Sirius.space.sm,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    backgroundColor: Sirius.color.paperRaised,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.sm,
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    color: Sirius.color.ink,
-  },
-  // A ruled divider that turns the lower half of the screen into the writing
-  // canvas, visually separate from the compact form fields above.
-  canvasHeader: {
-    marginTop: Sirius.space.md,
-    paddingHorizontal: Sirius.space.xl,
-    paddingBottom: Sirius.space.xs,
-    borderTopWidth: 1,
-    borderTopColor: Sirius.color.ruleStrong,
-  },
-  // Borderless full-height canvas (not a small boxed field) so it reads as an
-  // editor; it owns its own scroll, keeping the caret visible above the keyboard.
-  body: {
-    flex: 1,
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: Sirius.space.xs,
-    fontFamily: Sirius.font.mono,
-    fontSize: 15,
-    lineHeight: 24,
-    color: Sirius.color.ink,
-  },
-  pressed: { opacity: 0.5 },
-  headerCancel: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 13,
-    letterSpacing: 0.5,
-    color: Sirius.color.inkMuted,
-  },
-  headerSave: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    color: Sirius.color.accent,
-  },
-  headerSaveDisabled: { color: Sirius.color.inkFaint },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    centered: { flex: 1, alignItems: "center", justifyContent: "center" },
+    editor: { flex: 1 },
+    fields: {
+      paddingHorizontal: t.space.xl,
+      paddingTop: t.space.lg,
+      gap: t.space.sm,
+    },
+    label: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+      marginTop: t.space.sm,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: t.color.paperRaised,
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.sm,
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      color: t.color.ink,
+    },
+    // A ruled divider that turns the lower half of the screen into the writing
+    // canvas, visually separate from the compact form fields above.
+    canvasHeader: {
+      marginTop: t.space.md,
+      paddingHorizontal: t.space.xl,
+      paddingBottom: t.space.xs,
+      borderTopWidth: 1,
+      borderTopColor: t.color.ruleStrong,
+    },
+    // Borderless full-height canvas (not a small boxed field) so it reads as an
+    // editor; it owns its own scroll, keeping the caret visible above the keyboard.
+    body: {
+      flex: 1,
+      paddingHorizontal: t.space.xl,
+      paddingTop: t.space.xs,
+      fontFamily: t.font.mono,
+      fontSize: 15,
+      lineHeight: 24,
+      color: t.color.ink,
+    },
+    pressed: { opacity: 0.5 },
+    headerCancel: {
+      fontFamily: t.font.mono,
+      fontSize: 13,
+      letterSpacing: 0.5,
+      color: t.color.inkMuted,
+    },
+    headerSave: {
+      fontFamily: t.font.mono,
+      fontSize: 13,
+      fontWeight: "700",
+      letterSpacing: 0.5,
+      color: t.color.accent,
+    },
+    headerSaveDisabled: { color: t.color.inkFaint },
+  });
+}

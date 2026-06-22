@@ -16,7 +16,8 @@
 import { createContext, type ReactNode, useContext } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useThemedStyles } from "@/constants/theme-context";
 
 type SegmentedContextValue<T extends string> = {
   value: T;
@@ -38,6 +39,7 @@ export function SegmentedControl<T extends string>({
   onChange: (value: T) => void;
   children: ReactNode;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <SegmentedContext.Provider
       value={{ value, onChange: onChange as (v: string) => void }}
@@ -58,6 +60,7 @@ export function Segment<T extends string>({
   label: string;
   count?: number;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const ctx = useContext(SegmentedContext);
   if (!ctx) {
     throw new Error("<Segment> must be rendered inside <SegmentedControl>");
@@ -85,44 +88,46 @@ export function Segment<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
-  track: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderColor: Sirius.color.rule,
-    backgroundColor: "transparent",
-  },
-  segment: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Sirius.space.sm,
-    paddingVertical: 10,
-    paddingHorizontal: Sirius.space.md,
-    minHeight: 44,
-    // Reserve the underline's space on every segment so the label never shifts
-    // when selection moves; only the active segment colors it in.
-    borderBottomWidth: 2,
-    borderColor: "transparent",
-  },
-  // Active state is a 2px oxblood underline sitting over the track hairline.
-  segmentActive: { borderColor: Sirius.color.accent },
-  segmentPressed: { opacity: 0.6 },
-  label: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  labelActive: { color: Sirius.color.ink },
-  count: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    letterSpacing: 0.5,
-    color: Sirius.color.inkFaint,
-    fontVariant: ["tabular-nums"],
-  },
-  countActive: { color: Sirius.color.inkSubtle },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    track: {
+      flexDirection: "row",
+      borderBottomWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: "transparent",
+    },
+    segment: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: t.space.sm,
+      paddingVertical: 10,
+      paddingHorizontal: t.space.md,
+      minHeight: 44,
+      // Reserve the underline's space on every segment so the label never shifts
+      // when selection moves; only the active segment colors it in.
+      borderBottomWidth: 2,
+      borderColor: "transparent",
+    },
+    // Active state is a 2px oxblood underline sitting over the track hairline.
+    segmentActive: { borderColor: t.color.accent },
+    segmentPressed: { opacity: 0.6 },
+    label: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    labelActive: { color: t.color.ink },
+    count: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      letterSpacing: 0.5,
+      color: t.color.inkFaint,
+      fontVariant: ["tabular-nums"],
+    },
+    countActive: { color: t.color.inkSubtle },
+  });
+}

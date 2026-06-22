@@ -13,6 +13,7 @@ import { canReadPost } from "../../../../lib/post-access";
 import { getSessionOrNull } from "../../../../lib/session";
 import { PostImage } from "../../../_chrome/post-image";
 import { RepoChip } from "../../../_chrome/repo-chip";
+import { RelatedPosts } from "../../../(public)/listing/[slug]/related-posts";
 import { ColophonTabs } from "./colophon-tabs";
 import { ViewBeacon } from "./view-beacon";
 
@@ -240,6 +241,8 @@ export default async function PostDetailPage({
           ⁂
         </span>
       </div>
+
+      {isOwner ? <RelatedPosts slug={post.slug} /> : null}
     </article>
   );
 }

@@ -30,7 +30,8 @@ import {
   Screen,
   TextLink,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import {
   appendMessage,
   createConversation,
@@ -64,6 +65,7 @@ type ChatMessage = {
 };
 
 export default function LlmScreen() {
+  const styles = useThemedStyles(makeStyles);
   // Fully hidden when the on-device AI build flag is off: no nav entry points
   // here (composer gates them), and a deep link lands on this neutral state
   // instead of the download/chat UI. EXPO_PUBLIC_ON_DEVICE_AI is a build-time
@@ -88,6 +90,8 @@ export default function LlmScreen() {
 }
 
 function LlmScreenInner() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const queryClient = useQueryClient();
 
   const settings = useQuery({
@@ -136,7 +140,7 @@ function LlmScreenInner() {
   ) {
     return (
       <Screen style={styles.center}>
-        <ActivityIndicator color={Sirius.color.inkMuted} />
+        <ActivityIndicator color={t.color.inkMuted} />
       </Screen>
     );
   }
@@ -221,6 +225,7 @@ function ModelPicker({
   currentId: string;
   onSelect: (id: string) => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const options = textModels();
   if (options.length < 2) {
     return null;
@@ -257,6 +262,8 @@ function ModelPicker({
 // NOTE: the assets only exist on a physical iPhone — the iOS Simulator runtime
 // ships none, so isAvailable() stays false and prepare() can't succeed there.
 function TranscriptionAssets() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const queryClient = useQueryClient();
 
   const available = useQuery({
@@ -303,7 +310,7 @@ function TranscriptionAssets() {
         <MetaText style={styles.cardEyebrow}>Assets ready ✓</MetaText>
       ) : prepare.isPending ? (
         <View style={styles.progressWrap}>
-          <ActivityIndicator color={Sirius.color.inkMuted} />
+          <ActivityIndicator color={t.color.inkMuted} />
           <MetaText>Downloading language assets…</MetaText>
         </View>
       ) : (
@@ -353,6 +360,8 @@ function Chat({
   modelId: string;
   modelLabel: string;
 }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   // The active thread; null = no conversation yet (empty state). A thread is
   // created lazily on the first send. Conversations + messages live in local
   // SQLite, so leaving and returning to this screen restores where you were
@@ -531,7 +540,7 @@ function Chat({
                   name="square.and.pencil"
                   size={22}
                   weight="semibold"
-                  tintColor={Sirius.color.ink}
+                  tintColor={t.color.ink}
                   fallback={<Text style={styles.headerAction}>New</Text>}
                 />
               </Pressable>
@@ -545,7 +554,7 @@ function Chat({
                   name="list.bullet"
                   size={22}
                   weight="semibold"
-                  tintColor={Sirius.color.ink}
+                  tintColor={t.color.ink}
                   fallback={<Text style={styles.headerAction}>Chats</Text>}
                 />
               </Pressable>
@@ -624,7 +633,7 @@ function Chat({
               value={input}
               onChangeText={setInput}
               placeholder="Ask about your posts…"
-              placeholderTextColor={Sirius.color.inkSubtle}
+              placeholderTextColor={t.color.inkSubtle}
               accessibilityLabel="Message"
               multiline
               editable={!busy}
@@ -639,7 +648,7 @@ function Chat({
                 disabled={Boolean(busy)}
               >
                 {busy ? (
-                  <ActivityIndicator size="small" color={Sirius.color.paper} />
+                  <ActivityIndicator size="small" color={t.color.paper} />
                 ) : (
                   <Text style={styles.sendLabel}>Send</Text>
                 )}
@@ -675,6 +684,7 @@ function ChatsModal({
   onDelete: (id: string) => void;
   onClose: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const { data: convos } = useLiveQuery(
     db
       .select()
@@ -736,6 +746,7 @@ function ChatsModal({
 
 // The cited posts under an answer. Each taps through to the post detail screen.
 function Sources({ posts }: { posts: ScoredPost[] }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.sources}>
       <MetaText style={styles.sourcesEyebrow}>Sources</MetaText>
@@ -761,155 +772,157 @@ function Sources({ posts }: { posts: ScoredPost[] }) {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  center: { alignItems: "center", flex: 1, justifyContent: "center" },
-  container: { flex: 1, padding: 16 },
-  downloadCard: {
-    backgroundColor: Sirius.color.paperRaised,
-    borderRadius: 10,
-    gap: 12,
-    padding: 20,
-  },
-  cardStack: { gap: 16, paddingBottom: 16 },
-  cardEyebrow: { textTransform: "uppercase" },
-  modelName: {
-    color: Sirius.color.ink,
-    fontSize: 20,
-    fontWeight: "600",
-  },
-  modelDetail: { color: Sirius.color.inkMuted, fontSize: 14, lineHeight: 20 },
-  progressWrap: { gap: 6 },
-  progressTrack: {
-    backgroundColor: Sirius.color.paperSunken,
-    borderRadius: 4,
-    height: 8,
-    overflow: "hidden",
-  },
-  progressFill: {
-    backgroundColor: Sirius.color.ink,
-    borderRadius: 4,
-    height: 8,
-  },
-  picker: { gap: 8, marginTop: 8 },
-  pickerRow: { alignItems: "center", flexDirection: "row", gap: 8 },
-  radio: {
-    borderColor: Sirius.color.inkSubtle,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    height: 14,
-    width: 14,
-  },
-  radioActive: {
-    backgroundColor: Sirius.color.ink,
-    borderColor: Sirius.color.ink,
-  },
-  pickerLabel: { color: Sirius.color.inkMuted, fontSize: 14 },
-  empty: { gap: 8, paddingTop: 32 },
-  // Mode toggle (Ask my posts | Chat).
-  toggle: {
-    backgroundColor: Sirius.color.paperSunken,
-    borderRadius: 10,
-    flexDirection: "row",
-    marginBottom: 10,
-    padding: 3,
-  },
-  toggleBtn: {
-    alignItems: "center",
-    borderRadius: 8,
-    flex: 1,
-    paddingVertical: 8,
-  },
-  toggleBtnActive: { backgroundColor: Sirius.color.paperRaised },
-  toggleLabel: {
-    color: Sirius.color.inkMuted,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  toggleLabelActive: { color: Sirius.color.ink },
-  msgGroup: { gap: 6 },
-  // Cited sources under an answer.
-  sources: {
-    alignSelf: "flex-start",
-    gap: 6,
-    maxWidth: "92%",
-  },
-  sourcesEyebrow: { textTransform: "uppercase" },
-  sourceCard: {
-    backgroundColor: Sirius.color.paperSunken,
-    borderRadius: 8,
-    gap: 2,
-    padding: 10,
-  },
-  sourceTitle: { color: Sirius.color.ink, fontSize: 14, fontWeight: "600" },
-  sourceExcerpt: { color: Sirius.color.inkMuted, fontSize: 12, lineHeight: 17 },
-  messages: { gap: 10, paddingBottom: 16 },
-  bubble: { borderRadius: 10, maxWidth: "88%", padding: 12 },
-  bubbleUser: {
-    alignSelf: "flex-end",
-    backgroundColor: Sirius.color.ink,
-  },
-  bubbleModel: {
-    alignSelf: "flex-start",
-    backgroundColor: Sirius.color.paperRaised,
-  },
-  bubbleText: { color: Sirius.color.ink, fontSize: 15, lineHeight: 21 },
-  bubbleUserText: { color: Sirius.color.paper, fontSize: 15, lineHeight: 21 },
-  inputRow: {
-    alignItems: "flex-end",
-    flexDirection: "row",
-    gap: 8,
-    paddingTop: 8,
-  },
-  input: {
-    backgroundColor: Sirius.color.paperRaised,
-    borderRadius: 10,
-    color: Sirius.color.ink,
-    flex: 1,
-    fontSize: 15,
-    maxHeight: 120,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  sendBtn: {
-    alignItems: "center",
-    backgroundColor: Sirius.color.ink,
-    borderRadius: 10,
-    justifyContent: "center",
-    minWidth: 64,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  sendBtnDisabled: { opacity: 0.5 },
-  sendLabel: { color: Sirius.color.paper, fontSize: 14, fontWeight: "600" },
-  // Right column stacking the shared <KeyboardDoneButton/> directly above Send;
-  // both stretch to the same width so they read as a pair.
-  sendCol: { alignItems: "stretch", gap: 6 },
-  error: { color: "#a33", fontSize: 13, marginTop: 8 },
-  // Header actions (New chat / Chats) + the Chats thread-list modal.
-  headerBtns: { flexDirection: "row", gap: 16, paddingRight: 4 },
-  headerAction: { color: Sirius.color.ink, fontSize: 16, fontWeight: "600" },
-  headerActionDisabled: { opacity: 0.4 },
-  modalHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingBottom: 12,
-  },
-  modalTitle: {
-    color: Sirius.color.ink,
-    fontFamily: Sirius.font.serif,
-    fontSize: 22,
-  },
-  chatRow: {
-    alignItems: "center",
-    backgroundColor: Sirius.color.paperRaised,
-    borderRadius: 10,
-    flexDirection: "row",
-    gap: 12,
-    padding: 14,
-  },
-  chatRowActive: { borderColor: Sirius.color.ink, borderWidth: 1 },
-  chatRowTitle: { color: Sirius.color.ink, fontSize: 15, fontWeight: "600" },
-  deleteAction: { color: "#a33", fontSize: 13, fontWeight: "600" },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    center: { alignItems: "center", flex: 1, justifyContent: "center" },
+    container: { flex: 1, padding: 16 },
+    downloadCard: {
+      backgroundColor: t.color.paperRaised,
+      borderRadius: 10,
+      gap: 12,
+      padding: 20,
+    },
+    cardStack: { gap: 16, paddingBottom: 16 },
+    cardEyebrow: { textTransform: "uppercase" },
+    modelName: {
+      color: t.color.ink,
+      fontSize: 20,
+      fontWeight: "600",
+    },
+    modelDetail: { color: t.color.inkMuted, fontSize: 14, lineHeight: 20 },
+    progressWrap: { gap: 6 },
+    progressTrack: {
+      backgroundColor: t.color.paperSunken,
+      borderRadius: 4,
+      height: 8,
+      overflow: "hidden",
+    },
+    progressFill: {
+      backgroundColor: t.color.ink,
+      borderRadius: 4,
+      height: 8,
+    },
+    picker: { gap: 8, marginTop: 8 },
+    pickerRow: { alignItems: "center", flexDirection: "row", gap: 8 },
+    radio: {
+      borderColor: t.color.inkSubtle,
+      borderRadius: 7,
+      borderWidth: 1.5,
+      height: 14,
+      width: 14,
+    },
+    radioActive: {
+      backgroundColor: t.color.ink,
+      borderColor: t.color.ink,
+    },
+    pickerLabel: { color: t.color.inkMuted, fontSize: 14 },
+    empty: { gap: 8, paddingTop: 32 },
+    // Mode toggle (Ask my posts | Chat).
+    toggle: {
+      backgroundColor: t.color.paperSunken,
+      borderRadius: 10,
+      flexDirection: "row",
+      marginBottom: 10,
+      padding: 3,
+    },
+    toggleBtn: {
+      alignItems: "center",
+      borderRadius: 8,
+      flex: 1,
+      paddingVertical: 8,
+    },
+    toggleBtnActive: { backgroundColor: t.color.paperRaised },
+    toggleLabel: {
+      color: t.color.inkMuted,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    toggleLabelActive: { color: t.color.ink },
+    msgGroup: { gap: 6 },
+    // Cited sources under an answer.
+    sources: {
+      alignSelf: "flex-start",
+      gap: 6,
+      maxWidth: "92%",
+    },
+    sourcesEyebrow: { textTransform: "uppercase" },
+    sourceCard: {
+      backgroundColor: t.color.paperSunken,
+      borderRadius: 8,
+      gap: 2,
+      padding: 10,
+    },
+    sourceTitle: { color: t.color.ink, fontSize: 14, fontWeight: "600" },
+    sourceExcerpt: { color: t.color.inkMuted, fontSize: 12, lineHeight: 17 },
+    messages: { gap: 10, paddingBottom: 16 },
+    bubble: { borderRadius: 10, maxWidth: "88%", padding: 12 },
+    bubbleUser: {
+      alignSelf: "flex-end",
+      backgroundColor: t.color.ink,
+    },
+    bubbleModel: {
+      alignSelf: "flex-start",
+      backgroundColor: t.color.paperRaised,
+    },
+    bubbleText: { color: t.color.ink, fontSize: 15, lineHeight: 21 },
+    bubbleUserText: { color: t.color.paper, fontSize: 15, lineHeight: 21 },
+    inputRow: {
+      alignItems: "flex-end",
+      flexDirection: "row",
+      gap: 8,
+      paddingTop: 8,
+    },
+    input: {
+      backgroundColor: t.color.paperRaised,
+      borderRadius: 10,
+      color: t.color.ink,
+      flex: 1,
+      fontSize: 15,
+      maxHeight: 120,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    sendBtn: {
+      alignItems: "center",
+      backgroundColor: t.color.ink,
+      borderRadius: 10,
+      justifyContent: "center",
+      minWidth: 64,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    sendBtnDisabled: { opacity: 0.5 },
+    sendLabel: { color: t.color.paper, fontSize: 14, fontWeight: "600" },
+    // Right column stacking the shared <KeyboardDoneButton/> directly above Send;
+    // both stretch to the same width so they read as a pair.
+    sendCol: { alignItems: "stretch", gap: 6 },
+    error: { color: t.color.danger, fontSize: 13, marginTop: 8 },
+    // Header actions (New chat / Chats) + the Chats thread-list modal.
+    headerBtns: { flexDirection: "row", gap: 16, paddingRight: 4 },
+    headerAction: { color: t.color.ink, fontSize: 16, fontWeight: "600" },
+    headerActionDisabled: { opacity: 0.4 },
+    modalHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingBottom: 12,
+    },
+    modalTitle: {
+      color: t.color.ink,
+      fontFamily: t.font.serif,
+      fontSize: 22,
+    },
+    chatRow: {
+      alignItems: "center",
+      backgroundColor: t.color.paperRaised,
+      borderRadius: 10,
+      flexDirection: "row",
+      gap: 12,
+      padding: 14,
+    },
+    chatRowActive: { borderColor: t.color.ink, borderWidth: 1 },
+    chatRowTitle: { color: t.color.ink, fontSize: 15, fontWeight: "600" },
+    deleteAction: { color: t.color.danger, fontSize: 13, fontWeight: "600" },
+  });
+}

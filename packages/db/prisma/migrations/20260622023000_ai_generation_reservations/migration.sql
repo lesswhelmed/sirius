@@ -14,8 +14,13 @@ CHECK ("status" <> 'reserved' OR ("sourceRecordId" IS NOT NULL AND "reservationE
 ADD CONSTRAINT "AiGenerationEvent_completed_expiry_check"
 CHECK ("status" <> 'completed' OR "reservationExpiresAt" IS NULL);
 
-CREATE UNIQUE INDEX CONCURRENTLY "AiGenerationEvent_userId_sourceRecordId_key"
+-- NOTE: plain (non-CONCURRENTLY) index builds. Prisma applies each migration
+-- file inside a transaction, and CREATE INDEX CONCURRENTLY cannot run in a
+-- transaction block (it would abort `migrate deploy`). AiGenerationEvent is
+-- small (free tier = a few generations/user/week), so the brief lock from a
+-- regular index build is negligible.
+CREATE UNIQUE INDEX "AiGenerationEvent_userId_sourceRecordId_key"
 ON "AiGenerationEvent"("userId", "sourceRecordId");
 
-CREATE INDEX CONCURRENTLY "AiGenerationEvent_userId_status_reservationExpiresAt_idx"
+CREATE INDEX "AiGenerationEvent_userId_status_reservationExpiresAt_idx"
 ON "AiGenerationEvent"("userId", "status", "reservationExpiresAt");

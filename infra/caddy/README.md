@@ -1,6 +1,7 @@
 # Caddy config
 
-`Caddyfile` here is the canonical copy of the **`lesswhelmed.com` site block only**.
+`Caddyfile` here is the canonical copy of **two site blocks**: the
+**`lesswhelmed.com`** web app and the **`mcp.lesswhelmed.com`** MCP corpus server.
 The live `/etc/caddy/Caddyfile` on the deploy host (`deploy@172.239.45.200`) is
 **shared** and ALSO serves `copt.dev`, `www.copt.dev`, and `brotanicaldistro.com`.
 
@@ -29,6 +30,12 @@ Three mutually-exclusive route groups:
 Keep the `file_server` root in sync with `SIGHT_IMAGE_DIR` / `SOCIAL_IMAGE_DIR`
 in `.env.production` (both currently under `.../apps/web/public`).
 
+A **second, separate** `mcp.lesswhelmed.com` block reverse-proxies the MCP corpus
+server (`apps/mcp`, PM2 `sirius-mcp`) on `127.0.0.1:3005`. It has no static
+assets or media — the whole surface is the stateless MCP Streamable-HTTP
+endpoint, authenticated per-request with a user-issued API key. `mcp.lesswhelmed.com`
+needs its own DNS A record pointing at the deploy host so Caddy can issue a cert.
+
 ## One-time prerequisite: let Caddy read the media
 
 Caddy runs as the **`caddy`** user, but the media lives under `/home/deploy`,
@@ -51,14 +58,16 @@ ssh -i ~/.ssh/id_copt_dev_v1 deploy@172.239.45.200
 # back up the live (shared) config first
 sudo cp -n /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak
 
-# replace ONLY the lesswhelmed.com block. It is the last block, so: keep every
-# line before it, then append the canonical block from this repo. (Paste the
-# repo's infra/caddy/Caddyfile lesswhelmed.com {…} block into /tmp/lesswhelmed.block.)
+# replace ONLY the sirius blocks. They are the last two blocks (lesswhelmed.com
+# then mcp.lesswhelmed.com), so: keep every line before the first one, then
+# append BOTH canonical blocks from this repo. (Paste the repo's
+# infra/caddy/Caddyfile from the `lesswhelmed.com {` line to EOF — i.e. both the
+# lesswhelmed.com and mcp.lesswhelmed.com blocks — into /tmp/sirius.blocks.)
 awk '/^lesswhelmed\.com \{/{exit} {print}' /etc/caddy/Caddyfile > /tmp/merged.Caddyfile
-cat /tmp/lesswhelmed.block >> /tmp/merged.Caddyfile
+cat /tmp/sirius.blocks >> /tmp/merged.Caddyfile
 
-# sanity: all four sites must still be present
-for s in 'copt.dev {' 'www.copt.dev {' 'brotanicaldistro.com {' 'lesswhelmed.com {'; do
+# sanity: all five sites must still be present
+for s in 'copt.dev {' 'www.copt.dev {' 'brotanicaldistro.com {' 'lesswhelmed.com {' 'mcp.lesswhelmed.com {'; do
   grep -qF "$s" /tmp/merged.Caddyfile || echo "MISSING: $s"
 done
 

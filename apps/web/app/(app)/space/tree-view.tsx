@@ -8,6 +8,7 @@ import {
 } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useMemo, useState } from "react";
+import { ConnectedTopics } from "./connected-topics";
 
 // Branches shallower than this depth start open on first render; deeper ones
 // collapse. Mirrors the mobile Tree tab's EXPAND_TO_DEPTH.
@@ -126,7 +127,7 @@ export function TreeView({ scene }: { scene: EmbeddingScene }) {
       </div>
 
       <div className="relative min-w-0 flex-1 overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)]">
-        <IndexPane index={index} />
+        <IndexPane index={index} scene={scene} onOpenTopic={setDrilledId} />
       </div>
     </div>
   );
@@ -342,7 +343,15 @@ function FocusCard({
 // The right pane — "The Index" of whatever branch is selected. Reuses the visual
 // language of the Map tab's IndexPanel: numbered journal entries, match scores
 // where the link is a similarity, Open → links to the listing.
-function IndexPane({ index }: { index: ReturnType<typeof subtreeIndex> }) {
+function IndexPane({
+  index,
+  scene,
+  onOpenTopic,
+}: {
+  index: ReturnType<typeof subtreeIndex>;
+  scene: EmbeddingScene;
+  onOpenTopic: (id: string) => void;
+}) {
   if (!index) {
     return (
       <div className="flex h-full items-center justify-center p-6">
@@ -409,6 +418,11 @@ function IndexPane({ index }: { index: ReturnType<typeof subtreeIndex> }) {
           </ol>
         )}
       </div>
+      <ConnectedTopics
+        scene={scene}
+        node={index.root}
+        onOpenTopic={onOpenTopic}
+      />
     </div>
   );
 }

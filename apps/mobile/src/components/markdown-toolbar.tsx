@@ -7,7 +7,8 @@ import { SymbolView } from "expo-symbols";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { SFSymbol } from "sf-symbols-typescript";
 
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import type { MarkdownCommand } from "@/lib/markdown-edit";
 
 type ToolDef = {
@@ -42,6 +43,8 @@ export function MarkdownToolbar({
   onCommand: (command: MarkdownCommand) => void;
   onDone: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   return (
     <View style={styles.bar}>
       <ScrollView
@@ -66,7 +69,7 @@ export function MarkdownToolbar({
                 name={tool.symbol}
                 size={19}
                 weight="medium"
-                tintColor={Sirius.color.ink}
+                tintColor={t.color.ink}
                 fallback={<Text style={styles.glyph}>{tool.glyph}</Text>}
               />
             ) : (
@@ -90,45 +93,47 @@ export function MarkdownToolbar({
   );
 }
 
-const styles = StyleSheet.create({
-  bar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Sirius.color.paperRaised,
-    borderTopWidth: 1,
-    borderTopColor: Sirius.color.ruleStrong,
-  },
-  tools: {
-    alignItems: "center",
-    paddingHorizontal: Sirius.space.xs,
-  },
-  btn: {
-    minWidth: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: Sirius.space.sm,
-  },
-  btnPressed: { opacity: 0.5 },
-  glyph: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 15,
-    fontWeight: "600",
-    color: Sirius.color.ink,
-  },
-  done: {
-    height: 44,
-    paddingHorizontal: Sirius.space.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    borderLeftWidth: 1,
-    borderLeftColor: Sirius.color.rule,
-  },
-  doneText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 13,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-    color: Sirius.color.accent,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    bar: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: t.color.paperRaised,
+      borderTopWidth: 1,
+      borderTopColor: t.color.ruleStrong,
+    },
+    tools: {
+      alignItems: "center",
+      paddingHorizontal: t.space.xs,
+    },
+    btn: {
+      minWidth: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: t.space.sm,
+    },
+    btnPressed: { opacity: 0.5 },
+    glyph: {
+      fontFamily: t.font.mono,
+      fontSize: 15,
+      fontWeight: "600",
+      color: t.color.ink,
+    },
+    done: {
+      height: 44,
+      paddingHorizontal: t.space.lg,
+      alignItems: "center",
+      justifyContent: "center",
+      borderLeftWidth: 1,
+      borderLeftColor: t.color.rule,
+    },
+    doneText: {
+      fontFamily: t.font.mono,
+      fontSize: 13,
+      fontWeight: "600",
+      letterSpacing: 0.5,
+      color: t.color.accent,
+    },
+  });
+}

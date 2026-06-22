@@ -15,7 +15,8 @@ import {
   Screen,
   TextLink,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { resetPassword } from "@/lib/auth-client";
 
 const MIN_LENGTH = 8;
@@ -28,6 +29,8 @@ const EXPIRED_CODES = new Set([
 ]);
 
 export default function ResetPasswordScreen() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { token } = useLocalSearchParams<{ token?: string }>();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -51,7 +54,7 @@ export default function ResetPasswordScreen() {
           />
           <TextLink
             label="Back to sign in"
-            tone={Sirius.color.inkMuted}
+            tone={t.color.inkMuted}
             onPress={() => router.replace("/(auth)/sign-in")}
           />
         </View>
@@ -142,7 +145,7 @@ export default function ResetPasswordScreen() {
           <View style={styles.footer}>
             <TextLink
               label="Back to sign in"
-              tone={Sirius.color.inkMuted}
+              tone={t.color.inkMuted}
               onPress={() => router.replace("/(auth)/sign-in")}
             />
           </View>
@@ -152,19 +155,21 @@ export default function ResetPasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  container: {
-    flex: 1,
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: 96,
-    gap: Sirius.space.xl,
-  },
-  form: { gap: Sirius.space.lg },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: Sirius.space.xs,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    container: {
+      flex: 1,
+      paddingHorizontal: t.space.xl,
+      paddingTop: 96,
+      gap: t.space.xl,
+    },
+    form: { gap: t.space.lg },
+    footer: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      marginTop: t.space.xs,
+    },
+  });
+}

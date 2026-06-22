@@ -8,7 +8,8 @@ import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton, Sheet } from "@/components/sirius";
 import { Segment, SegmentedControl } from "@/components/segmented";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiSend } from "@/lib/api";
 
 export type Visibility = "PRIVATE" | "FRIENDS" | "PUBLIC";
@@ -28,6 +29,8 @@ export function VisibilitySheet({
   visible: boolean;
   onClose: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   // Fetch the post's current visibility only while the sheet is open.
   const { data, isLoading } = useQuery({
     queryKey: ["post-visibility", slug],
@@ -67,7 +70,7 @@ export function VisibilitySheet({
     <Sheet visible={visible} title="Visibility" onClose={close}>
       {isLoading || !value ? (
         <View style={styles.loading}>
-          <ActivityIndicator color={Sirius.color.accent} />
+          <ActivityIndicator color={t.color.accent} />
         </View>
       ) : (
         <>
@@ -84,14 +87,16 @@ export function VisibilitySheet({
   );
 }
 
-const styles = StyleSheet.create({
-  loading: { paddingVertical: Sirius.space.xl, alignItems: "center" },
-  hint: {
-    fontFamily: Sirius.font.serif,
-    fontStyle: "italic",
-    fontSize: 14,
-    color: Sirius.color.inkSubtle,
-    marginTop: Sirius.space.sm,
-    marginBottom: Sirius.space.md,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    loading: { paddingVertical: t.space.xl, alignItems: "center" },
+    hint: {
+      fontFamily: t.font.serif,
+      fontStyle: "italic",
+      fontSize: 14,
+      color: t.color.inkSubtle,
+      marginTop: t.space.sm,
+      marginBottom: t.space.md,
+    },
+  });
+}

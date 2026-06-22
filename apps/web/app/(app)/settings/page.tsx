@@ -8,6 +8,7 @@ import Link from "next/link";
 import { AiUsageCard } from "../../_chrome/ai-usage-card";
 import { DateDisplay } from "../../../lib/date-display";
 import { requireSession } from "../../../lib/session";
+import { ApiKeysSection } from "./api-keys-section";
 import { RequestArchiveButton } from "./request-archive-button";
 import { SettingsShell, type SettingsSection } from "./settings-shell";
 import { ShareHandle } from "./share-handle";
@@ -200,6 +201,18 @@ export default async function SettingsPage() {
               </ul>
             )}
           </div>
+        </div>
+      ),
+    },
+    {
+      id: "api-keys",
+      label: "API Keys",
+      folio: "v",
+      blurb: "Connect external AI agents to your corpus.",
+      content: (
+        <div className="space-y-7">
+          <SectionHeader eyebrow="API Keys" title="Agent access" />
+          <ApiKeysSection />
         </div>
       ),
     },

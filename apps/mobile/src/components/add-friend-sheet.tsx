@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { Field, PrimaryButton, Sheet, TextLink } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
 
 type SearchResult = {
@@ -23,6 +24,8 @@ export function AddFriendSheet({
   onClose: () => void;
   onSent: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
   const [sending, setSending] = useState(false);
@@ -85,7 +88,7 @@ export function AddFriendSheet({
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {!showResults ? null : searchQ.isFetching ? (
         <View style={styles.loading}>
-          <ActivityIndicator color={Sirius.color.accent} />
+          <ActivityIndicator color={t.color.accent} />
         </View>
       ) : result ? (
         <View style={styles.resultRow}>
@@ -118,53 +121,55 @@ export function AddFriendSheet({
         <Text style={styles.empty}>No one found with that handle.</Text>
       )}
       <View style={styles.cancel}>
-        <TextLink label="Close" tone={Sirius.color.inkMuted} onPress={close} />
+        <TextLink label="Close" tone={t.color.inkMuted} onPress={close} />
       </View>
     </Sheet>
   );
 }
 
-const styles = StyleSheet.create({
-  loading: { paddingVertical: Sirius.space.lg, alignItems: "center" },
-  resultRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: Sirius.space.md,
-    paddingVertical: Sirius.space.sm,
-  },
-  resultText: { flexShrink: 1 },
-  resultName: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 17,
-    color: Sirius.color.ink,
-  },
-  resultHandle: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    color: Sirius.color.inkSubtle,
-  },
-  addBtn: { paddingHorizontal: Sirius.space.lg },
-  stateLabel: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  error: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    color: Sirius.color.accent,
-    marginTop: Sirius.space.xs,
-  },
-  empty: {
-    fontFamily: Sirius.font.serif,
-    fontStyle: "italic",
-    fontSize: 14,
-    color: Sirius.color.inkSubtle,
-    marginTop: Sirius.space.sm,
-  },
-  cancel: { alignItems: "center", marginTop: Sirius.space.md },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    loading: { paddingVertical: t.space.lg, alignItems: "center" },
+    resultRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: t.space.md,
+      paddingVertical: t.space.sm,
+    },
+    resultText: { flexShrink: 1 },
+    resultName: {
+      fontFamily: t.font.serif,
+      fontSize: 17,
+      color: t.color.ink,
+    },
+    resultHandle: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.inkSubtle,
+    },
+    addBtn: { paddingHorizontal: t.space.lg },
+    stateLabel: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    error: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 0.5,
+      color: t.color.accent,
+      marginTop: t.space.xs,
+    },
+    empty: {
+      fontFamily: t.font.serif,
+      fontStyle: "italic",
+      fontSize: 14,
+      color: t.color.inkSubtle,
+      marginTop: t.space.sm,
+    },
+    cancel: { alignItems: "center", marginTop: t.space.md },
+  });
+}

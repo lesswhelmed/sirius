@@ -62,3 +62,25 @@ lesswhelmed.com {
 		}
 	}
 }
+
+# MCP corpus server (apps/mcp, PM2: sirius-mcp) on :3005. A SEPARATE site block,
+# not a handle inside lesswhelmed.com — external MCP hosts connect here with a
+# user-issued API key (Authorization: Bearer). No static assets or media; the
+# whole surface is the stateless Streamable-HTTP endpoint. Merge this block into
+# the live shared /etc/caddy/Caddyfile alongside the others (see README).
+mcp.lesswhelmed.com {
+	header {
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+		X-XSS-Protection "1; mode=block"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	encode gzip zstd
+
+	reverse_proxy 127.0.0.1:3005 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Host {host}
+	}
+}

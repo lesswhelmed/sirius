@@ -1,3 +1,4 @@
+import { apiKey } from "@better-auth/api-key";
 import { expo } from "@better-auth/expo";
 import { prisma } from "@repo/db";
 import { betterAuth } from "better-auth";
@@ -109,7 +110,11 @@ export const auth = betterAuth({
       });
     },
   },
-  plugins: [admin(), expo(), nextCookies()],
+  // apiKey() backs the MCP corpus server: users mint per-user API keys from
+  // /settings; apps/mcp verifies a Bearer key → owning userId via
+  // auth.api.verifyApiKey({ body: { key } }). Expiry/revoke/rate-limit are
+  // enforced inside the plugin. Keep nextCookies() LAST (better-auth convention).
+  plugins: [admin(), expo(), apiKey(), nextCookies()],
 });
 
 export type Session = typeof auth.$Infer.Session;

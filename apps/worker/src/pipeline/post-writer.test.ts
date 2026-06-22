@@ -84,18 +84,19 @@ function draftWithCategories(categories: string[]): GeminiOutput {
   };
 }
 
-// Reads the categories.connectOrCreate array off the captured upsert call.
+// Reads the {tag}.connectOrCreate array off the captured upsert call.
 function connectOrCreateOf(
   branch: "create" | "update",
+  relation: "categories" | "tags" = "categories",
 ): Array<{ where: { name: string }; create: Record<string, unknown> }> {
   const call = upsertCalls[0];
   if (!call) {
     throw new Error("prisma.post.upsert was never called");
   }
-  const categories = call[branch].categories as
+  const rel = call[branch][relation] as
     | { connectOrCreate?: unknown }
     | undefined;
-  return (categories?.connectOrCreate ?? []) as Array<{
+  return (rel?.connectOrCreate ?? []) as Array<{
     where: { name: string };
     create: Record<string, unknown>;
   }>;
@@ -106,7 +107,7 @@ beforeEach(() => {
   upsertMock.mockClear();
 });
 
-test("writePost requests connectOrCreate for each category in the draft", async () => {
+test("writePost connectOrCreates only the PRIMARY category; surplus categories are demoted to tags", async () => {
   await writePost(
     draftWithCategories([
       "technology/artificial-intelligence",
@@ -117,22 +118,27 @@ test("writePost requests connectOrCreate for each category in the draft", async 
 
   expect(upsertMock).toHaveBeenCalledTimes(1);
 
+  // A post carries exactly ONE category (see post-writer.ts / assign-org.ts):
+  // the primary is the model's FIRST proposal (most-representative), keyed by the
+  // LEAF segment of its slash-path so the fallback label matches what the
+  // classification resolver later reconciles to.
   const connects = connectOrCreateOf("create");
-  // Flat Category rows are keyed by the LEAF segment of each slash-path, so the
-  // fallback labels match what the classification resolver later reconciles to.
   expect(connects.map((c) => c.where.name)).toEqual([
     "artificial-intelligence",
-    "typography",
   ]);
 
-  // Each op is a real create payload: matches by name, creates name+slug+displayName.
-  for (const op of connects) {
-    expect(op.create.name).toBe(op.where.name);
-    expect(typeof op.create.slug).toBe("string");
-    expect((op.create.slug as string).length).toBeGreaterThan(0);
-    expect(typeof op.create.displayName).toBe("string");
-    expect((op.create.displayName as string).length).toBeGreaterThan(0);
-  }
+  // The op is a real create payload: matches by name, creates name+slug+displayName.
+  const op = connects[0]!;
+  expect(op.create.name).toBe(op.where.name);
+  expect(typeof op.create.slug).toBe("string");
+  expect((op.create.slug as string).length).toBeGreaterThan(0);
+  expect(typeof op.create.displayName).toBe("string");
+  expect((op.create.displayName as string).length).toBeGreaterThan(0);
+
+  // Every surplus category (also by LEAF) is demoted to a tag so it stays
+  // surfaced and filterable rather than being dropped.
+  const tagConnects = connectOrCreateOf("create", "tags");
+  expect(tagConnects.map((t) => t.where.name)).toContain("typography");
 });
 
 test("a slash-path category is created by its LEAF segment, not the full path", async () => {

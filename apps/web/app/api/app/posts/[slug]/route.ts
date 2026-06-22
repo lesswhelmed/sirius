@@ -1,5 +1,6 @@
 import {
   deletePostAndSources,
+  enqueueSceneRecompute,
   findPostBySlug,
   PostStatus,
   updatePostContent,
@@ -106,6 +107,9 @@ export async function DELETE(
   for (const src of result.deletedSources) {
     removeRetainedForSubmission(src.submittedById, src.submissionId);
   }
+  // The owner's graph shrank — refresh the cached scene layout in the background
+  // (the post's neighbor edges were already cascade-removed). Best-effort.
+  void enqueueSceneRecompute(session.user.id).catch(() => {});
   revalidateTag("posts", { expire: 0 });
   revalidateTag(`post-${slug}`, { expire: 0 });
   return Response.json({ ok: true });

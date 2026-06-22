@@ -1,8 +1,9 @@
 // Dev-only draft test bench: exercises on-device post drafting end-to-end
 // (lock → generateText → generateDraft → schema) against fixture notes, with
 // deterministic quality checks — no composer, no submission, no server.
-// Open via the /llm screen's dev link or deep link:
-//   dev.copt.sirius://llm-test?run=all
+// Open via the /llm screen's dev link or deep link (scheme is siriusapp://, not
+// the bundle id — see apps/mobile/docs/ROUTES.md):
+//   siriusapp://llm-test?run=all
 import { useQuery } from "@tanstack/react-query";
 import {
   AudioModule,
@@ -27,7 +28,8 @@ import {
   Screen,
   StatusPip,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { canDraftOnDevice } from "@/lib/llm/curate";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import {
@@ -57,6 +59,7 @@ const TOOL_PROBE_FIXTURE = {
 } as const;
 
 export default function LlmTestScreen() {
+  const styles = useThemedStyles(makeStyles);
   if (!__DEV__ || !ON_DEVICE_AI_ENABLED) {
     return (
       <Screen style={styles.centered}>
@@ -70,6 +73,8 @@ export default function LlmTestScreen() {
 }
 
 function Bench() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const params = useLocalSearchParams<{ run?: string }>();
   const ready = useQuery({
     queryKey: ["llm-draft-ready"],
@@ -291,12 +296,12 @@ function Bench() {
                   }
                   color={
                     runningId === fixture.id
-                      ? Sirius.color.accent
+                      ? t.color.accent
                       : result
                         ? result.ok
-                          ? "#2c7a4b"
-                          : "#a33"
-                        : Sirius.color.inkSubtle
+                          ? t.color.success
+                          : t.color.danger
+                        : t.color.inkSubtle
                   }
                 />
                 <Text style={styles.cardTitle}>{fixture.label}</Text>
@@ -351,12 +356,12 @@ function Bench() {
               }
               color={
                 runningId === URL_EXTRACT_FIXTURE.id
-                  ? Sirius.color.accent
+                  ? t.color.accent
                   : results[URL_EXTRACT_FIXTURE.id]
                     ? results[URL_EXTRACT_FIXTURE.id]!.ok
-                      ? "#2c7a4b"
-                      : "#a33"
-                    : Sirius.color.inkSubtle
+                      ? t.color.success
+                      : t.color.danger
+                    : t.color.inkSubtle
               }
             />
             <Text style={styles.cardTitle}>{URL_EXTRACT_FIXTURE.label}</Text>
@@ -412,12 +417,12 @@ function Bench() {
               }
               color={
                 runningId === ANSWER_QUALITY_FIXTURE.id
-                  ? Sirius.color.accent
+                  ? t.color.accent
                   : results[ANSWER_QUALITY_FIXTURE.id]
                     ? results[ANSWER_QUALITY_FIXTURE.id]!.ok
-                      ? "#2c7a4b"
-                      : "#a33"
-                    : Sirius.color.inkSubtle
+                      ? t.color.success
+                      : t.color.danger
+                    : t.color.inkSubtle
               }
             />
             <Text style={styles.cardTitle}>
@@ -465,12 +470,12 @@ function Bench() {
               }
               color={
                 runningId === GEN_DIAG_FIXTURE.id
-                  ? Sirius.color.accent
+                  ? t.color.accent
                   : results[GEN_DIAG_FIXTURE.id]
                     ? results[GEN_DIAG_FIXTURE.id]!.ok
-                      ? "#2c7a4b"
-                      : "#a33"
-                    : Sirius.color.inkSubtle
+                      ? t.color.success
+                      : t.color.danger
+                    : t.color.inkSubtle
               }
             />
             <Text style={styles.cardTitle}>
@@ -524,12 +529,12 @@ function Bench() {
               }
               color={
                 runningId === ASK_FLOW_FIXTURE.id
-                  ? Sirius.color.accent
+                  ? t.color.accent
                   : results[ASK_FLOW_FIXTURE.id]
                     ? results[ASK_FLOW_FIXTURE.id]!.ok
-                      ? "#2c7a4b"
-                      : "#a33"
-                    : Sirius.color.inkSubtle
+                      ? t.color.success
+                      : t.color.danger
+                    : t.color.inkSubtle
               }
             />
             <Text style={styles.cardTitle}>
@@ -580,12 +585,12 @@ function Bench() {
               }
               color={
                 runningId === TOOL_PROBE_FIXTURE.id
-                  ? Sirius.color.accent
+                  ? t.color.accent
                   : results[TOOL_PROBE_FIXTURE.id]
                     ? results[TOOL_PROBE_FIXTURE.id]!.ok
-                      ? "#2c7a4b"
-                      : "#a33"
-                    : Sirius.color.inkSubtle
+                      ? t.color.success
+                      : t.color.danger
+                    : t.color.inkSubtle
               }
             />
             <Text style={styles.cardTitle}>
@@ -619,6 +624,8 @@ function Bench() {
 // the exact exports the production audio handler composes
 // (materials.ts: canTranscribeOnDevice → transcribeAudio → draftNotePost).
 function AudioBench() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recording, setRecording] = useState(false);
   const [phase, setPhase] = useState<"transcribing" | "drafting" | null>(null);
@@ -718,10 +725,10 @@ function AudioBench() {
           }
           color={
             available.data
-              ? "#2c7a4b"
+              ? t.color.success
               : available.data === false
-                ? "#a33"
-                : Sirius.color.inkSubtle
+                ? t.color.danger
+                : t.color.inkSubtle
           }
         />
         <Text style={styles.dim}>
@@ -751,7 +758,7 @@ function AudioBench() {
           <View style={styles.cardHeader}>
             <StatusPip
               label={transcript.length > 0 ? "transcribed" : "empty"}
-              color={transcript.length > 0 ? "#2c7a4b" : "#a33"}
+              color={transcript.length > 0 ? t.color.success : t.color.danger}
             />
             <Text style={styles.dim}>
               {transcribeMs !== null
@@ -788,48 +795,50 @@ function AudioBench() {
   );
 }
 
-const styles = StyleSheet.create({
-  centered: { alignItems: "center", justifyContent: "center" },
-  list: {
-    gap: Sirius.space.md,
-    paddingBottom: 80,
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: Sirius.space.xl,
-  },
-  eyebrow: { marginBottom: Sirius.space.xs },
-  card: {
-    backgroundColor: Sirius.color.paperRaised,
-    borderRadius: 8,
-    gap: Sirius.space.xs,
-    padding: Sirius.space.md,
-  },
-  cardHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: Sirius.space.sm,
-  },
-  cardTitle: {
-    color: Sirius.color.ink,
-    flex: 1,
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-  },
-  checkPass: { color: "#2c7a4b", fontSize: 12 },
-  checkFail: { color: "#a33", fontSize: 12 },
-  raw: {
-    color: Sirius.color.inkMuted,
-    fontFamily: "Menlo",
-    fontSize: 11,
-    marginTop: Sirius.space.xs,
-  },
-  summary: { color: Sirius.color.inkMuted, fontSize: 13 },
-  audioSection: {
-    borderTopColor: Sirius.color.rule,
-    borderTopWidth: 1,
-    gap: Sirius.space.md,
-    marginTop: Sirius.space.lg,
-    paddingTop: Sirius.space.lg,
-  },
-  warn: { color: "#a33", fontSize: 13 },
-  dim: { color: Sirius.color.inkSubtle, fontSize: 13 },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    centered: { alignItems: "center", justifyContent: "center" },
+    list: {
+      gap: t.space.md,
+      paddingBottom: 80,
+      paddingHorizontal: t.space.xl,
+      paddingTop: t.space.xl,
+    },
+    eyebrow: { marginBottom: t.space.xs },
+    card: {
+      backgroundColor: t.color.paperRaised,
+      borderRadius: 8,
+      gap: t.space.xs,
+      padding: t.space.md,
+    },
+    cardHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: t.space.sm,
+    },
+    cardTitle: {
+      color: t.color.ink,
+      flex: 1,
+      fontFamily: t.font.serif,
+      fontSize: 16,
+    },
+    checkPass: { color: t.color.success, fontSize: 12 },
+    checkFail: { color: t.color.danger, fontSize: 12 },
+    raw: {
+      color: t.color.inkMuted,
+      fontFamily: "Menlo",
+      fontSize: 11,
+      marginTop: t.space.xs,
+    },
+    summary: { color: t.color.inkMuted, fontSize: 13 },
+    audioSection: {
+      borderTopColor: t.color.rule,
+      borderTopWidth: 1,
+      gap: t.space.md,
+      marginTop: t.space.lg,
+      paddingTop: t.space.lg,
+    },
+    warn: { color: t.color.danger, fontSize: 13 },
+    dim: { color: t.color.inkSubtle, fontSize: 13 },
+  });
+}

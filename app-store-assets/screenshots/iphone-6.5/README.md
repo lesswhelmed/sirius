@@ -19,6 +19,14 @@ the 6.5" slot triggers "The dimensions of one or more screenshots are wrong.")
 
 ## Regenerate from the 6.9" set
 
+The capture script emits this set automatically with `--with-65`:
+
+```sh
+REVIEWER_PASSWORD='…' bun run app-store:screenshots --with-65
+```
+
+Or downscale an existing 6.9" set by hand:
+
 ```sh
 cd app-store-assets/screenshots
 mkdir -p iphone-6.5

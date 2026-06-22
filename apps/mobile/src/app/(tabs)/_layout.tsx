@@ -2,11 +2,12 @@ import { Redirect } from "expo-router";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
 import { ActivityIndicator, View } from "react-native";
 
-import { Sirius } from "@/constants/theme";
+import { useTheme } from "@/constants/theme-context";
 import { useSession } from "@/lib/auth-client";
 
 export default function TabsLayout() {
   const { data: session, isPending } = useSession();
+  const t = useTheme();
 
   if (isPending) {
     return (
@@ -15,10 +16,10 @@ export default function TabsLayout() {
           flex: 1,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: Sirius.color.paper,
+          backgroundColor: t.color.paper,
         }}
       >
-        <ActivityIndicator color={Sirius.color.accent} />
+        <ActivityIndicator color={t.color.accent} />
       </View>
     );
   }
@@ -28,16 +29,16 @@ export default function TabsLayout() {
 
   return (
     <NativeTabs
-      backgroundColor={Sirius.color.paper}
-      tintColor={Sirius.color.accent}
+      backgroundColor={t.color.paper}
+      tintColor={t.color.accent}
       iconColor={{
-        default: Sirius.color.inkSubtle,
-        selected: Sirius.color.accent,
+        default: t.color.inkSubtle,
+        selected: t.color.accent,
       }}
-      indicatorColor={Sirius.color.accentSoft}
+      indicatorColor={t.color.accentSoft}
       labelStyle={{
-        default: { color: Sirius.color.inkMuted },
-        selected: { color: Sirius.color.accent },
+        default: { color: t.color.inkMuted },
+        selected: { color: t.color.accent },
       }}
     >
       {/* Capture (the composer) leads — it's the primary action: users submit

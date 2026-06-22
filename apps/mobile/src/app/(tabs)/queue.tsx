@@ -20,7 +20,12 @@ import {
   StatusPip,
   TextLink,
 } from "@/components/sirius";
-import { Sirius, SubmissionStatusPip } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import {
+  useStatusPip,
+  useTheme,
+  useThemedStyles,
+} from "@/constants/theme-context";
 import { apiGet } from "@/lib/api";
 import { discardSubmission, requeueSubmission } from "@/lib/outbox";
 import { db } from "@/lib/db/client";
@@ -46,6 +51,9 @@ function describe(s: IngestSubmission): string {
 }
 
 export default function QueueScreen() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const statusPip = useStatusPip();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["queue"],
     queryFn: () => apiGet<QueuePage>("/api/app/queue?limit=50"),
@@ -89,7 +97,7 @@ export default function QueueScreen() {
   }, []);
 
   const renderItem = useCallback(({ item }: { item: IngestSubmission }) => {
-    const pip = SubmissionStatusPip[item.status] ?? Sirius.color.inkSubtle;
+    const pip = statusPip[item.status] ?? t.color.inkSubtle;
     return (
       <View style={styles.row}>
         <View style={styles.rowText}>
@@ -101,12 +109,12 @@ export default function QueueScreen() {
         <StatusPip label={item.status} color={pip} />
       </View>
     );
-  }, []);
+  }, [statusPip, t, styles]);
 
   if (isLoading) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={Sirius.color.accent} />
+        <ActivityIndicator color={t.color.accent} />
       </Screen>
     );
   }
@@ -145,7 +153,7 @@ export default function QueueScreen() {
                         ? "uploading"
                         : "queued on device"
                     }
-                    color={Sirius.color.inkSubtle}
+                    color={t.color.inkSubtle}
                   />
                   <Text style={styles.outboxText}>
                     {waiting.length} item{waiting.length === 1 ? "" : "s"}{" "}
@@ -167,7 +175,7 @@ export default function QueueScreen() {
                 {failed.map((row) => (
                   <View key={row.id} style={styles.failedRow}>
                     <View style={styles.rowText}>
-                      <StatusPip label="failed" color={Sirius.color.accent} />
+                      <StatusPip label="failed" color={t.color.accent} />
                       <Text style={styles.outboxStatus} numberOfLines={1}>
                         {row.lastError ?? "upload failed"}
                       </Text>
@@ -182,7 +190,7 @@ export default function QueueScreen() {
                     />
                     <TextLink
                       label="Discard"
-                      tone={Sirius.color.inkMuted}
+                      tone={t.color.inkMuted}
                       onPress={() => void discardSubmission(row.id)}
                     />
                   </View>
@@ -201,7 +209,7 @@ export default function QueueScreen() {
           <RefreshControl
             refreshing={manualRefreshing}
             onRefresh={onRefresh}
-            tintColor={Sirius.color.accent}
+            tintColor={t.color.accent}
           />
         }
       />
@@ -210,6 +218,7 @@ export default function QueueScreen() {
 }
 
 function Separator() {
+  const styles = useThemedStyles(makeStyles);
   return <View style={styles.sep} />;
 }
 
@@ -223,80 +232,82 @@ function describeOutboxStatus(head: PendingRow): string {
   return parts.join(" · ");
 }
 
-const styles = StyleSheet.create({
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
   centered: { alignItems: "center", justifyContent: "center" },
   centeredPad: {
     justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.lg,
+    paddingHorizontal: t.space.xl,
+    gap: t.space.lg,
   },
   list: {
-    paddingHorizontal: Sirius.space.xl,
+    paddingHorizontal: t.space.xl,
     paddingTop: 64,
     paddingBottom: 120,
   },
-  header: { marginBottom: Sirius.space.lg },
+  header: { marginBottom: t.space.lg },
   outboxBanner: {
-    backgroundColor: Sirius.color.paperRaised,
+    backgroundColor: t.color.paperRaised,
     borderRadius: 8,
-    gap: Sirius.space.xs,
-    marginTop: Sirius.space.md,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.sm,
+    gap: t.space.xs,
+    marginTop: t.space.md,
+    paddingHorizontal: t.space.md,
+    paddingVertical: t.space.sm,
   },
   outboxRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: Sirius.space.sm,
+    gap: t.space.sm,
   },
   outboxText: {
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
     flex: 1,
     fontSize: 13,
   },
   outboxStatus: {
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
     fontSize: 12,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Sirius.space.md,
-    paddingVertical: Sirius.space.md,
+    gap: t.space.md,
+    paddingVertical: t.space.md,
   },
-  rowText: { flex: 1, gap: Sirius.space.xs },
+  rowText: { flex: 1, gap: t.space.xs },
   rowTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 17,
     lineHeight: 22,
-    color: Sirius.color.ink,
+    color: t.color.ink,
   },
-  sep: { height: 1, backgroundColor: Sirius.color.rule },
-  empty: { padding: 40, alignItems: "center", gap: Sirius.space.sm },
+  sep: { height: 1, backgroundColor: t.color.rule },
+  empty: { padding: 40, alignItems: "center", gap: t.space.sm },
   emptyTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 22,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
-  emptyBody: { color: Sirius.color.inkSubtle },
+  emptyBody: { color: t.color.inkSubtle },
   errorTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 22,
-    color: Sirius.color.ink,
+    color: t.color.ink,
     textAlign: "center",
   },
-  errorBody: { color: Sirius.color.inkMuted, textAlign: "center" },
+  errorBody: { color: t.color.inkMuted, textAlign: "center" },
   failedBanner: {
-    backgroundColor: Sirius.color.paperRaised,
+    backgroundColor: t.color.paperRaised,
     borderRadius: 8,
-    gap: Sirius.space.sm,
-    marginTop: Sirius.space.md,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.sm,
+    gap: t.space.sm,
+    marginTop: t.space.md,
+    paddingHorizontal: t.space.md,
+    paddingVertical: t.space.sm,
   },
   failedRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: Sirius.space.sm,
+    gap: t.space.sm,
   },
-});
+  });
+}

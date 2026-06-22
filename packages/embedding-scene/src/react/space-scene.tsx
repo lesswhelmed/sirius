@@ -27,6 +27,7 @@ const EDGE_COLOR: Record<SceneEdgeKind, string> = {
   taxonomy: "#4a4660",
   assignment: "#b3863a",
   match: "#2f6e57",
+  similarity: "#7a6cae", // post↔post links — a soft violet, distinct from match
 };
 
 function EdgeLines({
@@ -102,6 +103,7 @@ export function SpaceScene({
       <EdgeLines scene={scene} kind="taxonomy" />
       <EdgeLines scene={scene} kind="assignment" />
       <EdgeLines scene={scene} kind="match" />
+      <EdgeLines scene={scene} kind="similarity" />
       {scene.nodes.map((node) => {
         const active = node.id === selectedId;
         const neighbor = neighborIds.has(node.id);

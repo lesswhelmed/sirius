@@ -6,7 +6,8 @@ import { useCallback } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton, SecondaryButton } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useThemedStyles } from "@/constants/theme-context";
 import {
   presentPaywall,
   useCustomerCenter,
@@ -25,6 +26,7 @@ function formatReset(resetsAt: string | null): string | null {
 // Compact weekly-budget readout. Safe to drop anywhere usage matters (settings,
 // composer). Renders nothing until usage resolves.
 export function UsageMeter({ usage }: { usage: AiUsage | undefined }) {
+  const styles = useThemedStyles(makeStyles);
   if (!usage) return null;
   if (usage.isPro || usage.limit == null) {
     return (
@@ -48,6 +50,7 @@ export function UsageMeter({ usage }: { usage: AiUsage | undefined }) {
 }
 
 export function SubscriptionSection() {
+  const styles = useThemedStyles(makeStyles);
   const { isPro } = useEntitlement();
   const { data: usage } = useAiUsage();
   const { open: openCustomerCenter } = useCustomerCenter();
@@ -96,53 +99,55 @@ export function SubscriptionSection() {
   );
 }
 
-const styles = StyleSheet.create({
-  section: { gap: Sirius.space.sm },
-  sectionLabel: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    backgroundColor: Sirius.color.paperRaised,
-    paddingHorizontal: Sirius.space.lg,
-    paddingVertical: Sirius.space.md,
-    gap: Sirius.space.sm,
-  },
-  title: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 17,
-    color: Sirius.color.ink,
-  },
-  sub: {
-    fontFamily: Sirius.font.sans,
-    fontSize: 13,
-    lineHeight: 18,
-    color: Sirius.color.inkMuted,
-  },
-  meter: { gap: Sirius.space.xs },
-  meterTrack: {
-    height: 6,
-    backgroundColor: Sirius.color.rule,
-    borderRadius: Sirius.radius.none,
-    overflow: "hidden",
-  },
-  meterFill: {
-    height: "100%",
-    backgroundColor: Sirius.color.accent,
-  },
-  meterText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    color: Sirius.color.inkMuted,
-  },
-  meterPro: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    color: Sirius.color.accent,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    section: { gap: t.space.sm },
+    sectionLabel: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    card: {
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: t.color.paperRaised,
+      paddingHorizontal: t.space.lg,
+      paddingVertical: t.space.md,
+      gap: t.space.sm,
+    },
+    title: {
+      fontFamily: t.font.serif,
+      fontSize: 17,
+      color: t.color.ink,
+    },
+    sub: {
+      fontFamily: t.font.sans,
+      fontSize: 13,
+      lineHeight: 18,
+      color: t.color.inkMuted,
+    },
+    meter: { gap: t.space.xs },
+    meterTrack: {
+      height: 6,
+      backgroundColor: t.color.rule,
+      borderRadius: t.radius.none,
+      overflow: "hidden",
+    },
+    meterFill: {
+      height: "100%",
+      backgroundColor: t.color.accent,
+    },
+    meterText: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      color: t.color.inkMuted,
+    },
+    meterPro: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.accent,
+    },
+  });
+}

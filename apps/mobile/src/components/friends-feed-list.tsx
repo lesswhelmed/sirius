@@ -17,7 +17,12 @@ import {
 } from "react-native";
 
 import { KindLabel } from "@/components/sirius";
-import { PostTypeTone, Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import {
+  usePostTypeTone,
+  useTheme,
+  useThemedStyles,
+} from "@/constants/theme-context";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -33,6 +38,9 @@ type FeedPost = Post & {
 };
 
 export function FriendsFeedList({ header }: { header: ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
+  const postTypeTone = usePostTypeTone();
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["feed"],
     queryFn: () => apiGet<{ items: FeedPost[] }>("/api/app/feed?limit=48"),
@@ -49,7 +57,7 @@ export function FriendsFeedList({ header }: { header: ReactNode }) {
       refreshing={isRefetching}
       ListHeaderComponent={<View style={styles.header}>{header}</View>}
       renderItem={({ item }) => {
-        const tone = PostTypeTone[item.type] ?? Sirius.color.inkMuted;
+        const tone = postTypeTone[item.type] ?? t.color.inkMuted;
         const imageUri = resolveMediaUrl(item.imageUrl);
         const author = item.submittedBy;
         return (
@@ -85,7 +93,7 @@ export function FriendsFeedList({ header }: { header: ReactNode }) {
       ListEmptyComponent={
         isLoading ? (
           <View style={styles.loading}>
-            <ActivityIndicator color={Sirius.color.accent} />
+            <ActivityIndicator color={t.color.accent} />
           </View>
         ) : (
           <View style={styles.empty}>
@@ -106,48 +114,51 @@ export function FriendsFeedList({ header }: { header: ReactNode }) {
 }
 
 function Sep() {
+  const styles = useThemedStyles(makeStyles);
   return <View style={styles.sep} />;
 }
 
-const styles = StyleSheet.create({
-  list: { paddingHorizontal: Sirius.space.xl, paddingTop: 64, paddingBottom: 120 },
-  header: { marginBottom: Sirius.space.lg },
-  loading: { paddingVertical: 48, alignItems: "center" },
-  row: { flexDirection: "row", gap: Sirius.space.lg, paddingVertical: Sirius.space.md },
-  pressed: { opacity: 0.6 },
-  thumb: {
-    width: 60,
-    height: 60,
-    backgroundColor: Sirius.color.paperSunken,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-  },
-  thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
-  thumbPlaceholderText: { fontFamily: Sirius.font.serif, fontSize: 24 },
-  rowText: { flex: 1, justifyContent: "center", gap: Sirius.space.xs },
-  rowTitle: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 20,
-    lineHeight: 24,
-    color: Sirius.color.ink,
-  },
-  author: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    color: Sirius.color.inkSubtle,
-  },
-  sep: { height: 1, backgroundColor: Sirius.color.rule },
-  empty: { padding: 40, alignItems: "center", gap: Sirius.space.sm },
-  emptyGlyph: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 56,
-    color: Sirius.color.ruleStrong,
-    marginBottom: Sirius.space.sm,
-  },
-  emptyTitle: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 22,
-    color: Sirius.color.inkMuted,
-  },
-  emptyBody: { fontSize: 15, color: Sirius.color.inkSubtle, textAlign: "center" },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    list: { paddingHorizontal: t.space.xl, paddingTop: 64, paddingBottom: 120 },
+    header: { marginBottom: t.space.lg },
+    loading: { paddingVertical: 48, alignItems: "center" },
+    row: { flexDirection: "row", gap: t.space.lg, paddingVertical: t.space.md },
+    pressed: { opacity: 0.6 },
+    thumb: {
+      width: 60,
+      height: 60,
+      backgroundColor: t.color.paperSunken,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+    },
+    thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
+    thumbPlaceholderText: { fontFamily: t.font.serif, fontSize: 24 },
+    rowText: { flex: 1, justifyContent: "center", gap: t.space.xs },
+    rowTitle: {
+      fontFamily: t.font.serif,
+      fontSize: 20,
+      lineHeight: 24,
+      color: t.color.ink,
+    },
+    author: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      color: t.color.inkSubtle,
+    },
+    sep: { height: 1, backgroundColor: t.color.rule },
+    empty: { padding: 40, alignItems: "center", gap: t.space.sm },
+    emptyGlyph: {
+      fontFamily: t.font.serif,
+      fontSize: 56,
+      color: t.color.ruleStrong,
+      marginBottom: t.space.sm,
+    },
+    emptyTitle: {
+      fontFamily: t.font.serif,
+      fontSize: 22,
+      color: t.color.inkMuted,
+    },
+    emptyBody: { fontSize: 15, color: t.color.inkSubtle, textAlign: "center" },
+  });
+}

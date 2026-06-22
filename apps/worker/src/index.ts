@@ -5,8 +5,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   claimNextArchiveRequest,
   claimNextNonImage,
+  claimNextSceneRecompute,
   claimReadyImageBatch,
   completeAiGenerationReservationForSource,
+  completeSceneRecompute,
+  failSceneRecompute,
   findPostBySourceRecordId,
   heartbeatProcessing,
   type ArchiveRequest,
@@ -17,9 +20,11 @@ import {
   reclaimStaleArchiveRequests,
   reclaimStaleImageBatches,
   reclaimStaleProcessing,
+  reclaimStaleSceneRecomputes,
   recordRetainedOriginal,
 } from "@repo/db";
 import { processArchiveRequest } from "./archive/run-archive";
+import { recomputeOwnerScene } from "./scene/recompute";
 import { retainOriginal } from "./lib/originals";
 import { removeStagedFile } from "./lib/staging";
 import { processIngest } from "./pipeline/pipeline";
@@ -170,6 +175,10 @@ async function runReclaim(): Promise<void> {
         requeued: archiveResult.requeued,
         deadLettered: archiveResult.deadLettered,
       });
+    }
+    const staleScenes = await reclaimStaleSceneRecomputes(leaseMs());
+    if (staleScenes > 0) {
+      log("info", "reclaim-scene-recomputes", { requeued: staleScenes });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -439,7 +448,8 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
 
 type WorkItem =
   | { type: "ingest"; rows: IngestSubmission[] }
-  | { type: "archive"; request: ArchiveRequest };
+  | { type: "archive"; request: ArchiveRequest }
+  | { type: "scene"; userId: string; requestId: string };
 
 async function claimNextWorkItem(): Promise<WorkItem | null> {
   const single = await claimNextNonImage();
@@ -454,6 +464,11 @@ async function claimNextWorkItem(): Promise<WorkItem | null> {
   if (archiveReq) {
     return { type: "archive", request: archiveReq };
   }
+  // Lowest priority: rebuild a stale scene cache (kNN + force layout).
+  const sceneReq = await claimNextSceneRecompute();
+  if (sceneReq) {
+    return { type: "scene", userId: sceneReq.userId, requestId: sceneReq.id };
+  }
   return null;
 }
 
@@ -462,13 +477,34 @@ async function processWorkItem(item: WorkItem): Promise<void> {
     await processBatch(item.rows);
     return;
   }
+  if (item.type === "archive") {
+    try {
+      await processArchiveRequest(item.request, (msg, extra) =>
+        log("info", msg, extra),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log("error", "archive-failed", { id: item.request.id, error: message });
+    }
+    return;
+  }
+  // Scene recompute. Failures self-retry via failSceneRecompute (lease reclaim
+  // picks them back up); success deletes the request row.
   try {
-    await processArchiveRequest(item.request, (msg, extra) =>
-      log("info", msg, extra),
-    );
+    const result = await recomputeOwnerScene(item.userId);
+    await completeSceneRecompute(item.requestId);
+    log("info", "scene-recompute", {
+      userId: item.userId,
+      nodes: result.nodes,
+      neighbors: result.neighbors,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    log("error", "archive-failed", { id: item.request.id, error: message });
+    await failSceneRecompute(item.requestId, message);
+    log("error", "scene-recompute-failed", {
+      id: item.requestId,
+      error: message,
+    });
   }
 }
 

@@ -28,7 +28,7 @@
 		"android": {
 			"package": "dev.copt.sirius",
 			"adaptiveIcon": {
-				"backgroundColor": "#0A1F44",
+				"backgroundColor": "#131923",
 				"foregroundImage": "./assets/images/android-icon-foreground.png"
 			},
 			"predictiveBackGestureEnabled": false
@@ -42,7 +42,7 @@
 			[
 				"expo-splash-screen",
 				{
-					"backgroundColor": "#0A1F44",
+					"backgroundColor": "#131923",
 					"android": {
 						"image": "./assets/images/splash-icon.png",
 						"imageWidth": 76
@@ -64,6 +64,13 @@
 				}
 			],
 			"expo-image",
+			[
+				"expo-image-picker",
+				{
+					"cameraPermission": "Allow Sirius to take photos and videos for your captures.",
+					"microphonePermission": "Allow Sirius to record audio when you capture a video."
+				}
+			],
 			"expo-secure-store",
 			[
 				"expo-local-authentication",

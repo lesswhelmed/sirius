@@ -14,6 +14,9 @@ import { useCallback, useRef } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { BackSide } from "three";
 
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
+
 // Share the Tree tab's scene query — SAME key + fetcher, so opening one screen
 // warms the other within staleTime (no duplicate fetch) and Tree's
 // pull-to-refresh refreshes this screen too.
@@ -91,6 +94,7 @@ function CameraRig({ target }: { target: RefObject<Orbit> }) {
 }
 
 export default function SpaceScreen() {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const {
     data: scene,
@@ -133,6 +137,8 @@ function LoadedSpace({
   scene: EmbeddingScene;
   onOpenPost: (slug: string) => void;
 }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const orbitTarget = useRef<Orbit>({ yaw: 0.6, pitch: 0.35 });
   const onOrbitDelta = useCallback((dx: number, dy: number) => {
     // deltas arrive in NDC units (-1..1 across the canvas); ~2.5 rad per
@@ -158,7 +164,7 @@ function LoadedSpace({
       <Canvas camera={{ fov: 50 }}>
         {/* Web leaves the canvas transparent over the page; expo-gl doesn't
             composite a transparent clear, so clear to the screen bg instead. */}
-        <color attach="background" args={["#0b0b0f"]} />
+        <color attach="background" args={[t.color.scene.bg]} />
         <CameraRig target={orbitTarget} />
         <OrbitBackdrop onDelta={onOrbitDelta} />
         <SpaceScene
@@ -249,51 +255,70 @@ function LoadedSpace({
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0b0b0f" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  muted: { color: "#888" },
-  error: { color: "#e66" },
-  overlay: {
-    position: "absolute",
-    bottom: 24,
-    left: 16,
-    right: 16,
-    borderRadius: 8,
-    backgroundColor: "rgba(17,17,22,0.92)",
-    padding: 12,
-  },
-  kind: { color: "#888", fontSize: 11, textTransform: "uppercase" },
-  label: { color: "#eee", fontSize: 15, fontWeight: "600" },
-  purpose: { color: "#aaa", fontSize: 13, fontStyle: "italic", marginTop: 4 },
-  overlayActions: { flexDirection: "row", gap: 16 },
-  link: { color: "#9bd", marginTop: 6, textDecorationLine: "underline" },
-  index: {
-    borderTopColor: "rgba(136,136,136,0.35)",
-    borderTopWidth: 1,
-    marginTop: 10,
-    paddingTop: 8,
-  },
-  indexHeader: {
-    alignItems: "baseline",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  indexClose: { color: "#888", fontSize: 13 },
-  indexList: { maxHeight: 220, marginTop: 4 },
-  indexRow: {
-    alignItems: "baseline",
-    flexDirection: "row",
-    gap: 8,
-    paddingVertical: 6,
-  },
-  indexNum: { color: "#777", fontSize: 10, fontVariant: ["tabular-nums"] },
-  indexLabelHit: { flex: 1 },
-  indexLabel: { color: "#ddd", fontSize: 14 },
-  indexScore: { color: "#7da", fontSize: 10 },
-  indexOpen: {
-    color: "#9bd",
-    fontSize: 11,
-    textDecorationLine: "underline",
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: t.color.scene.bg },
+    center: { flex: 1, alignItems: "center", justifyContent: "center" },
+    muted: { color: t.color.scene.textMuted },
+    error: { color: t.color.danger },
+    overlay: {
+      position: "absolute",
+      bottom: 24,
+      left: 16,
+      right: 16,
+      borderRadius: 8,
+      backgroundColor: t.color.scene.panel,
+      padding: 12,
+    },
+    kind: {
+      color: t.color.scene.textMuted,
+      fontSize: 11,
+      textTransform: "uppercase",
+    },
+    label: { color: t.color.scene.textBright, fontSize: 15, fontWeight: "600" },
+    purpose: {
+      color: t.color.scene.textDim,
+      fontSize: 13,
+      fontStyle: "italic",
+      marginTop: 4,
+    },
+    overlayActions: { flexDirection: "row", gap: 16 },
+    link: {
+      color: t.color.scene.link,
+      marginTop: 6,
+      textDecorationLine: "underline",
+    },
+    index: {
+      borderTopColor: t.color.scene.separator,
+      borderTopWidth: 1,
+      marginTop: 10,
+      paddingTop: 8,
+    },
+    indexHeader: {
+      alignItems: "baseline",
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    indexClose: { color: t.color.scene.textMuted, fontSize: 13 },
+    indexList: { maxHeight: 220, marginTop: 4 },
+    indexRow: {
+      alignItems: "baseline",
+      flexDirection: "row",
+      gap: 8,
+      paddingVertical: 6,
+    },
+    indexNum: {
+      color: t.color.scene.textFaint,
+      fontSize: 10,
+      fontVariant: ["tabular-nums"],
+    },
+    indexLabelHit: { flex: 1 },
+    indexLabel: { color: t.color.scene.textBright, fontSize: 14 },
+    indexScore: { color: t.color.scene.accent, fontSize: 10 },
+    indexOpen: {
+      color: t.color.scene.link,
+      fontSize: 11,
+      textDecorationLine: "underline",
+    },
+  });
+}
