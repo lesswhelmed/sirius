@@ -46,6 +46,51 @@ git pull --ff-only origin main
 # purely cosmetic but misleading during incident triage.
 DEPLOY_ID="$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
 
+# --- Preflight: per-app env wiring -------------------------------------------
+# Every app loads the repo-root .env via a per-app symlink (apps/<app>/.env ->
+# ../../.env) that Bun auto-loads from the process CWD. Those symlinks are tracked
+# in git, but a missing/broken one silently strips the env: the app boots with no
+# DATABASE_URL / BETTER_AUTH_SECRET and crash-loops (better-auth throws "default
+# secret" in production) or runs misconfigured. That was a real outage (sirius-mcp,
+# 2026-06-22: its symlink was never created on the host). Catch it HERE, before the
+# build, instead of shipping a crash-loop. Self-heal a missing symlink, then assert
+# the boot-critical vars are actually visible to a Bun process in each app's CWD.
+echo "==> preflight: per-app env wiring"
+
+ensure_env_symlink() {
+	if [ ! -e "apps/$1/.env" ]; then
+		echo "    apps/$1/.env missing/broken -> recreating symlink"
+		ln -sfn ../../.env "apps/$1/.env"
+	fi
+}
+
+# Asserts each required var is visible to a Bun process in apps/<app>'s CWD,
+# exactly as the app loads env at boot. Self-aborts the deploy on failure with an
+# explicit `exit 1` — do NOT rely on `set -e` here: macOS bash 3.2 (and some
+# others) don't abort when a function's trailing command is a failing subshell.
+require_app_env() {
+	local app="$1"; shift
+	if ! ( cd "apps/$app" && NEEDED="$*" APP="$app" bun -e '
+		const need = (process.env.NEEDED || "").split(/\s+/).filter(Boolean);
+		const missing = need.filter((k) => !process.env[k]);
+		if (missing.length) {
+			console.error(`    apps/${process.env.APP}: MISSING env [${missing.join(", ")}] — check apps/${process.env.APP}/.env -> root .env`);
+			process.exit(1);
+		}
+		console.log(`    apps/${process.env.APP}: env OK (${need.length} required vars visible)`);
+	' ); then
+		echo "==> DEPLOY ABORTED: apps/$app env preflight failed (see above)" >&2
+		exit 1
+	fi
+}
+
+ensure_env_symlink web
+ensure_env_symlink worker
+ensure_env_symlink mcp
+require_app_env web BETTER_AUTH_SECRET DATABASE_URL
+require_app_env worker DATABASE_URL
+require_app_env mcp BETTER_AUTH_SECRET DATABASE_URL
+
 echo "==> bun install"
 bun install --frozen-lockfile
 
