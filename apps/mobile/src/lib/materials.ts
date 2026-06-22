@@ -31,6 +31,7 @@ import {
 } from "@/lib/outbox";
 import {
   createLocalDraft,
+  createLocalRawNote,
   deleteLocalDraft,
   linkSubmission,
   markLocalFailed,
@@ -412,11 +413,14 @@ const noteHandler: MaterialHandler<"note"> = {
           // No server response — offline or unreachable. Park the exact request
           // body in the outbox (tagged with localId so replay links the post);
           // it flushes when connectivity returns and the server's contentHash
-          // dedup keeps retries idempotent. The optimistic row stays visible as
-          // a local draft until then.
+          // dedup keeps retries idempotent. With an on-device draft the optimistic
+          // row already exists; without one (curation off / model not ready) we
+          // create a raw-note row from the text so the note still shows as
+          // "Saved offline" instead of vanishing into the outbox until sync.
+          const rowId = localId ?? (await createLocalRawNote(m.text));
           await enqueueOutbox(
             noteIngestBody(m.text, ctx.force, ctx.projectId, draft),
-            localId,
+            rowId,
           );
           queued++;
           continue;

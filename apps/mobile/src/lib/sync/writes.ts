@@ -5,9 +5,12 @@
 // merges the canonical server post into this same row (stable localId, no
 // duplicate card) and clears the draft.
 //
-// Optimistic rows exist ONLY for on-device-drafted posts — when curation is off
-// the server generates the content, so there's nothing to show locally until it
-// syncs. That keeps the local store honest about what it actually knows.
+// Optimistic rows exist for on-device-drafted posts AND — via createLocalRawNote
+// — for notes captured while OFFLINE with no draft: rather than parking the note
+// invisibly in the outbox until sync, we show the raw text as a local card so the
+// user sees their note was created offline. Both cases reconcile into the
+// canonical server post on sync (same localId, no duplicate card). The absence of
+// draftEnvelopeJson is what distinguishes a raw offline note from an AI draft.
 import type { DraftEnvelope, SightDraftEnvelope } from "@repo/ingest-draft";
 import { and, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "expo-crypto";
@@ -69,6 +72,45 @@ export async function createLocalDraft(
     updatedAt: now,
   });
 
+  return localId;
+}
+
+/**
+ * Derive a one-line title from raw note text: first non-empty line, whitespace
+ * collapsed, capped to ~80 chars. Falls back to "Untitled note" for empty input.
+ */
+function deriveNoteTitle(text: string): string {
+  const firstLine = text
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  if (!firstLine) return "Untitled note";
+  const collapsed = firstLine.replace(/\s+/g, " ");
+  return collapsed.length > 80 ? `${collapsed.slice(0, 79).trimEnd()}…` : collapsed;
+}
+
+/**
+ * Insert a minimal optimistic local_draft row for a note captured OFFLINE with no
+ * on-device draft. Title is derived from the text, body is the raw note, and
+ * categories/tags are empty (filled in by the server's drafted post on reconcile).
+ * Deliberately leaves draftEnvelopeJson null — that absence marks the row as a raw
+ * offline note (vs an AI draft) for the "Saved offline" label. Returns the localId
+ * to thread to the outbox row so replay links and reconciliation merges this row.
+ */
+export async function createLocalRawNote(text: string): Promise<string> {
+  const localId = randomUUID();
+  const now = new Date();
+  await db.insert(posts).values({
+    localId,
+    syncState: "local_draft",
+    title: deriveNoteTitle(text),
+    body: text,
+    type: "BLOG",
+    tags: [],
+    categories: [],
+    createdAt: now,
+    updatedAt: now,
+  });
   return localId;
 }
 

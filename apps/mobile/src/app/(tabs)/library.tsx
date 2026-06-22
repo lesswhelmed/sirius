@@ -165,7 +165,12 @@ export default function LibraryScreen() {
   const renderItem = useCallback(({ item }: { item: PostRow }) => {
     const tone = postTypeTone[item.type] ?? t.color.inkMuted;
     const imageUri = resolveMediaUrl(item.imageUrl);
-    const pip = STATE_PIP[item.syncState];
+    // A local_draft with no draft envelope is a raw note captured offline (not an
+    // on-device AI draft) — label it distinctly so it reads as a queued note.
+    const pip =
+      item.syncState === "local_draft" && !item.draftEnvelopeJson
+        ? "Saved offline"
+        : STATE_PIP[item.syncState];
     // Repo provenance chip for GitHub-ingested posts (shared reader so the
     // chip matches web exactly). Null for every non-github / pre-sync row.
     const repo = readRepoDigest(item.providerId, item.contentDigest);

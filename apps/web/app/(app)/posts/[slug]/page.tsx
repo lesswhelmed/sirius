@@ -3,6 +3,7 @@ import {
   isPostSaved,
   listProjects,
   listRetainedSourcesForPost,
+  listSourceSubmissionsForPost,
 } from "@repo/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -13,8 +14,10 @@ import { canReadPost } from "../../../../lib/post-access";
 import { getSessionOrNull } from "../../../../lib/session";
 import { PostImage } from "../../../_chrome/post-image";
 import { RepoChip } from "../../../_chrome/repo-chip";
+import { buildOriginalContent } from "../../../../lib/originals/original-content";
 import { RelatedPosts } from "../../../(public)/listing/[slug]/related-posts";
 import { ColophonTabs } from "./colophon-tabs";
+import { OriginalContentSection } from "./original-content";
 import { ViewBeacon } from "./view-beacon";
 
 const MARKDOWN_CLASS_NAME = [
@@ -83,22 +86,25 @@ export default async function PostDetailPage({
   // purpose: sharing a post for reading must never grant these write actions.
   const isOwner = userId != null && post.submittedById === userId;
   const canAssign = isOwner;
-  const [initialSaved, stats, projectPage, retainedSources] = await Promise.all(
-    [
+  const [initialSaved, stats, projectPage, retainedSources, sourceSubmissions] =
+    await Promise.all([
       userId ? isPostSaved(userId, post.id) : Promise.resolve(false),
       getPostViewStats(post.id),
       canAssign
         ? listProjects(userId, { status: "active" })
         : Promise.resolve(null),
       isOwner ? listRetainedSourcesForPost(post.id) : Promise.resolve([]),
-    ],
-  );
+      // All source submissions (not just retained) so we can surface note text
+      // and audio originals. Owner-only — the section never renders otherwise.
+      isOwner ? listSourceSubmissionsForPost(post.id) : Promise.resolve([]),
+    ]);
   const projectOptions =
     projectPage?.items.map((p) => ({ id: p.id, title: p.title })) ?? [];
   const sourceFiles = retainedSources.map((s) => ({
     submissionId: s.id,
     originalFilename: s.originalFilename,
   }));
+  const originalContent = buildOriginalContent(post.slug, sourceSubmissions);
   const sightImages = parseSightImages(post.images);
 
   return (
@@ -196,6 +202,9 @@ export default async function PostDetailPage({
           <Streamdown className={MARKDOWN_CLASS_NAME} mode="static">
             {post.content}
           </Streamdown>
+          {isOwner ? (
+            <OriginalContentSection content={originalContent} />
+          ) : null}
         </div>
 
         <ColophonTabs

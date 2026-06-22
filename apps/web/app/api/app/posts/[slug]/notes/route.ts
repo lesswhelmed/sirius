@@ -9,20 +9,8 @@ import {
   buildFrontMatter,
   safeFilename,
 } from "../../../../../../lib/export/markdown";
+import { rawNotesFor } from "../../../../../../lib/originals/original-content";
 import { getSessionOrNull } from "../../../../../../lib/session";
-
-function rawNotesFor(payload: unknown): { notes: string; urls: string[] } {
-  const p =
-    payload && typeof payload === "object" && !Array.isArray(payload)
-      ? (payload as { notes?: unknown; urls?: unknown })
-      : {};
-  return {
-    notes: typeof p.notes === "string" ? p.notes.trim() : "",
-    urls: Array.isArray(p.urls)
-      ? (p.urls as unknown[]).filter((u): u is string => typeof u === "string")
-      : [],
-  };
-}
 
 export async function GET(
   request: Request,

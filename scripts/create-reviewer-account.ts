@@ -63,7 +63,9 @@ function parseArgs(argv: string[]): ParsedArgs {
   let password = process.env.REVIEWER_PASSWORD;
   let handle = process.env.REVIEWER_HANDLE ?? DEFAULT_HANDLE;
   let name = process.env.REVIEWER_NAME ?? DEFAULT_NAME;
-  let posts = 6;
+  // Seed the full demo library by default so the Catalog + Explore (taxonomy/map)
+  // look populated for App Review. Override with --posts N for a smaller set.
+  let posts = DEMO_POSTS.length;
   let teardown = false;
   let purgeUser = false;
   let scene = true;
@@ -120,7 +122,7 @@ function usage(): never {
   --password <pwd>     login password (>= 8 chars; generated if omitted)
   --handle <handle>    storefront handle (default ${DEFAULT_HANDLE})
   --name <name>        display name (default "${DEFAULT_NAME}")
-  --posts <n>          number of demo posts to seed (default 6)
+  --posts <n>          number of demo posts to seed (default: all)
   --no-scene           skip categories + focus areas (no embeddings; no GEMINI_API_KEY needed)
   --teardown           remove demo posts + submissions + focus areas
   --purge-user         with --teardown, also delete the reviewer user
@@ -172,7 +174,6 @@ Ratio I keep coming back to: 18g coffee, 300g water, water just off the boil.`,
 Wildflowers were out in patches and the valley haze burned off by mid-morning. Packed light: water, a windbreaker, and a sandwich.`,
     tags: ["hiking", "outdoors", "trail"],
     categories: [{ name: "outdoors", displayName: "Outdoors" }],
-    imageUrl: "https://picsum.photos/seed/ridge-trail-day-hike/1200/900",
   },
   {
     slug: "deep-work-reading-note",
@@ -213,7 +214,6 @@ Next step is a first test loaf once it's predictable.`,
 Labeled each cable at the plug end so swapping a device no longer means crawling underneath. Small thing, but the desk finally feels finished.`,
     tags: ["desk", "setup", "organization"],
     categories: [{ name: "workspace", displayName: "Workspace" }],
-    imageUrl: "https://picsum.photos/seed/desk-setup-cable-cleanup/1200/900",
   },
   {
     slug: "city-library-rediscovered",
@@ -253,6 +253,98 @@ What went well? What stalled? What's the one thing for next week? Anything to ha
     tags: ["productivity", "review", "habits"],
     categories: [{ name: "productivity", displayName: "Productivity" }],
     originalUrl: "https://example.com/notes/lightweight-weekly-review",
+  },
+  {
+    slug: "morning-run-river-loop",
+    title: "Morning Run: The River Loop",
+    type: "SIGHT",
+    excerpt: "Five easy miles along the river before the city wakes up.",
+    content: `Out the door by six for the river loop. The path is flat and quiet that early — a few other runners, a rowing crew on the water, mist coming off the surface.
+
+Kept it easy: five miles at a conversational pace, no watch-staring. The bridge at the turnaround is the reward, the whole skyline catching the first light.`,
+    tags: ["running", "fitness", "morning"],
+    categories: [{ name: "fitness", displayName: "Fitness" }],
+  },
+  {
+    slug: "learning-spanish-daily",
+    title: "Reading Note: A Daily Language Habit",
+    type: "FINDING",
+    excerpt:
+      "Why fifteen honest minutes a day beats a weekend cram for learning a language.",
+    content: `Saved a piece on language learning and kept the one idea that matters: consistency beats intensity.
+
+Fifteen minutes every day — a few flashcards, one short dialogue, a sentence written from memory — compounds faster than a three-hour Sunday session you dread. Streaks are motivating precisely because they're small. I'm two weeks into Spanish this way and it's the first time it has stuck.`,
+    tags: ["language", "learning", "habits"],
+    categories: [{ name: "learning", displayName: "Learning" }],
+    originalUrl: "https://example.com/articles/daily-language-habit",
+  },
+  {
+    slug: "film-photography-first-roll",
+    title: "First Roll of Film",
+    type: "SIGHT",
+    excerpt: "Notes from developing my first roll of 35mm in years.",
+    content: `Shot a roll of 35mm on an old rangefinder I found at a flea market. Thirty-six frames, no chimping, no deleting — just look, meter, and trust it.
+
+Got the scans back today. Half are throwaways, but a few have a quality digital never quite gives me: grain, soft highlights, a sense of a single moment chosen carefully. Already loading the next roll.`,
+    tags: ["photography", "film", "hobby"],
+    categories: [{ name: "photography", displayName: "Photography" }],
+  },
+  {
+    slug: "sunday-jazz-records",
+    title: "A Sunday of Jazz Records",
+    type: "BLOG",
+    excerpt: "Slow Sunday, a stack of records, and a few that stopped me cold.",
+    content: `Spent a slow Sunday going through a stack of secondhand jazz records.
+
+Side after side of mid-century hard bop — some forgettable, a few that stopped me mid-sentence. There's a warmth to vinyl that's easy to romanticize and also just true: the small ritual of cleaning the record, dropping the needle, and sitting still for a whole side.`,
+    tags: ["music", "jazz", "vinyl"],
+    categories: [{ name: "music", displayName: "Music" }],
+  },
+  {
+    slug: "budget-envelope-method",
+    title: "Reading Note: The Envelope Budget",
+    type: "FINDING",
+    excerpt:
+      "An old-school envelope budget, adapted to a few simple categories.",
+    content: `Came across a write-up on the envelope budgeting method and adapted it down to something I'll actually keep.
+
+Four categories instead of twenty: essentials, flexible spending, savings, and a small "guilt-free" bucket. Each gets a fixed amount at the start of the month. When a bucket is empty, it's empty. The friction is the point — it makes every trade-off visible.`,
+    tags: ["finance", "budgeting", "money"],
+    categories: [{ name: "finance", displayName: "Finance" }],
+    originalUrl: "https://example.com/articles/envelope-budget-method",
+  },
+  {
+    slug: "handmade-bookshelf-build",
+    title: "Building a Small Bookshelf",
+    type: "SIGHT",
+    excerpt: "A weekend project: a little oak shelf, hand-finished.",
+    content: `Built a small oak bookshelf over the weekend — my first real woodworking project with proper joinery.
+
+Cut the boards, glued up the panel, and finished it with a few coats of hardwax oil. The joints aren't perfect and one shelf has a slight bow, but it holds books and it's mine. There's a particular satisfaction in using something you made.`,
+    tags: ["woodworking", "diy", "project"],
+    categories: [{ name: "woodworking", displayName: "Woodworking" }],
+  },
+  {
+    slug: "ten-minute-meditation",
+    title: "Ten Minutes of Quiet",
+    type: "BLOG",
+    excerpt: "Starting a small daily meditation habit, and what changed.",
+    content: `Started sitting for ten minutes each morning. Nothing fancy — a timer, a cushion, and attention on the breath.
+
+The point isn't to empty my head; it's to notice how full it is and let the noise settle a little. Most days my mind wanders the whole time and that's fine. The change I notice is small but real: a bit more space between a thing happening and my reaction to it.`,
+    tags: ["mindfulness", "meditation", "calm"],
+    categories: [{ name: "mindfulness", displayName: "Mindfulness" }],
+  },
+  {
+    slug: "city-museum-afternoon",
+    title: "An Afternoon at the Museum",
+    type: "SIGHT",
+    excerpt: "A quiet weekday hour with one gallery and a single painting.",
+    content: `Ducked into the city art museum on a quiet weekday afternoon. Skipped the highlights and gave myself one gallery and one rule: really look.
+
+Ended up spending most of the hour with a single landscape — the way the light sits on the hills, the marks the brush left up close. Seeing less, but seeing it properly, turned out to be the better trade.`,
+    tags: ["art", "museum", "culture"],
+    categories: [{ name: "art", displayName: "Art" }],
   },
 ];
 
@@ -461,7 +553,7 @@ async function seedDemoContent(
 // with at least one seeded post this run is created.
 const FOCUS_AREAS: { title: string; description: string; slugs: string[] }[] = [
   {
-    title: "Home & Garden",
+    title: "Home & Kitchen",
     description:
       "Everyday rituals around the home — a slower coffee, sourdough, and a balcony herb garden.",
     slugs: [
@@ -471,18 +563,40 @@ const FOCUS_AREAS: { title: string; description: string; slugs: string[] }[] = [
     ],
   },
   {
-    title: "Outside & Workspace",
-    description: "Time outdoors and a calmer, tidier desk setup.",
-    slugs: ["ridge-trail-day-hike", "desk-setup-cable-cleanup"],
+    title: "Outside & Body",
+    description: "Time outdoors on the trail and an early-morning river run.",
+    slugs: ["ridge-trail-day-hike", "morning-run-river-loop"],
   },
   {
-    title: "Focus & Reading",
+    title: "Focus & Money",
     description:
-      "Deep work, a lightweight weekly review, and rediscovering the public library.",
+      "Deep work, a weekly review, a daily language habit, and a simple budget.",
     slugs: [
       "deep-work-reading-note",
       "weekly-review-template",
+      "learning-spanish-daily",
+      "budget-envelope-method",
+    ],
+  },
+  {
+    title: "Make & Build",
+    description:
+      "Hands-on projects — a tidy desk, a handmade bookshelf, and a first roll of film.",
+    slugs: [
+      "desk-setup-cable-cleanup",
+      "handmade-bookshelf-build",
+      "film-photography-first-roll",
+    ],
+  },
+  {
+    title: "Mind & Culture",
+    description:
+      "Quieter hours — the library, Sunday records, ten minutes of meditation, and an afternoon at the museum.",
+    slugs: [
       "city-library-rediscovered",
+      "sunday-jazz-records",
+      "ten-minute-meditation",
+      "city-museum-afternoon",
     ],
   },
 ];

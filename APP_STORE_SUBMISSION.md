@@ -36,6 +36,7 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-2
 
 ## Detected environment (pinned)
 
+
 | Tool                  | Version (this repo)                  | Source                                       |
 | --------------------- | ------------------------------------ | -------------------------------------------- |
 | Expo SDK              | `56.0.11`                            | `apps/mobile/package.json`, root `overrides` |
@@ -45,6 +46,7 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-2
 | Node (build)          | `22.12.0`                            | `eas.json` build profiles                    |
 | Bun                   | `1.3.14`                             | root `packageManager`                        |
 | iOS deployment target | Expo SDK 56 default (not overridden) | `app.json`                                   |
+
 
 ---
 
@@ -75,6 +77,7 @@ and run the screenshot script with `--skip-seed` (section 8).
 
 ## 2. App identity
 
+
 | Field                                          | Value                                                                                  |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------- |
 | App name                                       | **Sirius AI**                                                                          |
@@ -83,6 +86,7 @@ and run the screenshot script with `--skip-seed` (section 8).
 | Marketing version (CFBundleShortVersionString) | `1.0.0` (`app.json` → `version`)                                                       |
 | Build number (CFBundleVersion)                 | **EAS-managed** (`appVersionSource: remote`, `autoIncrement: true`) — latest is **24** |
 | Runtime version                                | `fingerprint` policy (OTA updates only reach matching native builds)                   |
+
 
 **Version policy:** never edit `buildNumber` by hand — EAS owns it. To ship a feature
 release, bump `version` (e.g. `1.0.1`) in `app.json`; EAS auto-increments the build number.
@@ -126,11 +130,11 @@ bunx eas-cli build --profile production --platform ios
 
 **Common failure modes:**
 
-- _Dirty tree_ → "requireCommit" error. Commit/stash and retry.
-- _"Configure expo-updates" phase error_ (seen 2026-06) → usually a duplicate `llama.rn`
-  native module. See `HANDOFF-ios-build-failure.md`. Recent production builds succeeded, so
-  this is currently resolved — don't pre-emptively change the `llama.rn`/provider pinning.
-- _Credential errors_ → shouldn't happen (managed by EAS); if so, `bunx eas-cli credentials`.
+- *Dirty tree* → "requireCommit" error. Commit/stash and retry.
+- *"Configure expo-updates" phase error* (seen 2026-06) → usually a duplicate `llama.rn`
+native module. See `HANDOFF-ios-build-failure.md`. Recent production builds succeeded, so
+this is currently resolved — don't pre-emptively change the `llama.rn`/provider pinning.
+- *Credential errors* → shouldn't happen (managed by EAS); if so, `bunx eas-cli credentials`.
 
 ---
 
@@ -183,11 +187,14 @@ bunx eas-cli submit --profile production --platform ios --latest --non-interacti
 All copy below respects Apple's character limits. Paste into App Store Connect →
 **[your app] → [version] → App Store** tab.
 
-> **Positioning:** Sirius is a **private personal content catalog** — you capture links,
-> photos, notes, repos, videos, documents, and voice memos, AI drafts a clean entry, and you
-> curate and keep what you choose. Posts are private to you. The copy below and the
-> screenshots both reflect that. (The in-app tab is now called **Explore** — formerly
-> "Tree"; keep listing copy aligned to "Explore".)
+> **Positioning:** Sirius is the **"no-app"** — the place anything you share from any app
+> lands and gets handled for you. From wherever you already are (the iOS Share Sheet) you
+> send a link, photo, screenshot, note, repo, video, document, or voice memo; AI drafts a
+> clean entry; and you curate and keep what you choose in your own **private** library. The
+> hook is *share-from-anywhere*; the payoff is a *private personal catalog*. Posts stay
+> private to you (no third-party UGC), so the 4+ rating and the privacy story below still
+> hold. The copy and screenshots both reflect this. (The in-app tab is now called
+> **Explore** — formerly "Tree"; keep listing copy aligned to "Explore".)
 
 > **Tip:** each value below is in its own code block — hover it and click the copy icon to
 > grab the exact text, then paste it straight into App Store Connect.
@@ -195,37 +202,57 @@ All copy below respects Apple's character limits. Paste into App Store Connect �
 **App Name** (≤30):
 
 ```text
-Sirius
+Sirius AI
 ```
 
-**Subtitle** (≤30):
+**Subtitle** (≤30) — *27 chars; the share-from-anywhere hook*:
 
 ```text
-Capture, draft, and organize
+Share anything from any app
 ```
 
-**Promotional text** (≤170, editable without review):
+**Promotional text** (≤170, editable without review) — *164 chars*:
 
 ```text
-Turn any link, photo, note, or voice memo into a clean, organized post — drafted for you by AI, kept private in your own library.
+Found something worth keeping? Share it to Sirius from any app — a link, photo, note, or video — and AI drafts a clean, organized entry in your own private library.
 ```
 
-**Keywords** (≤100, comma-separated, **no spaces**):
+**Keywords** (≤100, comma-separated, **no spaces**) — *98 chars; "AI" is dropped (it's in the
+name "Sirius AI") and "share"/"anything"/"app" are dropped (in the subtitle) since Apple
+combines name + subtitle words with the keyword field automatically*:
 
 ```text
-capture,notes,bookmark,read later,AI,summary,knowledge,catalog,private,links,research,organize
+bookmark,read,later,clipper,sharesheet,screenshot,notes,summary,organizer,catalog,links,save,memos
 ```
 
 **Description** (≤4000):
 
 ```text
-Sirius turns the things you capture — links, photos, notes, code repositories, videos, documents, even voice memos — into clean, organized posts, drafted for you by AI. Capture anything: paste a link, snap photos, jot a note, or record a voice memo. Let it draft for you — Sirius writes a structured post (title, summary, tags, details) that you review, edit, and keep; on iPhone it can even draft entirely on-device. Stay organized with Catalog (your private library), Queue (pending → done), and Explore (map and browse everything by theme). Your posts are private to you. Sirius does not use third-party advertising or cross-app tracking.
+Sirius is the "no-app" — the place anything you share from any app lands and gets handled for you.
+
+See something worth keeping? Don't switch apps, don't copy-paste, don't lose it in a sea of tabs. Just tap Share and send it to Sirius — a link, a photo or screenshot, a note, a video, a document, a code repo, even a voice memo — and Sirius turns it into a clean, organized entry, drafted for you by AI.
+
+SHARE FROM ANYWHERE
+Sirius lives in the iOS Share Sheet, so you can capture from your browser, social apps, Photos, Files, or anywhere else — without breaking your flow. There's no new habit to learn: if it's worth keeping, share it.
+
+LET AI DO THE WRITE-UP
+Every capture is drafted into a structured post — title, summary, tags, and details — that you review, edit, and keep. On iPhone, Sirius can even draft entirely on-device.
+
+KEEP IT ALL, FIND IT LATER
+• Catalog — your private library of everything you've kept.
+• Queue — watch each capture move from pending to done.
+• Explore — map and browse everything by theme and topic.
+
+PRIVATE BY DEFAULT
+Your posts are private to you. Sirius does not use third-party advertising or cross-app tracking.
+
+Stop hoarding tabs and screenshots you'll never find again. Share it to Sirius, and let it get handled.
 ```
 
 **What's New** (≤4000) — for v1.0.0:
 
 ```text
-First release of Sirius. Capture links, photos, notes, and more; let AI draft a post for you; and organize everything in your own private library.
+First release of Sirius — the no-app. Share anything from any app — links, photos, screenshots, notes, videos, even voice memos — and let AI draft a clean, organized entry in your own private library. Capture, draft, and keep what matters.
 ```
 
 **Support URL:**
@@ -253,7 +280,7 @@ https://lesswhelmed.com/privacy
 ```
 
 - **Category:** Primary **Productivity**, Secondary **Lifestyle**
-  _(alternatives: Shopping, or Reference — Productivity fits the catalog/inventory workflow best)_
+*(alternatives: Shopping, or Reference — Productivity fits the catalog/inventory workflow best)*
 
 - [ ] All metadata fields filled, no placeholder text
 
@@ -268,16 +295,18 @@ iPhones — you do **not** need 6.5", and you do **not** need iPad (the app sets
 - **Exact pixel size:** **1320 × 2868** portrait (also accepted for the 6.9" slot: 1290×2796).
 - **Count:** 3–10 per localization (Apple requires at least 1; aim for 3–5 strong ones).
 - **Captured for you** into `app-store-assets/screenshots/iphone-6.9/` from the
-  "Sirius 6.9 ProMax" simulator (an iPhone 17 Pro Max, native 1320×2868). Six shots:
+"Sirius 6.9 ProMax" simulator (an iPhone 17 Pro Max, native 1320×2868). Six shots:
+
 
 | Order | File                 | Screen                                                        |
-| ----: | -------------------- | ------------------------------------------------------------- |
-|     1 | `01-capture.png`     | Capture — the material picker (Link/Repo/Note/Photos/…)       |
-|     2 | `02-catalog.png`     | Catalog — your library (filtered to a clean category)         |
-|     3 | `03-queue.png`       | Queue — captures moving pending → processing → done           |
-|     4 | `04-tree.png`        | Explore → Categories — the taxonomy outline + Rediscover rail |
-|     5 | `05-post-detail.png` | A drafted post — hero image, title, tags, body                |
-|     6 | `06-explore.png`     | Explore → Map — the 3D constellation of topics & posts        |
+| ----- | -------------------- | ------------------------------------------------------------- |
+| 1     | `01-capture.png`     | Capture — the material picker (Link/Repo/Note/Photos/…)       |
+| 2     | `02-catalog.png`     | Catalog — your library (filtered to a clean category)         |
+| 3     | `03-queue.png`       | Queue — captures moving pending → processing → done           |
+| 4     | `04-tree.png`        | Explore → Categories — the taxonomy outline + Rediscover rail |
+| 5     | `05-post-detail.png` | A drafted post — hero image, title, tags, body                |
+| 6     | `06-explore.png`     | Explore → Map — the 3D constellation of topics & posts        |
+
 
 > The **Explore** tab was formerly "Tree"; `04-tree.png` keeps its filename (downstream
 > references depend on it) but shows the Explore → Categories view.
@@ -287,7 +316,7 @@ Do / don't:
 - ✅ Real in-app screens, clean status bar, portrait.
 - ✅ You may add a marketing frame/caption, but raw screenshots are accepted as-is.
 - ❌ No device bezels that misrepresent the UI, no placeholder/lorem content, no other
-  platforms' chrome.
+platforms' chrome.
 
 - [ ] Upload the PNGs from `app-store-assets/screenshots/iphone-6.9/` to the 6.9" slot
 
@@ -323,6 +352,7 @@ Fill App Store Connect → **App Privacy** to match what the app actually collec
 with `apps/web/app/(public)/privacy/page.tsx`). Sirius does **not** track and shows no ATT
 prompt → answer **"No"** to tracking.
 
+
 | Data type                                     | Collected? | Linked to user? | Purpose           | Tracking? |
 | --------------------------------------------- | ---------- | --------------- | ----------------- | --------- |
 | Contact Info — Email address                  | Yes        | Yes             | App Functionality | No        |
@@ -331,6 +361,7 @@ prompt → answer **"No"** to tracking.
 | User Content — Other (URLs, notes, posts)     | Yes        | Yes             | App Functionality | No        |
 | Identifiers — User ID                         | Yes        | Yes             | App Functionality | No        |
 | Usage Data — Product Interaction (post views) | Yes        | Yes             | Analytics         | No        |
+
 
 - Diagnostics/Crash data: **not collected** (no crash SDK configured).
 - Third-party advertising / data "sold": **No**.
@@ -346,36 +377,38 @@ content questionnaire (each row: **None / Infrequent or Mild / Frequent or Inten
 few capability questions. Answer honestly — Sirius is a personal capture/notes tool with no
 built-in mature content, so every content row is **None**. Recommended answers:
 
-| Question                                                   | Answer   |
-| ---------------------------------------------------------- | -------- |
-| Cartoon or Fantasy Violence                                | **None** |
-| Realistic Violence                                         | **None** |
-| Prolonged Graphic or Sadistic Realistic Violence           | **None** |
-| Profanity or Crude Humor                                   | **None** |
-| Mature/Suggestive Themes                                   | **None** |
-| Horror/Fear Themes                                         | **None** |
-| Medical/Treatment Information                              | **None** |
-| Alcohol, Tobacco, or Drug Use or References                | **None** |
-| Sexual Content or Nudity                                   | **None** |
-| Graphic Sexual Content and Nudity                          | **None** |
-| Simulated Gambling                                         | **None** |
-| Contests                                                   | **None** |
-| Gambling (real money)                                      | **No**   |
-| Unrestricted Web Access (a built-in open web browser)      | **No**   |
-| Made for Kids                                              | **No**   |
+
+| Question                                              | Answer   |
+| ----------------------------------------------------- | -------- |
+| Cartoon or Fantasy Violence                           | **None** |
+| Realistic Violence                                    | **None** |
+| Prolonged Graphic or Sadistic Realistic Violence      | **None** |
+| Profanity or Crude Humor                              | **None** |
+| Mature/Suggestive Themes                              | **None** |
+| Horror/Fear Themes                                    | **None** |
+| Medical/Treatment Information                         | **None** |
+| Alcohol, Tobacco, or Drug Use or References           | **None** |
+| Sexual Content or Nudity                              | **None** |
+| Graphic Sexual Content and Nudity                     | **None** |
+| Simulated Gambling                                    | **None** |
+| Contests                                              | **None** |
+| Gambling (real money)                                 | **No**   |
+| Unrestricted Web Access (a built-in open web browser) | **No**   |
+| Made for Kids                                         | **No**   |
+
 
 Capability / regulatory questions Apple now also asks:
 
 - **Does the app contain user-generated content others can see?** → **No.** A user's posts
-  are private to their own account by default; the optional public catalog
-  (`/catalog/[handle]`) shows only the **owner's own** content, and the only inbound channel
-  is the listing inquiry form (sends email; it is not a public post/comment feed). There is
-  no third-party UGC surfaced to other users in-app, so this does not trigger a higher tier.
-  _If you later add shared/social feeds, revisit this — it would likely push the rating up
-  and require moderation + report/block controls._
+are private to their own account by default; the optional public catalog
+(`/catalog/[handle]`) shows only the **owner's own** content, and the only inbound channel
+is the listing inquiry form (sends email; it is not a public post/comment feed). There is
+no third-party UGC surfaced to other users in-app, so this does not trigger a higher tier.
+*If you later add shared/social feeds, revisit this — it would likely push the rating up
+and require moderation + report/block controls.*
 - **Messaging / communication between users?** → **No.**
 - **Unrestricted web access?** → **No.** Sirius fetches specific URLs you submit for
-  drafting; it is not a general-purpose web browser.
+drafting; it is not a general-purpose web browser.
 
 **Resulting rating: 4+.** No content descriptors apply and there is no open web access or
 third-party UGC.
@@ -438,17 +471,17 @@ Sirius requires an account. Sign in with the demo credentials provided in the Us
 
 - **Review timeline:** typically 24–48 hours; first submissions can take longer.
 - **If rejected:** read the Resolution Center message, fix the specific issue, reply or
-  resubmit. Most rejections are metadata/demo-account/privacy issues, not the binary.
+resubmit. Most rejections are metadata/demo-account/privacy issues, not the binary.
 - **Releasing:** if you chose Manual release, click **Release** once "Pending Developer
-  Release."
+Release."
 - **Shipping updates:**
-  - _JS-only change_ (no native deps changed) → **EAS Update** (OTA), no re-review:
+  - *JS-only change* (no native deps changed) → **EAS Update** (OTA), no re-review:
     ```sh
     cd apps/mobile && bunx eas-cli update --branch production
     ```
     (Only reaches builds with a matching native fingerprint.)
-  - _Native change or App Store metadata change_ → bump `version`, new
-    `eas build --profile production --platform ios`, `eas submit`, new review.
+  - *Native change or App Store metadata change* → bump `version`, new
+  `eas build --profile production --platform ios`, `eas submit`, new review.
 
 ---
 
@@ -458,6 +491,7 @@ Sirius requires an account. Sign in with the demo credentials provided in the Us
 - `apps/web/app/(public)/support/page.tsx` — Support page (deploy → `/support`)
 - `app-store-assets/screenshots/iphone-6.9/` — 6.9" screenshots (1320×2868) + manifest
 - `scripts/marketing/capture-app-store-screenshots.sh` — reproducible capture (alias
-  `bun run app-store:screenshots`)
+`bun run app-store:screenshots`)
 - `scripts/create-reviewer-account.ts` — reviewer + demo content (alias `bun run reviewer:seed`)
 - `APP_STORE_SUBMISSION.md` — this guide
+

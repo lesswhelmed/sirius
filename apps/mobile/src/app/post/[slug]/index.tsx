@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { CommentsSection } from "@/components/comments-section";
 import { RelatedPosts } from "@/components/explore/related-posts";
+import { OriginalContentSection } from "@/components/original-content-section";
 import { PostMarkdown } from "@/components/post-markdown";
 import { KindLabel, Screen, Title } from "@/components/sirius";
 import { VisibilitySheet } from "@/components/visibility-sheet";
@@ -276,6 +277,10 @@ export default function PostDetailScreen() {
 				    always a real server post. */}
         {/* Posts that share this one's topics — connective tissue from the
             embedding scene; renders nothing when there are no related posts. */}
+        {/* Owner-only "Original capture": the raw note + any audio original as
+            ingested. A mirror-backed row is always owned, so it gates the fetch;
+            renders nothing for a deep-linked, server-only post or when empty. */}
+        <OriginalContentSection slug={slug} enabled={!!localRow} />
         <RelatedPosts slug={slug} />
         <CommentsSection postSlug={slug} />
       </ScrollView>

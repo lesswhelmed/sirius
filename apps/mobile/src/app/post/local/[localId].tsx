@@ -73,7 +73,12 @@ export default function LocalPostScreen() {
   const tone = postTypeTone[row.type] ?? t.color.inkMuted;
   const images = row.images ?? [];
   const heroUri = images.length > 0 ? undefined : resolveMediaUrl(row.imageUrl);
-  const banner = STATE_BANNER[row.syncState];
+  // A local_draft with no draft envelope is a raw note captured offline (not an
+  // on-device AI draft) — give it clearer copy than the generic "Draft" banner.
+  const banner =
+    row.syncState === "local_draft" && !row.draftEnvelopeJson
+      ? "Saved offline — this note will finish processing when you're back online."
+      : STATE_BANNER[row.syncState];
 
   return (
     <Screen>

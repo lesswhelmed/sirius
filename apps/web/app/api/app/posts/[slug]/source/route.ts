@@ -36,7 +36,12 @@ export async function GET(
   }
 
   const baseDir = resolveOriginalsDir();
-  const wanted = new URL(request.url).searchParams.get("submissionId");
+  const url = new URL(request.url);
+  const wanted = url.searchParams.get("submissionId");
+  // ?disposition=inline streams for in-place playback (the original-content
+  // audio player); the default download behavior is otherwise unchanged.
+  const inline = url.searchParams.get("disposition") === "inline";
+  const rangeHeader = request.headers.get("range");
 
   const stream = (sub: (typeof sources)[number]) =>
     serveOriginal({
@@ -44,6 +49,8 @@ export async function GET(
       absolutePath: sub.retainedFilePath as string,
       downloadName: `${safeFilename(slug)}-${sub.originalFilename ?? "original"}`,
       contentType: sub.originalMimeType ?? undefined,
+      disposition: inline ? "inline" : "attachment",
+      rangeHeader,
     });
 
   if (wanted) {
