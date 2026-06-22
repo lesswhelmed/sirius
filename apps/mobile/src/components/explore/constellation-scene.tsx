@@ -68,6 +68,7 @@ const ZOOM_MAX = 1.15; // farthest: never pull back past the whole-scene fit
 const PAN_LIMIT_MULT = 1.1; // look-at target may stray at most R*1.1 from center
 const PAN_SCALE = 0.9; // NDC-delta → world units (scaled by live radius)
 const FRAME_ZOOM = 0.3; // zoom the explicit "Frame" action leans to
+const NEIGHBORHOOD_ZOOM = 0.55; // default lean-in: frame the focused branch, not the whole cloud
 
 // Label overlay geometry: each label box is centered on its node's projected
 // point and lifted above the dot.
@@ -161,28 +162,9 @@ function EdgeLines({
       <lineBasicMaterial
         color={onlyFocus ? OXBLOOD : INK}
         transparent
-        opacity={onlyFocus ? 0.5 : 0.14}
+        opacity={onlyFocus ? 0.6 : 0.06}
       />
     </lineSegments>
-  );
-}
-
-// A faint wireframe globe marking the map's confines. One static low-seg sphere
-// at the scene center — reads like a drafting/armillary outline, not a neon dome.
-// Wireframe MATERIAL (not edgesGeometry) sidesteps this file's dual-@types/three
-// geometry-instance quirk.
-function SceneBoundary({ center, radius }: Bounds) {
-  return (
-    <mesh position={center}>
-      <sphereGeometry args={[radius * 1.05, 16, 12]} />
-      <meshBasicMaterial
-        color={INK_FAINT}
-        wireframe
-        transparent
-        opacity={0.1}
-        depthWrite={false}
-      />
-    </mesh>
   );
 }
 
@@ -713,7 +695,9 @@ export const ConstellationHero = forwardRef<
     if (didInit.current) return;
     didInit.current = true;
     target.current = [...bounds.center];
-    zoom.current = 1;
+    // Lean in by default so the map opens framed on a branch, not as one tight
+    // central clump of the whole taxonomy.
+    zoom.current = NEIGHBORHOOD_ZOOM;
   }, [bounds]);
 
   // The node the camera should be looking at: the explicit selection, else the
@@ -732,7 +716,12 @@ export const ConstellationHero = forwardRef<
     }
     if (lookAtId == null || lookAtId === prevLookId.current) return;
     prevLookId.current = lookAtId;
-    if (lookAtNode) target.current = [...lookAtNode.position];
+    if (lookAtNode) {
+      target.current = [...lookAtNode.position];
+      // Lean into the focused branch so its neighbors spread across the screen.
+      // Skip for a tapped post — a preview shouldn't yank the camera's zoom.
+      if (lookAtNode.kind !== "post") zoom.current = NEIGHBORHOOD_ZOOM;
+    }
   }, [lookAtId, lookAtNode]);
 
   // Explicit "Frame" — fly in close on a node. Exposed imperatively to the host
@@ -799,13 +788,18 @@ export const ConstellationHero = forwardRef<
   // taxonomy doesn't clutter — then we keep focus + neighbors + parent), plus
   // the currently selected post.
   const projected = useSharedValue<Record<string, ProjectedLabel>>({});
+  // Focus + context: label ONLY the focused node and its direct neighbors
+  // (parent + children via taxonomy edges) so labels never pile up — every other
+  // topic stays a faint, unlabeled dot until you navigate to it. Before anything
+  // is focused, fall back to the first MAX_CATEGORY_LABELS structural labels so
+  // the map isn't blank on entry.
   const structuralLabels = scene.nodes.filter((n) => n.kind !== "post");
-  let keptLabels = structuralLabels;
-  if (structuralLabels.length > MAX_CATEGORY_LABELS) {
-    keptLabels = structuralLabels.filter(
-      (n) => n.id === focusedId || neighborIds.has(n.id),
-    );
-  }
+  const keptLabels =
+    focusedId == null
+      ? structuralLabels.slice(0, MAX_CATEGORY_LABELS)
+      : structuralLabels.filter(
+          (n) => n.id === focusedId || neighborIds.has(n.id),
+        );
   const labelNodes =
     selectedNode?.kind === "post" ? [...keptLabels, selectedNode] : keptLabels;
 
@@ -830,7 +824,6 @@ export const ConstellationHero = forwardRef<
         />
         <OrbitBackdrop onOrbit={onOrbitDelta} onZoom={onZoom} onPan={onPan} />
         <ambientLight intensity={1} />
-        <SceneBoundary center={bounds.center} radius={bounds.radius} />
         <EdgeLines scene={scene} focusedId={focusedId} onlyFocus={false} />
         <EdgeLines scene={scene} focusedId={focusedId} onlyFocus />
         <NodeDots
