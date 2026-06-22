@@ -21,7 +21,7 @@
 #   REVIEWER_PASSWORD='StrongPass123' bun run app-store:screenshots
 #   REVIEWER_PASSWORD='…' scripts/marketing/capture-app-store-screenshots.sh --teardown-first
 #   scripts/marketing/capture-app-store-screenshots.sh --skip-seed         # reuse existing data/session
-#   scripts/marketing/capture-app-store-screenshots.sh --with-65           # also emit the 6.5" set
+#   scripts/marketing/capture-app-store-screenshots.sh --skip-65           # skip the 6.5" set (on by default)
 #   scripts/marketing/capture-app-store-screenshots.sh --with-video        # also rebuild the demo video
 #
 # ENV (all optional except the password when seeding):
@@ -47,7 +47,7 @@ WEB_DIR="$ROOT/apps/web/public/product/screens"
 SEED=1
 TEARDOWN_FIRST=0
 SCENE_SEED=1
-WITH_65=0
+WITH_65=1
 WITH_VIDEO=0
 STATUS_BAR=1
 
@@ -56,7 +56,8 @@ for arg in "$@"; do
     --skip-seed) SEED=0 ;;
     --teardown-first) TEARDOWN_FIRST=1 ;;
     --no-scene-seed) SCENE_SEED=0 ;;
-    --with-65) WITH_65=1 ;;
+    --skip-65) WITH_65=0 ;;
+    --with-65) WITH_65=1 ;; # back-compat no-op: the 6.5" set is now on by default
     --with-video) WITH_VIDEO=1 ;;
     --no-status-bar) STATUS_BAR=0 ;;
     -h | --help)
@@ -79,14 +80,15 @@ ref() { ad snapshot -i 2>/dev/null | grep -E "$1" 2>/dev/null | grep -oE '@e[0-9
 settle() { sleep "$(awk "BEGIN{print $SETTLE_MS/1000}")"; }
 
 FAIL=0
+# verify_dims <file> [expected_w] [expected_h] — defaults to the native 6.9" size.
 verify_dims() {
-  local f="$1" w h
+  local f="$1" ew="${2:-1320}" eh="${3:-2868}" w h
   w="$(sips -g pixelWidth "$f" 2>/dev/null | awk '/pixelWidth/{print $2}')"
   h="$(sips -g pixelHeight "$f" 2>/dev/null | awk '/pixelHeight/{print $2}')"
-  if [[ "$w" == "1320" && "$h" == "2868" ]]; then
+  if [[ "$w" == "$ew" && "$h" == "$eh" ]]; then
     echo "  ✓ $(basename "$f") ${w}x${h}"
   else
-    echo "  ✗ $(basename "$f") is ${w:-?}x${h:-?}, expected 1320x2868" >&2
+    echo "  ✗ $(basename "$f") is ${w:-?}x${h:-?}, expected ${ew}x${eh}" >&2
     FAIL=1
   fi
 }
@@ -243,15 +245,21 @@ for f in 01-capture 02-catalog 03-queue 04-tree 05-post-detail 06-explore; do
   cp "$OUT_DIR/$f.png" "$WEB_DIR/$f.png"
 done
 
-# --- Optional: downscaled 6.5" set --------------------------------------------
+# --- Downscaled 6.5" set (Apple requires a 6.5" set; 1284 x 2778) -------------
+# On by default — App Store Connect needs both the 6.9" and 6.5" portrait sets.
+# 1284 x 2778 is one of Apple's accepted 6.5" sizes (others: 1242 x 2688). We
+# `sips -z` to lock exact pixel dims (Apple validates on exact size); the tiny
+# aspect delta from the 6.9" source is imperceptible.
 if [[ "$WITH_65" == 1 ]]; then
   echo "==> Regenerating the 6.5\" set (1284 x 2778)"
   SIX5="$ROOT/app-store-assets/screenshots/iphone-6.5"
   mkdir -p "$SIX5"
-  for f in "$OUT_DIR"/*.png; do
-    cp "$f" "$SIX5/$(basename "$f")"
+  # Only the six canonical screens — never glob the source dir (strays leak in).
+  for f in 01-capture 02-catalog 03-queue 04-tree 05-post-detail 06-explore; do
+    cp "$OUT_DIR/$f.png" "$SIX5/$f.png"
+    sips -z 2778 1284 "$SIX5/$f.png" >/dev/null
+    verify_dims "$SIX5/$f.png" 1284 2778
   done
-  for f in "$SIX5"/*.png; do sips -z 2778 1284 "$f" >/dev/null; done
 fi
 
 # --- Optional: rebuild the marketing demo video -------------------------------
@@ -265,8 +273,10 @@ agent-device close --session "$SESSION" --platform ios >/dev/null 2>&1 || true
 
 echo
 if [[ "$FAIL" == 0 ]]; then
-  echo "✓ Done. Six 6.9\" screenshots in $OUT_DIR (and mirrored to $WEB_DIR)."
+  echo "✓ Done. Six 6.9\" screenshots in $OUT_DIR (mirrored to $WEB_DIR)."
+  [[ "$WITH_65" == 1 ]] &&
+    echo "  Plus the 6.5\" set (1284x2778) in $ROOT/app-store-assets/screenshots/iphone-6.5."
 else
-  echo "✗ One or more screenshots failed the 1320x2868 check — re-run after fixing." >&2
+  echo "✗ One or more screenshots failed their size check — re-run after fixing." >&2
   exit 1
 fi
