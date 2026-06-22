@@ -40,6 +40,7 @@
 		"auth:reset-password": "bun run scripts/reset-user-password.ts",
 		"pro:grant": "bun run scripts/grant-pro.ts",
 		"reviewer:seed": "bun run scripts/create-reviewer-account.ts",
+		"app-store:screenshots": "bash scripts/marketing/capture-app-store-screenshots.sh",
 		"deploy": "bash scripts/deploy-remote.sh"
 	},
 	"devDependencies": {
