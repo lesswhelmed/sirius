@@ -210,6 +210,10 @@ function RootContent() {
                     options={{ presentation: "modal" }}
                   />
                   <Stack.Screen
+                    name="help"
+                    options={{ presentation: "modal" }}
+                  />
+                  <Stack.Screen
                     name="post/[slug]/index"
                     options={{ headerShown: true, title: "" }}
                   />
