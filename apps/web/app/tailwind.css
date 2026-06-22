@@ -87,6 +87,18 @@
 	--color-fg-muted: var(--color-ink-muted);
 	--color-fg-subtle: var(--color-ink-subtle);
 
+	/* shadcn-style aliases — Streamdown's markdown renderer (incl. its
+	   link-safety modal) uses bg-background / bg-muted / text-muted-foreground
+	   / bg-primary etc. Map them onto our role tokens so those components get
+	   opaque, theme-aware surfaces instead of resolving to nothing (which left
+	   the "Open external link?" modal transparent). */
+	--color-background: var(--color-paper);
+	--color-foreground: var(--color-ink);
+	--color-muted: var(--color-paper-deep);
+	--color-muted-foreground: var(--color-ink-muted);
+	--color-primary: var(--color-accent);
+	--color-primary-foreground: #fdf6ea;
+
 	/* Status — reference role tokens, so they follow the theme */
 	--color-status-pending: var(--color-ink-subtle);
 	--color-status-processing: var(--color-accent);
