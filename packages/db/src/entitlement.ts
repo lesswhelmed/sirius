@@ -136,7 +136,11 @@ export async function reserveAiGeneration(input: {
   const expiresAt = new Date(now.getTime() + RESERVATION_TTL_MS);
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`
+    // $executeRaw (not $queryRaw): pg_advisory_xact_lock returns `void`, which
+    // the Prisma pg driver adapter cannot deserialize as a result column.
+    // $executeRaw discards the result set and just takes the per-user lock for
+    // the duration of this short count+insert transaction.
+    await tx.$executeRaw`
       SELECT pg_advisory_xact_lock(hashtext(${"ai-generation:" + input.userId})::bigint)
     `;
 
