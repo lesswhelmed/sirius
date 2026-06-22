@@ -20,6 +20,7 @@ import {
   View,
 } from "react-native";
 import { CommentsSection } from "@/components/comments-section";
+import { RelatedPosts } from "@/components/explore/related-posts";
 import { PostMarkdown } from "@/components/post-markdown";
 import { KindLabel, Screen, Title } from "@/components/sirius";
 import { VisibilitySheet } from "@/components/visibility-sheet";
@@ -264,6 +265,9 @@ export default function PostDetailScreen() {
         ) : null}
         {/* Comments attach to synced posts only — this slug-routed screen is
 				    always a real server post. */}
+        {/* Posts that share this one's topics — connective tissue from the
+            embedding scene; renders nothing when there are no related posts. */}
+        <RelatedPosts slug={slug} />
         <CommentsSection postSlug={slug} />
       </ScrollView>
       {localRow ? (

@@ -10,6 +10,8 @@ import {
 } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useMemo, useState } from "react";
+import { ConnectedTopics } from "./connected-topics";
+import { RediscoverRail } from "./rediscover-rail";
 import { TreeView } from "./tree-view";
 
 function TreeBranch({
@@ -60,13 +62,17 @@ function TreeBranch({
 function IndexPanel({
   node,
   entries,
+  scene,
   onClose,
   onFocus,
+  onOpenTopic,
 }: {
   node: SceneNode;
   entries: ReturnType<typeof linkedPosts>;
+  scene: EmbeddingScene;
   onClose: () => void;
   onFocus: (id: string) => void;
+  onOpenTopic: (id: string) => void;
 }) {
   // Only categories and projects drill into an index; posts never reach here.
   const kicker =
@@ -161,6 +167,7 @@ function IndexPanel({
           ))
         )}
       </ol>
+      <ConnectedTopics scene={scene} node={node} onOpenTopic={onOpenTopic} />
     </aside>
   );
 }
@@ -182,8 +189,9 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
           The Space<span className="text-[var(--color-accent)]">.</span>
         </h1>
         <p className="mt-3 max-w-md font-display italic text-[17px] leading-snug text-[var(--fg-muted)]">
-          Every analysis branch, focus area, and filed post plotted by meaning.
-          Drag to orbit a sphere, or browse the tree to dive into a branch.
+          Every analysis branch and filed post plotted by meaning. Drag to orbit
+          a sphere, or browse the tree to dive into a branch (focus areas live in
+          the Tree).
         </p>
       </header>
 
@@ -223,12 +231,26 @@ export function SpaceView({ scene }: { scene: EmbeddingScene }) {
         })}
       </div>
 
+      <RediscoverRail scene={scene} />
+
       {tab === "map" ? <MapView scene={scene} /> : <TreeView scene={scene} />}
     </section>
   );
 }
 
 function MapView({ scene }: { scene: EmbeddingScene }) {
+  // The constellation is a mind map of TOPICS: the category taxonomy + posts
+  // only. Focus areas (projects) and their assignment edges are stripped so they
+  // never plot as spheres — the Tree tab still browses focus areas via its Focus
+  // subtab.
+  const categoryScene = useMemo(
+    () => ({
+      ...scene,
+      nodes: scene.nodes.filter((n) => n.kind !== "project"),
+      edges: scene.edges.filter((e) => e.kind !== "assignment"),
+    }),
+    [scene],
+  );
   const {
     selected,
     select,
@@ -237,8 +259,11 @@ function MapView({ scene }: { scene: EmbeddingScene }) {
     drilledEntries,
     drill,
     closeDrill,
-  } = useSceneSelection(scene);
-  const childrenMap = useMemo(() => categoryChildren(scene), [scene]);
+  } = useSceneSelection(categoryScene);
+  const childrenMap = useMemo(
+    () => categoryChildren(categoryScene),
+    [categoryScene],
+  );
   // first click selects; a repeat click on the same node opens The Index
   const pick = (id: string) => {
     if (id === selected?.id) drill(id);
@@ -265,7 +290,7 @@ function MapView({ scene }: { scene: EmbeddingScene }) {
           onPointerMissed={() => select(null)}
         >
           <SpaceScene
-            scene={scene}
+            scene={categoryScene}
             selectedId={selected?.id ?? null}
             neighborIds={neighborIds}
             onSelect={select}
@@ -313,8 +338,13 @@ function MapView({ scene }: { scene: EmbeddingScene }) {
           <IndexPanel
             node={drilled}
             entries={drilledEntries}
+            scene={categoryScene}
             onClose={closeDrill}
             onFocus={select}
+            onOpenTopic={(id) => {
+              select(id);
+              drill(id);
+            }}
           />
         ) : null}
       </div>

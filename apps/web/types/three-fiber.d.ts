@@ -11,6 +11,12 @@
 // (`mesh`, `group`, `ambientLight`, ...) reports TS2339. This file forces the
 // augmentation in via a side-effecting import and re-declares the merge so it is
 // guaranteed to be present program-wide. Do NOT change this to `import type`.
+//
+// The three `IntrinsicElements extends ThreeElements {}` blocks below MUST stay
+// empty interfaces: only interface declaration-merging widens React's existing
+// `JSX.IntrinsicElements` (a `type` alias wouldn't merge), so the
+// `no-empty-object-type` rule is disabled file-wide rather than refactored.
+/* eslint-disable @typescript-eslint/no-empty-object-type -- merging into JSX.IntrinsicElements requires an empty `interface … extends` */
 import "@react-three/fiber";
 import type { ThreeElements } from "@react-three/fiber";
 

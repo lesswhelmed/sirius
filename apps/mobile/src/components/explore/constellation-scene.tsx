@@ -42,6 +42,7 @@ import {
   type InstancedMesh,
   Matrix4,
   type Mesh,
+  type PerspectiveCamera,
   Vector3,
 } from "three";
 import { Sirius } from "@/constants/theme";
@@ -457,16 +458,28 @@ function CameraRig({
   zoom,
   fitRadius,
   initialTarget,
+  sheetRef,
+  liftRef,
 }: {
   orbit: RefObject<Orbit>;
   target: RefObject<Vec3>;
   zoom: RefObject<number>;
   fitRadius: number;
   initialTarget: Vec3;
+  // Height (px) the bottom sheet currently occupies — the camera lifts the
+  // look-at target by HALF this so the focused node sits centered in the space
+  // ABOVE the sheet instead of behind it. 0 when no sheet is shown.
+  sheetRef: RefObject<number>;
+  // CameraRig writes its eased lift here each frame so the label projector can
+  // reproject when the framing shifts but the camera position hasn't moved.
+  liftRef: RefObject<number>;
 }) {
   const curOrbit = useRef<Orbit>({ ...orbit.current });
   const curTarget = useRef<Vec3>([...initialTarget] as Vec3);
   const curRadius = useRef<number>(fitRadius * zoom.current);
+  // Starts at 0 and eases toward sheetRef each frame (reading the ref here during
+  // render trips react-hooks/refs); the tiny one-time settle on mount reads fine.
+  const curSheet = useRef<number>(0);
   useFrame((state) => {
     const o = curOrbit.current;
     o.yaw += (orbit.current.yaw - o.yaw) * DAMPING;
@@ -484,6 +497,21 @@ function CameraRig({
       c[2]! + r * Math.cos(o.pitch) * Math.cos(o.yaw),
     );
     state.camera.lookAt(c[0]!, c[1]!, c[2]!);
+
+    // Lift the framing above the bottom sheet. setViewOffset shifts the
+    // projection's principal point up by `lift` px (= half the sheet height),
+    // so the centered look-at target lands in the middle of the visible band
+    // above the sheet. Applied AFTER lookAt and BEFORE render so the projection
+    // is current for this frame's draw and the label projector below.
+    curSheet.current += (sheetRef.current - curSheet.current) * DAMPING;
+    const cam = state.camera as unknown as PerspectiveCamera;
+    const w = state.size?.width ?? 0;
+    const h = state.size?.height ?? 0;
+    const lift = curSheet.current / 2;
+    liftRef.current = lift;
+    if (h > 0 && lift > 0.5) cam.setViewOffset(w, h, 0, lift, w, h);
+    else if (cam.view?.enabled) cam.clearViewOffset();
+
     // fiber/native patches gl.render to also call endFrameEXP
     state.gl.render(state.scene, state.camera);
     state.gl.getContext().getError();
@@ -512,26 +540,34 @@ function LabelProjector({
   nodes,
   projected,
   fitRadius,
+  liftRef,
 }: {
   nodes: SceneNode[];
   projected: SharedValue<Record<string, ProjectedLabel>>;
   fitRadius: number;
+  // The camera rig's current framing lift (px). When it eases — moving every
+  // dot on screen while the camera position holds still — labels must reproject
+  // too, or they'd float away from their dots.
+  liftRef: RefObject<number>;
 }) {
   // Lazy ref init — one Vector3 reused for every projection, not a throwaway
   // per render.
   const vRef = useRef<Vector3 | null>(null);
   const v = (vRef.current ??= new Vector3());
   const lastCam = useRef<Vec3>([Infinity, 0, 0]);
+  const lastLift = useRef<number>(Infinity);
   useFrame((state) => {
     const cam = state.camera;
-    // Skip the (expensive-ish) shared-value write when the camera is at rest.
+    // Skip the (expensive-ish) shared-value write when the camera is at rest AND
+    // the framing lift is settled (either alone can move labels on screen).
     const moved =
       Math.abs(cam.position.x - lastCam.current[0]) +
         Math.abs(cam.position.y - lastCam.current[1]) +
         Math.abs(cam.position.z - lastCam.current[2]) >
-      0.0006;
+        0.0006 || Math.abs(liftRef.current - lastLift.current) > 0.5;
     if (!moved) return;
     lastCam.current = [cam.position.x, cam.position.y, cam.position.z];
+    lastLift.current = liftRef.current;
 
     const w = state.size?.width ?? 0;
     const h = state.size?.height ?? 0;
@@ -620,6 +656,9 @@ export interface ConstellationHeroProps {
   selectedNode: SceneNode | null;
   // A node was tapped in the 3D map (host selects categories / previews posts).
   onPickNode: (node: SceneNode) => void;
+  // Height (px) the host's bottom sheet currently occupies. The camera lifts the
+  // focused node by half this so the sheet never covers it. 0 = no sheet.
+  sheetHeight?: number;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -642,6 +681,7 @@ export const ConstellationHero = forwardRef<
     subtreePostIds,
     selectedNode,
     onPickNode,
+    sheetHeight = 0,
     style,
   },
   ref,
@@ -649,6 +689,15 @@ export const ConstellationHero = forwardRef<
   const bounds = computeBounds(scene.nodes);
   const fitRadius = bounds.radius * FIT_MULT;
   const panLimit = bounds.radius * PAN_LIMIT_MULT;
+
+  // Bottom-sheet framing lift, held in refs so the per-frame camera rig reads the
+  // latest without re-rendering the Canvas tree. `liftRef` is the eased value the
+  // rig writes back for the label projector to track.
+  const sheetRef = useRef(sheetHeight);
+  useEffect(() => {
+    sheetRef.current = sheetHeight;
+  }, [sheetHeight]);
+  const liftRef = useRef(0);
 
   const orbit = useRef<Orbit>({ yaw: 0.6, pitch: 0.32 });
   // Live pinch multiplier on fitRadius, kept across selection so the user's zoom
@@ -770,11 +819,14 @@ export const ConstellationHero = forwardRef<
           zoom={zoom}
           fitRadius={fitRadius}
           initialTarget={bounds.center}
+          sheetRef={sheetRef}
+          liftRef={liftRef}
         />
         <LabelProjector
           nodes={labelNodes}
           projected={projected}
           fitRadius={fitRadius}
+          liftRef={liftRef}
         />
         <OrbitBackdrop onOrbit={onOrbitDelta} onZoom={onZoom} onPan={onPan} />
         <ambientLight intensity={1} />

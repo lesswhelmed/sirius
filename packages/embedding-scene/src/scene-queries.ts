@@ -384,3 +384,195 @@ export function nodeCounts(scene: EmbeddingScene): NodeCounts {
 
   return { direct, subtree };
 }
+
+// ---------------------------------------------------------------------------
+// Lateral "connections" queries. The outline/subtree views above walk the tree
+// DOWN; these surface the sideways links that make the scene feel like a map —
+// "what else does this topic connect to?" and "what posts share this post's
+// topics?". All derived from the same `match` edges already in the scene, so
+// they need no new API/DB work (two posts are "related" because they share a
+// category; two categories are "related" because they share posts).
+
+export interface RelatedCategory {
+  node: SceneNode;
+  // How many of the source category's posts ALSO match this category — the
+  // overlap strength. Higher = more tightly connected.
+  shared: number;
+}
+
+// Categories that co-occur with `categoryId`: for every post matching the
+// source category, which other categories do those same posts match? Ranked by
+// overlap count (desc), then label. Empty for a non-category, missing, or
+// post-less node.
+export function relatedCategories(
+  scene: EmbeddingScene,
+  categoryId: string,
+  limit = 6,
+): RelatedCategory[] {
+  const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+  const node = byId.get(categoryId);
+  if (node?.kind !== "category") return [];
+
+  // Posts that match the source category.
+  const ownPosts = new Set<string>();
+  for (const e of scene.edges) {
+    if (e.kind === "match" && e.to === categoryId) ownPosts.add(e.from);
+  }
+  if (ownPosts.size === 0) return [];
+
+  // For every OTHER category, count how many of those posts also land on it.
+  const shared = new Map<string, number>();
+  for (const e of scene.edges) {
+    if (e.kind !== "match" || e.to === categoryId) continue;
+    if (!ownPosts.has(e.from)) continue;
+    if (byId.get(e.to)?.kind !== "category") continue;
+    shared.set(e.to, (shared.get(e.to) ?? 0) + 1);
+  }
+
+  return [...shared.entries()]
+    .map(([id, count]) => ({ node: byId.get(id)!, shared: count }))
+    .sort(
+      (a, b) => b.shared - a.shared || a.node.label.localeCompare(b.node.label),
+    )
+    .slice(0, limit);
+}
+
+export interface RelatedPost {
+  node: SceneNode;
+  // The categories this post and the source post BOTH match, ordered by the
+  // source post's affinity (match weight) to them — so `via[0]` is the strongest
+  // reason the two are related, ideal for a one-line "via {topic}" caption.
+  via: SceneNode[];
+}
+
+// Posts that share `postId`'s topics: other posts whose `match` edges overlap
+// the source post's matched categories. Ranked by number of shared topics
+// (desc), then by the other post's strongest matching weight, then label. Empty
+// for a non-post, missing, or unmatched node.
+export function relatedPosts(
+  scene: EmbeddingScene,
+  postId: string,
+  limit = 6,
+): RelatedPost[] {
+  const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+  const node = byId.get(postId);
+  if (node?.kind !== "post") return [];
+
+  // The source post's matched categories, with weight (for ordering `via`).
+  const ownCats = new Map<string, number>();
+  for (const e of scene.edges) {
+    if (e.kind === "match" && e.from === postId) ownCats.set(e.to, e.weight ?? 0);
+  }
+  if (ownCats.size === 0) return [];
+
+  // Other posts matching any shared category; collect the shared cats + the
+  // other post's best matching weight (a tie-break that favors strong matches).
+  const shared = new Map<string, Set<string>>();
+  const bestWeight = new Map<string, number>();
+  for (const e of scene.edges) {
+    if (e.kind !== "match" || e.from === postId) continue;
+    if (!ownCats.has(e.to)) continue;
+    if (byId.get(e.from)?.kind !== "post") continue;
+    const set = shared.get(e.from) ?? new Set<string>();
+    set.add(e.to);
+    shared.set(e.from, set);
+    const w = e.weight ?? 0;
+    if (w > (bestWeight.get(e.from) ?? -1)) bestWeight.set(e.from, w);
+  }
+
+  return [...shared.entries()]
+    .map(([id, catIds]) => {
+      const via = [...catIds]
+        .map((cid) => byId.get(cid))
+        .filter((c): c is SceneNode => c?.kind === "category")
+        .sort((a, b) => (ownCats.get(b.id) ?? 0) - (ownCats.get(a.id) ?? 0));
+      return { node: byId.get(id)!, via };
+    })
+    .sort(
+      (a, b) =>
+        b.via.length - a.via.length ||
+        (bestWeight.get(b.node.id) ?? 0) - (bestWeight.get(a.node.id) ?? 0) ||
+        a.node.label.localeCompare(b.node.label),
+    )
+    .slice(0, limit);
+}
+
+export interface ResurfacingConnection {
+  a: SceneNode;
+  b: SceneNode;
+  // The category both posts match — the reason they're paired.
+  via: SceneNode;
+}
+
+export interface Resurfacing {
+  // One post worth revisiting today.
+  spotlight: SceneNode | null;
+  // Two posts that share a topic — "these connect".
+  connection: ResurfacingConnection | null;
+  // A sparse category (1–2 posts) worth growing.
+  frontier: SceneNode | null;
+}
+
+// The Explore tab's "Rediscover" rail: a small, day-stable resurfacing of the
+// user's own scene that rotates DAILY but never randomly (so it's reproducible
+// and testable). `daySeed` is a host-supplied integer that changes once per day
+// (e.g. YYYYMMDD). Everything is picked by `daySeed mod len` over a stable-sorted
+// candidate list; fields degrade to null on a thin/empty scene.
+export function resurfacing(
+  scene: EmbeddingScene,
+  daySeed: number,
+): Resurfacing {
+  const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+  const pickAt = <T>(arr: T[], seed: number): T | null =>
+    arr.length === 0
+      ? null
+      : arr[((seed % arr.length) + arr.length) % arr.length]!;
+
+  // Spotlight: an openable post (needs a slug), stable order.
+  const posts = scene.nodes
+    .filter((n) => n.kind === "post" && n.slug != null)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const spotlight = pickAt(posts, daySeed);
+
+  // Matched posts per category (real post → real category match edges).
+  const catPosts = new Map<string, SceneNode[]>();
+  for (const e of scene.edges) {
+    if (e.kind !== "match") continue;
+    const post = byId.get(e.from);
+    const cat = byId.get(e.to);
+    if (post?.kind !== "post" || cat?.kind !== "category") continue;
+    const list = catPosts.get(cat.id) ?? [];
+    list.push(post);
+    catPosts.set(cat.id, list);
+  }
+
+  // Connection: a category with ≥2 posts; surface two distinct ones from it.
+  const pairCats = [...catPosts.entries()]
+    .filter(([, list]) => list.length >= 2)
+    .map(([id]) => id)
+    .sort();
+  let connection: ResurfacingConnection | null = null;
+  const viaId = pickAt(pairCats, daySeed);
+  if (viaId) {
+    const list = [...catPosts.get(viaId)!].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+    const a = pickAt(list, daySeed)!;
+    let b = pickAt(list, daySeed + 1)!;
+    if (b.id === a.id) b = list[(list.indexOf(a) + 1) % list.length]!;
+    connection = { a, b, via: byId.get(viaId)! };
+  }
+
+  // Frontier: a sparse category (1–2 posts); else the least-populated one.
+  const sparse = [...catPosts.entries()]
+    .filter(([, list]) => list.length <= 2)
+    .map(([id]) => id)
+    .sort();
+  const frontierId = pickAt(
+    sparse.length ? sparse : [...catPosts.keys()].sort(),
+    daySeed,
+  );
+  const frontier = frontierId ? (byId.get(frontierId) ?? null) : null;
+
+  return { spotlight, connection, frontier };
+}

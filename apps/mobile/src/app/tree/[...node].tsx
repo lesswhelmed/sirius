@@ -1,12 +1,20 @@
-// The subtree index page: tapping a Tree node slides here and lists every post
-// under that node AND its descendants, deduped one-per-post and grouped by the
-// leaf category they matched (see @repo/embedding-scene subtreeIndex). Grouped
-// sections appear only when >1 subnode has posts; otherwise it's a flat list.
-// Catch-all param so slashed category ids (e.g. "analysis/artifact-type") and
-// project ids both round-trip through the URL.
+// The connections page: tapping a Tree node slides here and shows it in context
+// — an up-link to its parent topic, every post under it AND its descendants
+// (deduped one-per-post, grouped by the leaf category they matched; see
+// @repo/embedding-scene subtreeIndex), and the topics it connects to laterally
+// (categories its posts also match). Grouped post sections appear only when >1
+// subnode has posts; otherwise it's a flat list. Catch-all param so slashed
+// category ids (e.g. "analysis/artifact-type") and project ids round-trip
+// through the URL.
 
-import type { LinkedPost } from "@repo/embedding-scene/scene-queries";
-import { subtreeIndex } from "@repo/embedding-scene/scene-queries";
+import type {
+  LinkedPost,
+  RelatedCategory,
+} from "@repo/embedding-scene/scene-queries";
+import {
+  relatedCategories,
+  subtreeIndex,
+} from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -63,6 +71,24 @@ export default function TreeNodeScreen() {
     [scene, nodeId],
   );
 
+  // Lateral connections — topics this node's posts also match. Empty for a
+  // project (assignments aren't similarities), so the section self-hides.
+  const related = useMemo(
+    () => (scene ? relatedCategories(scene, nodeId) : []),
+    [scene, nodeId],
+  );
+
+  // The parent topic, for the "up" link — found by the root's authoritative
+  // parentPath (a category's id IS its path). Null for top-level / projects.
+  const parent = useMemo(() => {
+    if (!scene || !index || index.root.kind !== "category") return null;
+    const pp = index.root.parentPath;
+    if (pp == null) return null;
+    return (
+      scene.nodes.find((n) => n.kind === "category" && n.path === pp) ?? null
+    );
+  }, [scene, index]);
+
   if (isLoading) {
     return (
       <Screen style={styles.centered}>
@@ -110,6 +136,20 @@ export default function TreeNodeScreen() {
           countLabel={index.total === 1 ? "entry" : "entries"}
         />
 
+        {parent ? (
+          <Pressable
+            onPress={() => router.push(`/tree/${parent.id}`)}
+            accessibilityRole="button"
+            accessibilityLabel={`Up to ${parent.label}`}
+            hitSlop={6}
+            style={({ pressed }) => [styles.upLink, pressed && styles.pressed]}
+          >
+            <Text style={styles.upText} numberOfLines={1}>
+              ↑ {parent.label}
+            </Text>
+          </Pressable>
+        ) : null}
+
         {index.total === 0 ? (
           <Text style={styles.empty}>Nothing filed here yet.</Text>
         ) : index.multiNode ? (
@@ -140,8 +180,50 @@ export default function TreeNodeScreen() {
             ))}
           </View>
         )}
+
+        {related.length > 0 ? (
+          <View style={styles.section}>
+            <Eyebrow>Connected topics</Eyebrow>
+            <View style={styles.sectionBody}>
+              {related.map((rc) => (
+                <ConnectedRow
+                  key={rc.node.id}
+                  related={rc}
+                  onOpen={() => router.push(`/tree/${rc.node.id}`)}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
     </Screen>
+  );
+}
+
+// A lateral link to a topic this node's posts also match. The "shared" tally is
+// how many posts the two topics have in common — the strength of the link.
+function ConnectedRow({
+  related,
+  onOpen,
+}: {
+  related: RelatedCategory;
+  onOpen: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`${related.node.label}, ${related.shared} shared posts`}
+      style={({ pressed }) => [styles.indexRow, pressed && styles.pressed]}
+    >
+      <Text style={styles.connectLabel} numberOfLines={1}>
+        {related.node.label}
+      </Text>
+      <Text style={styles.indexScore}>
+        {related.shared} shared
+      </Text>
+      <Text style={styles.indexOpen}>open →</Text>
+    </Pressable>
   );
 }
 
@@ -187,6 +269,20 @@ const styles = StyleSheet.create({
   },
   section: { gap: Sirius.space.md },
   sectionBody: { marginTop: Sirius.space.xs },
+  upLink: { alignSelf: "flex-start", marginTop: -Sirius.space.md },
+  upText: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 12,
+    letterSpacing: 0.5,
+    color: Sirius.color.accent,
+  },
+  pressed: { opacity: 0.6 },
+  connectLabel: {
+    flex: 1,
+    fontFamily: Sirius.font.serif,
+    fontSize: 15,
+    color: Sirius.color.ink,
+  },
   indexRow: {
     flexDirection: "row",
     alignItems: "baseline",

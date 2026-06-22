@@ -15,7 +15,7 @@ import type { LinkedPost } from "@repo/embedding-scene/scene-queries";
 import { subtreeIndex } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -82,7 +82,20 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
   }, [targetH, sheetH]);
   const sheetStyle = useAnimatedStyle(() => ({ height: sheetH.get() }));
 
-  const focus = useExploreFocus(scene);
+  // The constellation is a clean mind map of TOPICS: the category taxonomy +
+  // posts only. Focus areas (projects) and their assignment edges are stripped
+  // so they never appear as nodes/edges/labels in the map — the Focus tab in the
+  // Explore header browses focus areas separately.
+  const categoryScene = useMemo(
+    () => ({
+      ...scene,
+      nodes: scene.nodes.filter((n) => n.kind !== "project"),
+      edges: scene.edges.filter((e) => e.kind !== "assignment"),
+    }),
+    [scene],
+  );
+
+  const focus = useExploreFocus(categoryScene);
   const { focused, parent, children, index, count, next, prev, up } = focus;
 
   // The tapped node — the camera's gentle fly target, the ring/label in 3D, and
@@ -92,7 +105,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
   const heroRef = useRef<ConstellationHeroHandle>(null);
 
   // Drive shared selection so the constellation lights the focused node + neighbors.
-  const { select, neighborIds } = useSceneSelection(scene);
+  const { select, neighborIds } = useSceneSelection(categoryScene);
   useEffect(() => {
     select(focused?.id ?? null);
   }, [focused, select]);
@@ -139,7 +152,8 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
 
   // Posts under the focused node + its subtree (deduped), flattened for the sheet.
   const posts: LinkedPost[] = focused
-    ? (subtreeIndex(scene, focused.id)?.groups.flatMap((g) => g.posts) ?? [])
+    ? (subtreeIndex(categoryScene, focused.id)?.groups.flatMap((g) => g.posts) ??
+      [])
     : [];
   const subtreePostIds = new Set(posts.map((p) => p.node.id));
 
@@ -164,12 +178,15 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
       {/* The constellation fills the whole screen behind the sheet. */}
       <ConstellationHero
         ref={heroRef}
-        scene={scene}
+        scene={categoryScene}
         focused={focused}
         neighborIds={neighborIds}
         subtreePostIds={subtreePostIds}
         selectedNode={previewNode}
         onPickNode={onPickNode}
+        // Lift the focused node above the sheet by half its current height (0
+        // when no node is focused and the sheet is hidden).
+        sheetHeight={focused ? targetH : 0}
         style={StyleSheet.absoluteFill}
       />
 

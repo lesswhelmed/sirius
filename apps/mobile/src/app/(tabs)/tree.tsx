@@ -1,9 +1,13 @@
-// The Tree tab: the analysis taxonomy + focus areas, split behind two in-screen
-// subtabs (Categories / Focus) so each gets the full screen. The native
-// counterpart of web's Observatory (apps/web/app/(app)/space/space-view.tsx).
-// Same scene data as /space (GET /api/app/embedding-scene); all tree-shaping and
-// post counts are shared, host-agnostic code in @repo/embedding-scene. Tapping a
-// node slides into its subtree index page (tree/[...node]).
+// The Explore tab: three views behind a slim toggle. "Map" is the 3D
+// constellation of the category taxonomy + posts (the native counterpart of web's
+// Observatory, apps/web/app/(app)/space/space-view.tsx — focus areas are kept OUT
+// of the map so it reads as a clean mind map of topics). "Categories" is a browse
+// scroll — a daily "Rediscover" rail (resurfaced posts + a shared-topic pairing)
+// over the analysis taxonomy outline. "Focus" lists the focus areas (projects).
+// All read the SAME scene as /space (GET /api/app/embedding-scene); all
+// tree-shaping and post counts are shared, host-agnostic code in
+// @repo/embedding-scene. Tapping a node slides into its connections page
+// (tree/[...node]).
 
 import {
   categoryChildren,
@@ -30,12 +34,15 @@ import {
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { MapView } from "@/components/explore/map-view";
+import { Rediscover } from "@/components/explore/rediscover";
 import { Segment, SegmentedControl } from "@/components/segmented";
 import { Eyebrow, PrimaryButton, Screen } from "@/components/sirius";
 import { Sirius } from "@/constants/theme";
 import { apiGet } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { loadStringSet, saveStringSet } from "@/lib/persist";
+
+type Tab = "map" | "categories" | "focus";
 
 // One source of truth for the shared scene fetch — Tree and Space sit on the
 // SAME react-query key so navigating between them reuses a single cached fetch
@@ -48,8 +55,6 @@ export const fetchScene = () =>
 // start collapsed on first run; the persisted set then overrides on relaunch.
 const EXPANDED_PREFIX = "tree.expanded";
 const EXPAND_TO_DEPTH = 1;
-
-type Tab = "map" | "categories" | "focus";
 
 export default function TreeScreen() {
   const {
@@ -102,17 +107,14 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
   const childrenMap = useMemo(() => categoryChildren(scene), [scene]);
   const projects = useMemo(() => projectNodes(scene), [scene]);
   const counts = useMemo(() => nodeCounts(scene), [scene]);
+  const categoryCount = useMemo(
+    () =>
+      scene.nodes.reduce((n, node) => n + (node.kind === "category" ? 1 : 0), 0),
+    [scene],
+  );
   const filter = useMemo(
     () => filterTree(childrenMap, projects, debouncedQuery),
     [childrenMap, projects, debouncedQuery],
-  );
-  const categoryCount = useMemo(
-    () =>
-      scene.nodes.reduce(
-        (n, node) => n + (node.kind === "category" ? 1 : 0),
-        0,
-      ),
-    [scene],
   );
 
   // Collapse/expand state, keyed by a node's category path. First-run default:
@@ -174,33 +176,31 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
 
   const expandedSet = expanded ?? defaultExpanded;
 
-  const segments = (
-    <SegmentedControl value={tab} onChange={setTab}>
-      <Segment value="map" label="Map" />
-      <Segment value="categories" label="Categories" count={categoryCount} />
-      <Segment value="focus" label="Focus" count={projects.length} />
-    </SegmentedControl>
-  );
+  // A search narrows the browse surface; while it's active the Rediscover rail
+  // (a discovery aid, not a search result) steps aside and we show only matches.
+  const searching = filter.active;
+  const noMatches = searching && filter.visible.size === 0;
 
   return (
     <Screen>
-      {/* One slim header for all three subtabs — the big editorial title is
-          redundant with the bottom tab label, so a single folio eyebrow sits
-          over the segmented control. Same height in every mode (Map included),
-          so switching tabs never shifts the top. */}
+      {/* One slim header for all three views — a folio eyebrow over the
+          Map/Categories/Focus toggle, with the live filter shown only on the two
+          outline views (the Map has its own in-canvas controls). Same height in
+          every mode, so switching never shifts the top. */}
       <View style={styles.head}>
         <Eyebrow accessibilityRole="header">Section V — The Observatory</Eyebrow>
-        {segments}
-        {/* Sticky filter — only meaningful for the two outline subtabs (the Map
-            has its own controls). Narrows the tree as you type and clears back
-            to the persisted state when emptied. */}
+        <SegmentedControl value={tab} onChange={setTab}>
+          <Segment value="map" label="Map" />
+          <Segment value="categories" label="Categories" count={categoryCount} />
+          <Segment value="focus" label="Focus" count={projects.length} />
+        </SegmentedControl>
         {tab !== "map" ? (
           <SearchField value={query} onChange={setQuery} />
         ) : null}
       </View>
 
-      {/* Keyed remount drives the crossfade (opacity only — GPU-cheap) and
-          resets each subtab's scroll to the top on switch. */}
+      {/* Keyed remount crossfades between views (opacity only — GPU-cheap) and
+          resets each scroll to the top on switch. */}
       <Animated.View
         key={tab}
         entering={FadeIn.duration(180)}
@@ -209,28 +209,56 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
         {tab === "map" ? (
           <MapView scene={scene} />
         ) : tab === "categories" ? (
-          <CategoriesView
-            childrenMap={childrenMap}
-            counts={counts.subtree}
-            expanded={expandedSet}
-            filter={filter}
-            onToggle={toggleExpanded}
-            onPick={open}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-          />
+          <ScrollView
+            contentContainerStyle={styles.scrollBody}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            refreshControl={pullRefresh(refreshing, onRefresh)}
+          >
+            {!searching ? <Rediscover scene={scene} /> : null}
+
+            {noMatches ? (
+              <Text style={styles.empty}>Nothing matches that search.</Text>
+            ) : (
+              <TopicsSection
+                childrenMap={childrenMap}
+                counts={counts.subtree}
+                expanded={expandedSet}
+                filter={filter}
+                onToggle={toggleExpanded}
+                onPick={open}
+              />
+            )}
+          </ScrollView>
         ) : (
-          <FocusView
-            projects={projects}
-            counts={counts.direct}
-            filter={filter}
-            onPick={open}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-          />
+          <ScrollView
+            contentContainerStyle={styles.scrollBody}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            refreshControl={pullRefresh(refreshing, onRefresh)}
+          >
+            <FocusSection
+              projects={projects}
+              counts={counts.direct}
+              filter={filter}
+              onPick={open}
+            />
+          </ScrollView>
         )}
       </Animated.View>
     </Screen>
+  );
+}
+
+// A section heading: a folio eyebrow with an optional tally, under a hairline.
+function SectionHead({ label, count }: { label: string; count?: number }) {
+  return (
+    <View style={styles.sectionHead}>
+      <Eyebrow>{label}</Eyebrow>
+      {count !== undefined ? (
+        <Text style={styles.sectionCount}>{count}</Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -348,15 +376,16 @@ function pullRefresh(refreshing: boolean, onRefresh: () => void) {
   );
 }
 
-function CategoriesView({
+// The taxonomy outline, as a section in the single Explore scroll. Hidden
+// entirely while a search yields no topic matches (the page-level "no matches"
+// state covers that); otherwise renders its heading + the recursive outline.
+function TopicsSection({
   childrenMap,
   counts,
   expanded,
   filter,
   onToggle,
   onPick,
-  refreshing,
-  onRefresh,
 }: {
   childrenMap: Map<string | null, SceneNode[]>;
   counts: Map<string, number>;
@@ -364,85 +393,102 @@ function CategoriesView({
   filter: TreeFilter;
   onToggle: (path: string) => void;
   onPick: (id: string) => void;
-  refreshing: boolean;
-  onRefresh: () => void;
 }) {
-  const empty = (childrenMap.get(null) ?? []).length === 0;
-  const noMatches = filter.active && filter.visible.size === 0;
+  const roots = childrenMap.get(null) ?? [];
+  if (roots.length === 0) return null;
+  // While filtering, suppress the section if nothing in it matches.
+  if (filter.active && filter.visible.size === 0) return null;
   return (
-    <ScrollView
-      contentContainerStyle={styles.scrollBody}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      refreshControl={pullRefresh(refreshing, onRefresh)}
-    >
-      {empty ? (
-        <Text style={styles.empty}>
-          No analysis branches yet. Tap a node to open its index of posts, or
-          explore the map.
-        </Text>
-      ) : noMatches ? (
-        <Text style={styles.empty}>No branches match that search.</Text>
-      ) : (
-        <TreeBranch
-          parent={null}
-          childrenMap={childrenMap}
-          counts={counts}
-          expanded={expanded}
-          filter={filter}
-          onToggle={onToggle}
-          onPick={onPick}
-        />
-      )}
-    </ScrollView>
+    <View style={styles.section}>
+      <SectionHead label="Topics" />
+      <TreeBranch
+        parent={null}
+        childrenMap={childrenMap}
+        counts={counts}
+        expanded={expanded}
+        filter={filter}
+        onToggle={onToggle}
+        onPick={onPick}
+      />
+    </View>
   );
 }
 
-function FocusView({
+// The Focus tab: the focus areas (projects) as cards. Owns its empty + no-match
+// states (it's the whole view, not a stacked section), so the user always sees
+// guidance rather than a blank screen.
+function FocusSection({
   projects,
   counts,
   filter,
   onPick,
-  refreshing,
-  onRefresh,
 }: {
   projects: SceneNode[];
   counts: Map<string, number>;
   filter: TreeFilter;
   onPick: (id: string) => void;
-  refreshing: boolean;
-  onRefresh: () => void;
 }) {
   const shown = filter.active
     ? projects.filter((p) => filter.projects.has(p.id))
     : projects;
+  if (projects.length === 0) {
+    return (
+      <Text style={styles.empty}>
+        No focus areas yet. Assign posts to a project to see it here.
+      </Text>
+    );
+  }
+  if (shown.length === 0) {
+    return <Text style={styles.empty}>No focus areas match that search.</Text>;
+  }
   return (
-    <ScrollView
-      contentContainerStyle={styles.scrollBody}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      refreshControl={pullRefresh(refreshing, onRefresh)}
+    <View style={styles.focusList}>
+      {shown.map((p) => (
+        <FocusCard
+          key={p.id}
+          node={p}
+          count={counts.get(p.id) ?? 0}
+          range={filter.ranges.get(p.id)}
+          onPress={() => onPick(p.id)}
+        />
+      ))}
+    </View>
+  );
+}
+
+function FocusCard({
+  node,
+  count,
+  range,
+  onPress,
+}: {
+  node: SceneNode;
+  count: number;
+  range?: MatchRange;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={
+        count > 0 ? `${node.label}, ${count} posts` : node.label
+      }
+      style={({ pressed }) => [styles.focusCard, pressed && styles.pressed]}
     >
-      {projects.length === 0 ? (
-        <Text style={styles.empty}>
-          No focus areas yet. Assign posts to a project to see it here.
-        </Text>
-      ) : shown.length === 0 ? (
-        <Text style={styles.empty}>No focus areas match that search.</Text>
-      ) : (
-        <View style={styles.focusList}>
-          {shown.map((p) => (
-            <FocusCard
-              key={p.id}
-              node={p}
-              count={counts.get(p.id) ?? 0}
-              range={filter.ranges.get(p.id)}
-              onPress={() => onPick(p.id)}
-            />
-          ))}
-        </View>
-      )}
-    </ScrollView>
+      <View style={styles.focusText}>
+        <Eyebrow>Focus area</Eyebrow>
+        <HighlightedLabel
+          label={node.label}
+          range={range}
+          style={styles.focusTitle}
+          numberOfLines={2}
+        />
+      </View>
+      <Text style={styles.focusCount}>
+        {count} {count === 1 ? "post" : "posts"}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -592,42 +638,6 @@ function NodeRow({
   );
 }
 
-function FocusCard({
-  node,
-  count,
-  range,
-  onPress,
-}: {
-  node: SceneNode;
-  count: number;
-  range?: MatchRange;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={
-        count > 0 ? `${node.label}, ${count} posts` : node.label
-      }
-      style={({ pressed }) => [styles.focusCard, pressed && styles.pressed]}
-    >
-      <View style={styles.focusText}>
-        <Eyebrow>Focus area</Eyebrow>
-        <HighlightedLabel
-          label={node.label}
-          range={range}
-          style={styles.focusTitle}
-          numberOfLines={2}
-        />
-      </View>
-      <Text style={styles.focusCount}>
-        {count} {count === 1 ? "post" : "posts"}
-      </Text>
-    </Pressable>
-  );
-}
-
 const HEAD_PAD = Sirius.space.xl;
 
 const styles = StyleSheet.create({
@@ -644,6 +654,22 @@ const styles = StyleSheet.create({
     gap: Sirius.space.md,
   },
   viewport: { flex: 1 },
+  section: { marginBottom: Sirius.space.xl },
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderColor: Sirius.color.rule,
+    paddingBottom: Sirius.space.xs,
+    marginBottom: Sirius.space.sm,
+  },
+  sectionCount: {
+    fontFamily: Sirius.font.mono,
+    fontSize: 11,
+    color: Sirius.color.inkSubtle,
+    fontVariant: ["tabular-nums"],
+  },
   search: {
     flexDirection: "row",
     alignItems: "center",

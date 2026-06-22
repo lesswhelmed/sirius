@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Streamdown } from "streamdown";
 import { getCachedPost } from "../../../../lib/cached";
 import { CommentsSection } from "./comments-section";
+import { RelatedPosts } from "./related-posts";
 import { denyCatalogAccess } from "../../../../lib/catalog-access";
 import { DateDisplay } from "../../../../lib/date-display";
 import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
@@ -204,6 +205,8 @@ export default async function ListingPage({
           ⁂
         </span>
       </div>
+
+      {isOwner ? <RelatedPosts slug={slug} /> : null}
 
       {isOwner && viewerId ? (
         <CommentsSection
