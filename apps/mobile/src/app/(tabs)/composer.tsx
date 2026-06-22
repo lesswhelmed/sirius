@@ -659,6 +659,11 @@ export default function ComposerScreen() {
                 tone={t.color.accent}
                 onPress={() => router.push("/focus")}
               />
+              <TextLink
+                label="How it works →"
+                tone={t.color.accent}
+                onPress={() => router.push("/help")}
+              />
               {/* /llm is fully hidden when on-device AI is off. */}
               {ON_DEVICE_AI_ENABLED ? (
                 <TextLink

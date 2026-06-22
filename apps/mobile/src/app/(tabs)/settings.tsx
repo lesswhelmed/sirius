@@ -260,6 +260,16 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Help — the How Sirius works hub (also shown once on first launch). */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Help</Text>
+          <SecondaryButton
+            label="How Sirius works"
+            symbol="questionmark.circle"
+            onPress={() => router.push("/help")}
+          />
+        </View>
+
         {/* Sign out */}
         <View style={styles.section}>
           <SecondaryButton label="Sign out" onPress={handleSignOut} />
