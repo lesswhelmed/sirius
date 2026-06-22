@@ -3,6 +3,7 @@
 // PM2 process manifest for sirius-2-simple.
 //   sirius-web    — Next.js production server (apps/web)
 //   sirius-worker — long-running ingest worker daemon (apps/worker)
+//   sirius-mcp    — MCP corpus server (apps/mcp), Bun HTTP on port 3005
 //
 // Both inherit the repo-root .env via dotenv loading inside each app.
 // Override DEPLOY_ROOT for non-standard install paths.
@@ -50,6 +51,26 @@ module.exports = {
 			log_date_format: "YYYY-MM-DD HH:mm:ss Z",
 			error_file: "/home/deploy/logs/sirius-worker-error.log",
 			out_file: "/home/deploy/logs/sirius-worker-out.log",
+			merge_logs: true,
+		},
+		{
+			name: "sirius-mcp",
+			script: "bun",
+			args: "run start",
+			interpreter: "none",
+			cwd: path.join(ROOT, "apps", "mcp"),
+			env: {
+				NODE_ENV: "production",
+				// Shared server port map: copt-dev 3000, sirius-web 3003,
+				// botanical-bros 6940; the MCP server takes the free 3005.
+				MCP_PORT: 3005,
+			},
+			instances: 1,
+			exec_mode: "fork",
+			max_memory_restart: "1024M",
+			log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+			error_file: "/home/deploy/logs/sirius-mcp-error.log",
+			out_file: "/home/deploy/logs/sirius-mcp-out.log",
 			merge_logs: true,
 		},
 	],

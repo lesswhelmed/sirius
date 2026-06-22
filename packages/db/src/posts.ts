@@ -348,6 +348,25 @@ export function findPostBySlug(
   });
 }
 
+// Batch-fetch the owner's posts by slug, with tags + categories, to enrich
+// search/browse results that start from a lightweight id list (e.g. the
+// embedding scene's post nodes). Owner-scoped via submittedById, so a slug that
+// isn't the owner's is silently dropped — there is no cross-user leak even if a
+// caller passes a foreign slug. Order is NOT preserved; callers that rank
+// (e.g. semantic search) keep their own order and look rows up by slug.
+export function listPostsBySlugs(
+  ownerId: string,
+  slugs: string[],
+): Promise<(Post & { tags: Tag[]; categories: Category[] })[]> {
+  if (slugs.length === 0) {
+    return Promise.resolve([]);
+  }
+  return prisma.post.findMany({
+    where: { submittedById: ownerId, slug: { in: slugs } },
+    include: { tags: true, categories: true },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Delta feed for the mobile offline mirror.
 //

@@ -412,6 +412,7 @@ model User {
   projects    Project[]          @relation("UserProjects")
   archiveRequests ArchiveRequest[] @relation("UserArchiveRequests")
   comments    Comment[]          @relation("UserComments")
+  apiKeys     ApiKey[]           @relation("UserApiKeys")
 
   // Friendships are stored as ONE canonically-ordered row per pair (userAId <
   // userBId). A user therefore appears as either side, so two back-relations.
@@ -615,4 +616,43 @@ model RateLimit {
 
   @@unique([key])
   @@map("rateLimit")
+}
+
+// better-auth apiKey() plugin table. Backs the MCP corpus server: users mint
+// per-user API keys from /settings; apps/mcp verifies a Bearer key → owning
+// userId. ALL fields are plugin-managed (input:false) — never write this table
+// directly; go through auth.api.createApiKey / deleteApiKey / verifyApiKey.
+// The owner FK is `referenceId` (the plugin's `references` defaults to "user"),
+// NOT `userId`. `key` stores the HASHED key; the plaintext is returned once on
+// create and never persisted. `configId` defaults to "default" (multi-config
+// support, unused here). permissions/metadata are serialized text.
+model ApiKey {
+  id                  String    @id @default(cuid())
+  configId            String    @default("default")
+  name                String?
+  start               String?
+  prefix              String?
+  key                 String
+  referenceId         String
+  refillInterval      Int?
+  refillAmount        Int?
+  lastRefillAt        DateTime?
+  enabled             Boolean   @default(true)
+  rateLimitEnabled    Boolean   @default(true)
+  rateLimitTimeWindow Int?
+  rateLimitMax        Int?
+  requestCount        Int       @default(0)
+  remaining           Int?
+  lastRequest         DateTime?
+  expiresAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  permissions         String?
+  metadata            String?
+
+  user User @relation("UserApiKeys", fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@index([referenceId])
+  @@index([key])
+  @@map("apikey")
 }

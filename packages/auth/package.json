@@ -17,6 +17,7 @@
 		"check-types": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@better-auth/api-key": "1.6.20",
 		"@better-auth/expo": "^1.6.20",
 		"@repo/db": "*",
 		"better-auth": "^1.6.20",
