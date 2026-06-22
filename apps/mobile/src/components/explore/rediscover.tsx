@@ -12,7 +12,8 @@ import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Eyebrow } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useThemedStyles } from "@/constants/theme-context";
 
 // A day-stable integer (YYYYMMDD) so the rail changes once per day and is the
 // same for every render within that day. Device-local `Date` is fine here (this
@@ -23,6 +24,7 @@ function todaySeed(): number {
 }
 
 export function Rediscover({ scene }: { scene: EmbeddingScene }) {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const picks = useMemo(() => resurfacing(scene, todaySeed()), [scene]);
 
@@ -96,6 +98,7 @@ function RailCard({
   accessibilityLabel: string;
   children: React.ReactNode;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -109,39 +112,41 @@ function RailCard({
   );
 }
 
-const styles = StyleSheet.create({
-  rail: { gap: Sirius.space.sm, marginBottom: Sirius.space.lg },
-  card: {
-    gap: Sirius.space.xs,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperRaised,
-    paddingVertical: Sirius.space.md,
-    paddingHorizontal: Sirius.space.lg,
-  },
-  pressed: { opacity: 0.6 },
-  headline: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 18,
-    lineHeight: 23,
-    color: Sirius.color.ink,
-  },
-  pairItem: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    lineHeight: 21,
-    color: Sirius.color.ink,
-  },
-  pairJoin: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    color: Sirius.color.accent,
-  },
-  via: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    color: Sirius.color.inkSubtle,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    rail: { gap: t.space.sm, marginBottom: t.space.lg },
+    card: {
+      gap: t.space.xs,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      borderRadius: t.radius.none,
+      backgroundColor: t.color.paperRaised,
+      paddingVertical: t.space.md,
+      paddingHorizontal: t.space.lg,
+    },
+    pressed: { opacity: 0.6 },
+    headline: {
+      fontFamily: t.font.serif,
+      fontSize: 18,
+      lineHeight: 23,
+      color: t.color.ink,
+    },
+    pairItem: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      lineHeight: 21,
+      color: t.color.ink,
+    },
+    pairJoin: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.accent,
+    },
+    via: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 0.5,
+      color: t.color.inkSubtle,
+    },
+  });
+}

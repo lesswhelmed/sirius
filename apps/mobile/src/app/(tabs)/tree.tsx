@@ -37,7 +37,8 @@ import { MapView } from "@/components/explore/map-view";
 import { Rediscover } from "@/components/explore/rediscover";
 import { Segment, SegmentedControl } from "@/components/segmented";
 import { Eyebrow, PrimaryButton, Screen } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiGet } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { loadStringSet, saveStringSet } from "@/lib/persist";
@@ -57,6 +58,8 @@ const EXPANDED_PREFIX = "tree.expanded";
 const EXPAND_TO_DEPTH = 1;
 
 export default function TreeScreen() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const {
     data: scene,
     isLoading,
@@ -71,7 +74,7 @@ export default function TreeScreen() {
   if (isLoading) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={Sirius.color.accent} />
+        <ActivityIndicator color={t.color.accent} />
       </Screen>
     );
   }
@@ -92,6 +95,8 @@ export default function TreeScreen() {
 }
 
 function LoadedTree({ scene }: { scene: EmbeddingScene }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: session } = useSession();
@@ -213,7 +218,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
             contentContainerStyle={styles.scrollBody}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
-            refreshControl={pullRefresh(refreshing, onRefresh)}
+            refreshControl={pullRefresh(t, refreshing, onRefresh)}
           >
             {!searching ? <Rediscover scene={scene} /> : null}
 
@@ -235,7 +240,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
             contentContainerStyle={styles.scrollBody}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
-            refreshControl={pullRefresh(refreshing, onRefresh)}
+            refreshControl={pullRefresh(t, refreshing, onRefresh)}
           >
             <FocusSection
               projects={projects}
@@ -252,6 +257,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
 
 // A section heading: a folio eyebrow with an optional tally, under a hairline.
 function SectionHead({ label, count }: { label: string; count?: number }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.sectionHead}>
       <Eyebrow>{label}</Eyebrow>
@@ -283,13 +289,15 @@ function SearchField({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.search}>
       <SymbolView
         name="magnifyingglass"
         size={13}
         weight="semibold"
-        tintColor={Sirius.color.inkSubtle}
+        tintColor={t.color.inkSubtle}
         fallback={
           <Text style={styles.searchGlyph} accessibilityElementsHidden>
             {"⌕"}
@@ -300,8 +308,8 @@ function SearchField({
         value={value}
         onChangeText={onChange}
         placeholder="Filter the tree…"
-        placeholderTextColor={Sirius.color.inkSubtle}
-        selectionColor={Sirius.color.accent}
+        placeholderTextColor={t.color.inkSubtle}
+        selectionColor={t.color.accent}
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"
@@ -320,7 +328,7 @@ function SearchField({
           <SymbolView
             name="xmark.circle.fill"
             size={15}
-            tintColor={Sirius.color.inkSubtle}
+            tintColor={t.color.inkSubtle}
             fallback={
               <Text style={styles.searchGlyph} accessibilityElementsHidden>
                 {"✕"}
@@ -346,6 +354,7 @@ function HighlightedLabel({
   style: object;
   numberOfLines?: number;
 }) {
+  const styles = useThemedStyles(makeStyles);
   if (!range || range.start >= range.end) {
     return (
       <Text style={style} numberOfLines={numberOfLines}>
@@ -365,13 +374,13 @@ function HighlightedLabel({
   );
 }
 
-function pullRefresh(refreshing: boolean, onRefresh: () => void) {
+function pullRefresh(t: Theme, refreshing: boolean, onRefresh: () => void) {
   return (
     <RefreshControl
       refreshing={refreshing}
       onRefresh={onRefresh}
-      tintColor={Sirius.color.accent}
-      colors={[Sirius.color.accent]}
+      tintColor={t.color.accent}
+      colors={[t.color.accent]}
     />
   );
 }
@@ -394,6 +403,7 @@ function TopicsSection({
   onToggle: (path: string) => void;
   onPick: (id: string) => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const roots = childrenMap.get(null) ?? [];
   if (roots.length === 0) return null;
   // While filtering, suppress the section if nothing in it matches.
@@ -428,6 +438,7 @@ function FocusSection({
   filter: TreeFilter;
   onPick: (id: string) => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const shown = filter.active
     ? projects.filter((p) => filter.projects.has(p.id))
     : projects;
@@ -467,6 +478,7 @@ function FocusCard({
   range?: MatchRange;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -512,6 +524,7 @@ function TreeBranch({
   onToggle: (path: string) => void;
   onPick: (id: string) => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const all = childrenMap.get(parent) ?? [];
   // When filtering, drop nodes outside the visible set entirely — only matches
   // and their ancestors survive. With no query the full level renders.
@@ -581,6 +594,8 @@ function NodeRow({
   onToggle?: () => void;
   onPress: () => void;
 }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.nodeRow}>
       {/* Caret = a distinct hit target that ONLY toggles expansion; the label
@@ -599,7 +614,7 @@ function NodeRow({
             name={isOpen ? "chevron.down" : "chevron.right"}
             size={11}
             weight="semibold"
-            tintColor={Sirius.color.inkSubtle}
+            tintColor={t.color.inkSubtle}
             fallback={
               <Text style={styles.caretGlyph} accessibilityElementsHidden>
                 {isOpen ? "▾" : "▸"}
@@ -638,80 +653,80 @@ function NodeRow({
   );
 }
 
-const HEAD_PAD = Sirius.space.xl;
-
-const styles = StyleSheet.create({
+function makeStyles(t: Theme) {
+  const HEAD_PAD = t.space.xl;
+  return StyleSheet.create({
   centered: { alignItems: "center", justifyContent: "center" },
   centeredPad: {
     justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.lg,
+    paddingHorizontal: t.space.xl,
+    gap: t.space.lg,
   },
   head: {
     paddingHorizontal: HEAD_PAD,
     paddingTop: 64,
-    paddingBottom: Sirius.space.sm,
-    gap: Sirius.space.md,
+    paddingBottom: t.space.sm,
+    gap: t.space.md,
   },
   viewport: { flex: 1 },
-  section: { marginBottom: Sirius.space.xl },
+  section: { marginBottom: t.space.xl },
   sectionHead: {
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
     borderBottomWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingBottom: Sirius.space.xs,
-    marginBottom: Sirius.space.sm,
+    borderColor: t.color.rule,
+    paddingBottom: t.space.xs,
+    marginBottom: t.space.sm,
   },
   sectionCount: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
     fontVariant: ["tabular-nums"],
   },
   search: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Sirius.space.xs,
+    gap: t.space.xs,
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperRaised,
-    paddingHorizontal: Sirius.space.sm,
+    borderColor: t.color.rule,
+    borderRadius: t.radius.none,
+    backgroundColor: t.color.paperRaised,
+    paddingHorizontal: t.space.sm,
   },
   searchInput: {
     flex: 1,
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 13,
-    color: Sirius.color.ink,
-    paddingVertical: Sirius.space.sm,
+    color: t.color.ink,
+    paddingVertical: t.space.sm,
   },
   searchGlyph: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 13,
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
   },
   searchClear: { padding: 2 },
   highlight: {
-    color: Sirius.color.accent,
+    color: t.color.accent,
     fontWeight: "700",
   },
   scrollBody: {
     paddingHorizontal: HEAD_PAD,
-    paddingTop: Sirius.space.xs,
+    paddingTop: t.space.xs,
     paddingBottom: 120,
   },
   branch: {
-    marginLeft: Sirius.space.md,
+    marginLeft: t.space.md,
     borderLeftWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingLeft: Sirius.space.sm,
+    borderColor: t.color.rule,
+    paddingLeft: t.space.sm,
   },
   nodeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Sirius.space.xs,
+    gap: t.space.xs,
   },
   caret: {
     width: 18,
@@ -720,72 +735,73 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   caretGlyph: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
   },
   nodeHit: {
     flex: 1,
     flexDirection: "row",
     alignItems: "baseline",
-    gap: Sirius.space.sm,
+    gap: t.space.sm,
     paddingVertical: 5,
   },
   pressed: { opacity: 0.6 },
   nodeLabel: {
     flex: 1,
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 16,
     lineHeight: 22,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   nodeCount: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
     fontVariant: ["tabular-nums"],
   },
-  nodeCountZero: { color: Sirius.color.rule },
-  focusList: { gap: Sirius.space.md },
+  nodeCountZero: { color: t.color.rule },
+  focusList: { gap: t.space.md },
   focusCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: Sirius.space.md,
+    gap: t.space.md,
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperRaised,
-    paddingVertical: Sirius.space.md,
-    paddingHorizontal: Sirius.space.lg,
+    borderColor: t.color.rule,
+    borderRadius: t.radius.none,
+    backgroundColor: t.color.paperRaised,
+    paddingVertical: t.space.md,
+    paddingHorizontal: t.space.lg,
   },
   focusText: { flex: 1, gap: 4 },
   focusTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 18,
     lineHeight: 23,
-    color: Sirius.color.ink,
+    color: t.color.ink,
   },
   focusCount: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 10,
     letterSpacing: 1,
     textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
     fontVariant: ["tabular-nums"],
   },
   empty: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 16,
     fontStyle: "italic",
-    color: Sirius.color.inkMuted,
-    paddingVertical: Sirius.space.sm,
+    color: t.color.inkMuted,
+    paddingVertical: t.space.sm,
   },
   errorTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 22,
-    color: Sirius.color.ink,
+    color: t.color.ink,
     textAlign: "center",
   },
-  errorBody: { color: Sirius.color.inkMuted, textAlign: "center" },
-});
+  errorBody: { color: t.color.inkMuted, textAlign: "center" },
+  });
+}

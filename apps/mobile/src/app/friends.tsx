@@ -18,7 +18,8 @@ import {
 import { AddFriendSheet } from "@/components/add-friend-sheet";
 import { Segment, SegmentedControl } from "@/components/segmented";
 import { PageHeader, Screen, SecondaryButton } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiDelete, ApiError, apiGet, apiPostJson } from "@/lib/api";
 
 type Friend = { id: string; name: string; handle: string | null };
@@ -36,6 +37,8 @@ type RawRequest = {
 type Tab = "friends" | "requests";
 
 export default function FriendsScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("friends");
   const [addOpen, setAddOpen] = useState(false);
@@ -120,7 +123,7 @@ export default function FriendsScreen() {
 
       {loading ? (
         <View style={styles.loading}>
-          <ActivityIndicator color={Sirius.color.accent} />
+          <ActivityIndicator color={t.color.accent} />
         </View>
       ) : tab === "friends" ? (
         <FlatList
@@ -186,6 +189,8 @@ function FriendRow({
   busy: boolean;
   children: React.ReactNode;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   return (
     <View style={styles.row}>
       <View style={styles.rowText}>
@@ -193,7 +198,7 @@ function FriendRow({
         {item.handle ? <Text style={styles.handle}>@{item.handle}</Text> : null}
       </View>
       {busy ? (
-        <ActivityIndicator color={Sirius.color.accent} />
+        <ActivityIndicator color={t.color.accent} />
       ) : (
         <View style={styles.actions}>{children}</View>
       )}
@@ -210,6 +215,7 @@ function Action({
   muted?: boolean;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable onPress={onPress} hitSlop={8} accessibilityRole="button">
       <Text style={[styles.action, muted && styles.actionMuted]}>{label}</Text>
@@ -218,6 +224,7 @@ function Action({
 }
 
 function Empty({ line }: { line: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.empty}>
       <Text style={styles.emptyGlyph}>∅</Text>
@@ -227,58 +234,65 @@ function Empty({ line }: { line: string }) {
 }
 
 function Sep() {
+  const styles = useThemedStyles(makeStyles);
   return <View style={styles.sep} />;
 }
 
-const styles = StyleSheet.create({
-  head: {
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: Sirius.space.lg,
-    gap: Sirius.space.lg,
-  },
-  loading: { paddingVertical: 48, alignItems: "center" },
-  list: { paddingHorizontal: Sirius.space.xl, paddingTop: Sirius.space.md, paddingBottom: 120 },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: Sirius.space.lg,
-    paddingVertical: Sirius.space.md,
-  },
-  rowText: { flexShrink: 1 },
-  name: { fontFamily: Sirius.font.serif, fontSize: 18, color: Sirius.color.ink },
-  handle: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    color: Sirius.color.inkSubtle,
-  },
-  actions: { flexDirection: "row", alignItems: "center", gap: Sirius.space.lg },
-  action: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
-  },
-  actionMuted: { color: Sirius.color.inkSubtle },
-  pending: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.inkFaint,
-  },
-  sep: { height: 1, backgroundColor: Sirius.color.rule },
-  empty: { padding: 40, alignItems: "center", gap: Sirius.space.sm },
-  emptyGlyph: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 48,
-    color: Sirius.color.ruleStrong,
-  },
-  emptyLine: {
-    fontFamily: Sirius.font.serif,
-    fontStyle: "italic",
-    fontSize: 18,
-    color: Sirius.color.inkMuted,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    head: {
+      paddingHorizontal: t.space.xl,
+      paddingTop: t.space.lg,
+      gap: t.space.lg,
+    },
+    loading: { paddingVertical: 48, alignItems: "center" },
+    list: {
+      paddingHorizontal: t.space.xl,
+      paddingTop: t.space.md,
+      paddingBottom: 120,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: t.space.lg,
+      paddingVertical: t.space.md,
+    },
+    rowText: { flexShrink: 1 },
+    name: { fontFamily: t.font.serif, fontSize: 18, color: t.color.ink },
+    handle: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.inkSubtle,
+    },
+    actions: { flexDirection: "row", alignItems: "center", gap: t.space.lg },
+    action: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkMuted,
+    },
+    actionMuted: { color: t.color.inkSubtle },
+    pending: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkFaint,
+    },
+    sep: { height: 1, backgroundColor: t.color.rule },
+    empty: { padding: 40, alignItems: "center", gap: t.space.sm },
+    emptyGlyph: {
+      fontFamily: t.font.serif,
+      fontSize: 48,
+      color: t.color.ruleStrong,
+    },
+    emptyLine: {
+      fontFamily: t.font.serif,
+      fontStyle: "italic",
+      fontSize: 18,
+      color: t.color.inkMuted,
+    },
+  });
+}

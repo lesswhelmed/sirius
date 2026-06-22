@@ -23,7 +23,8 @@ import {
   TextLink,
   TrayRow,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { useSession } from "@/lib/auth-client";
 import { dismissModal } from "@/lib/dismiss-modal";
 import { trayTag } from "@/lib/material-kinds";
@@ -36,6 +37,8 @@ import {
 } from "@/lib/materials";
 
 export default function CaptureScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ text?: string; autosubmit?: string }>();
   const { data: session, isPending } = useSession();
@@ -93,7 +96,7 @@ export default function CaptureScreen() {
   if (isPending) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={Sirius.color.accent} />
+        <ActivityIndicator color={t.color.accent} />
       </Screen>
     );
   }
@@ -179,7 +182,7 @@ export default function CaptureScreen() {
 
           <TextLink
             label="Cancel"
-            tone={Sirius.color.inkMuted}
+            tone={t.color.inkMuted}
             onPress={dismissModal}
             disabled={busy}
           />
@@ -189,22 +192,24 @@ export default function CaptureScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  noteInput: { minHeight: 80, textAlignVertical: "top", paddingTop: 12 },
-  keyboardDone: { alignSelf: "flex-end" },
-  centered: { alignItems: "center", justifyContent: "center" },
-  centeredPad: {
-    justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.lg,
-  },
-  container: { padding: Sirius.space.xl, paddingTop: 72, gap: Sirius.space.lg },
-  muted: {
-    color: Sirius.color.inkMuted,
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    lineHeight: 23,
-  },
-  list: { gap: Sirius.space.sm, marginTop: Sirius.space.xs },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    noteInput: { minHeight: 80, textAlignVertical: "top", paddingTop: 12 },
+    keyboardDone: { alignSelf: "flex-end" },
+    centered: { alignItems: "center", justifyContent: "center" },
+    centeredPad: {
+      justifyContent: "center",
+      paddingHorizontal: t.space.xl,
+      gap: t.space.lg,
+    },
+    container: { padding: t.space.xl, paddingTop: 72, gap: t.space.lg },
+    muted: {
+      color: t.color.inkMuted,
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      lineHeight: 23,
+    },
+    list: { gap: t.space.sm, marginTop: t.space.xs },
+  });
+}

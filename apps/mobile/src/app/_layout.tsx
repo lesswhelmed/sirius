@@ -11,7 +11,12 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { Screen } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import {
+  ThemeProvider as SiriusThemeProvider,
+  useTheme,
+  useThemedStyles,
+} from "@/constants/theme-context";
 import { useSession } from "@/lib/auth-client";
 import {
   clearCaptureCredentials,
@@ -135,8 +140,6 @@ function useDbReady(): { ready: boolean; error: Error | null } {
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const { ready, error } = useDbReady();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ShareIntentProvider
@@ -146,12 +149,44 @@ export default function RootLayout() {
         }}
       >
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider
-            value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-          >
-            <AnimatedSplashOverlay />
-            <StatusBar style="auto" />
-            {error ? (
+          <SiriusThemeProvider>
+            <RootContent />
+          </SiriusThemeProvider>
+        </QueryClientProvider>
+      </ShareIntentProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+// Lives under SiriusThemeProvider so it can read the active theme and feed it to
+// React Navigation's chrome (headers, status bar, screen backgrounds).
+function RootContent() {
+  const colorScheme = useColorScheme();
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const { ready, error } = useDbReady();
+
+  // Build the navigation theme from our palette so headers/back-buttons follow
+  // light/dark instead of React Navigation's generic blue defaults.
+  const base = colorScheme === "dark" ? DarkTheme : DefaultTheme;
+  const navTheme = {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: t.color.accent,
+      background: t.color.paper,
+      card: t.color.paper,
+      text: t.color.ink,
+      border: t.color.rule,
+      notification: t.color.accent,
+    },
+  };
+
+  return (
+    <ThemeProvider value={navTheme}>
+      <AnimatedSplashOverlay />
+      <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+      {error ? (
               <Screen style={styles.centeredPad}>
                 <Text style={styles.errorTitle}>
                   {"Couldn't start the database"}
@@ -183,8 +218,8 @@ export default function RootLayout() {
                     options={{
                       headerShown: true,
                       title: "Edit",
-                      headerStyle: { backgroundColor: Sirius.color.paper },
-                      headerTintColor: Sirius.color.ink,
+                      headerStyle: { backgroundColor: t.color.paper },
+                      headerTintColor: t.color.ink,
                       headerBackTitle: "Post",
                     }}
                   />
@@ -244,12 +279,11 @@ export default function RootLayout() {
                       title: "On-device AI",
                       // Reached only from the Capture tab.
                       headerBackTitle: "Capture",
-                      // Force the paper header (like post/[slug]) so the custom
-                      // ink-colored header buttons ("New"/"Chats") stay legible —
-                      // otherwise in OS dark mode the nav theme paints a dark
-                      // header and the near-black buttons vanish into it.
-                      headerStyle: { backgroundColor: Sirius.color.paper },
-                      headerTintColor: Sirius.color.ink,
+                      // Themed header; the custom header buttons ("New"/"Chats")
+                      // use the same `ink` tone so they stay legible in both
+                      // light and dark.
+                      headerStyle: { backgroundColor: t.color.paper },
+                      headerTintColor: t.color.ink,
                     }}
                   />
                   <Stack.Screen
@@ -257,31 +291,30 @@ export default function RootLayout() {
                     options={{
                       headerShown: true,
                       title: "Draft test bench",
-                      headerStyle: { backgroundColor: Sirius.color.paper },
-                      headerTintColor: Sirius.color.ink,
+                      headerStyle: { backgroundColor: t.color.paper },
+                      headerTintColor: t.color.ink,
                     }}
                   />
                 </Stack>
               </>
             ) : null}
-          </ThemeProvider>
-        </QueryClientProvider>
-      </ShareIntentProvider>
-    </GestureHandlerRootView>
+    </ThemeProvider>
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
   centeredPad: {
     justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.lg,
+    paddingHorizontal: t.space.xl,
+    gap: t.space.lg,
   },
   errorTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 22,
-    color: Sirius.color.ink,
+    color: t.color.ink,
     textAlign: "center",
   },
-  errorBody: { color: Sirius.color.inkMuted, textAlign: "center" },
-});
+  errorBody: { color: t.color.inkMuted, textAlign: "center" },
+  });
+}

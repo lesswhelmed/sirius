@@ -45,17 +45,31 @@ import {
   type PerspectiveCamera,
   Vector3,
 } from "three";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 
 type Vec3 = [number, number, number];
 
 // Editorial palette — ink dots on paper, oxblood for the one focused node.
-const PAPER = Sirius.color.paper;
-const INK = Sirius.color.ink;
-const INK_MUTED = Sirius.color.inkMuted;
-const INK_FAINT = Sirius.color.inkFaint;
-const OXBLOOD = Sirius.color.accent;
-const MARK = Sirius.color.mark;
+// Resolved per-theme from the active Theme so the scene tracks light/dark.
+interface Palette {
+  paper: string;
+  ink: string;
+  inkMuted: string;
+  inkFaint: string;
+  oxblood: string;
+  mark: string;
+}
+function makePalette(t: Theme): Palette {
+  return {
+    paper: t.color.paper,
+    ink: t.color.ink,
+    inkMuted: t.color.inkMuted,
+    inkFaint: t.color.inkFaint,
+    oxblood: t.color.accent,
+    mark: t.color.mark,
+  };
+}
 
 const DAMPING = 0.16; // orbit + target + radius easing per frame (OrbitControls feel)
 
@@ -136,10 +150,12 @@ function EdgeLines({
   scene,
   focusedId,
   onlyFocus,
+  palette,
 }: {
   scene: EmbeddingScene;
   focusedId: string | null;
   onlyFocus: boolean;
+  palette: Palette;
 }) {
   const positions = useMemo(() => {
     const byId = new Map(scene.nodes.map((n) => [n.id, n.position]));
@@ -160,7 +176,7 @@ function EdgeLines({
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
       </bufferGeometry>
       <lineBasicMaterial
-        color={onlyFocus ? OXBLOOD : INK}
+        color={onlyFocus ? palette.oxblood : palette.ink}
         transparent
         opacity={onlyFocus ? 0.6 : 0.06}
       />
@@ -188,15 +204,16 @@ function nodeStyle(
   focused: boolean,
   neighbor: boolean,
   inSubtree: boolean,
+  palette: Palette,
 ): { radius: number; color: string; fade: number } {
   const base = KIND_BASE[node.kind] ?? 0.1;
   const radius = focused ? base * 1.9 : neighbor ? base * 1.15 : base;
 
-  let color: string = INK_FAINT;
-  if (focused) color = OXBLOOD;
-  else if (neighbor) color = INK;
-  else if (node.kind === "project") color = MARK;
-  else if (node.kind === "post") color = inSubtree ? INK : INK_MUTED;
+  let color: string = palette.inkFaint;
+  if (focused) color = palette.oxblood;
+  else if (neighbor) color = palette.ink;
+  else if (node.kind === "project") color = palette.mark;
+  else if (node.kind === "post") color = inSubtree ? palette.ink : palette.inkMuted;
 
   // Prior opacity tiers, expressed as a lerp-toward-PAPER amount (1 - opacity).
   let opacity = Math.max(0.45, base); // floor so nothing ever "blacks out"
@@ -216,6 +233,7 @@ function NodeDots({
   subtreePostIds,
   onPick,
   onFrame,
+  palette,
 }: {
   scene: EmbeddingScene;
   focusedId: string | null;
@@ -223,6 +241,7 @@ function NodeDots({
   subtreePostIds: Set<string>;
   onPick: (node: SceneNode) => void;
   onFrame: (node: SceneNode) => void;
+  palette: Palette;
 }) {
   const dotsRef = useRef<InstancedMesh>(null);
   const hitRef = useRef<InstancedMesh>(null);
@@ -236,7 +255,7 @@ function NodeDots({
     const hit = hitRef.current;
     if (!dots || !hit || count === 0) return;
     const m = new Matrix4();
-    const paper = new Color(PAPER);
+    const paper = new Color(palette.paper);
     const col = new Color();
     for (let i = 0; i < count; i++) {
       const node = scene.nodes[i]!;
@@ -248,6 +267,7 @@ function NodeDots({
         focused,
         neighbor,
         inSubtree,
+        palette,
       );
       const [x, y, z] = node.position;
       // Visible dot: unit sphere scaled by the tier radius.
@@ -266,7 +286,7 @@ function NodeDots({
     dots.instanceMatrix.needsUpdate = true;
     if (dots.instanceColor) dots.instanceColor.needsUpdate = true;
     hit.instanceMatrix.needsUpdate = true;
-  }, [scene.nodes, focusedId, neighborIds, subtreePostIds, count]);
+  }, [scene.nodes, focusedId, neighborIds, subtreePostIds, count, palette]);
 
   if (count === 0) return null;
 
@@ -301,13 +321,19 @@ function NodeDots({
 
 // The selected post's oxblood ring — a single mesh (only 0-1 ever shown), kept
 // separate from the instanced dots.
-function SelectedRing({ node }: { node: SceneNode }) {
+function SelectedRing({
+  node,
+  palette,
+}: {
+  node: SceneNode;
+  palette: Palette;
+}) {
   const base = KIND_BASE[node.kind] ?? 0.1;
   return (
     <mesh position={node.position}>
       <sphereGeometry args={[base * 2.2, 16, 16]} />
       <meshBasicMaterial
-        color={OXBLOOD}
+        color={palette.oxblood}
         wireframe
         transparent
         opacity={0.6}
@@ -319,7 +345,13 @@ function SelectedRing({ node }: { node: SceneNode }) {
 
 // Oxblood glow that breathes around the focused node. Lives at a stable ref so
 // changing focus only moves its position prop — the animation never restarts.
-function PulseHalo({ position }: { position: Vec3 }) {
+function PulseHalo({
+  position,
+  palette,
+}: {
+  position: Vec3;
+  palette: Palette;
+}) {
   const ref = useRef<Mesh>(null);
   const t = useRef(0);
   useFrame((_state, delta) => {
@@ -336,7 +368,7 @@ function PulseHalo({ position }: { position: Vec3 }) {
     <mesh ref={ref} position={position}>
       <sphereGeometry args={[0.4, 16, 16]} />
       <meshBasicMaterial
-        color={OXBLOOD}
+        color={palette.oxblood}
         transparent
         opacity={0.22}
         depthWrite={false}
@@ -592,6 +624,7 @@ function NodeLabel({
   projected: SharedValue<Record<string, ProjectedLabel>>;
   focused: boolean;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const style = useAnimatedStyle(() => {
     const p = projected.value[node.id];
     if (!p) return { opacity: 0, transform: [{ translateX: -9999 }] };
@@ -668,6 +701,9 @@ export const ConstellationHero = forwardRef<
   },
   ref,
 ) {
+  const t = useTheme();
+  const palette = makePalette(t);
+  const styles = useThemedStyles(makeStyles);
   const bounds = computeBounds(scene.nodes);
   const fitRadius = bounds.radius * FIT_MULT;
   const panLimit = bounds.radius * PAN_LIMIT_MULT;
@@ -806,7 +842,7 @@ export const ConstellationHero = forwardRef<
   return (
     <View style={[styles.hero, style]}>
       <Canvas camera={{ fov: 52 }}>
-        <color attach="background" args={[PAPER]} />
+        <color attach="background" args={[palette.paper]} />
         <CameraRig
           orbit={orbit}
           target={target}
@@ -824,8 +860,18 @@ export const ConstellationHero = forwardRef<
         />
         <OrbitBackdrop onOrbit={onOrbitDelta} onZoom={onZoom} onPan={onPan} />
         <ambientLight intensity={1} />
-        <EdgeLines scene={scene} focusedId={focusedId} onlyFocus={false} />
-        <EdgeLines scene={scene} focusedId={focusedId} onlyFocus />
+        <EdgeLines
+          scene={scene}
+          focusedId={focusedId}
+          onlyFocus={false}
+          palette={palette}
+        />
+        <EdgeLines
+          scene={scene}
+          focusedId={focusedId}
+          onlyFocus
+          palette={palette}
+        />
         <NodeDots
           scene={scene}
           focusedId={focusedId}
@@ -833,11 +879,14 @@ export const ConstellationHero = forwardRef<
           subtreePostIds={subtreePostIds}
           onPick={onPickNode}
           onFrame={frameNode}
+          palette={palette}
         />
         {selectedNode && selectedNode.id !== focusedId ? (
-          <SelectedRing node={selectedNode} />
+          <SelectedRing node={selectedNode} palette={palette} />
         ) : null}
-        {focused ? <PulseHalo position={focused.position} /> : null}
+        {focused ? (
+          <PulseHalo position={focused.position} palette={palette} />
+        ) : null}
       </Canvas>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {labelNodes.map((n) => (
@@ -853,45 +902,47 @@ export const ConstellationHero = forwardRef<
   );
 });
 
-const styles = StyleSheet.create({
-  hero: { backgroundColor: PAPER, overflow: "hidden" },
-  labelWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: LABEL_W,
-    alignItems: "center",
-  },
-  labelCat: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 13,
-    lineHeight: 16,
-    color: Sirius.color.inkMuted,
-    textAlign: "center",
-  },
-  labelFocused: {
-    fontSize: 15,
-    lineHeight: 18,
-    color: Sirius.color.ink,
-  },
-  labelProject: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-    textAlign: "center",
-  },
-  labelChip: {
-    borderWidth: 1,
-    borderColor: Sirius.color.accentRing,
-    backgroundColor: Sirius.color.paper,
-    paddingHorizontal: Sirius.space.sm,
-    paddingVertical: 3,
-  },
-  labelPost: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 13,
-    color: Sirius.color.ink,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    hero: { backgroundColor: t.color.paper, overflow: "hidden" },
+    labelWrap: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: LABEL_W,
+      alignItems: "center",
+    },
+    labelCat: {
+      fontFamily: t.font.serif,
+      fontSize: 13,
+      lineHeight: 16,
+      color: t.color.inkMuted,
+      textAlign: "center",
+    },
+    labelFocused: {
+      fontSize: 15,
+      lineHeight: 18,
+      color: t.color.ink,
+    },
+    labelProject: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+      textAlign: "center",
+    },
+    labelChip: {
+      borderWidth: 1,
+      borderColor: t.color.accentRing,
+      backgroundColor: t.color.paper,
+      paddingHorizontal: t.space.sm,
+      paddingVertical: 3,
+    },
+    labelPost: {
+      fontFamily: t.font.serif,
+      fontSize: 13,
+      color: t.color.ink,
+    },
+  });
+}

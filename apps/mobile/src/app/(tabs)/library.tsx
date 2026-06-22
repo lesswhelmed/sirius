@@ -17,7 +17,12 @@ import {
 import { FriendsFeedList } from "@/components/friends-feed-list";
 import { Segment, SegmentedControl } from "@/components/segmented";
 import { KindLabel, PageHeader, Screen } from "@/components/sirius";
-import { PostTypeTone, Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import {
+  usePostTypeTone,
+  useTheme,
+  useThemedStyles,
+} from "@/constants/theme-context";
 import { resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { type PostRow, posts, type SyncState } from "@/lib/db/schema";
@@ -53,6 +58,9 @@ function humanizeCategory(name: string): string {
 }
 
 export default function LibraryScreen() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const postTypeTone = usePostTypeTone();
   // Live view of the local mirror: local drafts, in-flight submissions, and
   // synced server posts, newest first. Re-renders automatically on any row
   // change (sync pull, SSE reconcile, optimistic write).
@@ -155,7 +163,7 @@ export default function LibraryScreen() {
   }, []);
 
   const renderItem = useCallback(({ item }: { item: PostRow }) => {
-    const tone = PostTypeTone[item.type] ?? Sirius.color.inkMuted;
+    const tone = postTypeTone[item.type] ?? t.color.inkMuted;
     const imageUri = resolveMediaUrl(item.imageUrl);
     const pip = STATE_PIP[item.syncState];
     // Repo provenance chip for GitHub-ingested posts (shared reader so the
@@ -245,7 +253,7 @@ export default function LibraryScreen() {
         </View>
       </Pressable>
     );
-  }, []);
+  }, [postTypeTone, t, styles]);
 
   const scopeToggle = (
     <SegmentedControl value={scope} onChange={setScope}>
@@ -287,7 +295,7 @@ export default function LibraryScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={Sirius.color.accent}
+            tintColor={t.color.accent}
           />
         }
         ListHeaderComponent={
@@ -420,6 +428,7 @@ function CategoryTab({
   active: boolean;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -448,199 +457,202 @@ function CategoryTab({
 }
 
 function Separator() {
+  const styles = useThemedStyles(makeStyles);
   return <View style={styles.sep} />;
 }
 
-const styles = StyleSheet.create({
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
   centeredPad: {
     justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.lg,
+    paddingHorizontal: t.space.xl,
+    gap: t.space.lg,
   },
   list: {
-    paddingHorizontal: Sirius.space.xl,
+    paddingHorizontal: t.space.xl,
     paddingTop: 64,
     paddingBottom: 120,
   },
-  header: { marginBottom: Sirius.space.lg },
-  scopeBar: { marginBottom: Sirius.space.lg },
+  header: { marginBottom: t.space.lg },
+  scopeBar: { marginBottom: t.space.lg },
 
   // Category segmented bar.
   categoryBarScroll: {
-    marginTop: Sirius.space.lg,
+    marginTop: t.space.lg,
     borderBottomWidth: 1,
-    borderBottomColor: Sirius.color.rule,
+    borderBottomColor: t.color.rule,
   },
-  categoryBar: { gap: Sirius.space.lg, paddingRight: Sirius.space.xl },
+  categoryBar: { gap: t.space.lg, paddingRight: t.space.xl },
   categoryTab: {
     flexDirection: "row",
     alignItems: "baseline",
     gap: 5,
-    paddingBottom: Sirius.space.sm,
+    paddingBottom: t.space.sm,
     borderBottomWidth: 2,
     borderBottomColor: "transparent",
   },
-  categoryTabActive: { borderBottomColor: Sirius.color.accent },
+  categoryTabActive: { borderBottomColor: t.color.accent },
   categoryTabLabel: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 17,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   categoryTabLabelActive: {
-    color: Sirius.color.accent,
+    color: t.color.accent,
     fontStyle: "italic",
   },
   categoryTabCount: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 10,
-    color: Sirius.color.inkFaint,
+    color: t.color.inkFaint,
   },
-  categoryTabCountActive: { color: Sirius.color.accent },
+  categoryTabCountActive: { color: t.color.accent },
 
   // Tag refine strip.
-  tagRowScroll: { marginTop: Sirius.space.md },
-  tagRow: { gap: Sirius.space.sm, paddingRight: Sirius.space.xl },
+  tagRowScroll: { marginTop: t.space.md },
+  tagRow: { gap: t.space.sm, paddingRight: t.space.xl },
   tagChip: {
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.xs,
+    paddingHorizontal: t.space.md,
+    paddingVertical: t.space.xs,
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    backgroundColor: Sirius.color.paperSunken,
+    borderColor: t.color.rule,
+    backgroundColor: t.color.paperSunken,
   },
   tagChipActive: {
-    borderColor: Sirius.color.accent,
-    backgroundColor: Sirius.color.accentSoft,
+    borderColor: t.color.accent,
+    backgroundColor: t.color.accentSoft,
   },
   tagChipText: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
     letterSpacing: 0.5,
     textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
-  tagChipTextActive: { color: Sirius.color.accent },
+  tagChipTextActive: { color: t.color.accent },
 
   // Active-filter summary.
   summaryRow: {
-    marginTop: Sirius.space.md,
+    marginTop: t.space.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: Sirius.space.md,
-    backgroundColor: Sirius.color.paperSunken,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.sm,
+    gap: t.space.md,
+    backgroundColor: t.color.paperSunken,
+    paddingHorizontal: t.space.md,
+    paddingVertical: t.space.sm,
   },
-  summaryText: { flex: 1, fontFamily: Sirius.font.mono, fontSize: 11 },
-  summaryLead: { color: Sirius.color.inkMuted },
+  summaryText: { flex: 1, fontFamily: t.font.mono, fontSize: 11 },
+  summaryLead: { color: t.color.inkMuted },
   summaryCategory: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 13,
     fontStyle: "italic",
-    color: Sirius.color.ink,
+    color: t.color.ink,
   },
-  summaryDot: { color: Sirius.color.inkFaint },
-  summaryTag: { color: Sirius.color.accent },
+  summaryDot: { color: t.color.inkFaint },
+  summaryTag: { color: t.color.accent },
   clearAll: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 10,
     letterSpacing: 1.4,
-    color: Sirius.color.accent,
+    color: t.color.accent,
   },
 
   row: {
     flexDirection: "row",
-    gap: Sirius.space.lg,
-    paddingVertical: Sirius.space.md,
+    gap: t.space.lg,
+    paddingVertical: t.space.md,
   },
   pressed: { opacity: 0.6 },
   thumb: {
     width: 60,
     height: 60,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperSunken,
+    borderRadius: t.radius.none,
+    backgroundColor: t.color.paperSunken,
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
+    borderColor: t.color.rule,
   },
   thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
-  thumbPlaceholderText: { fontFamily: Sirius.font.serif, fontSize: 24 },
-  rowText: { flex: 1, justifyContent: "center", gap: Sirius.space.xs },
+  thumbPlaceholderText: { fontFamily: t.font.serif, fontSize: 24 },
+  rowText: { flex: 1, justifyContent: "center", gap: t.space.xs },
   rowMeta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Sirius.space.sm,
+    gap: t.space.sm,
   },
   pip: {
     fontSize: 11,
     letterSpacing: 0.5,
     textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
   },
-  pipFailed: { color: Sirius.color.accent },
+  pipFailed: { color: t.color.accent },
   repoChip: {
     flexShrink: 1,
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
     letterSpacing: 0.5,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   rowTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 20,
     lineHeight: 24,
-    color: Sirius.color.ink,
+    color: t.color.ink,
   },
   // Per-row taxonomy: category pill + tag chips.
   rowTaxonomy: {
-    marginTop: Sirius.space.xs,
+    marginTop: t.space.xs,
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: Sirius.space.sm,
+    gap: t.space.sm,
   },
   categoryPill: {
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingHorizontal: Sirius.space.sm,
+    borderColor: t.color.rule,
+    paddingHorizontal: t.space.sm,
     paddingVertical: 2,
   },
   categoryPillText: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 12,
     fontStyle: "italic",
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   rowTagChip: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 10,
     letterSpacing: 0.4,
     textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
   },
-  sep: { height: 1, backgroundColor: Sirius.color.rule },
-  empty: { padding: 40, alignItems: "center", gap: Sirius.space.sm },
+  sep: { height: 1, backgroundColor: t.color.rule },
+  empty: { padding: 40, alignItems: "center", gap: t.space.sm },
   emptyGlyph: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 56,
-    color: Sirius.color.ruleStrong,
-    marginBottom: Sirius.space.sm,
+    color: t.color.ruleStrong,
+    marginBottom: t.space.sm,
   },
   emptyTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 22,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   emptyBody: {
     fontSize: 15,
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
     textAlign: "center",
   },
   errorTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 22,
-    color: Sirius.color.ink,
+    color: t.color.ink,
     textAlign: "center",
   },
-  errorBody: { color: Sirius.color.inkMuted, textAlign: "center" },
-  footerLoader: { paddingVertical: Sirius.space.lg },
-});
+  errorBody: { color: t.color.inkMuted, textAlign: "center" },
+  footerLoader: { paddingVertical: t.space.lg },
+  });
+}

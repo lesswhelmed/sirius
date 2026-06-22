@@ -8,10 +8,13 @@ import {
   SecondaryButton,
   TextLink,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { authClient } from "@/lib/auth-client";
 
 export default function VerifyPendingScreen() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { email } = useLocalSearchParams<{ email?: string }>();
   const [busy, setBusy] = useState(false);
 
@@ -50,7 +53,7 @@ export default function VerifyPendingScreen() {
 
         <TextLink
           label="Back to sign in"
-          tone={Sirius.color.inkMuted}
+          tone={t.color.inkMuted}
           onPress={() => router.replace("/(auth)/sign-in")}
         />
       </View>
@@ -58,18 +61,20 @@ export default function VerifyPendingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: 96,
-    gap: Sirius.space.xl,
-  },
-  body: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 17,
-    lineHeight: 25,
-    color: Sirius.color.inkMuted,
-  },
-  email: { fontWeight: "600", color: Sirius.color.ink },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      paddingHorizontal: t.space.xl,
+      paddingTop: 96,
+      gap: t.space.xl,
+    },
+    body: {
+      fontFamily: t.font.serif,
+      fontSize: 17,
+      lineHeight: 25,
+      color: t.color.inkMuted,
+    },
+    email: { fontWeight: "600", color: t.color.ink },
+  });
+}

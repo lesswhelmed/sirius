@@ -36,7 +36,9 @@ import { ConstellationHero } from "@/components/explore/constellation-scene";
 import type { ConstellationHeroHandle } from "@/components/explore/constellation-scene";
 import { useExploreFocus } from "@/components/explore/explore-focus";
 import { Eyebrow, KindLabel, TextLink } from "@/components/sirius";
-import { BottomTabInset, Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { BottomTabInset } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 
 // Horizontal travel (px) past which a release counts as a sibling swipe; vertical
 // past which it steps the sheet between snaps.
@@ -54,6 +56,8 @@ const SHEET_ANIM_MS = 240;
 type SheetSnap = "collapsed" | "peek" | "expanded";
 
 export function MapView({ scene }: { scene: EmbeddingScene }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -66,7 +70,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
   );
   const expandedHeight = Math.round(usableHeight * EXPANDED_FRACTION);
   const bottomInset = BottomTabInset + insets.bottom;
-  const postBodyPaddingBottom = Math.max(140, bottomInset + Sirius.space.xxl);
+  const postBodyPaddingBottom = Math.max(140, bottomInset + t.space.xxl);
 
   // Animated sheet height: eased tween between the three snaps.
   const sheetH = useSharedValue(peekHeight);
@@ -193,7 +197,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
       {/* Legend / "you are here" — what the dots mean + where you are. */}
       {focused ? (
         <View
-          style={[styles.legend, { top: insets.top + Sirius.space.sm }]}
+          style={[styles.legend, { top: insets.top + t.space.sm }]}
           pointerEvents="none"
         >
           <Eyebrow>You are here</Eyebrow>
@@ -345,7 +349,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                   {/* Tapped-post preview — what this dot is, with a quick Open. */}
                   {previewPost ? (
                     <View style={styles.previewCard}>
-                      <KindLabel tone={Sirius.color.accent}>Post</KindLabel>
+                      <KindLabel tone={t.color.accent}>Post</KindLabel>
                       <Text style={styles.previewTitle} numberOfLines={2}>
                         {previewPost.label}
                       </Text>
@@ -364,7 +368,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                         )}
                         <TextLink
                           label="Dismiss"
-                          tone={Sirius.color.inkSubtle}
+                          tone={t.color.inkSubtle}
                           onPress={() => setPreviewNode(null)}
                         />
                       </View>
@@ -449,6 +453,7 @@ function KeyRow({
   shape: "focus" | "category" | "post";
   label: string;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.keyRow}>
       <View style={styles.keySwatch}>
@@ -474,6 +479,7 @@ function PostRow({
   n: number;
   onOpen: (slug?: string) => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={() => onOpen(entry.node.slug)}
@@ -494,279 +500,280 @@ function PostRow({
   );
 }
 
-const PAD = Sirius.space.xl;
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Sirius.color.paper },
-  emptyWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "center",
-    paddingHorizontal: PAD,
-  },
-  // Top-left legend overlay.
-  legend: {
-    position: "absolute",
-    left: Sirius.space.lg,
-    maxWidth: 200,
-    gap: 3,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.sm,
-    backgroundColor: Sirius.color.paperRaised,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    opacity: 0.94,
-  },
-  legendPath: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
-  },
-  legendKeys: { gap: 4, marginTop: 4 },
-  keyRow: { flexDirection: "row", alignItems: "center", gap: Sirius.space.sm },
-  keySwatch: { width: 12, alignItems: "center", justifyContent: "center" },
-  keyFocus: {
-    width: 11,
-    height: 11,
-    borderRadius: Sirius.radius.pill,
-    backgroundColor: Sirius.color.accent,
-  },
-  keyCategory: {
-    width: 10,
-    height: 10,
-    borderRadius: Sirius.radius.pill,
-    borderWidth: 1.5,
-    borderColor: Sirius.color.ink,
-  },
-  keyPost: {
-    width: 6,
-    height: 6,
-    borderRadius: Sirius.radius.pill,
-    backgroundColor: Sirius.color.inkMuted,
-  },
-  keyLabel: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 9,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  // Floating sheet pinned to the bottom, layered over the canvas.
-  sheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: "hidden",
-    borderTopWidth: 1,
-    borderColor: Sirius.color.rule,
-    backgroundColor: Sirius.color.paperRaised,
-  },
-  collapsedBar: {
-    alignItems: "center",
-    gap: Sirius.space.xs,
-    paddingTop: Sirius.space.sm,
-    paddingHorizontal: PAD,
-  },
-  collapsedTitle: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    color: Sirius.color.ink,
-  },
-  header: {
-    paddingHorizontal: PAD,
-    paddingTop: Sirius.space.sm,
-    paddingBottom: Sirius.space.xs,
-    gap: Sirius.space.xs,
-  },
-  handleHit: {
-    alignSelf: "center",
-    paddingHorizontal: Sirius.space.lg,
-    paddingVertical: Sirius.space.xs,
-  },
-  handle: {
-    width: 44,
-    height: 3,
-    backgroundColor: Sirius.color.ruleStrong,
-  },
-  contextRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Sirius.space.sm,
-  },
-  breadcrumbRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Sirius.space.xs,
-  },
-  breadcrumb: {
-    flex: 1,
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  breadcrumbUp: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    color: Sirius.color.inkSubtle,
-  },
-  position: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: Sirius.color.inkSubtle,
-    fontVariant: ["tabular-nums"],
-  },
-  frameBtn: {
-    borderWidth: 1,
-    borderColor: Sirius.color.ruleStrong,
-    paddingHorizontal: Sirius.space.sm,
-    paddingVertical: 3,
-  },
-  frameBtnText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: Sirius.color.accent,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Sirius.space.md,
-  },
-  chev: { width: 32, alignItems: "center", justifyContent: "center" },
-  chevGlyph: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 22,
-    color: Sirius.color.inkSubtle,
-  },
-  chevDisabled: { color: Sirius.color.inkFaint },
-  pressed: { opacity: 0.55 },
-  title: {
-    flex: 1,
-    textAlign: "center",
-    fontFamily: Sirius.font.serif,
-    fontSize: 26,
-    lineHeight: 30,
-    color: Sirius.color.ink,
-  },
-  previewCard: {
-    marginTop: Sirius.space.xs,
-    borderWidth: 1,
-    borderColor: Sirius.color.accentRing,
-    backgroundColor: Sirius.color.paper,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.sm,
-    gap: Sirius.space.xs,
-  },
-  previewTitle: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    lineHeight: 20,
-    color: Sirius.color.ink,
-  },
-  previewActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Sirius.space.lg,
-  },
-  previewNoOpen: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  chips: {
-    gap: Sirius.space.xs,
-    paddingTop: Sirius.space.sm,
-    marginBottom: Sirius.space.sm,
-  },
-  chipsLabel: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: Sirius.color.inkFaint,
-  },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: Sirius.space.sm },
-  chip: {
-    borderWidth: 1,
-    borderColor: Sirius.color.ruleStrong,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: 5,
-  },
-  chipPressed: { backgroundColor: Sirius.color.accentSoft },
-  chipText: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 14,
-    color: Sirius.color.inkMuted,
-    maxWidth: 180,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: Sirius.color.rule,
-    marginHorizontal: PAD,
-  },
-  postScroll: { flex: 1 },
-  postBody: { paddingHorizontal: PAD, paddingTop: Sirius.space.xs },
-  postRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: Sirius.space.sm,
-    borderBottomWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingVertical: Sirius.space.sm,
-  },
-  postNum: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    color: Sirius.color.inkSubtle,
-    fontVariant: ["tabular-nums"],
-  },
-  postLabel: {
-    flex: 1,
-    fontFamily: Sirius.font.serif,
-    fontSize: 15,
-    color: Sirius.color.ink,
-  },
-  postScore: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    color: Sirius.color.accent,
-    fontVariant: ["tabular-nums"],
-  },
-  postOpen: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: Sirius.color.accent,
-  },
-  hint: {
-    marginTop: Sirius.space.lg,
-    textAlign: "center",
-    fontFamily: Sirius.font.mono,
-    fontSize: 9,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: Sirius.color.inkFaint,
-  },
-  empty: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    fontStyle: "italic",
-    color: Sirius.color.inkMuted,
-    paddingVertical: Sirius.space.sm,
-    textAlign: "center",
-  },
-});
+function makeStyles(t: Theme) {
+  const PAD = t.space.xl;
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: t.color.paper },
+    emptyWrap: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: "center",
+      paddingHorizontal: PAD,
+    },
+    // Top-left legend overlay.
+    legend: {
+      position: "absolute",
+      left: t.space.lg,
+      maxWidth: 200,
+      gap: 3,
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.sm,
+      backgroundColor: t.color.paperRaised,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      opacity: 0.94,
+    },
+    legendPath: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      color: t.color.inkMuted,
+    },
+    legendKeys: { gap: 4, marginTop: 4 },
+    keyRow: { flexDirection: "row", alignItems: "center", gap: t.space.sm },
+    keySwatch: { width: 12, alignItems: "center", justifyContent: "center" },
+    keyFocus: {
+      width: 11,
+      height: 11,
+      borderRadius: t.radius.pill,
+      backgroundColor: t.color.accent,
+    },
+    keyCategory: {
+      width: 10,
+      height: 10,
+      borderRadius: t.radius.pill,
+      borderWidth: 1.5,
+      borderColor: t.color.ink,
+    },
+    keyPost: {
+      width: 6,
+      height: 6,
+      borderRadius: t.radius.pill,
+      backgroundColor: t.color.inkMuted,
+    },
+    keyLabel: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    // Floating sheet pinned to the bottom, layered over the canvas.
+    sheet: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      overflow: "hidden",
+      borderTopWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: t.color.paperRaised,
+    },
+    collapsedBar: {
+      alignItems: "center",
+      gap: t.space.xs,
+      paddingTop: t.space.sm,
+      paddingHorizontal: PAD,
+    },
+    collapsedTitle: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      color: t.color.ink,
+    },
+    header: {
+      paddingHorizontal: PAD,
+      paddingTop: t.space.sm,
+      paddingBottom: t.space.xs,
+      gap: t.space.xs,
+    },
+    handleHit: {
+      alignSelf: "center",
+      paddingHorizontal: t.space.lg,
+      paddingVertical: t.space.xs,
+    },
+    handle: {
+      width: 44,
+      height: 3,
+      backgroundColor: t.color.ruleStrong,
+    },
+    contextRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.sm,
+    },
+    breadcrumbRow: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.xs,
+    },
+    breadcrumb: {
+      flex: 1,
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    breadcrumbUp: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.inkSubtle,
+    },
+    position: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      letterSpacing: 1.4,
+      color: t.color.inkSubtle,
+      fontVariant: ["tabular-nums"],
+    },
+    frameBtn: {
+      borderWidth: 1,
+      borderColor: t.color.ruleStrong,
+      paddingHorizontal: t.space.sm,
+      paddingVertical: 3,
+    },
+    frameBtnText: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: t.color.accent,
+    },
+    titleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.md,
+    },
+    chev: { width: 32, alignItems: "center", justifyContent: "center" },
+    chevGlyph: {
+      fontFamily: t.font.serif,
+      fontSize: 22,
+      color: t.color.inkSubtle,
+    },
+    chevDisabled: { color: t.color.inkFaint },
+    pressed: { opacity: 0.55 },
+    title: {
+      flex: 1,
+      textAlign: "center",
+      fontFamily: t.font.serif,
+      fontSize: 26,
+      lineHeight: 30,
+      color: t.color.ink,
+    },
+    previewCard: {
+      marginTop: t.space.xs,
+      borderWidth: 1,
+      borderColor: t.color.accentRing,
+      backgroundColor: t.color.paper,
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.sm,
+      gap: t.space.xs,
+    },
+    previewTitle: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      lineHeight: 20,
+      color: t.color.ink,
+    },
+    previewActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.lg,
+    },
+    previewNoOpen: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    chips: {
+      gap: t.space.xs,
+      paddingTop: t.space.sm,
+      marginBottom: t.space.sm,
+    },
+    chipsLabel: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: t.color.inkFaint,
+    },
+    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: t.space.sm },
+    chip: {
+      borderWidth: 1,
+      borderColor: t.color.ruleStrong,
+      paddingHorizontal: t.space.md,
+      paddingVertical: 5,
+    },
+    chipPressed: { backgroundColor: t.color.accentSoft },
+    chipText: {
+      fontFamily: t.font.serif,
+      fontSize: 14,
+      color: t.color.inkMuted,
+      maxWidth: 180,
+    },
+    divider: {
+      height: 1,
+      backgroundColor: t.color.rule,
+      marginHorizontal: PAD,
+    },
+    postScroll: { flex: 1 },
+    postBody: { paddingHorizontal: PAD, paddingTop: t.space.xs },
+    postRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: t.space.sm,
+      borderBottomWidth: 1,
+      borderColor: t.color.rule,
+      paddingVertical: t.space.sm,
+    },
+    postNum: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      color: t.color.inkSubtle,
+      fontVariant: ["tabular-nums"],
+    },
+    postLabel: {
+      flex: 1,
+      fontFamily: t.font.serif,
+      fontSize: 15,
+      color: t.color.ink,
+    },
+    postScore: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      color: t.color.accent,
+      fontVariant: ["tabular-nums"],
+    },
+    postOpen: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: t.color.accent,
+    },
+    hint: {
+      marginTop: t.space.lg,
+      textAlign: "center",
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      color: t.color.inkFaint,
+    },
+    empty: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      fontStyle: "italic",
+      color: t.color.inkMuted,
+      paddingVertical: t.space.sm,
+      textAlign: "center",
+    },
+  });
+}

@@ -34,7 +34,8 @@ import {
   PrimaryButton,
   Screen,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiGet } from "@/lib/api";
 
 const QUERY_KEY = ["embedding-scene"] as const;
@@ -47,6 +48,8 @@ function subtitleFor(node: SceneNode): string {
 }
 
 export default function TreeNodeScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   const params = useLocalSearchParams<{ node?: string | string[] }>();
   const nodeId = useMemo(
     () =>
@@ -92,7 +95,7 @@ export default function TreeNodeScreen() {
   if (isLoading) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={Sirius.color.accent} />
+        <ActivityIndicator color={t.color.accent} />
       </Screen>
     );
   }
@@ -209,6 +212,7 @@ function ConnectedRow({
   related: RelatedCategory;
   onOpen: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={onOpen}
@@ -236,6 +240,7 @@ function IndexRow({
   n: number;
   onOpen: (slug?: string) => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.indexRow}>
       <Text style={styles.indexNum}>{String(n).padStart(2, "0")}</Text>
@@ -254,82 +259,84 @@ function IndexRow({
   );
 }
 
-const styles = StyleSheet.create({
-  centered: { alignItems: "center", justifyContent: "center" },
-  centeredPad: {
-    justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.lg,
-  },
-  container: {
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: 24,
-    paddingBottom: 120,
-    gap: Sirius.space.xl,
-  },
-  section: { gap: Sirius.space.md },
-  sectionBody: { marginTop: Sirius.space.xs },
-  upLink: { alignSelf: "flex-start", marginTop: -Sirius.space.md },
-  upText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    letterSpacing: 0.5,
-    color: Sirius.color.accent,
-  },
-  pressed: { opacity: 0.6 },
-  connectLabel: {
-    flex: 1,
-    fontFamily: Sirius.font.serif,
-    fontSize: 15,
-    color: Sirius.color.ink,
-  },
-  indexRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: Sirius.space.sm,
-    borderBottomWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingVertical: Sirius.space.sm,
-  },
-  indexNum: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    color: Sirius.color.inkSubtle,
-    fontVariant: ["tabular-nums"],
-  },
-  indexLabel: {
-    flex: 1,
-    fontFamily: Sirius.font.serif,
-    fontSize: 15,
-    color: Sirius.color.ink,
-  },
-  indexScore: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  indexOpen: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: Sirius.color.accent,
-    textDecorationLine: "underline",
-  },
-  empty: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    fontStyle: "italic",
-    color: Sirius.color.inkMuted,
-    paddingVertical: Sirius.space.sm,
-  },
-  errorTitle: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 22,
-    color: Sirius.color.ink,
-    textAlign: "center",
-  },
-  errorBody: { color: Sirius.color.inkMuted, textAlign: "center" },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    centered: { alignItems: "center", justifyContent: "center" },
+    centeredPad: {
+      justifyContent: "center",
+      paddingHorizontal: t.space.xl,
+      gap: t.space.lg,
+    },
+    container: {
+      paddingHorizontal: t.space.xl,
+      paddingTop: 24,
+      paddingBottom: 120,
+      gap: t.space.xl,
+    },
+    section: { gap: t.space.md },
+    sectionBody: { marginTop: t.space.xs },
+    upLink: { alignSelf: "flex-start", marginTop: -t.space.md },
+    upText: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      letterSpacing: 0.5,
+      color: t.color.accent,
+    },
+    pressed: { opacity: 0.6 },
+    connectLabel: {
+      flex: 1,
+      fontFamily: t.font.serif,
+      fontSize: 15,
+      color: t.color.ink,
+    },
+    indexRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: t.space.sm,
+      borderBottomWidth: 1,
+      borderColor: t.color.rule,
+      paddingVertical: t.space.sm,
+    },
+    indexNum: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      color: t.color.inkSubtle,
+      fontVariant: ["tabular-nums"],
+    },
+    indexLabel: {
+      flex: 1,
+      fontFamily: t.font.serif,
+      fontSize: 15,
+      color: t.color.ink,
+    },
+    indexScore: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    indexOpen: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: t.color.accent,
+      textDecorationLine: "underline",
+    },
+    empty: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      fontStyle: "italic",
+      color: t.color.inkMuted,
+      paddingVertical: t.space.sm,
+    },
+    errorTitle: {
+      fontFamily: t.font.serif,
+      fontSize: 22,
+      color: t.color.ink,
+      textAlign: "center",
+    },
+    errorBody: { color: t.color.inkMuted, textAlign: "center" },
+  });
+}

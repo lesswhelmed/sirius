@@ -17,10 +17,12 @@ import {
   Screen,
   TextLink,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useThemedStyles } from "@/constants/theme-context";
 import { signUp } from "@/lib/auth-client";
 
 export default function SignUpScreen() {
+  const styles = useThemedStyles(makeStyles);
   // Uncontrolled inputs (see <AuthField/>): read at submit so iOS Password
   // Autofill / strong-password suggestions land reliably instead of being
   // clobbered by a re-render.
@@ -119,25 +121,27 @@ export default function SignUpScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  container: {
-    flex: 1,
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: 96,
-    gap: Sirius.space.xl,
-  },
-  form: { gap: Sirius.space.lg },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: Sirius.space.sm,
-    marginTop: Sirius.space.xs,
-  },
-  muted: {
-    color: Sirius.color.inkMuted,
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    container: {
+      flex: 1,
+      paddingHorizontal: t.space.xl,
+      paddingTop: 96,
+      gap: t.space.xl,
+    },
+    form: { gap: t.space.lg },
+    footer: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      gap: t.space.sm,
+      marginTop: t.space.xs,
+    },
+    muted: {
+      color: t.color.inkMuted,
+      fontFamily: t.font.serif,
+      fontSize: 16,
+    },
+  });
+}

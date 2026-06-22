@@ -16,7 +16,8 @@ import {
   Screen,
   TextLink,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { requestPasswordReset } from "@/lib/auth-client";
 
 // After the server validates the emailed token it redirects to this deep link
@@ -25,6 +26,8 @@ import { requestPasswordReset } from "@/lib/auth-client";
 const RESET_REDIRECT = "siriusapp://reset-password";
 
 export default function ForgotPasswordScreen() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
@@ -95,7 +98,7 @@ export default function ForgotPasswordScreen() {
           <View style={styles.footer}>
             <TextLink
               label="Back to sign in"
-              tone={Sirius.color.inkMuted}
+              tone={t.color.inkMuted}
               onPress={() => router.replace("/(auth)/sign-in")}
             />
           </View>
@@ -105,33 +108,35 @@ export default function ForgotPasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  container: {
-    flex: 1,
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: 96,
-    gap: Sirius.space.xl,
-  },
-  form: { gap: Sirius.space.lg },
-  notice: {
-    borderLeftWidth: 2,
-    borderLeftColor: Sirius.color.sage,
-    backgroundColor: Sirius.color.sageSoft,
-    paddingVertical: Sirius.space.md,
-    paddingHorizontal: Sirius.space.lg,
-  },
-  noticeText: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    lineHeight: 23,
-    color: Sirius.color.inkMuted,
-  },
-  noticeEmail: { fontWeight: "600", color: Sirius.color.ink },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: Sirius.space.xs,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    container: {
+      flex: 1,
+      paddingHorizontal: t.space.xl,
+      paddingTop: 96,
+      gap: t.space.xl,
+    },
+    form: { gap: t.space.lg },
+    notice: {
+      borderLeftWidth: 2,
+      borderLeftColor: t.color.sage,
+      backgroundColor: t.color.sageSoft,
+      paddingVertical: t.space.md,
+      paddingHorizontal: t.space.lg,
+    },
+    noticeText: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      lineHeight: 23,
+      color: t.color.inkMuted,
+    },
+    noticeEmail: { fontWeight: "600", color: t.color.ink },
+    footer: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      marginTop: t.space.xs,
+    },
+  });
+}

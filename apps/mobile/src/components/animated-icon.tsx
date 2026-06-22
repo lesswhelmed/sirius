@@ -4,6 +4,14 @@ import { Dimensions, StyleSheet, View } from "react-native";
 import Animated, { Easing, Keyframe } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 
+import { darkTheme } from "@/constants/theme";
+
+// The launch splash is the app-icon identity (a cat on midnight navy), so it is
+// intentionally NOT theme-switched — it reads the icon's own ground/glow tokens
+// from the dark palette in both light and dark mode.
+const SPLASH_GROUND = darkTheme.color.paper; // #131923 icon navy
+const SPLASH_GROUND_RAISED = darkTheme.color.paperRaised;
+
 const INITIAL_SCALE_FACTOR = Dimensions.get("screen").height / 90;
 const DURATION = 600;
 
@@ -134,14 +142,14 @@ const styles = StyleSheet.create({
   },
   background: {
     borderRadius: 40,
-    experimental_backgroundImage: `linear-gradient(180deg, #3C9FFE, #0274DF)`,
+    experimental_backgroundImage: `linear-gradient(180deg, ${SPLASH_GROUND_RAISED}, ${SPLASH_GROUND})`,
     width: 128,
     height: 128,
     position: "absolute",
   },
   backgroundSolidColor: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "#208AEF",
+    backgroundColor: SPLASH_GROUND,
     zIndex: 1000,
   },
 });

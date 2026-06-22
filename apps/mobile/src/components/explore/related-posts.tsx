@@ -14,10 +14,12 @@ import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Eyebrow } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useThemedStyles } from "@/constants/theme-context";
 import { apiGet } from "@/lib/api";
 
 export function RelatedPosts({ slug }: { slug: string }) {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   // Same key + fetcher as the Explore tab and /space, so this reuses the warm
   // scene cache instead of issuing its own round-trip when one already exists.
@@ -73,32 +75,34 @@ export function RelatedPosts({ slug }: { slug: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    marginTop: Sirius.space.lg,
-    borderTopWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingTop: Sirius.space.md,
-    gap: Sirius.space.sm,
-  },
-  body: { gap: Sirius.space.xs },
-  row: {
-    borderBottomWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingVertical: Sirius.space.sm,
-    gap: 2,
-  },
-  pressed: { opacity: 0.6 },
-  title: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    lineHeight: 21,
-    color: Sirius.color.ink,
-  },
-  via: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    color: Sirius.color.inkSubtle,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    wrap: {
+      marginTop: t.space.lg,
+      borderTopWidth: 1,
+      borderColor: t.color.rule,
+      paddingTop: t.space.md,
+      gap: t.space.sm,
+    },
+    body: { gap: t.space.xs },
+    row: {
+      borderBottomWidth: 1,
+      borderColor: t.color.rule,
+      paddingVertical: t.space.sm,
+      gap: 2,
+    },
+    pressed: { opacity: 0.6 },
+    title: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      lineHeight: 21,
+      color: t.color.ink,
+    },
+    via: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 0.5,
+      color: t.color.inkSubtle,
+    },
+  });
+}

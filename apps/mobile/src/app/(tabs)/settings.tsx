@@ -25,7 +25,8 @@ import {
 } from "@/components/sirius";
 import { SubscriptionSection } from "@/components/subscription-section";
 import { VoiceSection } from "@/components/voice-section";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { authBaseURL, signIn, signOut, useSession } from "@/lib/auth-client";
 import {
   type BiometricType,
@@ -37,6 +38,8 @@ import {
 } from "@/lib/biometric-auth";
 
 export default function SettingsScreen() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { data: session } = useSession();
   const email = session?.user?.email ?? "";
   const name = session?.user?.name ?? "";
@@ -241,11 +244,11 @@ export default function SettingsScreen() {
                   value={bioEnabled}
                   onValueChange={onToggleBiometric}
                   trackColor={{
-                    false: Sirius.color.rule,
-                    true: Sirius.color.accent,
+                    false: t.color.rule,
+                    true: t.color.accent,
                   }}
-                  thumbColor={Sirius.color.paper}
-                  ios_backgroundColor={Sirius.color.rule}
+                  thumbColor={t.color.paper}
+                  ios_backgroundColor={t.color.rule}
                 />
               </View>
             ) : (
@@ -292,7 +295,7 @@ export default function SettingsScreen() {
         <View style={styles.sheetCancel}>
           <TextLink
             label="Cancel"
-            tone={Sirius.color.inkMuted}
+            tone={t.color.inkMuted}
             onPress={() => {
               if (confirmBusy) return;
               passwordRef.current?.clear();
@@ -306,6 +309,7 @@ export default function SettingsScreen() {
 }
 
 function Row({ label, value }: { label: string; value: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -316,72 +320,74 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
   container: {
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: Sirius.space.xl,
+    paddingHorizontal: t.space.xl,
+    paddingTop: t.space.xl,
     paddingBottom: 120,
-    gap: Sirius.space.xl,
+    gap: t.space.xl,
   },
-  headerMain: { gap: Sirius.space.xs },
-  section: { gap: Sirius.space.sm },
+  headerMain: { gap: t.space.xs },
+  section: { gap: t.space.sm },
   sectionLabel: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 11,
     letterSpacing: 1,
     textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
   },
   card: {
     borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    backgroundColor: Sirius.color.paperRaised,
-    paddingHorizontal: Sirius.space.lg,
-    paddingVertical: Sirius.space.sm,
-    gap: Sirius.space.sm,
+    borderColor: t.color.rule,
+    backgroundColor: t.color.paperRaised,
+    paddingHorizontal: t.space.lg,
+    paddingVertical: t.space.sm,
+    gap: t.space.sm,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: Sirius.space.lg,
-    paddingVertical: Sirius.space.sm,
+    gap: t.space.lg,
+    paddingVertical: t.space.sm,
   },
   rowLabel: {
-    fontFamily: Sirius.font.mono,
+    fontFamily: t.font.mono,
     fontSize: 12,
-    color: Sirius.color.inkSubtle,
+    color: t.color.inkSubtle,
   },
   rowValue: {
     flexShrink: 1,
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 16,
-    color: Sirius.color.ink,
+    color: t.color.ink,
   },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: Sirius.space.lg,
-    paddingVertical: Sirius.space.sm,
+    gap: t.space.lg,
+    paddingVertical: t.space.sm,
   },
   toggleText: { flex: 1, gap: 2 },
   toggleTitle: {
-    fontFamily: Sirius.font.serif,
+    fontFamily: t.font.serif,
     fontSize: 17,
-    color: Sirius.color.ink,
+    color: t.color.ink,
   },
   toggleSub: {
-    fontFamily: Sirius.font.sans,
+    fontFamily: t.font.sans,
     fontSize: 13,
     lineHeight: 18,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
   sheetCopy: {
-    fontFamily: Sirius.font.sans,
+    fontFamily: t.font.sans,
     fontSize: 14,
     lineHeight: 20,
-    color: Sirius.color.inkMuted,
+    color: t.color.inkMuted,
   },
-  sheetCancel: { alignItems: "center", marginTop: Sirius.space.xs },
-});
+  sheetCancel: { alignItems: "center", marginTop: t.space.xs },
+  });
+}

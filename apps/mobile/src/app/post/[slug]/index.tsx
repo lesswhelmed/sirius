@@ -24,7 +24,12 @@ import { RelatedPosts } from "@/components/explore/related-posts";
 import { PostMarkdown } from "@/components/post-markdown";
 import { KindLabel, Screen, Title } from "@/components/sirius";
 import { VisibilitySheet } from "@/components/visibility-sheet";
-import { PostTypeTone, Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import {
+  usePostTypeTone,
+  useTheme,
+  useThemedStyles,
+} from "@/constants/theme-context";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { type PostRow, posts } from "@/lib/db/schema";
@@ -50,6 +55,7 @@ type PostView = {
 // deleted/moved file), mirroring the web PostImage "No plate" behavior so the
 // two clients stay consistent instead of mobile showing a blank box.
 function GalleryImage({ image }: { image: SightImage }) {
+  const styles = useThemedStyles(makeStyles);
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
@@ -123,6 +129,9 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function PostDetailScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
+  const postTypeTone = usePostTypeTone();
   // `from` is the originating tab label, passed by tab-level pushes so the back
   // button reads e.g. "Catalog" instead of the "(tabs)" route-name fallback.
   // Absent when pushed from another in-stack screen (the Tree index, Space) —
@@ -161,7 +170,7 @@ export default function PostDetailScreen() {
   if (loading) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={Sirius.color.accent} />
+        <ActivityIndicator color={t.color.accent} />
       </Screen>
     );
   }
@@ -185,7 +194,7 @@ export default function PostDetailScreen() {
     );
   }
 
-  const tone = PostTypeTone[view.type] ?? Sirius.color.inkMuted;
+  const tone = postTypeTone[view.type] ?? t.color.inkMuted;
   const sightImages = view.images;
   // When a SIGHT gallery is present it already includes the hero (images[0]),
   // so render the gallery and skip the standalone hero to avoid showing the
@@ -198,8 +207,8 @@ export default function PostDetailScreen() {
       <Stack.Screen
         options={{
           title: TYPE_LABEL[view.type] ?? "Post",
-          headerStyle: { backgroundColor: Sirius.color.paper },
-          headerTintColor: Sirius.color.ink,
+          headerStyle: { backgroundColor: t.color.paper },
+          headerTintColor: t.color.ink,
           ...(from ? { headerBackTitle: from } : {}),
         }}
       />
@@ -281,95 +290,97 @@ export default function PostDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  centered: { alignItems: "center", justifyContent: "center" },
-  centeredPad: {
-    justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.sm,
-  },
-  container: { padding: Sirius.space.xl, gap: Sirius.space.md },
-  hero: {
-    width: "100%",
-    aspectRatio: 1,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperSunken,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    marginBottom: Sirius.space.sm,
-  },
-  galleryImage: {
-    width: "100%",
-    aspectRatio: 1,
-    borderRadius: Sirius.radius.none,
-    backgroundColor: Sirius.color.paperSunken,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-  },
-  galleryFallback: { alignItems: "center", justifyContent: "center" },
-  galleryFallbackText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.inkMuted,
-  },
-  visRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.sm,
-    marginTop: Sirius.space.xs,
-  },
-  visPressed: { opacity: 0.6 },
-  visLabel: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  visValue: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.accent,
-  },
-  tagsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: Sirius.space.sm,
-    marginTop: Sirius.space.xs,
-  },
-  tag: {
-    backgroundColor: Sirius.color.accentSoft,
-    borderWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingHorizontal: Sirius.space.md,
-    paddingVertical: Sirius.space.xs,
-    borderRadius: Sirius.radius.none,
-  },
-  tagText: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    color: Sirius.color.accent,
-  },
-  excerpt: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 19,
-    lineHeight: 27,
-    color: Sirius.color.inkMuted,
-    fontStyle: "italic",
-    marginTop: Sirius.space.xs,
-  },
-  errorTitle: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 22,
-    color: Sirius.color.ink,
-  },
-  errorBody: { color: Sirius.color.inkMuted },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    centered: { alignItems: "center", justifyContent: "center" },
+    centeredPad: {
+      justifyContent: "center",
+      paddingHorizontal: t.space.xl,
+      gap: t.space.sm,
+    },
+    container: { padding: t.space.xl, gap: t.space.md },
+    hero: {
+      width: "100%",
+      aspectRatio: 1,
+      borderRadius: t.radius.none,
+      backgroundColor: t.color.paperSunken,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      marginBottom: t.space.sm,
+    },
+    galleryImage: {
+      width: "100%",
+      aspectRatio: 1,
+      borderRadius: t.radius.none,
+      backgroundColor: t.color.paperSunken,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+    },
+    galleryFallback: { alignItems: "center", justifyContent: "center" },
+    galleryFallbackText: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkMuted,
+    },
+    visRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.sm,
+      marginTop: t.space.xs,
+    },
+    visPressed: { opacity: 0.6 },
+    visLabel: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    visValue: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.accent,
+    },
+    tagsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: t.space.sm,
+      marginTop: t.space.xs,
+    },
+    tag: {
+      backgroundColor: t.color.accentSoft,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.xs,
+      borderRadius: t.radius.none,
+    },
+    tagText: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.accent,
+    },
+    excerpt: {
+      fontFamily: t.font.serif,
+      fontSize: 19,
+      lineHeight: 27,
+      color: t.color.inkMuted,
+      fontStyle: "italic",
+      marginTop: t.space.xs,
+    },
+    errorTitle: {
+      fontFamily: t.font.serif,
+      fontSize: 22,
+      color: t.color.ink,
+    },
+    errorBody: { color: t.color.inkMuted },
+  });
+}

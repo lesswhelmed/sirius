@@ -18,7 +18,8 @@ import {
   Screen,
   TextLink,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiDelete, apiGet, apiPatch, apiPostJson } from "@/lib/api";
 
 // A focus area (Project) row, mirroring the web ProjectsBoard shape.
@@ -35,6 +36,8 @@ const QUERY_KEY = ["focus-areas"] as const;
 // archive (restore) / delete focus areas, with optimistic updates that revert
 // on failure. Pushed Stack route, reachable from the composer.
 export default function FocusScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   const queryClient = useQueryClient();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: QUERY_KEY,
@@ -109,7 +112,7 @@ export default function FocusScreen() {
   if (isLoading) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={Sirius.color.accent} />
+        <ActivityIndicator color={t.color.accent} />
       </Screen>
     );
   }
@@ -192,7 +195,7 @@ export default function FocusScreen() {
                   <View style={styles.rowActions}>
                     <TextLink
                       label={p.status === "archived" ? "Restore" : "Archive"}
-                      tone={Sirius.color.inkMuted}
+                      tone={t.color.inkMuted}
                       onPress={() =>
                         setStatus(
                           p.id,
@@ -202,7 +205,7 @@ export default function FocusScreen() {
                     />
                     <TextLink
                       label="Delete"
-                      tone={Sirius.color.inkSubtle}
+                      tone={t.color.inkSubtle}
                       onPress={() => remove(p.id)}
                     />
                   </View>
@@ -216,83 +219,89 @@ export default function FocusScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  centered: { alignItems: "center", justifyContent: "center" },
-  centeredPad: {
-    justifyContent: "center",
-    paddingHorizontal: Sirius.space.xl,
-    gap: Sirius.space.lg,
-  },
-  container: {
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: 64,
-    paddingBottom: 120,
-    gap: Sirius.space.xl,
-  },
-  form: { gap: Sirius.space.md },
-  descriptionInput: { minHeight: 72, textAlignVertical: "top", paddingTop: 12 },
-  // Sits right-aligned just above the full-width submit button.
-  keyboardDone: { alignSelf: "flex-end" },
-  formError: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 10,
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
-    color: Sirius.color.accent,
-  },
-  empty: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 17,
-    fontStyle: "italic",
-    color: Sirius.color.inkSubtle,
-  },
-  list: { gap: 0 },
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: Sirius.space.lg,
-    borderBottomWidth: 1,
-    borderColor: Sirius.color.rule,
-    paddingVertical: Sirius.space.lg,
-  },
-  rowMain: { flex: 1, gap: Sirius.space.xs },
-  rowTitleLine: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: Sirius.space.sm,
-  },
-  rowTitle: {
-    flexShrink: 1,
-    fontFamily: Sirius.font.serif,
-    fontSize: 20,
-    fontStyle: "italic",
-    color: Sirius.color.ink,
-  },
-  archivedTag: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 9,
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  rowDescription: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 14,
-    color: Sirius.color.inkMuted,
-  },
-  rowActions: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: Sirius.space.lg,
-    paddingTop: 4,
-  },
-  errorTitle: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 22,
-    color: Sirius.color.ink,
-    textAlign: "center",
-  },
-  errorBody: { color: Sirius.color.inkMuted, textAlign: "center" },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    centered: { alignItems: "center", justifyContent: "center" },
+    centeredPad: {
+      justifyContent: "center",
+      paddingHorizontal: t.space.xl,
+      gap: t.space.lg,
+    },
+    container: {
+      paddingHorizontal: t.space.xl,
+      paddingTop: 64,
+      paddingBottom: 120,
+      gap: t.space.xl,
+    },
+    form: { gap: t.space.md },
+    descriptionInput: {
+      minHeight: 72,
+      textAlignVertical: "top",
+      paddingTop: 12,
+    },
+    // Sits right-aligned just above the full-width submit button.
+    keyboardDone: { alignSelf: "flex-end" },
+    formError: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      letterSpacing: 1.8,
+      textTransform: "uppercase",
+      color: t.color.accent,
+    },
+    empty: {
+      fontFamily: t.font.serif,
+      fontSize: 17,
+      fontStyle: "italic",
+      color: t.color.inkSubtle,
+    },
+    list: { gap: 0 },
+    row: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: t.space.lg,
+      borderBottomWidth: 1,
+      borderColor: t.color.rule,
+      paddingVertical: t.space.lg,
+    },
+    rowMain: { flex: 1, gap: t.space.xs },
+    rowTitleLine: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: t.space.sm,
+    },
+    rowTitle: {
+      flexShrink: 1,
+      fontFamily: t.font.serif,
+      fontSize: 20,
+      fontStyle: "italic",
+      color: t.color.ink,
+    },
+    archivedTag: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.8,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    rowDescription: {
+      fontFamily: t.font.serif,
+      fontSize: 14,
+      color: t.color.inkMuted,
+    },
+    rowActions: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: t.space.lg,
+      paddingTop: 4,
+    },
+    errorTitle: {
+      fontFamily: t.font.serif,
+      fontSize: 22,
+      color: t.color.ink,
+      textAlign: "center",
+    },
+    errorBody: { color: t.color.inkMuted, textAlign: "center" },
+  });
+}

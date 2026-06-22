@@ -8,7 +8,8 @@ import { useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { Eyebrow, PrimaryButton, Screen, Title } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
 
 type SearchResult = {
@@ -27,6 +28,8 @@ const STATE_LABEL: Record<SearchResult["state"], string> = {
 };
 
 export default function InviteScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   const { handle: rawHandle } = useLocalSearchParams<{ handle: string }>();
   const handle = (rawHandle ?? "").replace(/^@/, "").trim();
   const qc = useQueryClient();
@@ -69,7 +72,7 @@ export default function InviteScreen() {
 
         {searchQ.isLoading ? (
           <View style={styles.loading}>
-            <ActivityIndicator color={Sirius.color.accent} />
+            <ActivityIndicator color={t.color.accent} />
           </View>
         ) : result ? (
           <>
@@ -107,36 +110,38 @@ export default function InviteScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  body: {
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: Sirius.space.xl,
-    gap: Sirius.space.md,
-  },
-  loading: { paddingVertical: 48, alignItems: "center" },
-  handle: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 13,
-    color: Sirius.color.inkSubtle,
-  },
-  action: { marginTop: Sirius.space.lg, gap: Sirius.space.sm },
-  stateLabel: {
-    fontFamily: Sirius.font.serif,
-    fontStyle: "italic",
-    fontSize: 16,
-    color: Sirius.color.inkMuted,
-  },
-  error: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    color: Sirius.color.accent,
-  },
-  empty: {
-    fontFamily: Sirius.font.serif,
-    fontStyle: "italic",
-    fontSize: 18,
-    color: Sirius.color.inkMuted,
-    marginTop: Sirius.space.lg,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    body: {
+      paddingHorizontal: t.space.xl,
+      paddingTop: t.space.xl,
+      gap: t.space.md,
+    },
+    loading: { paddingVertical: 48, alignItems: "center" },
+    handle: {
+      fontFamily: t.font.mono,
+      fontSize: 13,
+      color: t.color.inkSubtle,
+    },
+    action: { marginTop: t.space.lg, gap: t.space.sm },
+    stateLabel: {
+      fontFamily: t.font.serif,
+      fontStyle: "italic",
+      fontSize: 16,
+      color: t.color.inkMuted,
+    },
+    error: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 0.5,
+      color: t.color.accent,
+    },
+    empty: {
+      fontFamily: t.font.serif,
+      fontStyle: "italic",
+      fontSize: 18,
+      color: t.color.inkMuted,
+      marginTop: t.space.lg,
+    },
+  });
+}

@@ -18,7 +18,8 @@ import {
   SecondaryButton,
   TextLink,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { signIn } from "@/lib/auth-client";
 import { clearAuthStorage, takeRecoveryBreadcrumb } from "@/lib/auth-recovery";
 import {
@@ -33,6 +34,8 @@ import {
 } from "@/lib/biometric-auth";
 
 export default function SignInScreen() {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
   // Uncontrolled inputs (see <AuthField/>): read at submit via the handle so
   // iOS Password Autofill can't be clobbered by a React re-render.
   const emailRef = useRef<AuthFieldHandle>(null);
@@ -262,7 +265,7 @@ export default function SignInScreen() {
             <View style={styles.forgotRow}>
               <TextLink
                 label="Forgot password?"
-                tone={Sirius.color.inkMuted}
+                tone={t.color.inkMuted}
                 onPress={() => router.push("/(auth)/forgot-password")}
               />
             </View>
@@ -287,56 +290,58 @@ export default function SignInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  container: {
-    flex: 1,
-    paddingHorizontal: Sirius.space.xl,
-    paddingTop: 96,
-    gap: Sirius.space.xl,
-  },
-  form: { gap: Sirius.space.lg },
-  recoveryNote: {
-    color: Sirius.color.inkMuted,
-    fontFamily: Sirius.font.serif,
-    fontSize: 14,
-  },
-  biometricBlock: { gap: Sirius.space.md },
-  biometricHint: {
-    textAlign: "center",
-    color: Sirius.color.inkSubtle,
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-  },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Sirius.space.md,
-    marginTop: Sirius.space.xs,
-  },
-  dividerLine: { flex: 1, height: 1, backgroundColor: Sirius.color.rule },
-  dividerText: {
-    color: Sirius.color.inkSubtle,
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  forgotRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: -Sirius.space.sm,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: Sirius.space.sm,
-    marginTop: Sirius.space.xs,
-  },
-  muted: {
-    color: Sirius.color.inkMuted,
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-  },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    container: {
+      flex: 1,
+      paddingHorizontal: t.space.xl,
+      paddingTop: 96,
+      gap: t.space.xl,
+    },
+    form: { gap: t.space.lg },
+    recoveryNote: {
+      color: t.color.inkMuted,
+      fontFamily: t.font.serif,
+      fontSize: 14,
+    },
+    biometricBlock: { gap: t.space.md },
+    biometricHint: {
+      textAlign: "center",
+      color: t.color.inkSubtle,
+      fontFamily: t.font.mono,
+      fontSize: 12,
+    },
+    divider: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.md,
+      marginTop: t.space.xs,
+    },
+    dividerLine: { flex: 1, height: 1, backgroundColor: t.color.rule },
+    dividerText: {
+      color: t.color.inkSubtle,
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+    },
+    forgotRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      marginTop: -t.space.sm,
+    },
+    footer: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      gap: t.space.sm,
+      marginTop: t.space.xs,
+    },
+    muted: {
+      color: t.color.inkMuted,
+      fontFamily: t.font.serif,
+      fontSize: 16,
+    },
+  });
+}

@@ -20,7 +20,8 @@ import {
   KeyboardDoneButton,
   PrimaryButton,
 } from "@/components/sirius";
-import { Sirius } from "@/constants/theme";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiDelete, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { enqueueCommentOutbox } from "@/lib/comment-outbox";
@@ -50,6 +51,8 @@ function stateNote(row: CommentRow): string | null {
 }
 
 export function CommentsSection({ postSlug }: { postSlug: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
   const { data: session } = useSession();
   const currentUserId = session?.user?.id ?? null;
   const myLabel = session?.user?.name ?? "You";
@@ -176,74 +179,76 @@ export function CommentsSection({ postSlug }: { postSlug: string }) {
         onPress={onSubmit}
       />
       {busy ? (
-        <ActivityIndicator color={Sirius.color.accent} style={styles.spinner} />
+        <ActivityIndicator color={t.color.accent} style={styles.spinner} />
       ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  section: {
-    marginTop: Sirius.space.xl,
-    paddingTop: Sirius.space.lg,
-    borderTopWidth: 1,
-    borderTopColor: Sirius.color.rule,
-    gap: Sirius.space.md,
-  },
-  list: { gap: Sirius.space.lg },
-  empty: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    fontStyle: "italic",
-    color: Sirius.color.inkMuted,
-  },
-  comment: {
-    gap: Sirius.space.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Sirius.color.rule,
-    paddingBottom: Sirius.space.md,
-  },
-  commentHead: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    gap: Sirius.space.sm,
-  },
-  author: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 12,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.accent,
-  },
-  metaRight: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: Sirius.space.md,
-  },
-  date: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    color: Sirius.color.inkSubtle,
-  },
-  delete: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: Sirius.color.inkSubtle,
-  },
-  body: {
-    fontFamily: Sirius.font.serif,
-    fontSize: 16,
-    lineHeight: 24,
-    color: Sirius.color.ink,
-  },
-  note: {
-    fontFamily: Sirius.font.mono,
-    fontSize: 11,
-    color: Sirius.color.inkSubtle,
-  },
-  noteFailed: { color: Sirius.color.accent },
-  spinner: { alignSelf: "flex-start" },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    section: {
+      marginTop: t.space.xl,
+      paddingTop: t.space.lg,
+      borderTopWidth: 1,
+      borderTopColor: t.color.rule,
+      gap: t.space.md,
+    },
+    list: { gap: t.space.lg },
+    empty: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      fontStyle: "italic",
+      color: t.color.inkMuted,
+    },
+    comment: {
+      gap: t.space.xs,
+      borderBottomWidth: 1,
+      borderBottomColor: t.color.rule,
+      paddingBottom: t.space.md,
+    },
+    commentHead: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      justifyContent: "space-between",
+      gap: t.space.sm,
+    },
+    author: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.accent,
+    },
+    metaRight: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: t.space.md,
+    },
+    date: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      color: t.color.inkSubtle,
+    },
+    delete: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+    },
+    body: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      lineHeight: 24,
+      color: t.color.ink,
+    },
+    note: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      color: t.color.inkSubtle,
+    },
+    noteFailed: { color: t.color.accent },
+    spinner: { alignSelf: "flex-start" },
+  });
+}
