@@ -1,7 +1,7 @@
 // Shared constants for the marketing surface.
 
 // App Store record (ascAppId from the submission kit). Links to the iOS listing.
-export const APP_STORE_URL = "https://apps.apple.com/app/id6775729513";
+export const APP_STORE_URL = "https://apps.apple.com/us/app/sirius-ai/id6775729513";
 
 // Demo video assets exist under public/product/ (demo.mp4 + demo.webm +
 // poster.jpg). The hero now runs an auto-cycling screenshot carousel instead
