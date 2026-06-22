@@ -12,6 +12,7 @@
 import { prisma } from "./index";
 
 const DEFAULT_WEEKLY_LIMIT = 10;
+const RESERVATION_TTL_MS = 2 * 60 * 60 * 1000;
 
 // The entitlement identifier configured in the RevenueCat dashboard. The webhook
 // only reacts to events that grant/revoke THIS entitlement.
@@ -59,9 +60,19 @@ export async function checkProStatus(userId: string): Promise<boolean> {
 }
 
 // How many server generations the user has consumed in the current week window.
-export async function countWeeklyAiGenerations(userId: string): Promise<number> {
+export async function countWeeklyAiGenerations(
+  userId: string,
+): Promise<number> {
+  const now = new Date();
   return prisma.aiGenerationEvent.count({
-    where: { userId, createdAt: { gte: aiWeekWindowStart() } },
+    where: {
+      userId,
+      createdAt: { gte: aiWeekWindowStart(now) },
+      OR: [
+        { status: "completed" },
+        { status: "reserved", reservationExpiresAt: { gt: now } },
+      ],
+    },
   });
 }
 
@@ -84,6 +95,201 @@ export async function checkAiGenerationAllowed(
     return { allowed: true, isPro: false, used, limit };
   }
   return { allowed: false, isPro: false, used, limit };
+}
+
+export type AiGenerationReservation =
+  | {
+      allowed: true;
+      isPro: boolean;
+      used: number;
+      limit: number | null;
+      reservationId: string | null;
+    }
+  | {
+      allowed: false;
+      isPro: false;
+      used: number;
+      limit: number;
+      reservationId: null;
+    };
+
+// Atomically admits a free-tier server generation. The per-user advisory lock is
+// held only for the short count+insert transaction, not during the model call.
+// Non-expired reservations count as used; failed jobs delete their reservation.
+export async function reserveAiGeneration(input: {
+  userId: string;
+  kind: string;
+  sourceRecordId: string;
+}): Promise<AiGenerationReservation> {
+  if (await checkProStatus(input.userId)) {
+    return {
+      allowed: true,
+      isPro: true,
+      used: 0,
+      limit: null,
+      reservationId: null,
+    };
+  }
+
+  const limit = aiWeeklyLimit();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + RESERVATION_TTL_MS);
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT pg_advisory_xact_lock(hashtext(${"ai-generation:" + input.userId})::bigint)
+    `;
+
+    const existing = await tx.aiGenerationEvent.findUnique({
+      where: {
+        userId_sourceRecordId: {
+          userId: input.userId,
+          sourceRecordId: input.sourceRecordId,
+        },
+      },
+      select: { id: true, status: true, reservationExpiresAt: true },
+    });
+    if (
+      existing?.status === "reserved" &&
+      existing.reservationExpiresAt &&
+      existing.reservationExpiresAt > now
+    ) {
+      await tx.aiGenerationEvent.update({
+        where: { id: existing.id },
+        data: {
+          kind: input.kind,
+          reservationExpiresAt: expiresAt,
+        },
+      });
+      return {
+        allowed: true,
+        isPro: false,
+        used: await tx.aiGenerationEvent.count({
+          where: {
+            userId: input.userId,
+            createdAt: { gte: aiWeekWindowStart(now) },
+            OR: [
+              { status: "completed" },
+              { status: "reserved", reservationExpiresAt: { gt: now } },
+            ],
+          },
+        }),
+        limit,
+        reservationId: existing.id,
+      };
+    }
+    if (existing?.status === "completed") {
+      return {
+        allowed: true,
+        isPro: false,
+        used: await tx.aiGenerationEvent.count({
+          where: {
+            userId: input.userId,
+            createdAt: { gte: aiWeekWindowStart(now) },
+            OR: [
+              { status: "completed" },
+              { status: "reserved", reservationExpiresAt: { gt: now } },
+            ],
+          },
+        }),
+        limit,
+        reservationId: null,
+      };
+    }
+
+    const used = await tx.aiGenerationEvent.count({
+      where: {
+        userId: input.userId,
+        createdAt: { gte: aiWeekWindowStart(now) },
+        OR: [
+          { status: "completed" },
+          { status: "reserved", reservationExpiresAt: { gt: now } },
+        ],
+      },
+    });
+
+    if (used >= limit) {
+      return {
+        allowed: false,
+        isPro: false,
+        used,
+        limit,
+        reservationId: null,
+      };
+    }
+
+    const reservation =
+      existing?.status === "reserved"
+        ? await tx.aiGenerationEvent.update({
+            where: { id: existing.id },
+            data: {
+              kind: input.kind,
+              status: "reserved",
+              createdAt: now,
+              reservationExpiresAt: expiresAt,
+            },
+            select: { id: true },
+          })
+        : await tx.aiGenerationEvent.create({
+            data: {
+              userId: input.userId,
+              kind: input.kind,
+              sourceRecordId: input.sourceRecordId,
+              status: "reserved",
+              reservationExpiresAt: expiresAt,
+            },
+            select: { id: true },
+          });
+
+    return {
+      allowed: true,
+      isPro: false,
+      used,
+      limit,
+      reservationId: reservation.id,
+    };
+  });
+}
+
+export async function completeAiGenerationReservation(input: {
+  reservationId: string;
+  resultPostId?: string | null;
+}): Promise<void> {
+  await prisma.aiGenerationEvent.updateMany({
+    where: { id: input.reservationId, status: "reserved" },
+    data: {
+      status: "completed",
+      resultPostId: input.resultPostId ?? null,
+      reservationExpiresAt: null,
+    },
+  });
+}
+
+export async function completeAiGenerationReservationForSource(input: {
+  userId: string;
+  sourceRecordId: string;
+  resultPostId?: string | null;
+}): Promise<void> {
+  await prisma.aiGenerationEvent.updateMany({
+    where: {
+      userId: input.userId,
+      sourceRecordId: input.sourceRecordId,
+      status: "reserved",
+    },
+    data: {
+      status: "completed",
+      resultPostId: input.resultPostId ?? null,
+      reservationExpiresAt: null,
+    },
+  });
+}
+
+export async function cancelAiGenerationReservation(
+  reservationId: string,
+): Promise<void> {
+  await prisma.aiGenerationEvent.deleteMany({
+    where: { id: reservationId, status: "reserved" },
+  });
 }
 
 // Record that a server generation actually happened. Call AFTER runGemini

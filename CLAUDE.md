@@ -190,11 +190,13 @@ worker never call each other directly, they only share the DB and the `@repo/db`
        compared in `lib/ingest/auth.ts`). Used by iOS Shortcuts / scripts. No user attribution.
      - `/api/app/ingest` + `/api/app/ingest-images` — **session auth** (better-auth). Used by
        the web composer and mobile; attaches `submittedById`.
-2. **Claim (worker).** `apps/worker/src/index.ts` polls every `INGEST_POLL_INTERVAL_MS`.
-   `claimNextNonImage` grabs one url/note row; `claimReadyImageBatch` waits until all
+2. **Claim (worker).** `apps/worker/src/index.ts` polls every `INGEST_POLL_INTERVAL_MS`
+ and fills up to `INGEST_WORKER_CONCURRENCY` in-flight jobs (capped at 8).
+ `claimNextNonImage` grabs one url/note row; `claimReadyImageBatch` waits until all
    `totalCount` rows of an image `batchId` are present, then claims the whole batch as one
    SIGHT post. Claiming flips `pending → processing` via a guarded `updateMany` (count-check
-   = optimistic lock). State machine: `pending → processing → completed | failed`.
+ = optimistic lock). Shutdown drains active jobs for `INGEST_SHUTDOWN_DRAIN_MS`, then exits
+ and lets lease reclaim recover anything still processing. State machine: `pending → processing → completed | failed`.
 3. **Draft (worker).** `pipeline/pipeline.ts` runs two stages: `runGemini` then `writePost`.
    `gemini-runner.ts` uses the Vercel AI SDK (`generateText` + `Output.object(zodSchema)`) so
    output is schema-validated, no manual JSON parsing. Routing:

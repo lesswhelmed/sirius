@@ -46,6 +46,43 @@ export async function claimNextArchiveRequest(): Promise<ArchiveRequest | null> 
   return prisma.archiveRequest.findUnique({ where: { id: pending.id } });
 }
 
+export interface ArchiveReclaimOptions {
+  leaseMs: number;
+  maxAttempts: number;
+}
+
+export interface ArchiveReclaimResult {
+  requeued: number;
+  deadLettered: number;
+}
+
+export async function reclaimStaleArchiveRequests(
+  opts: ArchiveReclaimOptions,
+): Promise<ArchiveReclaimResult> {
+  const cutoff = new Date(Date.now() - opts.leaseMs);
+  const deadLettered = await prisma.archiveRequest.updateMany({
+    where: {
+      status: "processing",
+      startedAt: { lt: cutoff },
+      attempts: { gte: opts.maxAttempts },
+    },
+    data: {
+      status: "failed",
+      errorMessage: "reclaimed: exceeded max attempts",
+      completedAt: new Date(),
+    },
+  });
+  const requeued = await prisma.archiveRequest.updateMany({
+    where: {
+      status: "processing",
+      startedAt: { lt: cutoff },
+      attempts: { lt: opts.maxAttempts },
+    },
+    data: { status: "pending" },
+  });
+  return { requeued: requeued.count, deadLettered: deadLettered.count };
+}
+
 export interface ArchiveReadyPatch {
   token: string;
   fileCount: number;

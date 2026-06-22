@@ -66,9 +66,11 @@ worker **never call each other directly** — they only share the database and t
      no user attribution.
    - **Session** routes (`/api/app/ingest`, `/api/app/ingest-images`) — for the web composer and
      mobile; attach `submittedById`.
-2. **Claim (worker).** `apps/worker` polls every `INGEST_POLL_INTERVAL_MS` and flips
-   `pending → processing` with a count-checked `updateMany` (optimistic lock). Image batches wait
-   until all `totalCount` rows of a `batchId` are present, then claim the whole batch as one post.
+2. **Claim (worker).** `apps/worker` polls every `INGEST_POLL_INTERVAL_MS`, fills up to
+   `INGEST_WORKER_CONCURRENCY` in-flight jobs (capped at 8), and flips `pending → processing`
+   with a count-checked `updateMany` (optimistic lock). Image batches wait until all `totalCount`
+   rows of a `batchId` are present, then claim the whole batch as one post. Shutdown drains active
+   jobs for `INGEST_SHUTDOWN_DRAIN_MS`, then exits and lets lease reclaim recover them.
 3. **Draft (worker).** The Gemini pipeline routes by input, then **the worker forces the post type**
    after the model returns so a model regression can't drift it:
 
@@ -291,7 +293,7 @@ cache.
 | `AUTH_TRUSTED_ORIGINS`                              | Comma-separated extra origins; **prod must include `siriusapp://`**                      |
 | `REVALIDATE_TOKEN` + `WEB_REVALIDATE_URL`           | Worker → web cache invalidation (keep on `http://localhost:3000` in dev)                 |
 | `SIGHT_IMAGE_DIR` / `SOCIAL_IMAGE_DIR`              | Override where the worker writes served images                                           |
-| `INGEST_STAGING_DIR` / `INGEST_POLL_INTERVAL_MS`    | Staging path / worker poll cadence                                                       |
+| `INGEST_STAGING_DIR` / `INGEST_POLL_INTERVAL_MS` / `INGEST_WORKER_CONCURRENCY` / `INGEST_SHUTDOWN_DRAIN_MS` | Staging path / worker poll cadence / worker parallelism / shutdown drain                 |
 | `AI_MODEL` / `YOUTUBE_AI_MODEL` / `EMBEDDING_MODEL` | Model overrides (defaults: `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-embedding-001`) |
 | `EXPO_PUBLIC_AUTH_BASE_URL`                         | Mobile base URL — set in `apps/mobile/.env`, **not** the root `.env`                     |
 

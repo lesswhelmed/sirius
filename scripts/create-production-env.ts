@@ -67,6 +67,8 @@ RESEND_FROM_EMAIL=<verified_sender@lesswhelmed.com>
 INGEST_TOKEN=${ingestToken}
 INGEST_STAGING_DIR=/home/deploy/data/sirius/ingest-staging
 INGEST_POLL_INTERVAL_MS=5000
+INGEST_WORKER_CONCURRENCY=2
+INGEST_SHUTDOWN_DRAIN_MS=30000
 SIGHT_IMAGE_DIR=/home/deploy/apps/sirius/apps/web/public/sight
 SOCIAL_IMAGE_DIR=/home/deploy/apps/sirius/apps/web/public/social
 

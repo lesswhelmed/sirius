@@ -6,12 +6,15 @@ import {
   claimNextArchiveRequest,
   claimNextNonImage,
   claimReadyImageBatch,
+  completeAiGenerationReservationForSource,
   findPostBySourceRecordId,
   heartbeatProcessing,
+  type ArchiveRequest,
   type IngestSubmission,
   markCompleted,
   markFailed,
   notifyPostChanged,
+  reclaimStaleArchiveRequests,
   reclaimStaleImageBatches,
   reclaimStaleProcessing,
   recordRetainedOriginal,
@@ -25,8 +28,12 @@ import type { PipelineInput, StagedImage } from "./pipeline/types";
 const DEFAULT_POLL_MS = 5000;
 const DEFAULT_LEASE_MS = 600_000; // 10 min before a stuck "processing" row is reclaimed
 const DEFAULT_MAX_ATTEMPTS = 3; // dead-letter after this many processing attempts
+const DEFAULT_WORKER_CONCURRENCY = 2;
+const MAX_WORKER_CONCURRENCY = 8;
+const DEFAULT_SHUTDOWN_DRAIN_MS = 30_000;
 
 let shuttingDown = false;
+let wakeShutdown: (() => void) | null = null;
 
 function log(
   level: "info" | "warn" | "error",
@@ -35,6 +42,22 @@ function log(
 ) {
   const payload = extra ? ` ${JSON.stringify(extra)}` : "";
   console.log(`[ingest-worker] [${level}] ${msg}${payload}`);
+}
+
+function requestShutdown(signal: "SIGINT" | "SIGTERM"): void {
+  log("info", `${signal} received; exiting after active jobs drain`);
+  shuttingDown = true;
+  wakeShutdown?.();
+  wakeShutdown = null;
+}
+
+async function waitForShutdownSignal(): Promise<void> {
+  if (shuttingDown) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    wakeShutdown = resolve;
+  });
 }
 
 function pollInterval(): number {
@@ -61,6 +84,17 @@ function leaseMs(): number {
 
 function maxAttempts(): number {
   return envInt("INGEST_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS);
+}
+
+function workerConcurrency(): number {
+  return Math.min(
+    envInt("INGEST_WORKER_CONCURRENCY", DEFAULT_WORKER_CONCURRENCY),
+    MAX_WORKER_CONCURRENCY,
+  );
+}
+
+function shutdownDrainMs(): number {
+  return envInt("INGEST_SHUTDOWN_DRAIN_MS", DEFAULT_SHUTDOWN_DRAIN_MS);
 }
 
 // Stable identity for a claim, matching the non-frontmatter branch of
@@ -126,6 +160,16 @@ async function runReclaim(): Promise<void> {
     const staleBatchRows = await reclaimStaleImageBatches(batchAssemblyMs());
     if (staleBatchRows > 0) {
       log("info", "reclaim-image-batches", { failedRows: staleBatchRows });
+    }
+    const archiveResult = await reclaimStaleArchiveRequests({
+      leaseMs: leaseMs(),
+      maxAttempts: maxAttempts(),
+    });
+    if (archiveResult.requeued > 0 || archiveResult.deadLettered > 0) {
+      log("info", "reclaim-archives", {
+        requeued: archiveResult.requeued,
+        deadLettered: archiveResult.deadLettered,
+      });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -315,6 +359,14 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
         ? await findPostBySourceRecordId(sourceRecordId)
         : null;
       if (existing) {
+        const submittedById = rows[0]?.submittedById;
+        if (submittedById && sourceRecordId) {
+          await completeAiGenerationReservationForSource({
+            userId: submittedById,
+            sourceRecordId,
+            resultPostId: existing.id,
+          });
+        }
         await markCompleted(ids, {
           resultPostSlug: existing.slug,
           resultPostId: existing.id,
@@ -330,7 +382,7 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
           postId: existing.id,
           slug: existing.slug,
           rows,
-          sourceRecordId: sourceRecordId ?? "",
+          sourceRecordId,
         });
         log("info", "idempotent-skip", { ids, slug: existing.slug });
         return;
@@ -385,56 +437,125 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
   }
 }
 
-async function tick(): Promise<boolean> {
+type WorkItem =
+  | { type: "ingest"; rows: IngestSubmission[] }
+  | { type: "archive"; request: ArchiveRequest };
+
+async function claimNextWorkItem(): Promise<WorkItem | null> {
   const single = await claimNextNonImage();
   if (single) {
-    await processBatch([single]);
-    return true;
+    return { type: "ingest", rows: [single] };
   }
   const batch = await claimReadyImageBatch();
   if (batch.length > 0) {
-    await processBatch(batch);
-    return true;
+    return { type: "ingest", rows: batch };
   }
   const archiveReq = await claimNextArchiveRequest();
   if (archiveReq) {
-    try {
-      await processArchiveRequest(archiveReq, (msg, extra) =>
-        log("info", msg, extra),
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log("error", "archive-failed", { id: archiveReq.id, error: message });
-    }
-    return true;
+    return { type: "archive", request: archiveReq };
   }
-  return false;
+  return null;
+}
+
+async function processWorkItem(item: WorkItem): Promise<void> {
+  if (item.type === "ingest") {
+    await processBatch(item.rows);
+    return;
+  }
+  try {
+    await processArchiveRequest(item.request, (msg, extra) =>
+      log("info", msg, extra),
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log("error", "archive-failed", { id: item.request.id, error: message });
+  }
+}
+
+async function fillWorkSlots(
+  active: Set<Promise<void>>,
+  concurrency: number,
+): Promise<boolean> {
+  let claimed = false;
+  while (!shuttingDown && active.size < concurrency) {
+    const item = await claimNextWorkItem();
+    if (!item) {
+      break;
+    }
+    claimed = true;
+    const job = processWorkItem(item)
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        log("error", "job error", { error: message });
+      })
+      .finally(() => {
+        active.delete(job);
+      });
+    active.add(job);
+  }
+  return claimed;
+}
+
+async function waitForCapacityOrPoll(
+  active: Set<Promise<void>>,
+  interval: number,
+): Promise<void> {
+  if (active.size === 0) {
+    await Promise.race([sleep(interval), waitForShutdownSignal()]);
+    return;
+  }
+  await Promise.race([
+    sleep(interval),
+    Promise.race(active),
+    waitForShutdownSignal(),
+  ]);
+}
+
+async function drainActiveJobs(active: Set<Promise<void>>): Promise<void> {
+  if (active.size === 0) {
+    return;
+  }
+  const timeoutMs = shutdownDrainMs();
+  let timedOut = false;
+  log("info", "draining active jobs", { active: active.size, timeoutMs });
+  await Promise.race([
+    Promise.allSettled(active),
+    sleep(timeoutMs).then(() => {
+      timedOut = true;
+    }),
+  ]);
+  if (timedOut) {
+    log("warn", "shutdown drain timed out; exiting with active jobs", {
+      active: active.size,
+    });
+    process.exit(0);
+  }
 }
 
 async function main(): Promise<void> {
   const interval = pollInterval();
+  const concurrency = workerConcurrency();
   log("info", "started", {
     pollIntervalMs: interval,
     leaseMs: leaseMs(),
     maxAttempts: maxAttempts(),
+    workerConcurrency: concurrency,
+    shutdownDrainMs: shutdownDrainMs(),
   });
-  process.on("SIGINT", () => {
-    log("info", "SIGINT received; exiting after current tick");
-    shuttingDown = true;
-  });
-  process.on("SIGTERM", () => {
-    log("info", "SIGTERM received; exiting after current tick");
-    shuttingDown = true;
-  });
+  process.on("SIGINT", () => requestShutdown("SIGINT"));
+  process.on("SIGTERM", () => requestShutdown("SIGTERM"));
 
   // Recover anything a previously-killed worker left stuck in "processing".
   await runReclaim();
 
+  const active = new Set<Promise<void>>();
   while (!shuttingDown) {
-    let didWork = false;
+    let claimedWork = false;
     try {
-      await runReclaim();
-      didWork = await tick();
+      if (active.size === 0) {
+        await runReclaim();
+      }
+      claimedWork = await fillWorkSlots(active, concurrency);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log("error", "tick error", { error: message });
@@ -442,10 +563,13 @@ async function main(): Promise<void> {
     if (shuttingDown) {
       break;
     }
-    if (!didWork) {
-      await sleep(interval);
+    if (active.size >= concurrency) {
+      await Promise.race([Promise.race(active), waitForShutdownSignal()]);
+    } else if (!claimedWork) {
+      await waitForCapacityOrPoll(active, interval);
     }
   }
+  await drainActiveJobs(active);
   log("info", "shutdown complete");
 }
 
