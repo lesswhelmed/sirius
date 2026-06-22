@@ -16,12 +16,19 @@
 //
 // Run from repo root. Reads DATABASE_URL + GEMINI_API_KEY from the root .env
 // (the worker reads the same), so by default this targets the LOCAL db.
-//   bun run scripts/seed-reviewer-via-worker.ts --reset            # clear this user's content first
+//   bun run scripts/seed-reviewer-via-worker.ts --reset --pro      # clear + grant unlimited drafting
+//   bun run scripts/seed-reviewer-via-worker.ts --pro              # grant Sirius AI Pro (no weekly cap)
 //   bun run scripts/seed-reviewer-via-worker.ts --teardown         # remove content, keep user
 //   bun run scripts/seed-reviewer-via-worker.ts --teardown --purge-user
+//
+// --pro grants the reviewer unlimited server drafting (UserEntitlement isPro,
+// manual grant). Without it a free reviewer hits the 10/week cap and later jobs
+// land as manual-stub DRAFT posts instead of real Gemini drafts.
 
 import { randomBytes, randomUUID } from "node:crypto";
-import { prisma } from "@repo/db";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { prisma, setProEntitlement } from "@repo/db";
 import { hashPassword } from "better-auth/crypto";
 import {
   submitImageIngest,
@@ -41,6 +48,7 @@ type Args = {
   reset: boolean;
   teardown: boolean;
   purgeUser: boolean;
+  pro: boolean;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -51,6 +59,7 @@ function parseArgs(argv: string[]): Args {
   let reset = false;
   let teardown = false;
   let purgeUser = false;
+  let pro = false;
 
   const value = (arg: string, flag: string, next: () => string | undefined) =>
     arg.startsWith(`${flag}=`) ? arg.slice(flag.length + 1) : next();
@@ -61,6 +70,7 @@ function parseArgs(argv: string[]): Args {
     if (arg === "--reset") reset = true;
     else if (arg === "--teardown") teardown = true;
     else if (arg === "--purge-user") purgeUser = true;
+    else if (arg === "--pro") pro = true;
     else if (arg === "--password" || arg.startsWith("--password="))
       password = value(arg, "--password", () => argv[++i]);
     else if (arg === "--email" || arg.startsWith("--email="))
@@ -79,6 +89,7 @@ function parseArgs(argv: string[]): Args {
     reset,
     teardown,
     purgeUser,
+    pro,
   };
 }
 
@@ -170,11 +181,22 @@ const URL_JOBS: { url: string }[] = [
   { url: "https://en.wikipedia.org/wiki/Trail_running" },
 ];
 
-// One SIGHT image batch from a stable, safe stock photo (deterministic by seed).
-const IMAGE_JOBS: { seed: string; notes: string }[] = [
+// One SIGHT image batch. Sourced from a real, safe-for-work photo checked into
+// the repo (network-free + deterministic, so the seed never hinges on a flaky
+// image host); `remoteFallback` is only used if the local file is missing.
+const IMAGE_JOBS: {
+  localPath: string;
+  contentType: string;
+  remoteFallback: string;
+  label: string;
+  notes: string;
+}[] = [
   {
-    seed: "ridge-trail-day-hike",
-    notes: "A clear morning on the ridge trail — long views and wildflowers.",
+    localPath: "apps/web/public/IMG_4297.JPG",
+    contentType: "image/jpeg",
+    remoteFallback: "https://picsum.photos/seed/sirius-reviewer/1200/900",
+    label: "black cat peeking over a bag",
+    notes: "Our cat claiming a shopping bag the moment it hit the floor.",
   },
 ];
 
@@ -204,14 +226,25 @@ async function enqueue(userId: string): Promise<Enqueued[]> {
   }
 
   for (const job of IMAGE_JOBS) {
-    const src = `https://picsum.photos/seed/${job.seed}/1200/900`;
-    const res = await fetch(src);
-    if (!res.ok) {
-      log("error", "image fetch failed", { src, status: res.status });
-      continue;
+    let bytes: Uint8Array | null = null;
+    let contentType = job.contentType;
+    try {
+      bytes = new Uint8Array(await readFile(join(process.cwd(), job.localPath)));
+    } catch {
+      log("warn", "local image missing; trying remote fallback", {
+        localPath: job.localPath,
+      });
+      const res = await fetch(job.remoteFallback);
+      if (!res.ok) {
+        log("error", "image fetch failed", {
+          src: job.remoteFallback,
+          status: res.status,
+        });
+        continue;
+      }
+      bytes = new Uint8Array(await res.arrayBuffer());
+      contentType = res.headers.get("content-type") ?? "image/jpeg";
     }
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const contentType = res.headers.get("content-type") ?? "image/jpeg";
     const r = await submitImageIngest(
       {
         bytes,
@@ -232,7 +265,7 @@ async function enqueue(userId: string): Promise<Enqueued[]> {
       log("error", "image submit failed", r);
       continue;
     }
-    out.push({ id: r.body.id, kind: r.body.kind, label: `${job.seed} (image)` });
+    out.push({ id: r.body.id, kind: r.body.kind, label: `${job.label} (image)` });
   }
 
   return out;
@@ -305,6 +338,14 @@ async function main(): Promise<void> {
     handle: reviewer.handle,
   });
 
+  // Grant unlimited server drafting BEFORE enqueuing so the worker sees Pro the
+  // moment it claims a row — otherwise the free weekly cap (10) degrades later
+  // jobs to manual-stub DRAFT posts (see entitlement.ts / manual-stub.ts).
+  if (args.pro) {
+    await setProEntitlement({ userId: reviewer.userId, isPro: true });
+    log("info", "granted Sirius AI Pro (manual grant, no expiry)");
+  }
+
   log("info", "enqueuing real ingest jobs (pending → worker drafts them)…");
   const items = await enqueue(reviewer.userId);
 
@@ -318,6 +359,7 @@ async function main(): Promise<void> {
   console.log(
     `  Reviewer password: ${reviewer.password ?? "(unchanged — existing/supplied kept)"}`,
   );
+  console.log(`  Sirius AI Pro:     ${args.pro ? "yes (unlimited drafting)" : "no (free, 10/week cap)"}`);
   console.log(`  Total enqueued:    ${items.length}`);
   console.log("--------------------------------------------------");
   console.log(
