@@ -10,6 +10,7 @@
 		"mobile:build:android": "bun --cwd=apps/mobile run build:prod:android",
 		"mobile:build:all": "bun --cwd=apps/mobile run build:prod",
 		"mobile:build:local:ios": "bun --cwd=apps/mobile run build:local:ios",
+		"mobile:build:local:dev:ios": "bun --cwd=apps/mobile run build:local:dev:ios",
 		"mobile:build:preview": "bun --cwd=apps/mobile run build:preview",
 		"mobile:build:preview:ios": "bun --cwd=apps/mobile run build:preview:ios",
 		"mobile:build:preview:android": "bun --cwd=apps/mobile run build:preview:android",
