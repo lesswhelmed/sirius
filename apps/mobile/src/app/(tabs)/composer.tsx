@@ -115,6 +115,8 @@ export default function ComposerScreen() {
   // Focus picker: file a capture under a Project (mirrors the web composer).
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
+  // Photo/Video chooser sheet: take with the camera or pick from the library.
+  const [mediaSheet, setMediaSheet] = useState<null | "photo" | "video">(null);
   // Audio capture sheet: record a voice memo or pick an audio file.
   const [audioSheetOpen, setAudioSheetOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -264,6 +266,7 @@ export default function ComposerScreen() {
   }
 
   async function pickImages() {
+    setMediaSheet(null);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert(
@@ -292,6 +295,7 @@ export default function ComposerScreen() {
   }
 
   async function pickVideo() {
+    setMediaSheet(null);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert(
@@ -308,6 +312,60 @@ export default function ComposerScreen() {
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0]!;
     const name = asset.fileName ?? "video.mp4";
+    openPending(name, [
+      {
+        kind: "video",
+        uri: asset.uri,
+        name,
+        type: asset.mimeType ?? "video/mp4",
+      },
+    ]);
+  }
+
+  async function capturePhoto() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        "Camera permission needed",
+        "Allow camera access in Settings to take a photo.",
+      );
+      return;
+    }
+    setMediaSheet(null);
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.9,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0]!;
+    const name = asset.fileName ?? `photo-${Date.now()}.jpg`;
+    openPending("1 photo", [
+      {
+        kind: "image",
+        uri: asset.uri,
+        name,
+        type: asset.mimeType ?? "image/jpeg",
+      },
+    ]);
+  }
+
+  async function captureVideo() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        "Camera permission needed",
+        "Allow camera access in Settings to record a video.",
+      );
+      return;
+    }
+    setMediaSheet(null);
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["videos"],
+      quality: 1,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0]!;
+    const name = asset.fileName ?? `video-${Date.now()}.mp4`;
     openPending(name, [
       {
         kind: "video",
@@ -402,11 +460,11 @@ export default function ComposerScreen() {
   function onCardPress(kind: CaptureKind) {
     if (busy) return;
     if (kind.key === "photos") {
-      void pickImages();
+      setMediaSheet("photo");
       return;
     }
     if (kind.key === "video") {
-      void pickVideo();
+      setMediaSheet("video");
       return;
     }
     if (kind.key === "document") {
@@ -816,6 +874,29 @@ export default function ComposerScreen() {
             </View>
           </>
         ) : null}
+      </Sheet>
+
+      <Sheet
+        visible={mediaSheet !== null}
+        title={mediaSheet === "video" ? "Video" : "Photo"}
+        onClose={() => setMediaSheet(null)}
+      >
+        <PrimaryButton
+          label={mediaSheet === "video" ? "Record video" : "Take photo"}
+          onPress={mediaSheet === "video" ? captureVideo : capturePhoto}
+        />
+        <PrimaryButton
+          label="Choose from library"
+          onPress={mediaSheet === "video" ? pickVideo : pickImages}
+          style={styles.sheetSecondaryButton}
+        />
+        <View style={styles.sheetCancel}>
+          <TextLink
+            label="Cancel"
+            tone={Sirius.color.inkMuted}
+            onPress={() => setMediaSheet(null)}
+          />
+        </View>
       </Sheet>
 
       <Sheet

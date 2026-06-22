@@ -64,6 +64,13 @@
 				}
 			],
 			"expo-image",
+			[
+				"expo-image-picker",
+				{
+					"cameraPermission": "Allow Sirius to take photos and videos for your captures.",
+					"microphonePermission": "Allow Sirius to record audio when you capture a video."
+				}
+			],
 			"expo-secure-store",
 			[
 				"expo-local-authentication",
