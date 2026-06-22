@@ -84,6 +84,9 @@ export default function HelpScreen() {
                 style={styles.stepBrand}
                 contentFit="cover"
                 accessibilityIgnoresInvertColors
+                // Decorative — the "Pick Sirius" title/body carry the meaning,
+                // so keep VoiceOver from announcing an unlabeled image.
+                accessible={false}
               />
             }
             title="Pick Sirius"

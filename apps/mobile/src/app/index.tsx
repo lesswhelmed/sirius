@@ -34,21 +34,18 @@ export default function Index() {
     };
   }, [isPending, session]);
 
-  if (isPending) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
+  const spinner = (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <ActivityIndicator />
+    </View>
+  );
+
+  // Order matters: the signed-out redirect must sit BETWEEN the two spinner
+  // conditions — `seen` stays null for a signed-out user (the effect bails
+  // early), so checking it first would spin forever instead of redirecting.
+  if (isPending) return spinner;
   if (!session) return <Redirect href="/(auth)/sign-in" />;
-  if (seen === null) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
+  if (seen === null) return spinner;
   return seen ? (
     <Redirect href="/(tabs)/library" />
   ) : (
