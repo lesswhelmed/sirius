@@ -1,9 +1,13 @@
-// Smoke: assemble the embedding scene for the first owner that has post
-// embeddings and assert structural sanity. PASS/FAIL lines for human eyeballs —
-// per repo rule, do not claim "tests pass". Run:
-//   bun run apps/worker/scripts/smoke-scene.ts
+// Smoke: compute the embedding scene for the first owner that has post
+// embeddings and assert structural sanity, including the new similarity edges,
+// post clusters, and layout determinism. PASS/FAIL lines for human eyeballs.
+// Run: bun run apps/worker/scripts/smoke-scene.ts
 import { getEmbeddingSceneRows, prisma } from "@repo/db";
-import { buildScene } from "@repo/embedding-scene/build-scene";
+import {
+  computeScene,
+  sceneInputFromRows,
+} from "@repo/embedding-scene/build-scene";
+import { relatedPosts } from "@repo/embedding-scene/scene-queries";
 
 function check(label: string, ok: boolean): boolean {
   console.log(`${ok ? "PASS" : "FAIL"}  ${label}`);
@@ -22,33 +26,8 @@ async function main(): Promise<void> {
     return;
   }
   const rows = await getEmbeddingSceneRows(anyPost.ownerId);
-  const scene = buildScene({
-    categories: rows.categories.map((c) => ({
-      path: c.path,
-      name: c.name,
-      parentPath: c.parentPath,
-      depth: c.depth,
-      embedding: c.embedding,
-      dimensionality: c.dimensionality,
-    })),
-    projects: rows.projects.map((p) => ({
-      projectId: p.projectId,
-      title: p.project.title,
-      embedding: p.embedding,
-      dimensionality: p.dimensionality,
-    })),
-    posts: rows.posts.map((p) => ({
-      postId: p.postId,
-      slug: p.post.slug,
-      title: p.post.title,
-      projectId: p.post.projectId,
-      embedding: p.embedding,
-      dimensionality: p.dimensionality,
-      matches: p.matches,
-    })),
-    modelVersion: rows.categories[0]?.modelVersion ?? "unknown",
-    generatedAt: new Date().toISOString(),
-  });
+  const input = sceneInputFromRows(rows, new Date().toISOString());
+  const scene = computeScene(input);
 
   let ok = true;
   ok = check(`nodes > 0 (${scene.nodes.length})`, scene.nodes.length > 0) && ok;
@@ -60,7 +39,7 @@ async function main(): Promise<void> {
     ) && ok;
   ok =
     check(
-      "taxonomy edges connect known nodes",
+      "edges connect known nodes",
       scene.edges.every(
         (e) =>
           scene.nodes.some((n) => n.id === e.from) &&
@@ -75,6 +54,54 @@ async function main(): Promise<void> {
       `positions are spread (unique ${spread.size}/${scene.nodes.length})`,
       spread.size > scene.nodes.length / 2,
     ) && ok;
+
+  // New: similarity edges, clusters, determinism.
+  const sim = scene.edges.filter((e) => e.kind === "similarity");
+  const posts = scene.nodes.filter((n) => n.kind === "post");
+  console.log(
+    `INFO  ${sim.length} similarity edges, ${posts.length} posts, ` +
+      `${posts.filter((p) => p.clusterId).length} clustered`,
+  );
+  ok =
+    check(
+      "every matched post has a clusterId",
+      posts
+        .filter((p) => scene.edges.some((e) => e.kind === "match" && e.from === p.id))
+        .every((p) => p.clusterId != null),
+    ) && ok;
+
+  // Determinism: a second compute on the same input reproduces every position
+  // (this is what makes the cached layout safe to persist).
+  const again = computeScene(input);
+  ok =
+    check(
+      "layout deterministic across two computes",
+      JSON.stringify(scene.nodes.map((n) => n.position)) ===
+        JSON.stringify(again.nodes.map((n) => n.position)),
+    ) && ok;
+
+  // related-by-similarity outranks shared-category-only, when both exist.
+  const withSim = posts.find((p) =>
+    sim.some((e) => e.from === p.id || e.to === p.id),
+  );
+  if (withSim) {
+    const related = relatedPosts(scene, withSim.id, 3);
+    console.log(
+      `INFO  relatedPosts(${withSim.id.slice(0, 8)}…): ` +
+        related
+          .map(
+            (r) =>
+              `${r.node.label.slice(0, 16)}${r.similarity ? `~${r.similarity.toFixed(2)}` : "(cat)"}`,
+          )
+          .join(", "),
+    );
+    ok =
+      check(
+        "top related post is similarity-linked when any exists",
+        related[0]?.similarity != null,
+      ) && ok;
+  }
+
   if (!ok) process.exitCode = 1;
 }
 

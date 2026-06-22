@@ -38,6 +38,7 @@
 		"worker:setup": "turbo run setup --filter=worker",
 		"worker:backfill:covers": "bun --cwd=apps/worker run backfill:covers",
 		"scene:backfill": "bun --cwd=apps/worker run scene:backfill",
+		"scene:backfill:cache": "bun --cwd=apps/worker run scripts/backfill-scene-cache.ts",
 		"env:production": "bun run scripts/create-production-env.ts",
 		"auth:reset-password": "bun run scripts/reset-user-password.ts",
 		"pro:grant": "bun run scripts/grant-pro.ts",

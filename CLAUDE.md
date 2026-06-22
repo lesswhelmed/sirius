@@ -159,10 +159,15 @@ Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zo
 
 - `apps/web` — Next.js 16 App Router. The product: the public catalog, ingest UI, queue, auth pages, and all HTTP APIs.
 - `apps/worker` — long-running Bun daemon. Polls the DB for ingest jobs, runs the Gemini pipeline. Runs via `bun run src/index.ts` (no build step).
-- `apps/mobile` — Expo / React Native client. Tabs: Capture (composer), Catalog (library),
-  Queue, and **Tree** (the analysis-taxonomy outline — native counterpart of web's
-  Observatory, see below). Talks to `apps/web` APIs with the better-auth Expo client; also
-  drafts posts on-device (`src/lib/llm/`, llama.rn — see `docs/HANDOFF-on-device-ai.md`).
+- `apps/mobile` — Expo / React Native client. Tabs (UI label ≠ route name): **Capture**
+  (route `composer`), **Catalog** (route `library`), **Explore** (route `tree` — the
+  analysis-taxonomy outline + 3D map, native counterpart of web's Observatory, see below),
+  **Queue** (`queue`), **Account** (route `settings`). URL scheme is **`siriusapp://`**
+  (the bundle id `dev.copt.sirius` is for `simctl launch`, NOT a deep-link scheme); there is
+  **no `/explore` route** — the Explore tab is `siriusapp://tree`. The full route + deep-link
+  map is `apps/mobile/docs/ROUTES.md` (consult it before deep-linking). Talks to `apps/web`
+  APIs with the better-auth Expo client; also drafts posts on-device (`src/lib/llm/`,
+  llama.rn — see `docs/HANDOFF-on-device-ai.md`).
 - `apps/docs` — **unused** vestigial Turborepo starter stub. Ignore unless explicitly asked.
 - `packages/db` — `@repo/db`: Prisma schema, generated client, and all DB access helpers.
 - `packages/auth` — `@repo/auth`: the single `betterAuth(...)` instance + email sending.

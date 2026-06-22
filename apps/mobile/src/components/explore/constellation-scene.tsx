@@ -71,6 +71,61 @@ function makePalette(t: Theme): Palette {
   };
 }
 
+// Color-by-cluster: every node is tinted by its TOP-LEVEL taxonomy branch, so a
+// whole topic family (the branch category, its sub-categories, and the posts
+// filed under them) shares ONE hue. Hues are spread evenly around the wheel and
+// assigned by sorted branch order so the map reads as a coherent rainbow of
+// topics — not random per-node noise. Saturation/lightness are deliberately
+// muted (not neon) so the colors sit on BOTH the cream (light) and navy (dark)
+// paper without screaming; the focused node still overrides to oxblood so focus
+// always pops against the family colors.
+const CLUSTER_SAT = 50;
+const CLUSTER_LIGHT = 58;
+
+// The branch a path/cluster belongs to: the top-level taxonomy node — the first
+// two path segments (e.g. "topics/internet"), since `topics` is the virtual
+// root. Everything beneath it, and every post whose dominant category is beneath
+// it, shares the branch color.
+function branchKey(path: string | null | undefined): string | null {
+  if (!path) return null;
+  return path.split("/").slice(0, 2).join("/");
+}
+
+// A node's branch key: a category uses its own path; a post uses its dominant
+// category (`clusterId`); projects have no family.
+function nodeBranch(node: SceneNode): string | null {
+  if (node.kind === "category") return branchKey(node.path);
+  if (node.kind === "post") return branchKey(node.clusterId);
+  return null;
+}
+
+// Stable hue per branch. Distinct branches are sorted then spread evenly around
+// the wheel, so the same branch is the same color every render (deterministic =
+// a learnable map) and adjacent families are easy to tell apart.
+function buildClusterColors(scene: EmbeddingScene): Map<string, string> {
+  const branches = new Set<string>();
+  for (const n of scene.nodes) {
+    const key = nodeBranch(n);
+    if (key) branches.add(key);
+  }
+  const sorted = [...branches].sort();
+  const colors = new Map<string, string>();
+  const n = Math.max(1, sorted.length);
+  sorted.forEach((key, i) => {
+    const hue = Math.round((i * 360) / n + 15) % 360;
+    colors.set(key, `hsl(${hue}, ${CLUSTER_SAT}%, ${CLUSTER_LIGHT}%)`);
+  });
+  return colors;
+}
+
+function clusterColorOf(
+  node: SceneNode,
+  clusterColors: Map<string, string>,
+): string | null {
+  const key = nodeBranch(node);
+  return key ? (clusterColors.get(key) ?? null) : null;
+}
+
 const DAMPING = 0.16; // orbit + target + radius easing per frame (OrbitControls feel)
 
 // Camera framing, all DERIVED from the scene's own extent (radius R) so any map
@@ -81,7 +136,11 @@ const ZOOM_MIN = 0.18; // closest: lean in on a single node
 const ZOOM_MAX = 1.15; // farthest: never pull back past the whole-scene fit
 const PAN_LIMIT_MULT = 1.1; // look-at target may stray at most R*1.1 from center
 const PAN_SCALE = 0.9; // NDC-delta → world units (scaled by live radius)
-const FRAME_ZOOM = 0.3; // zoom the explicit "Frame" action leans to
+// Frame zoom levels — pulled back enough that framing a node also shows the
+// posts around it (their relationship), rather than filling the screen with just
+// the node. Posts frame a touch wider still (a lone point shouldn't dominate).
+const FRAME_ZOOM = 0.44; // explicit "Frame" / auto-frame on a category
+const FRAME_ZOOM_POST = 0.52; // a tapped post
 const NEIGHBORHOOD_ZOOM = 0.55; // default lean-in: frame the focused branch, not the whole cloud
 
 // Label overlay geometry: each label box is centered on its node's projected
@@ -184,6 +243,57 @@ function EdgeLines({
   );
 }
 
+// The post↔post similarity links — the heart of the mind map. Drawn only
+// between posts that are BOTH in the focused branch (so they appear with the
+// branch's posts under focus+context, never as global clutter), in the editorial
+// `mark` tone so they read as a distinct relationship from the ink taxonomy + the
+// oxblood focus edges.
+function SimilarityEdges({
+  scene,
+  subtreePostIds,
+  clusterColors,
+  palette,
+}: {
+  scene: EmbeddingScene;
+  subtreePostIds: Set<string>;
+  clusterColors: Map<string, string>;
+  palette: Palette;
+}) {
+  const { positions, colors } = useMemo(() => {
+    const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+    const verts: number[] = [];
+    const cols: number[] = [];
+    const c = new Color();
+    for (const e of scene.edges) {
+      if (e.kind !== "similarity") continue;
+      if (!subtreePostIds.has(e.from) || !subtreePostIds.has(e.to)) continue;
+      const a = byId.get(e.from);
+      const b = byId.get(e.to);
+      if (!a || !b) continue;
+      verts.push(...a.position, ...b.position);
+      // Tint the link by its endpoints' topic family so a link reads as part of
+      // a cluster, not a neutral wire. Both posts in a similarity pair are nearly
+      // always the same family; use endpoint a's hue for the whole segment.
+      c.set(clusterColorOf(a, clusterColors) ?? palette.mark);
+      cols.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    }
+    return {
+      positions: new Float32Array(verts),
+      colors: new Float32Array(cols),
+    };
+  }, [scene, subtreePostIds, clusterColors, palette.mark]);
+  if (positions.length === 0) return null;
+  return (
+    <lineSegments key={`sim:${positions.length}`}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-color" args={[colors, 3]} />
+      </bufferGeometry>
+      <lineBasicMaterial vertexColors transparent opacity={0.45} />
+    </lineSegments>
+  );
+}
+
 // Every node — category, post, project — is drawn as ONE instance in two shared
 // instanced meshes: a visible opaque dot + a full-size invisible hit halo so even
 // dimmed/slug-less posts stay tappable. Single tap selects; double tap frames.
@@ -196,27 +306,44 @@ const KIND_BASE: Record<string, number> = {
 };
 const DOUBLE_TAP_MS = 300;
 
+// Importance → radius multiplier. A category's `weight` is how many posts it
+// holds; a post's is its link degree. Bigger hubs read as bigger dots, but the
+// growth is sub-linear (sqrt) and capped so one giant branch can't dominate.
+function weightScale(weight: number | undefined): number {
+  return 1 + Math.min(0.9, Math.sqrt(weight ?? 0) / 6);
+}
+
 // Per-instance visual tier: the radius scale, the dot color, and how far to lerp
 // that color toward PAPER (= the prior opacity tier, since an opaque instanced
 // mesh can't do per-instance opacity — on paper a ~55% lerp reads like 0.55).
+// `hidden` collapses a node to nothing: this is the focus+context rule — posts
+// outside the focused branch (and ALL posts before anything is focused) drop out
+// so the default view is a clean category constellation, not a post swarm.
 function nodeStyle(
   node: SceneNode,
   focused: boolean,
   neighbor: boolean,
   inSubtree: boolean,
+  hidden: boolean,
+  clusterColor: string | null,
   palette: Palette,
 ): { radius: number; color: string; fade: number } {
-  const base = KIND_BASE[node.kind] ?? 0.1;
+  if (hidden) return { radius: 0, color: palette.inkFaint, fade: 1 };
+  const base = (KIND_BASE[node.kind] ?? 0.1) * weightScale(node.weight);
   const radius = focused ? base * 1.9 : neighbor ? base * 1.15 : base;
 
+  // Focus overrides to oxblood so it pops; otherwise a node wears its topic
+  // family's hue (categories + posts). Fall back to ink tones when a node has no
+  // branch (e.g. a project, or a post the model never categorized).
   let color: string = palette.inkFaint;
   if (focused) color = palette.oxblood;
+  else if (clusterColor) color = clusterColor;
   else if (neighbor) color = palette.ink;
   else if (node.kind === "project") color = palette.mark;
   else if (node.kind === "post") color = inSubtree ? palette.ink : palette.inkMuted;
 
   // Prior opacity tiers, expressed as a lerp-toward-PAPER amount (1 - opacity).
-  let opacity = Math.max(0.45, base); // floor so nothing ever "blacks out"
+  let opacity = Math.max(0.45, KIND_BASE[node.kind] ?? 0.1); // floor so nothing "blacks out"
   if (focused) opacity = 1;
   else if (neighbor) opacity = 0.9;
   else if (inSubtree) opacity = 0.7;
@@ -231,6 +358,7 @@ function NodeDots({
   focusedId,
   neighborIds,
   subtreePostIds,
+  clusterColors,
   onPick,
   onFrame,
   palette,
@@ -239,6 +367,7 @@ function NodeDots({
   focusedId: string | null;
   neighborIds: Set<string>;
   subtreePostIds: Set<string>;
+  clusterColors: Map<string, string>;
   onPick: (node: SceneNode) => void;
   onFrame: (node: SceneNode) => void;
   palette: Palette;
@@ -262,11 +391,16 @@ function NodeDots({
       const focused = node.id === focusedId;
       const neighbor = neighborIds.has(node.id);
       const inSubtree = node.kind === "post" && subtreePostIds.has(node.id);
+      // Focus+context: a post is hidden unless it's in the focused branch (so
+      // before any focus, every post is hidden → clean category map).
+      const hidden = node.kind === "post" && !inSubtree;
       const { radius, color, fade } = nodeStyle(
         node,
         focused,
         neighbor,
         inSubtree,
+        hidden,
+        clusterColorOf(node, clusterColors),
         palette,
       );
       const [x, y, z] = node.position;
@@ -277,8 +411,9 @@ function NodeDots({
       // Color, dimmed by lerping toward the paper background.
       col.set(color).lerp(paper, fade);
       dots.setColorAt(i, col);
-      // Hit halo: generous tap target, even for tiny dimmed posts.
-      const hr = Math.max(radius * HIT_FACTOR, HIT_MIN);
+      // Hit halo: generous tap target, even for tiny dimmed posts — but a hidden
+      // post gets a zero halo so it can't be tapped while invisible.
+      const hr = hidden ? 0 : Math.max(radius * HIT_FACTOR, HIT_MIN);
       m.makeScale(hr, hr, hr);
       m.setPosition(x, y, z);
       hit.setMatrixAt(i, m);
@@ -286,7 +421,15 @@ function NodeDots({
     dots.instanceMatrix.needsUpdate = true;
     if (dots.instanceColor) dots.instanceColor.needsUpdate = true;
     hit.instanceMatrix.needsUpdate = true;
-  }, [scene.nodes, focusedId, neighborIds, subtreePostIds, count, palette]);
+  }, [
+    scene.nodes,
+    focusedId,
+    neighborIds,
+    subtreePostIds,
+    clusterColors,
+    count,
+    palette,
+  ]);
 
   if (count === 0) return null;
 
@@ -707,6 +850,8 @@ export const ConstellationHero = forwardRef<
   const bounds = computeBounds(scene.nodes);
   const fitRadius = bounds.radius * FIT_MULT;
   const panLimit = bounds.radius * PAN_LIMIT_MULT;
+  // Stable per-topic-family hues, recomputed only when the node set changes.
+  const clusterColors = useMemo(() => buildClusterColors(scene), [scene]);
 
   // Bottom-sheet framing lift, held in refs so the per-frame camera rig reads the
   // latest without re-rendering the Canvas tree. `liftRef` is the eased value the
@@ -724,49 +869,55 @@ export const ConstellationHero = forwardRef<
   // The eased look-at point. Init at scene center (whole-map fit); moved only by
   // the user's pan and by gentle fly-to — never hard-snapped on selection.
   const target = useRef<Vec3>([...bounds.center]);
+  // The look-at id already applied by the auto-frame effect (or by init), so a
+  // change can be detected without re-framing the same node twice.
+  const prevLookId = useRef<string | null | undefined>(undefined);
 
-  // One-time whole-scene framing.
-  const didInit = useRef(false);
-  useEffect(() => {
-    if (didInit.current) return;
-    didInit.current = true;
-    target.current = [...bounds.center];
-    // Lean in by default so the map opens framed on a branch, not as one tight
-    // central clump of the whole taxonomy.
-    zoom.current = NEIGHBORHOOD_ZOOM;
-  }, [bounds]);
+  // Explicit "Frame" — fly in close on a node. The eased rig turns this into a
+  // smooth fly-in (no snap). Exposed imperatively to the host (its "Frame" button
+  // calls ref.frameNode(...)), reused by double-tap, AND reused for auto-framing
+  // on open + on every selection/focus change below. Posts frame a touch wider
+  // than categories so a preview tap doesn't over-zoom into a lone point.
+  const frameNode = (node: SceneNode) => {
+    target.current = [...node.position];
+    const z = node.kind === "post" ? FRAME_ZOOM_POST : FRAME_ZOOM;
+    zoom.current = Math.max(ZOOM_MIN, z);
+  };
+  useImperativeHandle(ref, () => ({ frameNode }));
 
   // The node the camera should be looking at: the explicit selection, else the
   // focused category.
   const lookAtNode = selectedNode ?? focused;
   const lookAtId = lookAtNode?.id ?? null;
 
-  // Gentle fly-to whenever the look-at node changes — keeps zoom, no pan reset,
-  // and is interruptible (the next pan/orbit just overrides `target`). The first
-  // value is swallowed so the initial focus never overrides the whole-map fit.
-  const prevLookId = useRef<string | null | undefined>(undefined);
+  // One-time framing on open: auto-frame the initial focused node (eased tight
+  // frame, matching the manual "Frame" action). With no initial focus, fall back
+  // to the whole-scene fit so an empty/unfocused map still shows the full cloud.
+  const didInit = useRef(false);
   useEffect(() => {
-    if (prevLookId.current === undefined) {
-      prevLookId.current = lookAtId;
-      return;
+    if (didInit.current) return;
+    didInit.current = true;
+    if (lookAtNode) {
+      frameNode(lookAtNode);
+    } else {
+      target.current = [...bounds.center];
+      zoom.current = NEIGHBORHOOD_ZOOM;
     }
+    // Mark the initial look-at as already-applied so the change effect below
+    // doesn't immediately re-frame the same node.
+    prevLookId.current = lookAtId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bounds]);
+
+  // Auto-frame whenever the look-at node changes — keeps it eased (no pan reset,
+  // interruptible: the next pan/orbit just overrides `target`). Frames BOTH
+  // categories and posts, so selecting a sibling ‹ ›, a child "Inside" chip, a
+  // post row, or a "Related" item from the bottom sheet flies the camera in.
+  useEffect(() => {
     if (lookAtId == null || lookAtId === prevLookId.current) return;
     prevLookId.current = lookAtId;
-    if (lookAtNode) {
-      target.current = [...lookAtNode.position];
-      // Lean into the focused branch so its neighbors spread across the screen.
-      // Skip for a tapped post — a preview shouldn't yank the camera's zoom.
-      if (lookAtNode.kind !== "post") zoom.current = NEIGHBORHOOD_ZOOM;
-    }
+    if (lookAtNode) frameNode(lookAtNode);
   }, [lookAtId, lookAtNode]);
-
-  // Explicit "Frame" — fly in close on a node. Exposed imperatively to the host
-  // (its "Frame" button calls ref.frameNode(...)) and reused by double-tap.
-  const frameNode = (node: SceneNode) => {
-    target.current = [...node.position];
-    zoom.current = Math.max(ZOOM_MIN, FRAME_ZOOM);
-  };
-  useImperativeHandle(ref, () => ({ frameNode }));
 
   useEffect(() => {
     logGesture(
@@ -872,11 +1023,18 @@ export const ConstellationHero = forwardRef<
           onlyFocus
           palette={palette}
         />
+        <SimilarityEdges
+          scene={scene}
+          subtreePostIds={subtreePostIds}
+          clusterColors={clusterColors}
+          palette={palette}
+        />
         <NodeDots
           scene={scene}
           focusedId={focusedId}
           neighborIds={neighborIds}
           subtreePostIds={subtreePostIds}
+          clusterColors={clusterColors}
           onPick={onPickNode}
           onFrame={frameNode}
           palette={palette}

@@ -14,15 +14,25 @@ export interface SceneNode {
   purpose?: string; // category — why this analysis facet exists
   slug?: string; // post
   projectId?: string | null; // post
+  // Visual-encoding hints, computed in build-scene. Both optional so older
+  // cached scenes / partial producers still deserialize.
+  weight?: number; // importance → node radius. category = # matched posts;
+  // post = its similarity+match edge degree. Absent ⇒ treat as 0/baseline.
+  clusterId?: string; // post — its dominant (highest-score) category path, so a
+  // theme shares a hue. Absent for category/project nodes.
 }
 
-export type SceneEdgeKind = "taxonomy" | "assignment" | "match";
+export type SceneEdgeKind =
+  | "taxonomy" // category parent → child
+  | "assignment" // post → project
+  | "match" // post → category (embedding similarity at classify time)
+  | "similarity"; // post ↔ post (kNN over post embeddings)
 
 export interface SceneEdge {
   from: string; // SceneNode.id
   to: string; // SceneNode.id
   kind: SceneEdgeKind;
-  weight?: number; // match score for kind === "match"
+  weight?: number; // cosine score for kind === "match" | "similarity"
 }
 
 export interface EmbeddingScene {

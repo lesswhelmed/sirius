@@ -18,6 +18,7 @@ import {
   createAspiration,
   createProject,
   deleteOrphanCategories,
+  enqueueSceneRecompute,
   findAspirationByTitle,
   findProjectByTitle,
   getProject,
@@ -296,6 +297,19 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
   // cleared its match floor. Carried out so the pipeline can flag an eligible
   // ingest that landed with no Tree linkage.
   const sceneRows = { postEmbeddingWritten: true, categoryMatchCount };
+
+  // The owner's graph changed (new vector + category link, and possibly a
+  // project assignment below) — debounce-enqueue a background scene recompute so
+  // the cached kNN neighbors + force layout refresh. Best-effort: a failure here
+  // must never fail the ingest. The worker claims this on a later tick, by which
+  // point any project assignment made below is already committed.
+  try {
+    await enqueueSceneRecompute(ownerId);
+  } catch (error) {
+    console.warn(
+      `[assign-org] scene recompute enqueue failed (non-fatal): ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
   // Reconcile the flat Category + Tag tables. The single primary becomes the
   // post's only category; every OTHER resolved topic is demoted to a filterable

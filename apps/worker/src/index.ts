@@ -5,7 +5,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   claimNextArchiveRequest,
   claimNextNonImage,
+  claimNextSceneRecompute,
   claimReadyImageBatch,
+  completeSceneRecompute,
+  failSceneRecompute,
   findPostBySourceRecordId,
   heartbeatProcessing,
   type IngestSubmission,
@@ -14,9 +17,11 @@ import {
   notifyPostChanged,
   reclaimStaleImageBatches,
   reclaimStaleProcessing,
+  reclaimStaleSceneRecomputes,
   recordRetainedOriginal,
 } from "@repo/db";
 import { processArchiveRequest } from "./archive/run-archive";
+import { recomputeOwnerScene } from "./scene/recompute";
 import { retainOriginal } from "./lib/originals";
 import { removeStagedFile } from "./lib/staging";
 import { processIngest } from "./pipeline/pipeline";
@@ -126,6 +131,10 @@ async function runReclaim(): Promise<void> {
     const staleBatchRows = await reclaimStaleImageBatches(batchAssemblyMs());
     if (staleBatchRows > 0) {
       log("info", "reclaim-image-batches", { failedRows: staleBatchRows });
+    }
+    const staleScenes = await reclaimStaleSceneRecomputes(leaseMs());
+    if (staleScenes > 0) {
+      log("info", "reclaim-scene-recomputes", { requeued: staleScenes });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -405,6 +414,28 @@ async function tick(): Promise<boolean> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log("error", "archive-failed", { id: archiveReq.id, error: message });
+    }
+    return true;
+  }
+  // Lowest priority: rebuild a stale scene cache (kNN + force layout). Failures
+  // self-retry via failSceneRecompute; success deletes the request row.
+  const sceneReq = await claimNextSceneRecompute();
+  if (sceneReq) {
+    try {
+      const result = await recomputeOwnerScene(sceneReq.userId);
+      await completeSceneRecompute(sceneReq.id);
+      log("info", "scene-recompute", {
+        userId: sceneReq.userId,
+        nodes: result.nodes,
+        neighbors: result.neighbors,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await failSceneRecompute(sceneReq.id, message);
+      log("error", "scene-recompute-failed", {
+        id: sceneReq.id,
+        error: message,
+      });
     }
     return true;
   }

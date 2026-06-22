@@ -1,8 +1,9 @@
 // Dev-only draft test bench: exercises on-device post drafting end-to-end
 // (lock → generateText → generateDraft → schema) against fixture notes, with
 // deterministic quality checks — no composer, no submission, no server.
-// Open via the /llm screen's dev link or deep link:
-//   dev.copt.sirius://llm-test?run=all
+// Open via the /llm screen's dev link or deep link (scheme is siriusapp://, not
+// the bundle id — see apps/mobile/docs/ROUTES.md):
+//   siriusapp://llm-test?run=all
 import { useQuery } from "@tanstack/react-query";
 import {
   AudioModule,

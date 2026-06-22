@@ -11,13 +11,13 @@ datasource db {
 }
 
 model Post {
-  id            String     @id @default(cuid())
-  slug          String     @unique
+  id            String         @id @default(cuid())
+  slug          String         @unique
   title         String
   content       String
   excerpt       String?
   type          PostType
-  status        PostStatus @default(DRAFT)
+  status        PostStatus     @default(DRAFT)
   // Who may READ this post. PRIVATE (owner only) is the safe default; FRIENDS
   // opens it to the owner's accepted friends; PUBLIC opens it to any signed-in
   // user (gated by PUBLIC_CATALOG_ENABLED at the surface). The read decision
@@ -31,10 +31,10 @@ model Post {
   imageUrl      String? // hero / cover image (for SIGHT batches: images[0].url)
   images        Json? // SIGHT gallery: [{ url, alt }] in upload order; null for non-photo posts
   contentDigest Json?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  lastEdited    DateTime   @updatedAt
-  published     Boolean    @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  lastEdited    DateTime       @updatedAt
+  published     Boolean        @default(false)
 
   // Provider provenance — tracks where this post came from
   sourceType     String    @default("mdx") // "mdx" | "json" | "api" | "ingest"
@@ -55,6 +55,12 @@ model Post {
 
   embedding       PostEmbedding?      @relation("PostEmbedding")
   categoryMatches PostCategoryMatch[] @relation("PostCategoryMatches")
+
+  // Precomputed kNN post↔post similarity edges (the mind-map links), rebuilt in
+  // the background by the worker. A post appears as either endpoint, so two
+  // back-relations; both cascade so deleting a post removes every edge touching it.
+  neighbors  PostNeighbor[] @relation("PostNeighborsFrom")
+  neighborOf PostNeighbor[] @relation("PostNeighborsTo")
 
   // The ingest submission(s) that produced this post (1 for url/note/file,
   // N for a SIGHT image batch). Used to resolve a post's retained originals.
@@ -305,6 +311,66 @@ model ArchiveRequest {
   @@index([token])
 }
 
+// Precomputed post↔post similarity edges (kNN over PostEmbedding vectors), the
+// expensive O(n²) part of the scene. Built in the background by the worker so the
+// scene-load path never recomputes it. ownerId is denormalized (like
+// PostEmbedding.ownerId) for cheap owner-scoped reads; one row per undirected pair
+// (postId < neighborId by convention). Cascades on either post delete.
+model PostNeighbor {
+  id         String   @id @default(cuid())
+  postId     String
+  post       Post     @relation("PostNeighborsFrom", fields: [postId], references: [id], onDelete: Cascade)
+  neighborId String
+  neighbor   Post     @relation("PostNeighborsTo", fields: [neighborId], references: [id], onDelete: Cascade)
+  score      Float // cosine similarity
+  ownerId    String
+  createdAt  DateTime @default(now())
+
+  @@unique([postId, neighborId])
+  @@index([ownerId])
+  @@index([neighborId])
+}
+
+// Cached force-layout for an owner's scene: node positions + visual hints, so the
+// scene API reads + assembles instead of recomputing PCA/force/kNN per request.
+// One row per owner (rewritten on each recompute). Positions are owner-scoped even
+// for the GLOBAL categories because the layout depends on the owner's whole graph,
+// so they cannot live on the shared CategoryEmbedding row. Best-effort: a missing
+// row means "compute live + enqueue", never an error.
+model SceneLayout {
+  id             String   @id @default(cuid())
+  ownerId        String   @unique
+  positions      Json // { [nodeId]: [x, y, z] }
+  weights        Json // { [nodeId]: number } — node importance for radius
+  clusters       Json // { [postId]: categoryPath } — dominant category for hue
+  modelVersion   String
+  dimensionality Int
+  generatedAt    DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Debounced background job: "this owner's scene needs recomputing". Mirrors
+// ArchiveRequest's claim/lease pattern off the same worker poll loop. Enqueued
+// (deduped to one in-flight per owner) whenever the owner's graph changes — a new
+// PostEmbedding, a reclassification, a project reassignment, or a post delete.
+// Successful runs DELETE the row (output lives in SceneLayout/PostNeighbor), so the
+// table stays tiny; failures retain it for retry/inspection.
+model SceneRecomputeRequest {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation("UserSceneRecomputes", fields: [userId], references: [id], onDelete: Cascade)
+  status       String    @default("pending") // pending → processing → failed (success deletes)
+  attempts     Int       @default(0)
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
 model SavedPost {
   id        String   @id @default(cuid())
   userId    String
@@ -398,21 +464,22 @@ model User {
   banExpires DateTime?
 
   // Broker storefront
-  handle   String? @unique
-  bio      String?
-  location String?
+  handle       String? @unique
+  bio          String?
+  location     String?
   voiceProfile String?
 
-  sessions    Session[]
-  accounts    Account[]
-  posts       Post[]             @relation("UserPosts")
-  submissions IngestSubmission[] @relation("UserSubmissions")
-  saves             SavedPost[]  @relation("UserSaves")
-  aspirations Aspiration[]       @relation("UserAspirations")
-  projects    Project[]          @relation("UserProjects")
-  archiveRequests ArchiveRequest[] @relation("UserArchiveRequests")
-  comments    Comment[]          @relation("UserComments")
-  apiKeys     ApiKey[]           @relation("UserApiKeys")
+  sessions        Session[]
+  accounts        Account[]
+  posts           Post[]                  @relation("UserPosts")
+  submissions     IngestSubmission[]      @relation("UserSubmissions")
+  saves           SavedPost[]             @relation("UserSaves")
+  aspirations     Aspiration[]            @relation("UserAspirations")
+  projects        Project[]               @relation("UserProjects")
+  archiveRequests ArchiveRequest[]        @relation("UserArchiveRequests")
+  sceneRecomputes SceneRecomputeRequest[] @relation("UserSceneRecomputes")
+  comments        Comment[]               @relation("UserComments")
+  apiKeys         ApiKey[]                @relation("UserApiKeys")
 
   // Friendships are stored as ONE canonically-ordered row per pair (userAId <
   // userBId). A user therefore appears as either side, so two back-relations.

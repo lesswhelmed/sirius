@@ -14,7 +14,10 @@ function normalize(v: number[]): number[] {
 }
 
 const POWER_ITERATIONS = 50;
-const SCENE_RADIUS = 10;
+// Canonical half-extent of the scene cube. The layout (force relaxation) and
+// every renderer's camera framing/zoom limits assume positions live in
+// [-SCENE_RADIUS, SCENE_RADIUS]³, so it's shared rather than re-declared.
+export const SCENE_RADIUS = 10;
 
 export function projectTo3d(vectors: number[][]): [number, number, number][] {
   const n = vectors.length;

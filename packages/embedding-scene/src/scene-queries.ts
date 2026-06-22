@@ -441,14 +441,21 @@ export interface RelatedPost {
   node: SceneNode;
   // The categories this post and the source post BOTH match, ordered by the
   // source post's affinity (match weight) to them — so `via[0]` is the strongest
-  // reason the two are related, ideal for a one-line "via {topic}" caption.
+  // reason the two are related, ideal for a one-line "via {topic}" caption. May
+  // be empty when the two are linked by direct similarity but share no category.
   via: SceneNode[];
+  // Cosine of the direct post↔post `similarity` edge, when one exists. Present ⇒
+  // these two are genuinely about the same thing (not just filed under the same
+  // topic); such posts rank above shared-category-only ones.
+  similarity?: number;
 }
 
-// Posts that share `postId`'s topics: other posts whose `match` edges overlap
-// the source post's matched categories. Ranked by number of shared topics
-// (desc), then by the other post's strongest matching weight, then label. Empty
-// for a non-post, missing, or unmatched node.
+// Posts related to `postId`, with the real post↔post `similarity` edges taking
+// precedence over mere shared-category overlap:
+//   1. posts joined by a `similarity` edge (ranked by cosine desc), then
+//   2. posts that only share matched categories (ranked by overlap count).
+// `via` carries the shared categories (strongest first) for the caption either
+// way. Empty for a non-post or missing node, or one with neither kind of link.
 export function relatedPosts(
   scene: EmbeddingScene,
   postId: string,
@@ -463,10 +470,19 @@ export function relatedPosts(
   for (const e of scene.edges) {
     if (e.kind === "match" && e.from === postId) ownCats.set(e.to, e.weight ?? 0);
   }
-  if (ownCats.size === 0) return [];
 
-  // Other posts matching any shared category; collect the shared cats + the
-  // other post's best matching weight (a tie-break that favors strong matches).
+  // Direct similarity neighbors (undirected — match either endpoint).
+  const simWeight = new Map<string, number>();
+  for (const e of scene.edges) {
+    if (e.kind !== "similarity") continue;
+    const other = e.from === postId ? e.to : e.to === postId ? e.from : null;
+    if (other && byId.get(other)?.kind === "post") {
+      simWeight.set(other, Math.max(simWeight.get(other) ?? -1, e.weight ?? 0));
+    }
+  }
+
+  // Posts sharing a matched category: collect the shared cats + the other
+  // post's best matching weight (a tie-break that favors strong matches).
   const shared = new Map<string, Set<string>>();
   const bestWeight = new Map<string, number>();
   for (const e of scene.edges) {
@@ -480,16 +496,26 @@ export function relatedPosts(
     if (w > (bestWeight.get(e.from) ?? -1)) bestWeight.set(e.from, w);
   }
 
-  return [...shared.entries()]
-    .map(([id, catIds]) => {
-      const via = [...catIds]
+  // Candidate set = similarity neighbors ∪ shared-category posts.
+  const candidates = new Set<string>([...simWeight.keys(), ...shared.keys()]);
+  if (candidates.size === 0) return [];
+
+  return [...candidates]
+    .map((id) => {
+      const via = [...(shared.get(id) ?? [])]
         .map((cid) => byId.get(cid))
         .filter((c): c is SceneNode => c?.kind === "category")
         .sort((a, b) => (ownCats.get(b.id) ?? 0) - (ownCats.get(a.id) ?? 0));
-      return { node: byId.get(id)!, via };
+      const similarity = simWeight.get(id);
+      return { node: byId.get(id)!, via, similarity };
     })
     .sort(
       (a, b) =>
+        // 1. any similarity edge wins over no similarity edge…
+        Number(b.similarity != null) - Number(a.similarity != null) ||
+        // 2. …then by cosine strength…
+        (b.similarity ?? 0) - (a.similarity ?? 0) ||
+        // 3. …then by shared-topic count, best match weight, label.
         b.via.length - a.via.length ||
         (bestWeight.get(b.node.id) ?? 0) - (bestWeight.get(a.node.id) ?? 0) ||
         a.node.label.localeCompare(b.node.label),

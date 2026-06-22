@@ -88,6 +88,14 @@ pm2 startOrReload ecosystem.config.cjs --update-env
 echo "==> scene backfill"
 bun run scene:backfill
 
+# Warm the PRECOMPUTED scene cache (kNN neighbors + force layout) for existing
+# owners. The scene_precompute migration only creates the empty tables; this
+# enqueues a (deduped) recompute per owner with embeddings, which the running
+# worker drains — so existing users don't pay a cold live-compute on first view.
+# Idempotent + non-fatal: a failure here must not abort the deploy.
+echo "==> scene cache backfill (enqueue recomputes)"
+bun run scene:backfill:cache || echo "WARN scene cache backfill failed (non-fatal; cold reads self-heal)"
+
 echo "==> pm2 save"
 pm2 save
 

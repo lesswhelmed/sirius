@@ -56,6 +56,12 @@ export type UserEntitlement = Prisma.UserEntitlementGetPayload<
 export type AiGenerationEvent = Prisma.AiGenerationEventGetPayload<
   Record<string, never>
 >;
+export type PostNeighbor = Prisma.PostNeighborGetPayload<
+  Record<string, never>
+>;
+export type SceneLayout = Prisma.SceneLayoutGetPayload<Record<string, never>>;
+export type SceneRecomputeRequest =
+  Prisma.SceneRecomputeRequestGetPayload<Record<string, never>>;
 
 export * from "./analytics";
 export * from "./archive";
@@ -71,6 +77,7 @@ export * from "./notify";
 export * from "./post-delete";
 export * from "./post-update";
 export * from "./posts";
+export * from "./scene-cache";
 export * from "./projects";
 export * from "./saved";
 export * from "./tags";

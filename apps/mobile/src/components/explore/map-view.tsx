@@ -12,7 +12,7 @@
 
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
 import type { LinkedPost } from "@repo/embedding-scene/scene-queries";
-import { subtreeIndex } from "@repo/embedding-scene/scene-queries";
+import { relatedPosts, subtreeIndex } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -172,6 +172,17 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
   };
 
   const previewPost = previewNode?.kind === "post" ? previewNode : null;
+  // Posts most like the previewed one — now driven by real post↔post similarity
+  // edges (falling back to shared-topic overlap), so "Related" means genuinely
+  // related, not just same-folder. Tapping one re-previews + flies the camera.
+  const related = useMemo(
+    () => (previewPost ? relatedPosts(categoryScene, previewPost.id, 3) : []),
+    [previewPost, categoryScene],
+  );
+  const onPickRelated = (node: SceneNode) => {
+    setPreviewNode(node);
+    select(node.id);
+  };
   const expanded = snap === "expanded";
 
   return (
@@ -194,7 +205,9 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Legend / "you are here" — what the dots mean + where you are. */}
+      {/* "You are here" — a slim strip hugging the left edge so the map stays
+          clear. The dot-key legend was dropped (the bottom hint already explains
+          interaction); just the eyebrow + focused path remain. */}
       {focused ? (
         <View
           style={[styles.legend, { top: insets.top + t.space.sm }]}
@@ -204,11 +217,6 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
           <Text style={styles.legendPath} numberOfLines={2}>
             {(focused.path ?? focused.label).split("/").join(" / ")}
           </Text>
-          <View style={styles.legendKeys}>
-            <KeyRow shape="focus" label="Focused" />
-            <KeyRow shape="category" label="Category" />
-            <KeyRow shape="post" label="Post" />
-          </View>
         </View>
       ) : null}
 
@@ -372,6 +380,31 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                           onPress={() => setPreviewNode(null)}
                         />
                       </View>
+                      {related.length > 0 ? (
+                        <View style={styles.related}>
+                          <Text style={styles.relatedLabel}>Related</Text>
+                          {related.map((r) => (
+                            <Pressable
+                              key={r.node.id}
+                              onPress={() => onPickRelated(r.node)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Related: ${r.node.label}`}
+                              style={({ pressed }) => [
+                                styles.relatedRow,
+                                pressed && styles.pressed,
+                              ]}
+                            >
+                              <Text style={styles.relatedArrow}>→</Text>
+                              <Text
+                                style={styles.relatedItem}
+                                numberOfLines={1}
+                              >
+                                {r.node.label}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
                   ) : null}
                 </View>
@@ -445,31 +478,6 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
   );
 }
 
-// A single legend key: a shape swatch + a mono label.
-function KeyRow({
-  shape,
-  label,
-}: {
-  shape: "focus" | "category" | "post";
-  label: string;
-}) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.keyRow}>
-      <View style={styles.keySwatch}>
-        <View
-          style={[
-            shape === "focus" && styles.keyFocus,
-            shape === "category" && styles.keyCategory,
-            shape === "post" && styles.keyPost,
-          ]}
-        />
-      </View>
-      <Text style={styles.keyLabel}>{label}</Text>
-    </View>
-  );
-}
-
 function PostRow({
   entry,
   n,
@@ -513,16 +521,19 @@ function makeStyles(t: Theme) {
       justifyContent: "center",
       paddingHorizontal: PAD,
     },
-    // Top-left legend overlay.
+    // Slim "you are here" strip flush against the left screen edge — kept
+    // narrow with no left margin so it never reaches the central cluster.
     legend: {
       position: "absolute",
-      left: t.space.lg,
-      maxWidth: 200,
-      gap: 3,
-      paddingHorizontal: t.space.md,
-      paddingVertical: t.space.sm,
+      left: 0,
+      maxWidth: 150,
+      gap: 2,
+      paddingLeft: t.space.sm,
+      paddingRight: t.space.sm,
+      paddingVertical: t.space.xs,
       backgroundColor: t.color.paperRaised,
       borderWidth: 1,
+      borderLeftWidth: 0,
       borderColor: t.color.rule,
       opacity: 0.94,
     },
@@ -532,35 +543,6 @@ function makeStyles(t: Theme) {
       letterSpacing: 1.2,
       textTransform: "uppercase",
       color: t.color.inkMuted,
-    },
-    legendKeys: { gap: 4, marginTop: 4 },
-    keyRow: { flexDirection: "row", alignItems: "center", gap: t.space.sm },
-    keySwatch: { width: 12, alignItems: "center", justifyContent: "center" },
-    keyFocus: {
-      width: 11,
-      height: 11,
-      borderRadius: t.radius.pill,
-      backgroundColor: t.color.accent,
-    },
-    keyCategory: {
-      width: 10,
-      height: 10,
-      borderRadius: t.radius.pill,
-      borderWidth: 1.5,
-      borderColor: t.color.ink,
-    },
-    keyPost: {
-      width: 6,
-      height: 6,
-      borderRadius: t.radius.pill,
-      backgroundColor: t.color.inkMuted,
-    },
-    keyLabel: {
-      fontFamily: t.font.mono,
-      fontSize: 9,
-      letterSpacing: 1.4,
-      textTransform: "uppercase",
-      color: t.color.inkSubtle,
     },
     // Floating sheet pinned to the bottom, layered over the canvas.
     sheet: {
@@ -691,6 +673,38 @@ function makeStyles(t: Theme) {
       letterSpacing: 1,
       textTransform: "uppercase",
       color: t.color.inkSubtle,
+    },
+    related: {
+      marginTop: t.space.xs,
+      borderTopWidth: 1,
+      borderColor: t.color.rule,
+      paddingTop: t.space.xs,
+      gap: 2,
+    },
+    relatedLabel: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: t.color.inkFaint,
+      marginBottom: 2,
+    },
+    relatedRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: t.space.sm,
+      paddingVertical: 2,
+    },
+    relatedArrow: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.mark,
+    },
+    relatedItem: {
+      flex: 1,
+      fontFamily: t.font.serif,
+      fontSize: 14,
+      color: t.color.ink,
     },
     chips: {
       gap: t.space.xs,

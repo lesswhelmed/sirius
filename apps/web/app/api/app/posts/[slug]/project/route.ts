@@ -1,4 +1,8 @@
-import { assignPostToProject, findPostIdBySlug } from "@repo/db";
+import {
+  assignPostToProject,
+  enqueueSceneRecompute,
+  findPostIdBySlug,
+} from "@repo/db";
 import { assignSchema } from "../../../../../../lib/projects/schema";
 import { getSessionOrNull } from "../../../../../../lib/session";
 
@@ -40,5 +44,7 @@ export async function PUT(
     const status = result.reason === "post-not-found" ? 404 : 409;
     return jsonError(status, result.reason);
   }
+  // Assignment edges changed → refresh the cached scene layout (debounced).
+  void enqueueSceneRecompute(session.user.id).catch(() => {});
   return Response.json({ projectId: parsed.data.projectId });
 }
