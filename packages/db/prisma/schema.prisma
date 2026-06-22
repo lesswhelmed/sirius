@@ -528,18 +528,24 @@ model UserEntitlement {
   @@index([expiresAt])
 }
 
-// One row per SERVER (Gemini) generation actually performed. Weekly usage is a
-// COUNT(*) over a time window — no bucket row to race on — and the table doubles
-// as an audit trail. resultPostId is a soft reference (no FK) to the produced post.
+// One row per SERVER (Gemini) generation. Free users reserve a row before the
+// model call, then complete it after the post write. Weekly usage counts
+// completed rows plus non-expired reservations so parallel workers cannot all
+// pass the same read. resultPostId is a soft reference (no FK) to the produced post.
 model AiGenerationEvent {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation("UserAiGenerations", fields: [userId], references: [id], onDelete: Cascade)
-  kind         String // ingest kind: "url"|"note"|"image"|"video"|"audio"|"document"
-  resultPostId String?
-  createdAt    DateTime @default(now())
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation("UserAiGenerations", fields: [userId], references: [id], onDelete: Cascade)
+  kind                 String // ingest kind: "url"|"note"|"image"|"video"|"audio"|"document"
+  resultPostId         String?
+  sourceRecordId       String?
+  status               String   @default("completed") // "reserved" | "completed"
+  reservationExpiresAt DateTime?
+  createdAt            DateTime @default(now())
 
+  @@unique([userId, sourceRecordId])
   @@index([userId, createdAt])
+  @@index([userId, status, reservationExpiresAt])
 }
 
 // A mutual friendship between two users, in any lifecycle state. Stored as a

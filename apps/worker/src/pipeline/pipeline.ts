@@ -4,9 +4,11 @@
 // dropped — see the migration plan.)
 
 import {
-  checkAiGenerationAllowed,
+  cancelAiGenerationReservation,
+  completeAiGenerationReservation,
   PostStatus,
   recordAiGeneration,
+  reserveAiGeneration,
 } from "@repo/db";
 import { buildClassificationInput } from "./classification/adapters";
 import { assignOrg, sceneRowWarning } from "./classification/assign-org";
@@ -43,6 +45,13 @@ async function timed<T>(
   }
 }
 
+function quotaSourceRecordId(input: PipelineInput): string {
+  if (input.kind === "image") {
+    return `batch:${input.batchId}`;
+  }
+  return input.submission.id;
+}
+
 export async function processIngest(
   input: PipelineInput,
   logger: StageLogger = noopLogger,
@@ -58,7 +67,7 @@ export async function processIngest(
   const drafted = tryClientDraft(input);
   let parsed: GeminiOutput;
   let stub = false;
-  let consumedQuota = false;
+  let written: Awaited<ReturnType<typeof writePost>>;
 
   if (drafted) {
     parsed = drafted;
@@ -67,53 +76,101 @@ export async function processIngest(
       slug: parsed.slug,
       type: parsed.type,
     });
+    written = await timed("post:write", logger, () =>
+      writePost(parsed, input, undefined),
+    );
   } else {
     // Bearer ingests (iOS Shortcut, no user) are unmetered: no one to attribute.
-    const decision =
-      userId == null ? null : await checkAiGenerationAllowed(userId);
-    if (decision == null || decision.allowed) {
+    if (userId == null) {
       parsed = await timed("gemini", logger, () => runGemini(input));
-      consumedQuota = userId != null;
       logger("gemini:parsed", {
         title: parsed.title,
         slug: parsed.slug,
         type: parsed.type,
-        isPro: decision?.isPro ?? null,
+        isPro: null,
       });
+      written = await timed("post:write", logger, () =>
+        writePost(parsed, input, undefined),
+      );
     } else {
-      parsed = buildManualStub(input);
-      stub = true;
-      logger("quota:over-limit", {
+      const decision = await reserveAiGeneration({
         userId,
-        used: decision.used,
-        limit: decision.limit,
-        title: parsed.title,
-        type: parsed.type,
+        kind: input.kind,
+        sourceRecordId: quotaSourceRecordId(input),
       });
+      if (decision.allowed) {
+        const reservationId = decision.reservationId;
+        let postWritten = false;
+        try {
+          parsed = await timed("gemini", logger, () => runGemini(input));
+          logger("gemini:parsed", {
+            title: parsed.title,
+            slug: parsed.slug,
+            type: parsed.type,
+            isPro: decision.isPro,
+          });
+          written = await timed("post:write", logger, () =>
+            writePost(parsed, input, undefined),
+          );
+          postWritten = true;
+          let quotaRecorded = false;
+          if (reservationId) {
+            await completeAiGenerationReservation({
+              reservationId,
+              resultPostId: written.postId,
+            });
+            quotaRecorded = true;
+          } else if (decision.isPro) {
+            await recordAiGeneration({
+              userId,
+              kind: input.kind,
+              resultPostId: written.postId,
+            });
+            quotaRecorded = true;
+          }
+          if (quotaRecorded) {
+            logger("quota:recorded", { userId, kind: input.kind });
+          }
+        } catch (error) {
+          if (reservationId && !postWritten) {
+            await cancelAiGenerationReservation(reservationId).catch(
+              (cancelError) => {
+                logger("quota:reservation-cancel:error", {
+                  userId,
+                  reservationId,
+                  error:
+                    cancelError instanceof Error
+                      ? cancelError.message
+                      : String(cancelError),
+                });
+              },
+            );
+          }
+          throw error;
+        }
+      } else {
+        parsed = buildManualStub(input);
+        stub = true;
+        logger("quota:over-limit", {
+          userId,
+          used: decision.used,
+          limit: decision.limit,
+          title: parsed.title,
+          type: parsed.type,
+        });
+        written = await timed("post:write", logger, () =>
+          writePost(parsed, input, { status: PostStatus.DRAFT }),
+        );
+      }
     }
   }
 
-  const written = await timed("post:write", logger, () =>
-    writePost(parsed, input, stub ? { status: PostStatus.DRAFT } : undefined),
-  );
   logger("post:write:done", {
     postId: written.postId,
     slug: written.slug,
     images: written.imagePaths.length,
     stub,
   });
-
-  // Record the consumed generation only AFTER the Gemini call AND the write
-  // succeeded — a failure earlier throws and never reaches here, so a model or
-  // write error never burns the user's weekly quota.
-  if (consumedQuota && userId != null) {
-    await recordAiGeneration({
-      userId,
-      kind: input.kind,
-      resultPostId: written.postId,
-    });
-    logger("quota:recorded", { userId, kind: input.kind });
-  }
 
   // Auto-org: file unscoped, user-attributed ingests under a Project. Runs here
   // (after writePost, before the worker deletes staged files) so image batches
