@@ -276,6 +276,31 @@ function RootContent() {
                       headerBackTitle: "Account",
                     }}
                   />
+                  {/* Friend profile (/u/<handle>) + that friend's catalog
+                      (/u/<handle>/catalog). Both need the native header so they
+                      clear the status bar AND get a back button — they're pushed
+                      from Friends, the Catalog feed, the profile screen, or a
+                      deep link. Generic back title since the entry point varies. */}
+                  <Stack.Screen
+                    name="u/[handle]/index"
+                    options={{
+                      headerShown: true,
+                      title: "Profile",
+                      headerStyle: { backgroundColor: t.color.paper },
+                      headerTintColor: t.color.ink,
+                      headerBackTitle: "Back",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="u/[handle]/catalog"
+                    options={{
+                      headerShown: true,
+                      title: "Catalog",
+                      headerStyle: { backgroundColor: t.color.paper },
+                      headerTintColor: t.color.ink,
+                      headerBackTitle: "Back",
+                    }}
+                  />
                   <Stack.Screen
                     name="llm"
                     options={{

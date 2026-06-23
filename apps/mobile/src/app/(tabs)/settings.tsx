@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   AuthField,
@@ -40,6 +41,10 @@ import {
 export default function SettingsScreen() {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
+  // Account is a NativeTabs screen — no native header to clear the status bar,
+  // so the content owns its top inset (the old fixed paddingTop tucked the
+  // title under the clock on notched devices).
+  const insets = useSafeAreaInsets();
   const { data: session } = useSession();
   const email = session?.user?.email ?? "";
   const name = session?.user?.name ?? "";
@@ -160,7 +165,12 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          { paddingTop: insets.top + t.space.md },
+        ]}
+      >
         <View style={styles.headerMain}>
           <Eyebrow>Section IV — Account</Eyebrow>
           <Title accent="." accessibilityRole="header">

@@ -21,7 +21,7 @@ import {
   View,
 } from "react-native";
 
-import { Eyebrow, KindLabel, Screen, Title } from "@/components/sirius";
+import { KindLabel, Screen, Title } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import {
   usePostTypeTone,
@@ -95,38 +95,38 @@ export default function FriendCatalogScreen() {
   const items = pages.flatMap((p) => p.items);
   const notAvailable = isError && error instanceof ApiError && error.status === 404;
 
-  const header = (
+  // The native header (set below) already names the screen, so the in-content
+  // header leads with the friend — avatar + name + handle — rather than a
+  // redundant "Catalog" eyebrow. Renders nothing until the profile loads.
+  const header = profile ? (
     <View style={styles.header}>
-      <Eyebrow>Catalog</Eyebrow>
-      {profile ? (
-        <View style={styles.profileRow}>
-          {profile.image ? (
-            <Image
-              source={{ uri: resolveMediaUrl(profile.image) }}
-              style={styles.avatar}
-              contentFit="cover"
-              transition={120}
-              accessibilityIgnoresInvertColors
-            />
-          ) : (
-            <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <Text style={styles.avatarGlyph}>
-                {(profile.name?.[0] ?? "·").toUpperCase()}
-              </Text>
-            </View>
-          )}
-          <View style={styles.profileText}>
-            <Title accent="." accessibilityRole="header">
-              {profile.name}
-            </Title>
-            {profile.handle ? (
-              <Text style={styles.handle}>@{profile.handle}</Text>
-            ) : null}
+      <View style={styles.profileRow}>
+        {profile.image ? (
+          <Image
+            source={{ uri: resolveMediaUrl(profile.image) }}
+            style={styles.avatar}
+            contentFit="cover"
+            transition={120}
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Text style={styles.avatarGlyph}>
+              {(profile.name?.[0] ?? "·").toUpperCase()}
+            </Text>
           </View>
+        )}
+        <View style={styles.profileText}>
+          <Title accent="." accessibilityRole="header">
+            {profile.name}
+          </Title>
+          {profile.handle ? (
+            <Text style={styles.handle}>@{profile.handle}</Text>
+          ) : null}
         </View>
-      ) : null}
+      </View>
     </View>
-  );
+  ) : null;
 
   return (
     <Screen>
