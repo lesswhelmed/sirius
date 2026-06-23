@@ -34,7 +34,9 @@ export const kaitoProvider: TweetProvider = {
   buildInput: (parse) => ({ tweetIDs: [parse.tweetId] }),
 };
 
-// apidojo/twitter-scraper-lite. Fetches a single tweet by its canonical URL.
+// apidojo/twitter-scraper-lite (actor nfp1fpt5gUlBwPcor). Fetches a single tweet
+// by its canonical URL via startUrls. DEFAULT provider — used for single posts.
+// (Distinct from apidojo/tweet-scraper "V2" = actor 61RPP7dywgiy0JPD0.)
 export const apidojoProvider: TweetProvider = {
   name: "apidojo",
   defaultActorId: "nfp1fpt5gUlBwPcor",
@@ -49,8 +51,9 @@ export const TWEET_PROVIDERS: Record<string, TweetProvider> = {
   apidojo: apidojoProvider,
 };
 
-// Default: kaito (pay-per-result, ~$0.18/1K tweets — far cheaper than apidojo).
-export const DEFAULT_PROVIDER = kaitoProvider;
+// Default: apidojo/twitter-scraper-lite (fetches a single tweet by canonical
+// URL). Set X_PROVIDER=kaito to fall back to the kaito pay-per-result actor.
+export const DEFAULT_PROVIDER = apidojoProvider;
 
 export function resolveTweetProvider(): TweetProvider {
   const key = process.env.X_PROVIDER?.trim().toLowerCase();
