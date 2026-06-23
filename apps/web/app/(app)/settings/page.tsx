@@ -11,7 +11,7 @@ import { requireSession } from "../../../lib/session";
 import { ApiKeysSection } from "./api-keys-section";
 import { RequestArchiveButton } from "./request-archive-button";
 import { SettingsShell, type SettingsSection } from "./settings-shell";
-import { ShareHandle } from "./share-handle";
+import { InviteDialog } from "./invite-dialog";
 import { VoiceSection } from "./voice-section";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -75,7 +75,7 @@ export default async function SettingsPage() {
                   Share this link. Anyone signed in can open it and add you as a
                   friend.
                 </p>
-                <ShareHandle handle={handle} />
+                <InviteDialog handle={handle} />
               </div>
             </div>
           ) : (
