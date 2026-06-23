@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function InviteDialog({ handle }: { handle: string }) {
   const [open, setOpen] = useState(false);
@@ -23,6 +23,15 @@ export function InviteDialog({ handle }: { handle: string }) {
       setCopied(false);
     }
   }
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   async function share() {
     if (typeof navigator !== "undefined" && navigator.share) {
@@ -56,13 +65,13 @@ export function InviteDialog({ handle }: { handle: string }) {
       {open ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Invite a friend"
           onClick={() => setOpen(false)}
         >
           <div
             className="w-full max-w-[640px] border border-[var(--color-rule-emphatic)] bg-[var(--bg)] p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Invite a friend"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-baseline justify-between hairline-b pb-3">

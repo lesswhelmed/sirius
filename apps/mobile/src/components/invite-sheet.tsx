@@ -44,11 +44,15 @@ export function InviteSheet({
         return;
       }
       const file = await File.downloadFileAsync(cardUri, Paths.cache);
-      await Sharing.shareAsync(file.uri, {
-        mimeType: "image/png",
-        UTI: "public.png",
-        dialogTitle: "Share your Sirius invite",
-      });
+      try {
+        await Sharing.shareAsync(file.uri, {
+          mimeType: "image/png",
+          UTI: "public.png",
+          dialogTitle: "Share your Sirius invite",
+        });
+      } finally {
+        try { file.delete(); } catch {}
+      }
     } catch {
       await shareLink();
     } finally {
@@ -66,7 +70,7 @@ export function InviteSheet({
           accessibilityLabel="Your invite card"
         />
         <View style={[styles.qrTile, { backgroundColor: "#ffffff" }]}>
-          <Image source={{ uri: qrUri }} style={styles.qr} contentFit="contain" />
+          <Image source={{ uri: qrUri }} style={styles.qr} contentFit="contain" accessibilityLabel="QR code to add me" />
         </View>
         <Eyebrow style={{ textAlign: "center", color: t.color.inkSubtle }}>
           Scan to add me
