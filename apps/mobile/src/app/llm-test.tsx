@@ -76,7 +76,7 @@ function Bench() {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   const params = useLocalSearchParams<{ run?: string }>();
-  const ready = useQuery({
+  const { data: ready } = useQuery({
     queryKey: ["llm-draft-ready"],
     queryFn: canDraftOnDevice,
   });
@@ -234,7 +234,7 @@ function Bench() {
       const t = setTimeout(() => void runAnswerQuality(), 0);
       return () => clearTimeout(t);
     }
-    if (ready.data !== true) {
+    if (ready !== true) {
       return;
     }
     autoran.current = true;
@@ -247,8 +247,8 @@ function Bench() {
       }
     }, 0);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.run, ready.data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-doctor/exhaustive-deps
+  }, [params.run, ready]);
 
   const done = Object.values(results);
   const passed = done.filter((r) => r.ok).length;
@@ -261,7 +261,7 @@ function Bench() {
     <Screen>
       <ScrollView contentContainerStyle={styles.list}>
         <MetaText style={styles.eyebrow}>Draft test bench</MetaText>
-        {ready.data === false ? (
+        {ready === false ? (
           <Text style={styles.warn}>
             Enable “Draft on device” and download a model first — the bench runs
             the same readiness checks as the composer.
@@ -270,7 +270,7 @@ function Bench() {
         <PrimaryButton
           label={runningId ? `Running ${runningId}…` : "Run all"}
           onPress={() => void runAll()}
-          disabled={Boolean(runningId) || ready.data !== true}
+          disabled={Boolean(runningId) || ready !== true}
         />
         {DRAFT_FIXTURES.map((fixture) => {
           const result = results[fixture.id];
@@ -634,7 +634,7 @@ function AudioBench() {
   const [draftResult, setDraftResult] = useState<FixtureResult | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
-  const available = useQuery({
+  const { data: available, refetch: refetchAvailable } = useQuery({
     queryKey: ["llm-transcribe-available"],
     queryFn: canTranscribeOnDevice,
   });
@@ -708,7 +708,7 @@ function AudioBench() {
         ? "language assets ready"
         : "prepare failed",
     );
-    await available.refetch();
+    await refetchAvailable();
   }
 
   return (
@@ -717,16 +717,16 @@ function AudioBench() {
       <View style={styles.cardHeader}>
         <StatusPip
           label={
-            available.data === undefined
+            available === undefined
               ? "checking"
-              : available.data
+              : available
                 ? "available"
                 : "unavailable"
           }
           color={
-            available.data
+            available
               ? t.color.success
-              : available.data === false
+              : available === false
                 ? t.color.danger
                 : t.color.inkSubtle
           }
@@ -735,7 +735,7 @@ function AudioBench() {
           SpeechAnalyzer · iOS 26+ · runs entirely on this device
         </Text>
       </View>
-      {available.data === false ? (
+      {available === false ? (
         <PrimaryButton
           label="Prepare language assets"
           onPress={() => void prepareAssets()}
@@ -750,7 +750,7 @@ function AudioBench() {
               : "Record"
         }
         onPress={() => void toggleRecording()}
-        disabled={Boolean(phase) || available.data !== true}
+        disabled={Boolean(phase) || available !== true}
       />
       {note ? <Text style={styles.warn}>{note}</Text> : null}
       {transcript !== null ? (

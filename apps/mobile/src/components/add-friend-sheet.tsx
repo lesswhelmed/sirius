@@ -39,7 +39,7 @@ export function AddFriendSheet({
     return () => clearTimeout(t);
   }, [q]);
 
-  const searchQ = useQuery({
+  const { data: searchData, isFetching: searchFetching } = useQuery({
     queryKey: ["friend-search", debounced],
     queryFn: () =>
       apiGet<{ results: SearchResult[] }>(
@@ -47,7 +47,7 @@ export function AddFriendSheet({
       ),
     enabled: visible && debounced.length > 0,
   });
-  const result = searchQ.data?.results[0] ?? null;
+  const result = searchData?.results[0] ?? null;
 
   // Reset on close (no open-effect needed).
   const close = () => {
@@ -86,7 +86,7 @@ export function AddFriendSheet({
         onChangeText={setQ}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {!showResults ? null : searchQ.isFetching ? (
+      {!showResults ? null : searchFetching ? (
         <View style={styles.loading}>
           <ActivityIndicator color={t.color.accent} />
         </View>

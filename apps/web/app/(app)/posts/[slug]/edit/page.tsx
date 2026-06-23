@@ -12,8 +12,7 @@ export default async function EditPostPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const { slug } = await params;
-  const session = await getSessionOrNull();
+  const [{ slug }, session] = await Promise.all([params, getSessionOrNull()]);
   if (!session) {
     notFound();
   }

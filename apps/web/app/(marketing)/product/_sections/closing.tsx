@@ -1,4 +1,4 @@
-import { CtaPair, Eyebrow } from "./primitives";
+import { CtaBlock, Eyebrow } from "./primitives";
 
 export function Closing() {
   return (
@@ -25,7 +25,7 @@ export function Closing() {
           Get the clutter off your plate and into something you can actually use
           — so you can focus on what truly matters.
         </p>
-        <CtaPair />
+        <CtaBlock align="center" />
       </div>
     </section>
   );

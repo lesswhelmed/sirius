@@ -36,7 +36,11 @@ export default function InviteScreen() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const searchQ = useQuery({
+  const {
+    data: searchData,
+    refetch: searchRefetch,
+    isLoading: searchLoading,
+  } = useQuery({
     queryKey: ["friend-search", handle],
     queryFn: () =>
       apiGet<{ results: SearchResult[] }>(
@@ -44,7 +48,7 @@ export default function InviteScreen() {
       ),
     enabled: handle.length > 0,
   });
-  const result = searchQ.data?.results[0] ?? null;
+  const result = searchData?.results[0] ?? null;
 
   async function send() {
     if (!result?.handle) return;
@@ -54,7 +58,7 @@ export default function InviteScreen() {
       await apiPostJson("/api/app/friends/requests", { handle: result.handle });
       void qc.invalidateQueries({ queryKey: ["friends"] });
       void qc.invalidateQueries({ queryKey: ["friend-requests"] });
-      void searchQ.refetch();
+      void searchRefetch();
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Couldn’t send the request.",
@@ -70,7 +74,7 @@ export default function InviteScreen() {
       <View style={styles.body}>
         <Eyebrow>{handle ? `Add a friend · @${handle}` : "Add a friend"}</Eyebrow>
 
-        {searchQ.isLoading ? (
+        {searchLoading ? (
           <View style={styles.loading}>
             <ActivityIndicator color={t.color.accent} />
           </View>

@@ -1,5 +1,3 @@
-import type { JSX } from "react";
-
 export function Card({
   className,
   title,
@@ -10,7 +8,7 @@ export function Card({
   title: string;
   children: React.ReactNode;
   href: string;
-}): JSX.Element {
+}): React.ReactNode {
   return (
     <a
       className={className}

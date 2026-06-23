@@ -4,7 +4,6 @@ import { Suspense } from "react";
 import { getSessionOrNull } from "../../lib/session";
 import { SiriusLogo } from "../_chrome/sirius-logo";
 import { ThemeMenu } from "../_theme/theme-menu";
-import { APP_STORE_URL } from "./constants";
 
 // Minimal full-bleed marketing chrome — deliberately distinct from the catalog
 // header. Fully static (no session reads), so the whole surface stays cacheable.
@@ -19,7 +18,12 @@ export default function MarketingLayout({
         <header className="flex items-center justify-between gap-4 pt-6 sm:pt-8">
           <SiriusLogo href="/product" ariaLabel="Sirius" variant="compact" />
           <div className="flex items-center gap-4 sm:gap-5">
-            <ThemeMenu />
+            {/* The verbose theme segmented-control is a desktop nicety; on a
+                phone it crowds out the sign-up CTA, so it's hidden < sm (mobile
+                still follows the system/dark default). */}
+            <div className="hidden sm:block">
+              <ThemeMenu />
+            </div>
             <span
               aria-hidden="true"
               className="hidden text-[var(--color-rule-strong)] sm:block"
@@ -70,20 +74,18 @@ export default function MarketingLayout({
 const SIGN_IN_CLASS =
   "font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-muted)] hover:text-[var(--color-accent)]";
 const SOLID_CTA_CLASS =
-  "hidden bg-[var(--color-accent)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[#15110d] transition-colors hover:bg-[var(--color-accent-deep)] sm:inline-block";
+  "whitespace-nowrap bg-[var(--color-accent)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[#15110d] transition-colors hover:bg-[var(--color-accent-deep)]";
 const GHOST_CTA_CLASS =
   "border border-[var(--color-accent)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-accent)] transition-colors hover:border-[var(--color-accent-deep)] hover:text-[var(--color-accent-deep)]";
 
-function GetTheApp() {
+// The persistent header CTA: web sign-up, the primary path. Shown on every
+// breakpoint (it's the easiest way in) — on mobile "Sign in" collapses away so
+// the solid sign-up button stays the one obvious action.
+function SignUpFree() {
   return (
-    <a
-      href={APP_STORE_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={SOLID_CTA_CLASS}
-    >
-      Get the app
-    </a>
+    <Link href="/sign-up" className={SOLID_CTA_CLASS}>
+      Sign up free
+    </Link>
   );
 }
 
@@ -95,10 +97,10 @@ async function HeaderAuth() {
   if (!session) {
     return (
       <>
-        <Link href="/sign-in" className={SIGN_IN_CLASS}>
+        <Link href="/sign-in" className={`hidden sm:inline ${SIGN_IN_CLASS}`}>
           Sign in
         </Link>
-        <GetTheApp />
+        <SignUpFree />
       </>
     );
   }
@@ -123,10 +125,10 @@ async function HeaderAuth() {
 function HeaderAuthFallback() {
   return (
     <>
-      <Link href="/sign-in" className={SIGN_IN_CLASS}>
+      <Link href="/sign-in" className={`hidden sm:inline ${SIGN_IN_CLASS}`}>
         Sign in
       </Link>
-      <GetTheApp />
+      <SignUpFree />
     </>
   );
 }

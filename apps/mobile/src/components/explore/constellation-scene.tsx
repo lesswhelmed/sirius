@@ -906,7 +906,7 @@ export const ConstellationHero = forwardRef<
     // Mark the initial look-at as already-applied so the change effect below
     // doesn't immediately re-frame the same node.
     prevLookId.current = lookAtId;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-doctor/exhaustive-deps
   }, [bounds]);
 
   // Auto-frame whenever the look-at node changes — keeps it eased (no pan reset,

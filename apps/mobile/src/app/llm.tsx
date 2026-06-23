@@ -58,6 +58,7 @@ import {
 import { askMyPosts } from "@/lib/research/ask";
 
 type ChatMessage = {
+  id: string;
   role: "user" | "assistant";
   content: string;
   // The posts the assistant chose to ground this answer in — tappable Sources.
@@ -94,14 +95,14 @@ function LlmScreenInner() {
   const styles = useThemedStyles(makeStyles);
   const queryClient = useQueryClient();
 
-  const settings = useQuery({
+  const { data: settings } = useQuery({
     queryKey: ["llm-settings"],
     queryFn: getLlmSettings,
   });
-  const modelId = settings.data?.modelId;
+  const modelId = settings?.modelId;
   const spec = modelId ? modelSpec(modelId) : undefined;
 
-  const ready = useQuery({
+  const { data: ready } = useQuery({
     queryKey: ["llm-model-ready", modelId],
     queryFn: () => isModelReady(modelId!),
     enabled: Boolean(modelId),
@@ -111,7 +112,7 @@ function LlmScreenInner() {
   // it can never run inference, and we'd rather say so up front than after a
   // multi-GB download. Retry is pointless (only a native rebuild fixes it), so
   // the query never refetches on its own.
-  const bridge = useQuery({
+  const { data: bridge } = useQuery({
     queryKey: ["llm-native-bridge"],
     queryFn: checkNativeBridge,
     staleTime: Infinity,
@@ -133,10 +134,10 @@ function LlmScreenInner() {
   });
 
   if (
-    !settings.data ||
+    !settings ||
     !spec ||
-    ready.data === undefined ||
-    bridge.data === undefined
+    ready === undefined ||
+    bridge === undefined
   ) {
     return (
       <Screen style={styles.center}>
@@ -145,19 +146,19 @@ function LlmScreenInner() {
     );
   }
 
-  if (!bridge.data.ok) {
+  if (!bridge.ok) {
     return (
       <Screen style={styles.container}>
         <View style={styles.downloadCard}>
           <MetaText style={styles.cardEyebrow}>Local model</MetaText>
           <Text style={styles.modelName}>On-device AI unavailable</Text>
-          <Text style={styles.modelDetail}>{bridge.data.reason}</Text>
+          <Text style={styles.modelDetail}>{bridge.reason}</Text>
         </View>
       </Screen>
     );
   }
 
-  if (!ready.data) {
+  if (!ready) {
     return (
       <Screen style={styles.container}>
         <ScrollView contentContainerStyle={styles.cardStack}>
@@ -266,7 +267,7 @@ function TranscriptionAssets() {
   const styles = useThemedStyles(makeStyles);
   const queryClient = useQueryClient();
 
-  const available = useQuery({
+  const { data: available } = useQuery({
     queryKey: ["llm-transcribe-available"],
     queryFn: canTranscribeOnDevice,
     enabled: Platform.OS === "ios",
@@ -306,7 +307,7 @@ function TranscriptionAssets() {
         transcription is instant. Requires a physical iPhone — the Simulator
         ships none.
       </Text>
-      {available.data ? (
+      {available ? (
         <MetaText style={styles.cardEyebrow}>Assets ready ✓</MetaText>
       ) : prepare.isPending ? (
         <View style={styles.progressWrap}>
@@ -426,12 +427,13 @@ function Chat({
   // Persisted turns + the in-flight streaming bubble (only while generating).
   const messages: ChatMessage[] = useMemo(() => {
     const base: ChatMessage[] = (messageRows ?? []).map((r) => ({
+      id: r.id,
       role: r.role,
       content: r.content,
       sources: r.sourcesJson ?? undefined,
     }));
     if (busy && streamingText !== null) {
-      base.push({ role: "assistant", content: streamingText });
+      base.push({ id: "streaming", role: "assistant", content: streamingText });
     }
     return base;
   }, [messageRows, busy, streamingText]);
@@ -594,8 +596,8 @@ function Chat({
                 ) : null}
               </View>
             ) : (
-              messages.map((m, i) => (
-                <View key={i} style={styles.msgGroup}>
+              messages.map((m) => (
+                <View key={m.id} style={styles.msgGroup}>
                   <View
                     style={[
                       styles.bubble,

@@ -18,7 +18,7 @@ export function Transformation() {
         </p>
       </div>
 
-      <div className="mt-14 grid grid-cols-1 items-center gap-6 lg:grid-cols-[1fr_auto_1fr] lg:gap-4">
+      <div className="mt-10 grid grid-cols-1 items-center gap-6 sm:mt-14 lg:grid-cols-[1fr_auto_1fr] lg:gap-4">
         {/* Raw input */}
         <div className="surface-sunken p-6">
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">

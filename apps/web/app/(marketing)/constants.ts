@@ -3,6 +3,15 @@
 // App Store record (ascAppId from the submission kit). Links to the iOS listing.
 export const APP_STORE_URL = "https://apps.apple.com/us/app/sirius-ai/id6775729513";
 
+// Official Apple "Download on the App Store" badge (fetched from Apple's
+// marketing toolbox, unmodified per their brand guidelines — it keeps its own
+// rounded corners, the one intentional exception to our zero-radius rule).
+export const APP_STORE_BADGE = "/product/app-store-badge.svg";
+
+// Shared caption under the CTA block — the primary path is web sign-up; the
+// native app is iOS-only, so we say so plainly.
+export const CTA_CAPTION = "iOS app · also on the web · No tracking";
+
 // Demo video assets exist under public/product/ (demo.mp4 + demo.webm +
 // poster.jpg). The hero now runs an auto-cycling screenshot carousel instead
 // (HeroCarousel) — set this true to fall back to the legacy looping video.

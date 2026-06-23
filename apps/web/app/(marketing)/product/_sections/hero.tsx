@@ -1,31 +1,31 @@
 import { DEMO_VIDEO, DEMO_VIDEO_READY } from "../../constants";
 import { HeroCarousel } from "./hero-carousel";
-import { CtaPair, Eyebrow } from "./primitives";
+import { CtaBlock, Eyebrow } from "./primitives";
 
 export function Hero() {
+  // DOM order is headline-then-specimen, so on a phone the H1 + sign-up CTA
+  // paint first (above the fold); the two-column desktop layout keeps the text
+  // on the left and the specimen on the right.
   return (
-    <section className="grid grid-cols-1 items-center gap-12 pt-10 pb-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:pt-16 lg:pb-24">
-      <div className="order-2 lg:order-1">
+    <section className="grid grid-cols-1 items-center gap-10 pt-8 pb-16 sm:gap-12 sm:pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:pt-16 lg:pb-24">
+      <div>
         <Eyebrow>A personal content catalog</Eyebrow>
-        <h1 className="mt-5 font-display text-[clamp(2.75rem,7vw,5rem)] leading-[0.98] tracking-[-0.02em] text-balance text-[var(--color-ink)]">
+        <h1 className="mt-5 font-display text-[clamp(2.75rem,8.5vw,5rem)] leading-[0.98] tracking-[-0.02em] text-balance text-[var(--color-ink)]">
           Everything you capture, drafted into something{" "}
           <em className="italic text-[var(--color-accent)]">worth keeping.</em>
         </h1>
-        <p className="mt-7 max-w-xl text-[17px] leading-relaxed text-pretty text-[var(--fg-muted)]">
+        <p className="mt-6 max-w-xl text-[16px] leading-relaxed text-pretty text-[var(--fg-muted)] sm:mt-7 sm:text-[17px]">
           Sirius takes the links, photos, notes, repositories, videos,
           documents, and voice memos you throw at it — and drafts a clean,
           organized post with AI. You review, then keep it private or publish it
           to your catalog.
         </p>
-        <div className="mt-9">
-          <CtaPair />
+        <div className="mt-8 sm:mt-9">
+          <CtaBlock />
         </div>
-        <p className="mt-6 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-          iOS &amp; Web · Drafts on-device on iPhone · No tracking
-        </p>
       </div>
 
-      <div className="order-1 lg:order-2">
+      <div>
         <HeroMedia />
       </div>
     </section>

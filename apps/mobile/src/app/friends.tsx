@@ -44,11 +44,11 @@ export default function FriendsScreen() {
   const [addOpen, setAddOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const friendsQ = useQuery({
+  const { data: friendsData, isLoading: friendsLoading } = useQuery({
     queryKey: ["friends"],
     queryFn: () => apiGet<{ friends: Friend[] }>("/api/app/friends"),
   });
-  const requestsQ = useQuery({
+  const { data: requestsData, isLoading: requestsLoading } = useQuery({
     queryKey: ["friend-requests"],
     queryFn: async () => {
       const { requests } = await apiGet<{ requests: RawRequest[] }>(
@@ -65,8 +65,8 @@ export default function FriendsScreen() {
     },
   });
 
-  const friends = friendsQ.data?.friends ?? [];
-  const requests = requestsQ.data?.requests ?? [];
+  const friends = friendsData?.friends ?? [];
+  const requests = requestsData?.requests ?? [];
 
   const refetch = () => {
     void qc.invalidateQueries({ queryKey: ["friends"] });
@@ -99,7 +99,7 @@ export default function FriendsScreen() {
   const cancelOrRemove = (id: string) =>
     act(id, () => apiDelete(`/api/app/friends/${id}`));
 
-  const loading = friendsQ.isLoading || requestsQ.isLoading;
+  const loading = friendsLoading || requestsLoading;
 
   return (
     <Screen>

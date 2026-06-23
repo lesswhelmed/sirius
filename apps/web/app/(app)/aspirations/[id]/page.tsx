@@ -10,8 +10,10 @@ export default async function AspirationDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireSession("/aspirations");
-  const { id } = await params;
+  const [session, { id }] = await Promise.all([
+    requireSession("/aspirations"),
+    params,
+  ]);
   const aspiration = await getAspiration(session.user.id, id);
   if (!aspiration) {
     notFound();

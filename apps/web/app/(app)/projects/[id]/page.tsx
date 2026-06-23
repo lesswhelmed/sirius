@@ -18,8 +18,10 @@ export default async function ProjectDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireSession("/projects");
-  const { id } = await params;
+  const [session, { id }] = await Promise.all([
+    requireSession("/projects"),
+    params,
+  ]);
   const project = await getProject(session.user.id, id);
   if (!project) {
     notFound();

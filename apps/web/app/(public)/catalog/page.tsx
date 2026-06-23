@@ -18,8 +18,10 @@ export default async function CatalogPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const params = await searchParams;
-  const session = await getSessionOrNull();
+  const [params, session] = await Promise.all([
+    searchParams,
+    getSessionOrNull(),
+  ]);
 
   if (session) {
     const handle = await getUserHandle(session.user.id);

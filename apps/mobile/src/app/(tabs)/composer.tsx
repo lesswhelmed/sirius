@@ -148,16 +148,16 @@ export default function ComposerScreen() {
 
   // On-device curation: user's toggle plus whether the local model is actually
   // on disk (the /llm screen manages downloads).
-  const llmSettings = useQuery({
+  const { data: llmSettings } = useQuery({
     queryKey: ["llm-settings"],
     queryFn: getLlmSettings,
   });
-  const llmReady = useQuery({
-    queryKey: ["llm-model-ready", llmSettings.data?.modelId],
-    queryFn: () => isModelReady(llmSettings.data!.modelId),
-    enabled: Boolean(llmSettings.data?.modelId),
+  const { data: llmReadyData, isSuccess: llmReadyIsSuccess } = useQuery({
+    queryKey: ["llm-model-ready", llmSettings?.modelId],
+    queryFn: () => isModelReady(llmSettings!.modelId),
+    enabled: Boolean(llmSettings?.modelId),
   });
-  const curationOn = llmSettings.data?.onDeviceCuration === true;
+  const curationOn = llmSettings?.onDeviceCuration === true;
   const { data: usage } = useAiUsage();
 
   async function toggleCuration(value: boolean) {
@@ -574,7 +574,7 @@ export default function ComposerScreen() {
     // SERVER AI draft (on-device curation off) and a free user is out of weekly
     // generations, offer the paywall first. Whatever the user decides we still
     // submit — over-limit ingests land as editable drafts, never lost.
-    const willUseServerAI = !(curationOn && llmReady.data === true);
+    const willUseServerAI = !(curationOn && llmReadyData === true);
     if (
       willUseServerAI &&
       usage &&
@@ -596,7 +596,7 @@ export default function ComposerScreen() {
         {
           force: false,
           projectId: projectId ?? undefined,
-          onDeviceCuration: curationOn && llmReady.data === true,
+          onDeviceCuration: curationOn && llmReadyData === true,
         },
       );
       errors = result.errors;
@@ -784,7 +784,7 @@ export default function ComposerScreen() {
           )}
 
           {/* On-device drafting is fully hidden behind the build-time flag. */}
-          {ON_DEVICE_AI_ENABLED && llmReady.data === true ? (
+          {ON_DEVICE_AI_ENABLED && llmReadyData === true ? (
             <View style={styles.curationRow}>
               <View style={styles.curationCopy}>
                 <Text style={styles.curationLabel}>Draft on device</Text>
@@ -799,7 +799,7 @@ export default function ComposerScreen() {
                 accessibilityLabel="Draft on device"
               />
             </View>
-          ) : ON_DEVICE_AI_ENABLED && llmReady.isSuccess ? (
+          ) : ON_DEVICE_AI_ENABLED && llmReadyIsSuccess ? (
             // No model on disk: the switch is hidden until the user downloads
             // one from the /llm screen. (Still loading → render neither, so the
             // CTA doesn't flash on every composer mount.)

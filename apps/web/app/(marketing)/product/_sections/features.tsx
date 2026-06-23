@@ -30,7 +30,7 @@ const FEATURES = [
 export function Features() {
   return (
     <section className="border-t border-[var(--color-rule)] py-16 lg:py-24">
-      <div className="hairline-b flex items-end justify-between gap-4 pb-4">
+      <div className="hairline-b flex flex-col gap-2 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <h2 className="font-display text-[clamp(1.75rem,3.5vw,2.75rem)] leading-none tracking-[-0.01em] text-[var(--color-ink)]">
           What&apos;s inside
         </h2>

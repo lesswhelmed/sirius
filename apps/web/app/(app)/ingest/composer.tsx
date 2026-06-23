@@ -417,7 +417,7 @@ export function Composer() {
     };
     // Intentionally run only on unmount: removeFromTray revokes per-item, so a
     // tray-dep cleanup here would double-revoke live previews.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-doctor/exhaustive-deps
   }, []);
 
   // Derive the URL preview list from the url-kind materials currently in the

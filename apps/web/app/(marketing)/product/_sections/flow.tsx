@@ -38,14 +38,16 @@ const STEPS = [
 export function Flow() {
   return (
     <section className="py-16 lg:py-24">
-      <div className="hairline-b flex items-end justify-between gap-4 pb-4">
+      <div className="hairline-b flex flex-col gap-2 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <h2 className="font-display text-[clamp(1.75rem,3.5vw,2.75rem)] leading-none tracking-[-0.01em] text-[var(--color-ink)]">
           How it works
         </h2>
         <Eyebrow>Capture · Draft · Organize · Publish</Eyebrow>
       </div>
 
-      <ol className="mt-12 grid grid-cols-1 gap-x-8 gap-y-14 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Two columns on a phone (a 2×2 grid) so the four tall portrait
+          screenshots stay compact instead of stacking to a ~3000px tower. */}
+      <ol className="mt-10 grid grid-cols-2 gap-x-4 gap-y-10 sm:mt-12 sm:gap-x-8 sm:gap-y-14 lg:grid-cols-4">
         {STEPS.map((step) => (
           <li key={step.folio} className="flex flex-col">
             <div className="relative aspect-[1320/2868] w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)]">
@@ -53,7 +55,7 @@ export function Flow() {
                 src={step.screen}
                 alt={step.alt}
                 fill
-                sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
+                sizes="(max-width: 640px) 45vw, (max-width: 1024px) 45vw, 22vw"
                 className="object-cover object-top"
               />
             </div>
