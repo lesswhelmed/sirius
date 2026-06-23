@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 
@@ -7,6 +8,8 @@ export interface FriendItem {
   id: string;
   name: string;
   handle: string | null;
+  // Profile image URL (oauth/gravatar/uploaded) or null → monogram fallback.
+  image?: string | null;
   // ISO string; present for accepted friends, absent/null for pending requests.
   friendsSince?: string | null;
 }
@@ -19,7 +22,7 @@ export interface RequestItem extends FriendItem {
 // revert-on-failure, mirroring assign-to-project's pattern. The server page
 // passes the initial data; this owns the live state thereafter.
 //
-// Each accepted-friend row is a LINK to that friend's catalog (/friends/<handle>);
+// Each accepted-friend row is a LINK to that friend's profile + catalog (/u/<handle>);
 // the row's management action (Remove) is a sibling button OUTSIDE the link so we
 // never nest a button in an anchor. A search field appears once the list grows,
 // so the page scales from a handful of friends to hundreds.
@@ -34,6 +37,7 @@ export function FriendsList({
   const [requests, setRequests] = useState(initialRequests);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"recent" | "alpha">("recent");
   const [, start] = useTransition();
 
   const incoming = requests.filter((r) => r.direction === "incoming");
@@ -41,13 +45,22 @@ export function FriendsList({
 
   const filteredFriends = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return friends;
-    return friends.filter(
-      (f) =>
-        f.name.toLowerCase().includes(q) ||
-        (f.handle ? f.handle.toLowerCase().includes(q) : false),
-    );
-  }, [friends, query]);
+    const matched = !q
+      ? friends
+      : friends.filter(
+          (f) =>
+            f.name.toLowerCase().includes(q) ||
+            (f.handle ? f.handle.toLowerCase().includes(q) : false),
+        );
+    // "recent" keeps server order (acceptedAt desc). "alpha" sorts a copy so the
+    // underlying list order is preserved when toggling back.
+    if (sort === "alpha") {
+      return [...matched].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+      );
+    }
+    return matched;
+  }, [friends, query, sort]);
 
   const run = (fn: () => Promise<Response>, revert: () => void) => {
     setError(null);
@@ -162,14 +175,27 @@ export function FriendsList({
         count={friends.length}
       >
         {showSearch ? (
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Find a friend by name or @handle"
-            aria-label="Filter friends"
-            className="mb-2 w-full border-0 border-b border-[var(--color-rule)] bg-transparent pb-2 font-display text-[16px] text-[var(--fg)] placeholder:text-[var(--fg-faint)] focus:border-[var(--color-accent)] focus:outline-none"
-          />
+          <div className="mb-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Find a friend by name or @handle"
+              aria-label="Filter friends"
+              className="min-w-0 flex-1 border-0 border-b border-[var(--color-rule)] bg-transparent pb-2 font-display text-[16px] text-[var(--fg)] placeholder:text-[var(--fg-faint)] focus:border-[var(--color-accent)] focus:outline-none"
+            />
+            <div className="flex shrink-0 items-baseline gap-3" role="group" aria-label="Sort friends">
+              <SortOption active={sort === "recent"} onClick={() => setSort("recent")}>
+                Recent
+              </SortOption>
+              <span aria-hidden className="text-[var(--color-rule-strong)]">
+                ·
+              </span>
+              <SortOption active={sort === "alpha"} onClick={() => setSort("alpha")}>
+                A–Z
+              </SortOption>
+            </div>
+          </div>
         ) : null}
 
         {filteredFriends.length === 0 ? (
@@ -216,6 +242,31 @@ function Section({
   );
 }
 
+// A sort affordance for the Friends list toolbar — a quiet mono toggle; the
+// active option carries the oxblood accent.
+function SortOption({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`font-mono text-[10px] uppercase tracking-[0.18em] transition-colors hover:text-[var(--color-accent)] ${
+        active ? "text-[var(--color-accent)]" : "text-[var(--fg-subtle)]"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 // A serif monogram in a hairline circle — a calm, image-free avatar that scales
 // to any list length and matches the editorial system.
 function Monogram({ name }: { name: string }) {
@@ -227,6 +278,26 @@ function Monogram({ name }: { name: string }) {
     >
       {initial}
     </span>
+  );
+}
+
+// The friend's profile image when present, else the monogram. Remote URLs stay
+// unoptimized (mirrors PostImage) so a third-party avatar host can't fail the
+// Next optimizer; a load error quietly degrades to the monogram.
+function Avatar({ name, image }: { name: string; image?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!image || failed) return <Monogram name={name} />;
+  return (
+    <Image
+      src={image}
+      alt=""
+      aria-hidden
+      width={36}
+      height={36}
+      unoptimized={!image.startsWith("/")}
+      onError={() => setFailed(true)}
+      className="size-9 shrink-0 rounded-full border border-[var(--color-rule)] object-cover"
+    />
   );
 }
 
@@ -243,7 +314,7 @@ function FriendRow({
   const since = sinceLabel(item.friendsSince);
   const identity = (
     <>
-      <Monogram name={item.name} />
+      <Avatar name={item.name} image={item.image} />
       <span className="min-w-0">
         <span className="flex flex-wrap items-baseline gap-x-2">
           <span className="truncate font-display text-[19px] text-[var(--fg)] transition-colors group-hover:text-[var(--color-accent)]">
@@ -268,7 +339,7 @@ function FriendRow({
     <li className="hairline-b flex items-center justify-between gap-4 py-3.5">
       {item.handle ? (
         <Link
-          href={`/friends/${item.handle}`}
+          href={`/u/${item.handle}`}
           className="group flex min-w-0 flex-1 items-center gap-3"
         >
           {identity}
@@ -296,7 +367,7 @@ function Row({
   return (
     <li className="hairline-b flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3">
       <span className="flex min-w-0 items-center gap-3">
-        <Monogram name={item.name} />
+        <Avatar name={item.name} image={item.image} />
         <span className="flex flex-wrap items-baseline gap-2">
           <span className="font-display text-[18px] text-[var(--fg)]">
             {item.name}

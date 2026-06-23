@@ -18,12 +18,14 @@ export default async function FriendsPage() {
     id: f.id,
     name: f.name,
     handle: f.handle,
+    image: f.image,
     friendsSince: f.friendsSince ? f.friendsSince.toISOString() : null,
   }));
   const requestItems: RequestItem[] = requests.map((r) => ({
     id: r.user.id,
     name: r.user.name,
     handle: r.user.handle,
+    image: r.user.image,
     direction: r.direction,
   }));
 
