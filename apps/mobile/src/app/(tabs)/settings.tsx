@@ -5,7 +5,6 @@ import {
   Linking,
   Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Switch,
   Text,
@@ -24,11 +23,12 @@ import {
   TextLink,
   Title,
 } from "@/components/sirius";
+import { InviteSheet } from "@/components/invite-sheet";
 import { SubscriptionSection } from "@/components/subscription-section";
 import { VoiceSection } from "@/components/voice-section";
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
-import { authBaseURL, signIn, signOut, useSession } from "@/lib/auth-client";
+import { signIn, signOut, useSession } from "@/lib/auth-client";
 import {
   type BiometricType,
   biometricLabel,
@@ -53,6 +53,7 @@ export default function SettingsScreen() {
   const handle = (session?.user as { handle?: string | null } | undefined)
     ?.handle;
 
+  const [inviteVisible, setInviteVisible] = useState(false);
   const [bioCapable, setBioCapable] = useState(false);
   const [bioType, setBioType] = useState<BiometricType>("none");
   const [bioEnabled, setBioEnabled] = useState(() => isBiometricEnabled());
@@ -121,13 +122,9 @@ export default function SettingsScreen() {
     }
   }
 
-  async function handleShareInvite() {
+  function handleShareInvite() {
     if (!handle) return;
-    // Share the web invite URL — it works in any browser, and a signed-in
-    // recipient lands on /u/<handle> to add you as a friend.
-    await Share.share({
-      message: `Add me on Sirius: ${authBaseURL}/u/${handle}`,
-    });
+    setInviteVisible(true);
   }
 
   function handleSetupSiriCapture() {
@@ -324,6 +321,14 @@ export default function SettingsScreen() {
           />
         </View>
       </Sheet>
+
+      {handle ? (
+        <InviteSheet
+          handle={handle}
+          visible={inviteVisible}
+          onClose={() => setInviteVisible(false)}
+        />
+      ) : null}
     </Screen>
   );
 }
