@@ -25,12 +25,15 @@ export function redirectSystemPath({
     if (base === "capture" || base.endsWith("/capture")) {
       return query ? `/capture?${query}` : "/capture";
     }
-    // Friend invite links: siriusapp://u/<handle> opens the in-app add-friend
-    // screen for that handle. (Custom-scheme parsing yields host "u" + path
-    // "/<handle>", normalized above to the single segment string "u/<handle>".)
+    // Friend links: siriusapp://u/<handle> opens the in-app add-friend / profile
+    // screen for that handle, and siriusapp://u/<handle>/catalog opens that
+    // friend's catalog. (Custom-scheme parsing yields host "u" + path
+    // "/<handle>[/catalog]", normalized above to "u/<handle>[/catalog]".) The
+    // rest of the path after the handle is preserved, so the /catalog sub-route
+    // resolves without a dedicated branch.
     if (base.startsWith("u/")) {
-      const handle = base.slice(2).replace(/^\/+/, "");
-      if (handle) return `/u/${handle}`;
+      const rest = base.slice(2).replace(/^\/+/, "");
+      if (rest) return `/u/${rest}`;
     }
     return path;
   } catch {

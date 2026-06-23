@@ -3,7 +3,11 @@
 // web composer) call into here so the dedup hash, staging, and createSubmission
 // contract live in one place.
 import { randomUUID } from "node:crypto";
-import { createSubmission, getProject, type IngestSubmission } from "@repo/db";
+import {
+  createSubmission,
+  type CreateSubmissionResult,
+  getProject,
+} from "@repo/db";
 import {
   type SightDraftEnvelope,
   SightDraftEnvelopeSchema,
@@ -51,6 +55,9 @@ export type SubmitResultBody = {
   kind: string;
   status: string;
   deduped: boolean;
+  // true when this re-submit requeued a previously-failed row for reprocessing.
+  // Mutually exclusive with `deduped`.
+  retried: boolean;
   batchId?: string | null;
   imageIndex?: number | null;
   totalCount?: number | null;
@@ -67,20 +74,31 @@ export type SubmitResult =
       extra?: Record<string, unknown>;
     };
 
-function toBody(
-  submission: IngestSubmission,
-  deduped: boolean,
-): SubmitResultBody {
+function toBody(result: CreateSubmissionResult): SubmitResultBody {
+  const { submission } = result;
   return {
     id: submission.id,
     kind: submission.kind,
     status: submission.status,
-    deduped,
+    deduped: result.status === "deduped",
+    retried: result.status === "retried",
     batchId: submission.batchId,
     imageIndex: submission.imageIndex,
     totalCount: submission.totalCount,
   };
 }
+
+// "created" (new row) and "retried" (failed row requeued) both mean work is now
+// queued → 202; "deduped" means nothing changed → 200.
+function httpStatusFor(result: CreateSubmissionResult): 200 | 202 {
+  return result.status === "deduped" ? 200 : 202;
+}
+
+const SUBMIT_LOG_LABEL: Record<CreateSubmissionResult["status"], string> = {
+  created: "accepted",
+  retried: "retried",
+  deduped: "deduped",
+};
 
 export async function submitUrlIngest(
   raw: unknown,
@@ -147,7 +165,7 @@ export async function submitUrlIngest(
     force,
   });
 
-  log("info", result.status === "created" ? "accepted" : "deduped", {
+  log("info", SUBMIT_LOG_LABEL[result.status], {
     id: result.submission.id,
     kind,
     status: result.submission.status,
@@ -155,8 +173,8 @@ export async function submitUrlIngest(
 
   return {
     ok: true,
-    status: result.status === "created" ? 202 : 200,
-    body: toBody(result.submission, result.status === "deduped"),
+    status: httpStatusFor(result),
+    body: toBody(result),
   };
 }
 
@@ -378,7 +396,7 @@ export async function submitImageIngest(
     projectId: validatedProjectId,
   });
 
-  log("info", result.status === "created" ? "accepted" : "deduped", {
+  log("info", SUBMIT_LOG_LABEL[result.status], {
     id: result.submission.id,
     batchId: result.submission.batchId,
     imageIndex: result.submission.imageIndex,
@@ -388,8 +406,8 @@ export async function submitImageIngest(
 
   return {
     ok: true,
-    status: result.status === "created" ? 202 : 200,
-    body: toBody(result.submission, result.status === "deduped"),
+    status: httpStatusFor(result),
+    body: toBody(result),
   };
 }
 
@@ -504,7 +522,7 @@ export async function submitFileIngest(
     projectId: validatedProjectId,
   });
 
-  log("info", result.status === "created" ? "accepted" : "deduped", {
+  log("info", SUBMIT_LOG_LABEL[result.status], {
     id: result.submission.id,
     kind: payload.metadata.kind,
     status: result.submission.status,
@@ -512,7 +530,7 @@ export async function submitFileIngest(
 
   return {
     ok: true,
-    status: result.status === "created" ? 202 : 200,
-    body: toBody(result.submission, result.status === "deduped"),
+    status: httpStatusFor(result),
+    body: toBody(result),
   };
 }

@@ -135,7 +135,7 @@ function Spinner() {
 
 function Pill({ pill }: { pill: StatusPill }) {
   const tone =
-    pill.kind === "queued"
+    pill.kind === "queued" || pill.kind === "retrying"
       ? "border-[var(--color-sage)] text-[var(--color-sage)]"
       : pill.kind === "error"
         ? "border-[var(--color-accent)] text-[var(--color-accent)]"
@@ -146,11 +146,13 @@ function Pill({ pill }: { pill: StatusPill }) {
   const glyph =
     pill.kind === "queued"
       ? "●"
-      : pill.kind === "error"
-        ? "✕"
-        : pill.kind === "invalid"
-          ? "!"
-          : "○";
+      : pill.kind === "retrying"
+        ? "↻"
+        : pill.kind === "error"
+          ? "✕"
+          : pill.kind === "invalid"
+            ? "!"
+            : "○";
 
   return (
     <div
@@ -417,7 +419,7 @@ export function Composer() {
     };
     // Intentionally run only on unmount: removeFromTray revokes per-item, so a
     // tray-dep cleanup here would double-revoke live previews.
-    // eslint-disable-next-line react-hooks/exhaustive-deps, react-doctor/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Derive the URL preview list from the url-kind materials currently in the

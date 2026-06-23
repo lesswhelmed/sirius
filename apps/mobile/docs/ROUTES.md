@@ -49,7 +49,8 @@ point (`/`) redirects to `/(tabs)/library` (the Catalog tab).
 | `/space`               | `space.tsx`                 | `siriusapp://space`. Full 3D embedding space (the Explore tab's "Map" view also lives here). |
 | `/llm`                 | `llm.tsx`                   | `siriusapp://llm`. On-device model download + chat. Hidden unless `EXPO_PUBLIC_ON_DEVICE_AI=true`. |
 | `/llm-test`            | `llm-test.tsx`              | `siriusapp://llm-test?run=all` (or `?run=ask`). Dev-only draft/ask bench.          |
-| `/u/[handle]`          | `u/[handle].tsx`            | Friend invite. `siriusapp://u/<handle>` (normalized in `+native-intent.ts`).       |
+| `/u/[handle]`          | `u/[handle]/index.tsx`      | Friend invite / profile landing. `siriusapp://u/<handle>` (normalized in `+native-intent.ts`). Index route — `u/[handle]` is a folder, not a file, so it can host the sibling `catalog` route below. When already friends it shows a "View catalog" button. |
+| `/u/[handle]/catalog`  | `u/[handle]/catalog.tsx`    | A friend's catalog (their PUBLISHED + FRIENDS/PUBLIC posts). `siriusapp://u/<handle>/catalog`. Reached from a friend row on `/friends`, the author `@handle` chip in the Library "Friends" feed, or the profile's "View catalog" button. 404 (not friends / no user) → neutral "not available". |
 | `/tree/[...node]`      | `tree/[...node].tsx`        | Explore drill-in. `siriusapp://tree/<node>/<child>…`                               |
 | `/post/[slug]`         | `post/[slug]/index.tsx`     | `siriusapp://post/<slug>`                                                          |
 | `/post/[slug]/edit`    | `post/[slug]/edit.tsx`      | `siriusapp://post/<slug>/edit`                                                     |
@@ -73,7 +74,7 @@ Routes resolve without the group prefix (`siriusapp://sign-in`, etc.):
 
 - `mobile://dataUrl=<shareExtensionKey>?nonce=…` (expo-share-intent) → `/shareintent`.
 - `siriusapp://capture?text=…` (App Intents; "capture" as host *or* first segment) → `/capture?…` (query forwarded verbatim).
-- `siriusapp://u/<handle>` → `/u/<handle>`.
+- `siriusapp://u/<handle>` → `/u/<handle>` (and `siriusapp://u/<handle>/catalog` → `/u/<handle>/catalog`; the path after the handle is preserved).
 - Anything else passes through unchanged.
 
 ## When you change routes

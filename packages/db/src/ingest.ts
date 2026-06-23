@@ -36,7 +36,12 @@ export interface CreateSubmissionInput {
 
 export type CreateSubmissionResult =
   | { status: "created"; submission: IngestSubmission }
-  | { status: "deduped"; submission: IngestSubmission };
+  | { status: "deduped"; submission: IngestSubmission }
+  // A re-submit of content whose prior attempt FAILED. The existing row is
+  // requeued (status → pending) so the worker reprocesses it; the re-submit IS
+  // the retry. Clients should treat this like "created" (work is now queued),
+  // not like a no-op "deduped".
+  | { status: "retried"; submission: IngestSubmission };
 
 export async function createSubmission(
   input: CreateSubmissionInput,
@@ -68,6 +73,43 @@ export async function createSubmission(
         where: { contentHash: input.contentHash },
       });
       if (existing) {
+        // Re-submitting content whose previous attempt failed should retry it,
+        // not silently return the dead row. Requeue in place: reset the state
+        // machine and refresh the payload + freshly staged bytes (the caller
+        // re-staged before this call, and a failed image/file may have lost its
+        // original staged copy). Guard on status:"failed" so a row that has
+        // concurrently moved to processing/completed is never disturbed.
+        if (existing.status === "failed") {
+          const requeued = await prisma.ingestSubmission.updateMany({
+            where: { id: existing.id, status: "failed" },
+            data: {
+              status: "pending",
+              attempts: 0,
+              errorMessage: null,
+              startedAt: null,
+              completedAt: null,
+              payload: input.payload,
+              stagedFilePath: input.stagedFilePath ?? null,
+              force: input.force ?? false,
+            },
+          });
+          if (requeued.count === 1) {
+            const refreshed = await prisma.ingestSubmission.findUnique({
+              where: { id: existing.id },
+            });
+            if (refreshed) {
+              return { status: "retried", submission: refreshed };
+            }
+          }
+          // Lost the race (status changed under us) — fall through to a fresh
+          // read so the caller still gets the current row as a plain dedup.
+          const after = await prisma.ingestSubmission.findUnique({
+            where: { id: existing.id },
+          });
+          if (after) {
+            return { status: "deduped", submission: after };
+          }
+        }
         return { status: "deduped", submission: existing };
       }
     }

@@ -33,17 +33,27 @@ export async function areFriends(a: string, b: string): Promise<boolean> {
   return row?.status === FriendshipStatus.ACCEPTED;
 }
 
-// "May this viewer read this post by virtue of SHARING (not ownership)?" status
-// is included so a draft marked FRIENDS is never exposed (FRIENDS implies
-// published-only). PUBLIC is decided at the surface/feature-flag (canReadPost),
-// not here.
+// "May this viewer read this post by virtue of SHARING (not ownership)?" An
+// accepted friend may read a PUBLISHED post whose visibility is FRIENDS OR
+// PUBLIC. PUBLIC-for-friends is intentional and flag-INDEPENDENT: two friends
+// always see each other's PUBLIC posts regardless of PUBLIC_CATALOG_ENABLED.
+// That flag still gates stranger/anonymous PUBLIC reads — but only in
+// canReadPost's tier 3 (the separate PUBLIC branch), never here. status is
+// included so a draft marked FRIENDS/PUBLIC is never exposed (sharing implies
+// published-only). PRIVATE is never shared through this primitive.
 export async function isPostSharedWith(
   post: { submittedById: string | null; visibility: PostVisibility; status: string },
   viewerId: string | null,
 ): Promise<boolean> {
   if (viewerId == null || post.submittedById == null) return false;
-  if (post.visibility !== PostVisibility.FRIENDS) return false;
-  // FRIENDS implies published-only: a draft/archived FRIENDS post stays private.
+  if (
+    post.visibility !== PostVisibility.FRIENDS &&
+    post.visibility !== PostVisibility.PUBLIC
+  ) {
+    return false;
+  }
+  // Sharing implies published-only: a draft/archived FRIENDS/PUBLIC post stays
+  // private.
   if (post.status !== "PUBLISHED") return false;
   return areFriends(post.submittedById, viewerId);
 }

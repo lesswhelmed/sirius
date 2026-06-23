@@ -82,9 +82,25 @@ export function FriendsFeedList({ header }: { header: ReactNode }) {
                 {item.title}
               </Text>
               {author ? (
-                <Text style={styles.author}>
-                  {author.handle ? `@${author.handle}` : author.name}
-                </Text>
+                author.handle ? (
+                  // Tapping the handle opens that author's catalog. As a nested
+                  // Pressable it captures the touch, so the surrounding row press
+                  // (open the post) doesn't also fire.
+                  <Pressable
+                    onPress={() => router.push(`/u/${author.handle}/catalog`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`@${author.handle} — open catalog`}
+                    hitSlop={6}
+                  >
+                    {({ pressed }) => (
+                      <Text style={[styles.author, pressed && styles.authorPressed]}>
+                        @{author.handle}
+                      </Text>
+                    )}
+                  </Pressable>
+                ) : (
+                  <Text style={styles.author}>{author.name}</Text>
+                )
               ) : null}
             </View>
           </Pressable>
@@ -146,6 +162,7 @@ function makeStyles(t: Theme) {
       fontSize: 11,
       color: t.color.inkSubtle,
     },
+    authorPressed: { color: t.color.accent },
     sep: { height: 1, backgroundColor: t.color.rule },
     empty: { padding: 40, alignItems: "center", gap: t.space.sm },
     emptyGlyph: {

@@ -1,13 +1,22 @@
 // In-app friend-invite landing: reached via siriusapp://u/<handle> (see
-// +native-intent.ts). Resolves the handle through the same search endpoint the
+// +native-intent.ts). expo-router serves this index file as /u/<handle> (the
+// sibling catalog.tsx is /u/<handle>/catalog), so the existing deep link keeps
+// resolving. Resolves the handle through the same search endpoint the
 // AddFriendSheet uses — it returns the target plus the viewer's relationship
-// state — and lets the viewer send a friend request.
+// state — and lets the viewer send a friend request. When already friends it
+// also offers a jump into that friend's catalog.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
-import { Eyebrow, PrimaryButton, Screen, Title } from "@/components/sirius";
+import {
+  Eyebrow,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  Title,
+} from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
@@ -30,6 +39,7 @@ const STATE_LABEL: Record<SearchResult["state"], string> = {
 export default function InviteScreen() {
   const styles = useThemedStyles(makeStyles);
   const t = useTheme();
+  const router = useRouter();
   const { handle: rawHandle } = useLocalSearchParams<{ handle: string }>();
   const handle = (rawHandle ?? "").replace(/^@/, "").trim();
   const qc = useQueryClient();
@@ -99,6 +109,15 @@ export default function InviteScreen() {
                   {STATE_LABEL[result.state]}
                 </Text>
               )}
+              {result.state === "friends" && result.handle ? (
+                <SecondaryButton
+                  label="View catalog"
+                  symbol="books.vertical"
+                  onPress={() =>
+                    router.push(`/u/${result.handle}/catalog`)
+                  }
+                />
+              ) : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}
             </View>
           </>

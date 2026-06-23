@@ -3,7 +3,7 @@
 // Mutations refetch via react-query; the feed itself is online-only (friends'
 // content is never written to the offline mirror).
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -191,12 +191,37 @@ function FriendRow({
 }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTheme();
+  // Tapping the name/handle opens that friend's catalog (guarded: a friend with
+  // no handle has no catalog URL). The action buttons (Remove/Accept/Decline)
+  // live in a SEPARATE sibling region — not nested inside this Pressable — so
+  // pressing them never triggers navigation.
+  const canOpen = Boolean(item.handle);
+  const open = () => {
+    if (item.handle) router.push(`/u/${item.handle}/catalog`);
+  };
   return (
     <View style={styles.row}>
-      <View style={styles.rowText}>
-        <Text style={styles.name}>{item.name}</Text>
-        {item.handle ? <Text style={styles.handle}>@{item.handle}</Text> : null}
-      </View>
+      <Pressable
+        style={styles.rowText}
+        onPress={canOpen ? open : undefined}
+        disabled={!canOpen}
+        accessibilityRole={canOpen ? "button" : undefined}
+        accessibilityLabel={
+          canOpen ? `${item.name} — open catalog` : item.name
+        }
+        hitSlop={8}
+      >
+        {({ pressed }: { pressed: boolean }) => (
+          <>
+            <Text style={[styles.name, pressed && styles.namePressed]}>
+              {item.name}
+            </Text>
+            {item.handle ? (
+              <Text style={styles.handle}>@{item.handle}</Text>
+            ) : null}
+          </>
+        )}
+      </Pressable>
       {busy ? (
         <ActivityIndicator color={t.color.accent} />
       ) : (
@@ -260,6 +285,7 @@ function makeStyles(t: Theme) {
     },
     rowText: { flexShrink: 1 },
     name: { fontFamily: t.font.serif, fontSize: 18, color: t.color.ink },
+    namePressed: { color: t.color.accent },
     handle: {
       fontFamily: t.font.mono,
       fontSize: 12,

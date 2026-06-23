@@ -147,12 +147,20 @@ export function listOwnerPosts(
 // ---------------------------------------------------------------------------
 
 // "posts that are mine, OR a friend's FRIENDS post, OR PUBLIC (when enabled)".
+// When `friendsOnly` is true the viewer's own-posts clause is DROPPED so the
+// feed shows only OTHERS' shared posts. Edge case: friendsOnly with no friends
+// and no public access must match ZERO rows — an empty `OR: []` is permissive
+// in Prisma (it's effectively `false` but we don't rely on that), so we emit an
+// explicit never-matching predicate instead.
 export function visibilityWhereForViewer(
   viewerId: string,
   friendIds: string[],
   includePublic: boolean,
+  friendsOnly = false,
 ): Prisma.PostWhereInput {
-  const or: Prisma.PostWhereInput[] = [{ submittedById: viewerId }];
+  const or: Prisma.PostWhereInput[] = friendsOnly
+    ? []
+    : [{ submittedById: viewerId }];
   if (friendIds.length > 0) {
     or.push({
       visibility: PostVisibility.FRIENDS,
@@ -162,6 +170,10 @@ export function visibilityWhereForViewer(
   if (includePublic) {
     or.push({ visibility: PostVisibility.PUBLIC });
   }
+  // No clauses (friendsOnly, no friends, no public) → match nothing explicitly.
+  if (or.length === 0) {
+    return { OR: [{ id: { equals: "__none__" } }] };
+  }
   return { OR: or };
 }
 
@@ -169,6 +181,9 @@ export interface ListVisibleOptions extends PostFilters {
   viewerId: string;
   friendIds: string[];
   includePublic: boolean;
+  // When true, exclude the viewer's OWN posts (show only friends'/public posts).
+  // Defaults to false → identical to the historical owner-inclusive feed.
+  friendsOnly?: boolean;
   limit?: number;
   cursor?: string;
 }
@@ -184,7 +199,66 @@ export async function listVisibleToViewer(
   const where: Prisma.PostWhereInput = {
     AND: [
       buildPostWhere(opts),
-      visibilityWhereForViewer(opts.viewerId, opts.friendIds, opts.includePublic),
+      visibilityWhereForViewer(
+        opts.viewerId,
+        opts.friendIds,
+        opts.includePublic,
+        opts.friendsOnly ?? false,
+      ),
+      { status: PostStatus.PUBLISHED },
+    ],
+  };
+  const items = await prisma.post.findMany({
+    where,
+    take: take + 1,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    include: {
+      submittedBy: {
+        select: { id: true, name: true, handle: true, image: true },
+      },
+    },
+    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+  });
+  const hasMore = items.length > take;
+  const trimmed = hasMore ? items.slice(0, take) : items;
+  const last = trimmed[trimmed.length - 1];
+  return {
+    items: trimmed as PostWithSubmitter[],
+    nextCursor: hasMore && last ? last.id : null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// One friend's catalog: a cursor feed of a SINGLE author's PUBLISHED posts that
+// a friend may browse (visibility FRIENDS or PUBLIC; PRIVATE never appears).
+// Mirrors listVisibleToViewer's shape but is scoped to one author and NEVER
+// includes the viewer's own posts.
+//
+// SCOPING ONLY — this query does NOT verify that the caller is actually friends
+// with `friendId`. The route (GET /api/app/friends/[handle]/posts) must run
+// areFriends() FIRST and 404 if not. Calling this for a non-friend would still
+// only ever return that author's FRIENDS/PUBLIC published posts, but the
+// friendship gate is the route's job, not the query's.
+// ---------------------------------------------------------------------------
+export interface ListFriendCatalogOptions extends PostFilters {
+  friendId: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export async function listFriendCatalog(
+  opts: ListFriendCatalogOptions,
+): Promise<PageResult<PostWithSubmitter>> {
+  const take = Math.min(MAX_PAGE, Math.max(1, opts.limit ?? DEFAULT_PAGE));
+  const where: Prisma.PostWhereInput = {
+    AND: [
+      buildPostWhere(opts),
+      { submittedById: opts.friendId },
+      {
+        visibility: {
+          in: [PostVisibility.FRIENDS, PostVisibility.PUBLIC],
+        },
+      },
       { status: PostStatus.PUBLISHED },
     ],
   };

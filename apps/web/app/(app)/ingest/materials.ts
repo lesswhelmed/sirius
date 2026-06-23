@@ -220,7 +220,7 @@ export function urlMaterialsFromText(raw: string): {
 // Every call uses credentials:"include" so the better-auth cookie rides along.
 
 // One per-item outcome the composer renders as a status pill.
-export type PillKind = "queued" | "deduped" | "error" | "invalid";
+export type PillKind = "queued" | "retrying" | "deduped" | "error" | "invalid";
 
 export type SubmitOutcome = {
   kind: PillKind;
@@ -238,10 +238,19 @@ interface IngestResponse {
   reason?: string;
   error?: string;
   deduped?: boolean;
+  retried?: boolean;
 }
 
 function id8(uuid: string): string {
   return uuid.replace(/-/g, "").slice(0, 8);
+}
+
+// Map a successful ingest response to its pill kind. `retried` wins over
+// `deduped`: a re-submit of a previously-failed item requeued it for the worker,
+// so it's freshly queued — not a no-op duplicate.
+function pillFor(data: IngestResponse): "queued" | "retrying" | "deduped" {
+  if (data.retried) return "retrying";
+  return data.deduped ? "deduped" : "queued";
 }
 
 function errorMessage(err: unknown): string {
@@ -276,7 +285,7 @@ async function submitUrl(
       };
     }
     const short = data.id ? id8(data.id) : "";
-    const status = data.deduped ? "deduped" : "queued";
+    const status = pillFor(data);
     return {
       kind: status,
       label: `${label} · ${status}${short ? ` · ${short}` : ""}`,
@@ -311,7 +320,7 @@ async function submitNote(
       };
     }
     const short = data.id ? id8(data.id) : "";
-    const status = data.deduped ? "deduped" : "queued";
+    const status = pillFor(data);
     return {
       kind: status,
       label: `${label} · ${status}${short ? ` · ${short}` : ""}`,
@@ -358,7 +367,7 @@ async function submitImageBatch(
       }
       const short = data.id ? id8(data.id) : id8(batchId);
       outcomes.push({
-        kind: data.deduped ? "deduped" : "queued",
+        kind: pillFor(data),
         label: `${label} · ${short}`,
       });
     } catch (err) {
@@ -398,7 +407,7 @@ async function submitFile(
       };
     }
     const short = data.id ? id8(data.id) : "";
-    const status = data.deduped ? "deduped" : "queued";
+    const status = pillFor(data);
     return {
       kind: status,
       label: `${label} · ${status}${short ? ` · ${short}` : ""}`,

@@ -34,12 +34,16 @@ export async function GET(request: Request) {
       ) as PostType[])
     : undefined;
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
+  // ?friendsOnly=1 (any truthy value) drops the viewer's own posts so the feed
+  // shows only friends'/public posts. Default (absent) keeps owner-inclusive.
+  const friendsOnly = Boolean(url.searchParams.get("friendsOnly"));
 
   const friendIds = await getViewerFriendIds(session.user.id);
   const page = await listVisibleToViewer({
     viewerId: session.user.id,
     friendIds,
     includePublic: PUBLIC_CATALOG_ENABLED,
+    friendsOnly,
     limit: Number.isFinite(limit) ? limit : undefined,
     cursor,
     q,
