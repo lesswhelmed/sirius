@@ -90,7 +90,7 @@ export default function CaptureScreen() {
     const id = setTimeout(() => void submit(), 0);
     return () => clearTimeout(id);
     // submit() is stable enough for this one-shot; deps cover the gating signals.
-    // eslint-disable-next-line react-hooks/exhaustive-deps, react-doctor/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.autosubmit, isPending, session, busy, done, submittable.length]);
 
   if (isPending) {

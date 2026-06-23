@@ -247,7 +247,7 @@ function Bench() {
       }
     }, 0);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps, react-doctor/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.run, ready]);
 
   const done = Object.values(results);
