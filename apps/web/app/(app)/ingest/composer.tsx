@@ -22,6 +22,7 @@ import {
   type ImageMaterial,
   MAX_URLS_PER_BATCH,
   type Material,
+  type ParsedUrl,
   type PillKind,
   submitMaterials,
   trayTag,
@@ -440,13 +441,15 @@ export function Composer() {
 
   // Derive the URL preview list from the url-kind materials currently in the
   // tray, reusing the IG/other classification (a kept web extra).
-  const urlPreview = useMemo(
-    () =>
-      tray
-        .filter((e) => e.material.kind === "url")
-        .map((e) => classifyUrl((e.material as { url: string }).url)),
-    [tray],
-  );
+  const urlPreview = useMemo(() => {
+    const out: ParsedUrl[] = [];
+    for (const e of tray) {
+      if (e.material.kind === "url") {
+        out.push(classifyUrl((e.material as { url: string }).url));
+      }
+    }
+    return out;
+  }, [tray]);
   const igCount = urlPreview.filter((p) => p.kind === "instagram").length;
   const xCount = urlPreview.filter((p) => p.kind === "x").length;
   const otherUrlCount = urlPreview.filter((p) => p.kind === "other").length;
@@ -1113,7 +1116,6 @@ export function Composer() {
               <textarea
                 rows={6}
                 value={draft}
-                autoFocus
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder={formCopy.placeholder}
                 className="block w-full resize-y border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 font-body text-[16px] leading-[1.6] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)]"
@@ -1190,7 +1192,6 @@ export function Composer() {
               type="url"
               inputMode="url"
               value={repoUrl}
-              autoFocus
               onChange={(e) => setRepoUrl(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -1275,7 +1276,6 @@ export function Composer() {
               <textarea
                 rows={3}
                 value={pendingNotes}
-                autoFocus
                 onChange={(e) => setPendingNotes(e.target.value)}
                 placeholder="What interests you about this…"
                 className="block w-full resize-y border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 font-body text-[15px] leading-[1.6] text-[var(--fg)] outline-none placeholder:italic placeholder:text-[var(--fg-subtle)]"

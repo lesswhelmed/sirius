@@ -48,6 +48,7 @@ function HeroMedia() {
       <div className="relative mt-3 aspect-[1320/2868] w-full overflow-hidden bg-[var(--color-paper-sunken)]">
         <video
           className="h-full w-full object-cover"
+          aria-label="Product demo: capture to catalog"
           poster={DEMO_VIDEO.poster}
           autoPlay
           muted

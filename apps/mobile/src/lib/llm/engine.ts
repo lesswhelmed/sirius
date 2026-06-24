@@ -35,7 +35,7 @@ export type DownloadState =
 // Human-facing message for a binary whose native llama.rn bridge is missing —
 // the one failure a download or reload can never fix. Matched against the raw
 // llama.rn errors ("JSI bindings not installed" / "Missing JSI bindings: …").
-export const MISSING_NATIVE_BRIDGE_MESSAGE =
+const MISSING_NATIVE_BRIDGE_MESSAGE =
   "This build is missing the on-device AI engine. Reinstall or update the app — reloading won't fix it. (Dev: rebuild the native app, e.g. `expo run:ios`; a Metro reload keeps the old binary.)";
 
 function isMissingBridgeError(err: unknown): boolean {
@@ -140,13 +140,17 @@ export async function downloadModelById(
     onProgress?.(100);
     return;
   }
-  for (const hfPath of [spec.hfPath, spec.projectorHfPath]) {
-    if (hfPath && (await isModelDownloaded(hfPath))) {
-      await deleteAsync(`file://${getModelPath(hfPath)}`, {
-        idempotent: true,
-      });
-    }
-  }
+  // Delete any leftover partials for both files in parallel — independent paths,
+  // order-irrelevant, no early exit.
+  await Promise.all(
+    [spec.hfPath, spec.projectorHfPath].map(async (hfPath) => {
+      if (hfPath && (await isModelDownloaded(hfPath))) {
+        await deleteAsync(`file://${getModelPath(hfPath)}`, {
+          idempotent: true,
+        });
+      }
+    }),
+  );
   await downloadModel(spec.hfPath, (p) => onProgress?.(p.percentage));
   if (spec.projectorHfPath) {
     await downloadModel(spec.projectorHfPath);

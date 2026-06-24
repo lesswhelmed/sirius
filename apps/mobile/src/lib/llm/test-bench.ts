@@ -79,7 +79,7 @@ const KEBAB = /^[\p{Ll}\p{N}]+(-[\p{Ll}\p{N}]+)*$/u;
 
 // Deterministic quality gates, mirroring the drafting prompt's contract.
 // Schema validity is already enforced by draftNotePost (null = failed there).
-export function qualityChecks(draft: DraftEnvelope): DraftCheck[] {
+function qualityChecks(draft: DraftEnvelope): DraftCheck[] {
   const { title, body, tags, categories } = draft.post;
   const words = body.split(/\s+/).filter(Boolean).length;
   return [

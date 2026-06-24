@@ -114,23 +114,6 @@ export async function presentPaywall(): Promise<boolean> {
   }
 }
 
-// Present the paywall only if the user lacks the entitlement. Returns true if
-// they end up entitled.
-export async function presentPaywallIfNeeded(): Promise<boolean> {
-  if (!nativeReady()) return false;
-  try {
-    if (!configured) configurePurchases();
-    await RevenueCatUI.presentPaywallIfNeeded({
-      requiredEntitlementIdentifier: REVENUECAT_ENTITLEMENT_ID,
-    });
-    const info = await Purchases.getCustomerInfo();
-    return hasProEntitlement(info);
-  } catch (err) {
-    console.warn("[purchases] presentPaywallIfNeeded failed", err);
-    return false;
-  }
-}
-
 // Manage/restore/cancel surface. No-op when disabled.
 export function useCustomerCenter(): { open: () => Promise<void> } {
   const open = useCallback(async () => {

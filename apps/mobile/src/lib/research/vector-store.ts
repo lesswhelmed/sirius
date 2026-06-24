@@ -107,9 +107,9 @@ export const sqliteVectorStore: PostVectorStore = {
       .from(postVectors)
       .where(eq(postVectors.embeddingModelId, embeddingModelId));
     const byId = new Map(existing.map((r) => [r.serverId, r.contentHash]));
-    return current
-      .filter((c) => byId.get(c.serverId) !== c.contentHash)
-      .map((c) => c.serverId);
+    return current.flatMap((c) =>
+      byId.get(c.serverId) !== c.contentHash ? [c.serverId] : [],
+    );
   },
 
   async remove(serverIds: string[], embeddingModelId: string): Promise<void> {

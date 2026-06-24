@@ -44,7 +44,7 @@ export function Asterism({ className = "" }: { className?: string }) {
 // Primary (oxblood) call to action. `fullWidth` lets it stretch edge-to-edge on
 // a phone (where the CTA block is the focal point) and shrink to content width
 // from `sm` up.
-export function PrimaryCta({
+function PrimaryCta({
   href,
   children,
   external = false,
@@ -81,7 +81,7 @@ export function PrimaryCta({
 // guidelines require the artwork be used unmodified, so it keeps its own rounded
 // corners (the lone exception to our zero-radius rule). `unoptimized` serves the
 // SVG straight from /public — no global next/image SVG allowance needed.
-export function AppStoreBadge({ className = "" }: { className?: string }) {
+function AppStoreBadge({ className = "" }: { className?: string }) {
   return (
     <a
       href={APP_STORE_URL}

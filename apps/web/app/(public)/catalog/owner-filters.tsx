@@ -157,6 +157,7 @@ export function OwnerFilters({
             type="text"
             name="q"
             defaultValue={q}
+            aria-label="Search catalog"
             placeholder="title, excerpt, tag…"
             className="w-52 border-b border-[var(--color-rule-strong)] bg-transparent px-1 pb-1 font-body text-[15px] italic tracking-normal text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:border-[var(--color-accent)] focus:outline-none"
           />

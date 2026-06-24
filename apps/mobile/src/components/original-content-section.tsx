@@ -5,7 +5,7 @@
 // post (the caller gates on a mirror-backed row) and there's content to show.
 import { useQuery } from "@tanstack/react-query";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { useMemo, useState } from "react";
+import { useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   type LayoutChangeEvent,
@@ -78,7 +78,9 @@ function AudioPlayer({ audio }: { audio: OriginalAudio }) {
 
   const player = useAudioPlayer(source);
   const status = useAudioPlayerStatus(player);
-  const [trackWidth, setTrackWidth] = useState(0);
+  // Track width is only consulted inside the seek handler to map a tap's x to a
+  // fraction — it's never rendered — so a ref avoids a re-render on every layout.
+  const trackWidthRef = useRef(0);
 
   const duration = status.duration || 0;
   const progress = duration > 0 ? status.currentTime / duration : 0;
@@ -86,9 +88,11 @@ function AudioPlayer({ audio }: { audio: OriginalAudio }) {
     .filter(Boolean)
     .join(" · ");
 
-  const onTrackLayout = (e: LayoutChangeEvent) =>
-    setTrackWidth(e.nativeEvent.layout.width);
+  const onTrackLayout = (e: LayoutChangeEvent) => {
+    trackWidthRef.current = e.nativeEvent.layout.width;
+  };
   const onSeek = (e: { nativeEvent: { locationX: number } }) => {
+    const trackWidth = trackWidthRef.current;
     if (trackWidth <= 0 || duration <= 0) return;
     const fraction = Math.min(
       1,

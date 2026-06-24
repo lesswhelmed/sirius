@@ -155,12 +155,12 @@ export function describeMaterial(material: Material): string {
 // ── URL parsing ──────────────────────────────────────────────────────────────
 // Reused from the previous composer so the URL preview can badge IG vs other.
 
-export const INSTAGRAM_URL_REGEX =
+const INSTAGRAM_URL_REGEX =
   /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|tv)\/[A-Za-z0-9_-]+\/?/i;
 
 // An X / Twitter status (tweet) URL — /<user>/status/<id> or /i/web/status/<id>.
 // The worker detects the same host+path and takes its dedicated Apify path.
-export const X_URL_REGEX =
+const X_URL_REGEX =
   /^https?:\/\/(www\.|mobile\.)?(x|twitter)\.com\/[^/]+\/status\/\d{15,20}/i;
 
 export type ParsedUrl =
@@ -348,45 +348,47 @@ async function submitImageBatch(
   const batchId = crypto.randomUUID();
   const total = materials.length;
   const notes = materials.find((m) => m.notes)?.notes ?? "";
-  const outcomes: SubmitOutcome[] = [];
-  for (let i = 0; i < total; i++) {
-    const m = materials[i]!;
-    const label = `image ${i + 1}/${total}`;
-    const fd = new FormData();
-    fd.append("image", m.file, m.name);
-    fd.append("batchId", batchId);
-    fd.append("imageIndex", String(i));
-    fd.append("totalCount", String(total));
-    fd.append("notes", notes);
-    fd.append("visibility", visibility);
-    if (projectId) fd.append("projectId", projectId);
-    try {
-      const res = await fetch("/api/app/ingest-images", {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
-      const data = (await res.json().catch(() => ({}))) as IngestResponse;
-      if (!res.ok) {
-        outcomes.push({
-          kind: "error",
-          label: `${label} · ${data.error ?? data.reason ?? String(res.status)}`,
+  // Each image is an independent upload keyed by its own imageIndex; the worker
+  // waits for all totalCount rows before claiming, so upload order doesn't
+  // matter. Fire them concurrently; Promise.all preserves array order so the
+  // pill log still reads image 1, 2, 3…
+  return Promise.all(
+    materials.map(async (m, i): Promise<SubmitOutcome> => {
+      const label = `image ${i + 1}/${total}`;
+      const fd = new FormData();
+      fd.append("image", m.file, m.name);
+      fd.append("batchId", batchId);
+      fd.append("imageIndex", String(i));
+      fd.append("totalCount", String(total));
+      fd.append("notes", notes);
+      fd.append("visibility", visibility);
+      if (projectId) fd.append("projectId", projectId);
+      try {
+        const res = await fetch("/api/app/ingest-images", {
+          method: "POST",
+          credentials: "include",
+          body: fd,
         });
-        continue;
+        const data = (await res.json().catch(() => ({}))) as IngestResponse;
+        if (!res.ok) {
+          return {
+            kind: "error",
+            label: `${label} · ${data.error ?? data.reason ?? String(res.status)}`,
+          };
+        }
+        const short = data.id ? id8(data.id) : id8(batchId);
+        return {
+          kind: pillFor(data),
+          label: `${label} · ${short}`,
+        };
+      } catch (err) {
+        return {
+          kind: "error",
+          label: `${label} · ${errorMessage(err)}`,
+        };
       }
-      const short = data.id ? id8(data.id) : id8(batchId);
-      outcomes.push({
-        kind: pillFor(data),
-        label: `${label} · ${short}`,
-      });
-    } catch (err) {
-      outcomes.push({
-        kind: "error",
-        label: `${label} · ${errorMessage(err)}`,
-      });
-    }
-  }
-  return outcomes;
+    }),
+  );
 }
 
 // Generic single-file kinds (video/audio/document). Each material is one
@@ -449,47 +451,70 @@ export async function submitMaterials(
   ctx: SubmitContext,
 ): Promise<SubmitOutcome[]> {
   const grouped = groupByKind(materials);
-  const outcomes: SubmitOutcome[] = [];
 
-  for (const [i, m] of grouped.url.entries()) {
-    const label =
-      grouped.url.length > 1 ? `url ${i + 1}/${grouped.url.length}` : "url";
-    outcomes.push(await submitUrl(m, label, ctx));
-  }
+  // Every submission is independent (its own dedup hash; the tray already
+  // deduped URLs), so fan each kind out concurrently. Promise.all preserves
+  // array order, so the resulting pill log keeps its 1, 2, 3… numbering.
+  const urlOutcomes = Promise.all(
+    grouped.url.map((m, i) => {
+      const label =
+        grouped.url.length > 1 ? `url ${i + 1}/${grouped.url.length}` : "url";
+      return submitUrl(m, label, ctx);
+    }),
+  );
 
   // A repo is a URL submission — the worker's github.com detection routes it to
   // the dedicated structure+key-files path. Reuse submitUrl with a repo label.
-  for (const [i, m] of grouped.repo.entries()) {
-    const label = grouped.repo.length > 1 ? `repo ${i + 1}` : "repo";
-    outcomes.push(
-      await submitUrl({ kind: "url", url: m.url, notes: m.notes }, label, ctx),
-    );
-  }
+  const repoOutcomes = Promise.all(
+    grouped.repo.map((m, i) => {
+      const label = grouped.repo.length > 1 ? `repo ${i + 1}` : "repo";
+      return submitUrl({ kind: "url", url: m.url, notes: m.notes }, label, ctx);
+    }),
+  );
 
-  for (const [i, m] of grouped.note.entries()) {
-    const label = grouped.note.length > 1 ? `note ${i + 1}` : "note";
-    outcomes.push(await submitNote(m, label, ctx));
-  }
+  const noteOutcomes = Promise.all(
+    grouped.note.map((m, i) => {
+      const label = grouped.note.length > 1 ? `note ${i + 1}` : "note";
+      return submitNote(m, label, ctx);
+    }),
+  );
 
-  if (grouped.image.length > 0) {
-    outcomes.push(...(await submitImageBatch(grouped.image, ctx)));
-  }
+  const imageOutcomes =
+    grouped.image.length > 0
+      ? submitImageBatch(grouped.image, ctx)
+      : Promise.resolve([]);
 
-  for (const [i, m] of grouped.video.entries()) {
-    const label = grouped.video.length > 1 ? `video ${i + 1}` : "video";
-    outcomes.push(await submitFile(m, label, ctx));
-  }
+  const videoOutcomes = Promise.all(
+    grouped.video.map((m, i) => {
+      const label = grouped.video.length > 1 ? `video ${i + 1}` : "video";
+      return submitFile(m, label, ctx);
+    }),
+  );
 
-  for (const [i, m] of grouped.audio.entries()) {
-    const label = grouped.audio.length > 1 ? `audio ${i + 1}` : "audio";
-    outcomes.push(await submitFile(m, label, ctx));
-  }
+  const audioOutcomes = Promise.all(
+    grouped.audio.map((m, i) => {
+      const label = grouped.audio.length > 1 ? `audio ${i + 1}` : "audio";
+      return submitFile(m, label, ctx);
+    }),
+  );
 
-  for (const [i, m] of grouped.document.entries()) {
-    const label =
-      grouped.document.length > 1 ? `document ${i + 1}` : "document";
-    outcomes.push(await submitFile(m, label, ctx));
-  }
+  const documentOutcomes = Promise.all(
+    grouped.document.map((m, i) => {
+      const label =
+        grouped.document.length > 1 ? `document ${i + 1}` : "document";
+      return submitFile(m, label, ctx);
+    }),
+  );
 
-  return outcomes;
+  const [url, repo, note, image, video, audio, doc] = await Promise.all([
+    urlOutcomes,
+    repoOutcomes,
+    noteOutcomes,
+    imageOutcomes,
+    videoOutcomes,
+    audioOutcomes,
+    documentOutcomes,
+  ]);
+
+  return [...url, ...repo, ...note, ...image, ...video, ...audio, ...doc];
 }

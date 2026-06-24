@@ -123,6 +123,14 @@ export function AddFriend() {
   );
 }
 
+function StateTag({ text }: { text: string }) {
+  return (
+    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+      {text}
+    </span>
+  );
+}
+
 function ResultAction({
   result,
   sent,
@@ -132,11 +140,7 @@ function ResultAction({
   sent: boolean;
   onAdd: () => void;
 }) {
-  const tag = (text: string) => (
-    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
-      {text}
-    </span>
-  );
+  const tag = (text: string) => <StateTag text={text} />;
   if (sent || result.state === "outgoing") return tag("Pending");
   if (result.state === "friends") return tag("Friends ✓");
   if (result.state === "incoming") return tag("Wants to connect");

@@ -17,7 +17,7 @@ export type LocalModelSpec = {
   projectorHfPath?: string;
 };
 
-export const LOCAL_MODELS: LocalModelSpec[] = [
+const LOCAL_MODELS: LocalModelSpec[] = [
   {
     id: "qwen2.5-3b-instruct",
     label: "Qwen 2.5 3B Instruct",

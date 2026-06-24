@@ -6,7 +6,7 @@ export function safeFilename(slug: string): string {
   return slug.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-export function toFrontMatter(value: unknown): string {
+function toFrontMatter(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((v) => JSON.stringify(v)).join(", ")}]`;
   }

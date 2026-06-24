@@ -65,7 +65,15 @@ export function InviteDialog({ handle }: { handle: string }) {
       {open ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="button"
+          tabIndex={-1}
+          aria-label="Close invite dialog"
           onClick={() => setOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+              setOpen(false);
+            }
+          }}
         >
           <div
             className="w-full max-w-[640px] border border-[var(--color-rule-emphatic)] bg-[var(--bg)] p-6"
@@ -116,6 +124,7 @@ export function InviteDialog({ handle }: { handle: string }) {
               <input
                 readOnly
                 value={link}
+                aria-label="Invite link"
                 className="min-w-[180px] flex-1 border border-[var(--color-rule)] bg-transparent px-3 py-2 font-mono text-[12px] text-[var(--fg-muted)]"
               />
               <button

@@ -47,10 +47,6 @@ function format(fmt: Intl.DateTimeFormat, value: DateInput): string {
 }
 
 export const formatDateLong = (value: DateInput) => format(dateLongFmt, value);
-export const formatDateShort = (value: DateInput) =>
-  format(dateShortFmt, value);
-export const formatTime = (value: DateInput) => format(timeFmt, value);
-export const formatDateTime = (value: DateInput) => format(dateTimeFmt, value);
 
 export function relativeAge(value: DateInput, now: number): string {
   const d = toDate(value);

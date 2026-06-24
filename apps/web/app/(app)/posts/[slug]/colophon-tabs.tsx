@@ -63,16 +63,21 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "analytics", label: "Analytics" },
 ];
 
+// Stable module-scope empty arrays so the default props don't allocate a fresh
+// reference on every render.
+const EMPTY_PROJECTS: ProjectOption[] = [];
+const EMPTY_SOURCE_FILES: SourceFile[] = [];
+
 export function ColophonTabs({
   post,
   stats = null,
   initialSaved = false,
   canSave = false,
-  projects = [],
+  projects = EMPTY_PROJECTS,
   canAssign = false,
   canEditVisibility = false,
   isOwner = false,
-  sourceFiles = [],
+  sourceFiles = EMPTY_SOURCE_FILES,
 }: {
   post: ColophonPost;
   stats?: ColophonStats | null;

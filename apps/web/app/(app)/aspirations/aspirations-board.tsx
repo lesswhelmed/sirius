@@ -76,12 +76,14 @@ export function AspirationsBoard({
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          aria-label="New aspiration title"
           placeholder="New aspiration — e.g. Become a thought leader"
           className="w-full border-b border-[var(--color-rule)] bg-transparent pb-1 font-display italic text-[22px] text-[var(--fg)] outline-none transition-colors placeholder:text-[var(--fg-faint)] focus:border-[var(--color-accent)]"
         />
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          aria-label="Aspiration description (optional)"
           placeholder="What does this goal mean to you? (optional)"
           rows={2}
           className="w-full resize-none bg-transparent font-body text-[15px] leading-relaxed text-[var(--fg-muted)] outline-none placeholder:text-[var(--fg-faint)]"

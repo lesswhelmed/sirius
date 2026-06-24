@@ -5,8 +5,8 @@
 import { Image } from "expo-image";
 import { SymbolView } from "expo-symbols";
 import {
-  forwardRef,
   type ReactNode,
+  type Ref,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -182,38 +182,36 @@ export function CaptureDone({
   );
 }
 
-const Field = forwardRef<TextInput, TextInputProps & { label?: string }>(
-  function Field(
-    { label, style, multiline, accessibilityLabel, ...rest },
-    ref,
-  ) {
-    const t = useTheme();
-    const styles = useThemedStyles(makeStyles);
-    // Multiline inputs have no return-key dismiss on iOS; screens pair them with
-    // a <KeyboardDoneButton/> near the submit control (see useKeyboardVisible).
-    return (
-      <View style={styles.field}>
-        {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
-        <TextInput
-          ref={ref}
-          style={[
-            styles.input,
-            multiline ? styles.inputMultiline : null,
-            style,
-          ]}
-          placeholderTextColor={t.color.inkSubtle}
-          selectionColor={t.color.accent}
-          multiline={multiline}
-          // Associate the visible label with the input so VoiceOver announces it
-          // (the label <Text> alone is not programmatically linked). Falls back to
-          // the placeholder when there's no label. Callers can still override.
-          accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
-          {...rest}
-        />
-      </View>
-    );
-  },
-);
+function Field({
+  label,
+  style,
+  multiline,
+  accessibilityLabel,
+  ref,
+  ...rest
+}: TextInputProps & { label?: string; ref?: Ref<TextInput> }) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  // Multiline inputs have no return-key dismiss on iOS; screens pair them with
+  // a <KeyboardDoneButton/> near the submit control (see useKeyboardVisible).
+  return (
+    <View style={styles.field}>
+      {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
+      <TextInput
+        ref={ref}
+        style={[styles.input, multiline ? styles.inputMultiline : null, style]}
+        placeholderTextColor={t.color.inkSubtle}
+        selectionColor={t.color.accent}
+        multiline={multiline}
+        // Associate the visible label with the input so VoiceOver announces it
+        // (the label <Text> alone is not programmatically linked). Falls back to
+        // the placeholder when there's no label. Callers can still override.
+        accessibilityLabel={accessibilityLabel ?? label ?? rest.placeholder}
+        {...rest}
+      />
+    </View>
+  );
+}
 
 export { Field };
 
@@ -284,21 +282,19 @@ export type AuthFieldHandle = {
 // mirror the latest value into a ref via BOTH onChangeText and onEndEditing (the
 // latter still carries the final native text when onChangeText was skipped), and
 // the parent reads it at submit through the handle. Do NOT pass a `value` prop.
-export const AuthField = forwardRef<
-  AuthFieldHandle,
-  Omit<TextInputProps, "value"> & { label?: string }
->(function AuthField(
-  {
-    label,
-    style,
-    accessibilityLabel,
-    defaultValue,
-    onChangeText,
-    onEndEditing,
-    ...rest
-  },
+export function AuthField({
+  label,
+  style,
+  accessibilityLabel,
+  defaultValue,
+  onChangeText,
+  onEndEditing,
   ref,
-) {
+  ...rest
+}: Omit<TextInputProps, "value"> & {
+  label?: string;
+  ref?: Ref<AuthFieldHandle>;
+}) {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   const inputRef = useRef<TextInput>(null);
@@ -337,11 +333,11 @@ export const AuthField = forwardRef<
       />
     </View>
   );
-});
+}
 
 // Tracks soft-keyboard visibility. The one reliable primitive for "is the
 // keyboard up" — drives <KeyboardDoneButton/> and any keyboard-aware layout.
-export function useKeyboardVisible(): boolean {
+function useKeyboardVisible(): boolean {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const show = Keyboard.addListener("keyboardDidShow", () =>

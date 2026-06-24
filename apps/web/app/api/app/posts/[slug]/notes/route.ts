@@ -42,9 +42,11 @@ export async function GET(
   });
 
   const parts = [`---\n${frontMatter}\n---\n`, post.content.trim()];
-  const rawBlocks = sources
-    .map((s) => rawNotesFor(s.payload))
-    .filter((r) => r.notes || r.urls.length > 0);
+  const rawBlocks: ReturnType<typeof rawNotesFor>[] = [];
+  for (const s of sources) {
+    const block = rawNotesFor(s.payload);
+    if (block.notes || block.urls.length > 0) rawBlocks.push(block);
+  }
   if (rawBlocks.length > 0) {
     parts.push("\n---\n\n## Original submission notes\n");
     for (const block of rawBlocks) {

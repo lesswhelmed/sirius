@@ -24,8 +24,8 @@ export function linkedPosts(
 
   if (node.kind === "category") {
     return scene.edges
-      .filter((e) => e.kind === "match" && e.to === nodeId)
       .flatMap((e) => {
+        if (e.kind !== "match" || e.to !== nodeId) return [];
         const post = byId.get(e.from);
         return post?.kind === "post" ? [{ node: post, weight: e.weight }] : [];
       })
@@ -34,8 +34,8 @@ export function linkedPosts(
 
   if (node.kind === "project") {
     return scene.edges
-      .filter((e) => e.kind === "assignment" && e.to === nodeId)
       .flatMap((e) => {
+        if (e.kind !== "assignment" || e.to !== nodeId) return [];
         const post = byId.get(e.from);
         return post?.kind === "post" ? [{ node: post }] : [];
       })
@@ -56,11 +56,10 @@ export function linkedPosts(
 export function categoryChildren(
   scene: EmbeddingScene,
 ): Map<string | null, SceneNode[]> {
-  const categoryPaths = new Set(
-    scene.nodes
-      .filter((n) => n.kind === "category" && n.path != null)
-      .map((n) => n.path!),
-  );
+  const categoryPaths = new Set<string>();
+  for (const n of scene.nodes) {
+    if (n.kind === "category" && n.path != null) categoryPaths.add(n.path);
+  }
   const children = new Map<string | null, SceneNode[]>();
   for (const n of scene.nodes) {
     if (n.kind !== "category") continue;
@@ -132,16 +131,16 @@ export function subtreeIndex(
   // falling back to the id and matching nothing/anything.
   const prefix = root.path;
   if (prefix == null) return null;
-  const subtreeCatIds = new Set(
-    scene.nodes
-      .filter(
-        (n) =>
-          n.kind === "category" &&
-          n.path != null &&
-          (n.path === prefix || n.path.startsWith(prefix + "/")),
-      )
-      .map((n) => n.id),
-  );
+  const subtreeCatIds = new Set<string>();
+  for (const n of scene.nodes) {
+    if (
+      n.kind === "category" &&
+      n.path != null &&
+      (n.path === prefix || n.path.startsWith(prefix + "/"))
+    ) {
+      subtreeCatIds.add(n.id);
+    }
+  }
 
   // Best (highest-weight) matched category per post, within the subtree.
   const best = new Map<string, { catId: string; weight: number }>();
@@ -574,8 +573,7 @@ export function resurfacing(
 
   // Connection: a category with ≥2 posts; surface two distinct ones from it.
   const pairCats = [...catPosts.entries()]
-    .filter(([, list]) => list.length >= 2)
-    .map(([id]) => id)
+    .flatMap(([id, list]) => (list.length >= 2 ? [id] : []))
     .sort();
   let connection: ResurfacingConnection | null = null;
   const viaId = pickAt(pairCats, daySeed);
@@ -591,8 +589,7 @@ export function resurfacing(
 
   // Frontier: a sparse category (1–2 posts); else the least-populated one.
   const sparse = [...catPosts.entries()]
-    .filter(([, list]) => list.length <= 2)
-    .map(([id]) => id)
+    .flatMap(([id, list]) => (list.length <= 2 ? [id] : []))
     .sort();
   const frontierId = pickAt(
     sparse.length ? sparse : [...catPosts.keys()].sort(),

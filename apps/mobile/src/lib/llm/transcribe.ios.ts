@@ -10,13 +10,19 @@ import { AppleTranscription, apple } from "@react-native-ai/apple";
 import { experimental_transcribe } from "ai";
 import { readAsStringAsync } from "expo-file-system/legacy";
 
-function deviceLanguage(): string {
+// The device locale is process-stable, so resolve it once at module load rather
+// than rebuilding an Intl.DateTimeFormat on every transcription call.
+const DEVICE_LANGUAGE = ((): string => {
   try {
     const locale = new Intl.DateTimeFormat().resolvedOptions().locale;
     return locale.split("-")[0] || "en";
   } catch {
     return "en";
   }
+})();
+
+function deviceLanguage(): string {
+  return DEVICE_LANGUAGE;
 }
 
 // Downloads the language assets SpeechAnalyzer needs (no-op if present).

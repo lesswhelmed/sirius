@@ -38,7 +38,7 @@ export async function enqueueCommentOutbox(input: {
   });
 }
 
-export async function countCommentOutbox(): Promise<number> {
+async function countCommentOutbox(): Promise<number> {
   const rows = await db
     .select({ id: pendingComments.id })
     .from(pendingComments)

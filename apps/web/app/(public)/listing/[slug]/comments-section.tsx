@@ -143,6 +143,7 @@ export function CommentsSection({
           disabled={isPending}
           rows={3}
           maxLength={5000}
+          aria-label="Add a comment"
           placeholder="Add a comment…"
           className="w-full resize-y border border-[var(--color-rule-strong)] bg-[var(--color-paper-raised)] p-3 font-body text-[16px] leading-[1.6] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--color-accent)]"
         />

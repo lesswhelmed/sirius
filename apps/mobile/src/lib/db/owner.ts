@@ -36,7 +36,7 @@ const OWNER_KEY = "owner.user_id";
  * mandatory for the same reason — they are local-only (never synced), so this
  * is the ONLY thing that stops account B from reading account A's conversations.
  */
-export async function clearLocalStore(): Promise<void> {
+async function clearLocalStore(): Promise<void> {
   await db.delete(posts);
   await db.delete(pendingSubmissions);
   await db.delete(comments);

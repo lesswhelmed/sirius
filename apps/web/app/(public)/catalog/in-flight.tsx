@@ -162,10 +162,14 @@ export function InFlight() {
   const [expanded, setExpanded] = useState(false);
   // Track the prior poll's statuses by id so we can detect a row transitioning
   // out of pending/processing into completed and re-fetch the post list in place.
-  const prevStatus = useRef<Map<string, Status>>(new Map());
+  // Lazy-init (null sentinel + ??=) so we don't allocate a throwaway Map/Set on
+  // every render — useRef ignores the arg after the first render anyway.
+  const prevStatusRef = useRef<Map<string, Status> | null>(null);
+  prevStatusRef.current ??= new Map();
   // Ids the user dismissed locally. Polls filter these out so the next 3s tick
   // can't re-add a just-dismissed row before the server DELETE lands.
-  const dismissedIds = useRef<Set<string>>(new Set());
+  const dismissedIdsRef = useRef<Set<string> | null>(null);
+  dismissedIdsRef.current ??= new Set();
 
   useEffect(() => {
     let cancelled = false;
@@ -185,7 +189,7 @@ export function InFlight() {
         // completed? If so, the server list needs to re-render to show the post.
         let resolved = false;
         for (const it of data.items) {
-          const before = prevStatus.current.get(it.id);
+          const before = prevStatusRef.current!.get(it.id);
           if (
             (before === "pending" || before === "processing") &&
             it.status === "completed"
@@ -199,13 +203,13 @@ export function InFlight() {
         for (const it of data.items) {
           nextStatus.set(it.id, it.status as Status);
         }
-        prevStatus.current = nextStatus;
+        prevStatusRef.current = nextStatus;
 
         setItems(
           data.items.filter(
             (it) =>
               IN_FLIGHT.has(it.status as Status) &&
-              !dismissedIds.current.has(it.id),
+              !dismissedIdsRef.current!.has(it.id),
           ),
         );
 
@@ -232,7 +236,7 @@ export function InFlight() {
     // Guard the poller and optimistically remove from the visible list. We drop
     // the row on a 204 (deleted) OR a 404 (already gone / wrong status) — either
     // way it should disappear.
-    dismissedIds.current.add(id);
+    dismissedIdsRef.current!.add(id);
     setItems((prev) => prev.filter((it) => it.id !== id));
     try {
       const res = await fetch(`/api/app/queue/${id}`, {
@@ -242,10 +246,10 @@ export function InFlight() {
       if (!res.ok && res.status !== 404) {
         // Server rejected it for some other reason — un-guard so a later poll
         // can resurface it rather than silently hiding a still-live row.
-        dismissedIds.current.delete(id);
+        dismissedIdsRef.current!.delete(id);
       }
     } catch {
-      dismissedIds.current.delete(id);
+      dismissedIdsRef.current!.delete(id);
     }
   }
 

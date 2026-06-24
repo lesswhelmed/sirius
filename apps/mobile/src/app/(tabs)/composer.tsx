@@ -16,11 +16,11 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import {
@@ -758,11 +758,12 @@ export default function ComposerScreen() {
                 style={styles.focusScroll}
               >
                 {[{ id: null, title: "None" }, ...projects].map((p) => (
-                  <TouchableOpacity
+                  <Pressable
                     key={p.id ?? "__none__"}
-                    style={[
+                    style={({ pressed }) => [
                       styles.focusChip,
                       projectId === p.id && styles.focusChipActive,
+                      pressed && styles.chipPressed,
                     ]}
                     onPress={() => setProjectId(p.id)}
                     accessibilityRole="button"
@@ -776,7 +777,7 @@ export default function ComposerScreen() {
                     >
                       {p.title}
                     </Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 ))}
               </ScrollView>
             </View>
@@ -796,11 +797,12 @@ export default function ComposerScreen() {
             <Eyebrow>Visibility</Eyebrow>
             <View style={styles.focusScroll}>
               {VISIBILITY_OPTIONS.map((opt) => (
-                <TouchableOpacity
+                <Pressable
                   key={opt.value}
-                  style={[
+                  style={({ pressed }) => [
                     styles.focusChip,
                     visibility === opt.value && styles.focusChipActive,
+                    pressed && styles.chipPressed,
                   ]}
                   onPress={() => setVisibility(opt.value)}
                   accessibilityRole="radio"
@@ -815,7 +817,7 @@ export default function ComposerScreen() {
                   >
                     {opt.label}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
           </View>
@@ -1388,6 +1390,7 @@ function makeStyles(t: Theme) {
       borderColor: t.color.accent,
       backgroundColor: t.color.accent,
     },
+    chipPressed: { opacity: 0.6 },
     focusChipText: {
       fontFamily: t.font.serif,
       fontSize: 13,

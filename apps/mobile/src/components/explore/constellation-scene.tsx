@@ -20,14 +20,8 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
-import type { RefObject } from "react";
-import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-} from "react";
+import type { Ref, RefObject } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import type { SharedValue } from "react-native-reanimated";
 import Animated, {
   useAnimatedStyle,
@@ -828,22 +822,17 @@ export type ConstellationHeroHandle = {
 };
 
 // Self-contained 3D hero. Mount it at a fixed height; it fills its container.
-export const ConstellationHero = forwardRef<
-  ConstellationHeroHandle,
-  ConstellationHeroProps
->(function ConstellationHero(
-  {
-    scene,
-    focused,
-    neighborIds,
-    subtreePostIds,
-    selectedNode,
-    onPickNode,
-    sheetHeight = 0,
-    style,
-  },
+export function ConstellationHero({
+  scene,
+  focused,
+  neighborIds,
+  subtreePostIds,
+  selectedNode,
+  onPickNode,
+  sheetHeight = 0,
+  style,
   ref,
-) {
+}: ConstellationHeroProps & { ref?: Ref<ConstellationHeroHandle> }) {
   const t = useTheme();
   const palette = makePalette(t);
   const styles = useThemedStyles(makeStyles);
@@ -1058,7 +1047,7 @@ export const ConstellationHero = forwardRef<
       </View>
     </View>
   );
-});
+}
 
 function makeStyles(t: Theme) {
   return StyleSheet.create({

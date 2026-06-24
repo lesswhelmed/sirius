@@ -102,6 +102,7 @@ export function ApiKeysSection() {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            aria-label="API key name"
             placeholder="Name (e.g. Claude Desktop)"
             maxLength={100}
             className="min-w-[240px] border border-[var(--color-rule-emphatic)] bg-transparent px-3 py-2 font-mono text-[12px] text-[var(--fg)] placeholder:text-[var(--fg-faint)] focus:border-[var(--color-accent)] focus:outline-none"

@@ -58,10 +58,10 @@ function lastUserText(messages: ModelMessage[]): string {
 // Parse a comma/space/line separated list of 1-based candidate numbers out of the
 // model's selection reply, clamped to range and de-duped. "NONE" / no digits → [].
 function parseSelection(text: string, count: number): number[] {
-  const nums = (text.match(/\d+/g) ?? [])
-    .map((n) => Number.parseInt(n, 10))
-    .filter((n) => n >= 1 && n <= count)
-    .map((n) => n - 1);
+  const nums = (text.match(/\d+/g) ?? []).flatMap((raw) => {
+    const n = Number.parseInt(raw, 10);
+    return n >= 1 && n <= count ? [n - 1] : [];
+  });
   return [...new Set(nums)];
 }
 
@@ -154,14 +154,16 @@ export async function askMyPosts(args: {
     const chosen = (picks.length > 0 ? picks : [0]).map((i) => candidates[i]!);
 
     // Open the chosen posts in full; the full body grounds the answer, the trimmed
-    // excerpt feeds the Sources card.
-    const answerPosts: ScoredPost[] = [];
-    opened = [];
-    for (const c of chosen) {
-      const full = await fullPostById(c.serverId);
-      opened.push({ ...c, excerpt: trimExcerpt(c.excerpt) });
-      answerPosts.push({ ...c, excerpt: full ? full.body : c.excerpt });
-    }
+    // excerpt feeds the Sources card. Reads are independent — fetch them in
+    // parallel; Promise.all preserves `chosen` order so both arrays stay aligned.
+    const fulls = await Promise.all(
+      chosen.map((c) => fullPostById(c.serverId)),
+    );
+    opened = chosen.map((c) => ({ ...c, excerpt: trimExcerpt(c.excerpt) }));
+    const answerPosts: ScoredPost[] = chosen.map((c, i) => ({
+      ...c,
+      excerpt: fulls[i] ? fulls[i]!.body : c.excerpt,
+    }));
 
     args.onPhase?.("answering");
     const { textStream } = streamResearchAnswer({

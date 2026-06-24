@@ -7,11 +7,11 @@ import { join } from "node:path";
 
 const DEFAULT_DIR = "/tmp/sirius-ingest";
 
-export function getStagingDir(): string {
+function getStagingDir(): string {
   return process.env.INGEST_STAGING_DIR?.trim() || DEFAULT_DIR;
 }
 
-export function ensureStagingDir(): string {
+function ensureStagingDir(): string {
   const dir = getStagingDir();
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });

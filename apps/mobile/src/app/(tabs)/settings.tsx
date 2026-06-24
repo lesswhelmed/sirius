@@ -127,39 +127,6 @@ export default function SettingsScreen() {
     setInviteVisible(true);
   }
 
-  function handleSetupSiriCapture() {
-    // Apple has no in-app "record a phrase" control for App Intents, so we guide
-    // the user to the Shortcuts app where they add the "Quick Capture" action and
-    // record ANY trigger phrase ("note to self", "jot this") — no app name
-    // required. Saying it then runs the background intent hands-free.
-    Alert.alert(
-      "Hands-free capture with Siri",
-      'In Shortcuts, tap +, add "Quick Capture" from Sirius, then tap the action and record your own phrase — like "note to self". Say it anytime and Siri will ask what to capture, no tapping.',
-      [
-        { text: "Not now", style: "cancel" },
-        {
-          text: "Open Shortcuts",
-          onPress: () => {
-            void Linking.openURL("shortcuts://").catch(() => {
-              Alert.alert(
-                "Couldn’t open Shortcuts",
-                "Open the Shortcuts app manually to set up your phrase.",
-              );
-            });
-          },
-        },
-      ],
-    );
-  }
-
-  async function handleSignOut() {
-    // Wipe the biometric vault on sign-out so a saved password never outlives
-    // the session on a shared device.
-    await disableBiometric();
-    await signOut();
-    router.replace("/(auth)/sign-in");
-  }
-
   return (
     <Screen>
       <ScrollView
@@ -331,6 +298,41 @@ export default function SettingsScreen() {
       ) : null}
     </Screen>
   );
+}
+
+// Pure handlers — they close over no component state/props (only module-level
+// imports), so they live at module scope rather than being rebuilt each render.
+function handleSetupSiriCapture() {
+  // Apple has no in-app "record a phrase" control for App Intents, so we guide
+  // the user to the Shortcuts app where they add the "Quick Capture" action and
+  // record ANY trigger phrase ("note to self", "jot this") — no app name
+  // required. Saying it then runs the background intent hands-free.
+  Alert.alert(
+    "Hands-free capture with Siri",
+    'In Shortcuts, tap +, add "Quick Capture" from Sirius, then tap the action and record your own phrase — like "note to self". Say it anytime and Siri will ask what to capture, no tapping.',
+    [
+      { text: "Not now", style: "cancel" },
+      {
+        text: "Open Shortcuts",
+        onPress: () => {
+          void Linking.openURL("shortcuts://").catch(() => {
+            Alert.alert(
+              "Couldn’t open Shortcuts",
+              "Open the Shortcuts app manually to set up your phrase.",
+            );
+          });
+        },
+      },
+    ],
+  );
+}
+
+async function handleSignOut() {
+  // Wipe the biometric vault on sign-out so a saved password never outlives
+  // the session on a shared device.
+  await disableBiometric();
+  await signOut();
+  router.replace("/(auth)/sign-in");
 }
 
 function Row({ label, value }: { label: string; value: string }) {

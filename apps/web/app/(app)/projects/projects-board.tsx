@@ -20,6 +20,10 @@ export interface AspirationOption {
 
 const AUTO_DESCRIPTION_PREFIX = "Auto-created from captured material";
 
+// Stable module-scope empty array so the default prop doesn't allocate a fresh
+// reference on every render.
+const EMPTY_ASPIRATIONS: AspirationOption[] = [];
+
 // The worker's boilerplate description carries the matched analysis categories
 // ("… Related analysis: a, b, c."). Surface those as chips instead of printing
 // the same sentence on every auto-created row; human-written descriptions
@@ -30,10 +34,10 @@ function autoChips(description: string | null): string[] | null {
   }
   const match = description.match(/Related analysis: (.+)\.\s*$/);
   return match
-    ? match[1]!
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
+    ? match[1]!.split(",").flatMap((s) => {
+        const trimmed = s.trim();
+        return trimmed ? [trimmed] : [];
+      })
     : [];
 }
 
@@ -86,7 +90,7 @@ function groupByAspiration(
 // list). Mirrors the optimistic island pattern.
 export function ProjectsBoard({
   initialProjects,
-  aspirations = [],
+  aspirations = EMPTY_ASPIRATIONS,
   presetAspirationId = null,
 }: {
   initialProjects: ProjectRow[];
@@ -174,13 +178,13 @@ export function ProjectsBoard({
     setMergeFromId(null);
     setMergeToId(null);
     setProjects((prev) =>
-      prev
-        .filter((p) => p.id !== fromId)
-        .map((p) =>
-          p.id === toId
-            ? { ...p, postCount: p.postCount + (from?.postCount ?? 0) }
-            : p,
-        ),
+      prev.flatMap((p) => {
+        if (p.id === fromId) return [];
+        if (p.id === toId) {
+          return [{ ...p, postCount: p.postCount + (from?.postCount ?? 0) }];
+        }
+        return [p];
+      }),
     );
     start(async () => {
       try {
@@ -343,12 +347,14 @@ export function ProjectsBoard({
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          aria-label="New focus area title"
           placeholder="New focus area — e.g. Launch Q4 campaign"
           className="w-full border-b border-[var(--color-rule)] bg-transparent pb-1 font-display italic text-[22px] text-[var(--fg)] outline-none transition-colors placeholder:text-[var(--fg-faint)] focus:border-[var(--color-accent)]"
         />
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          aria-label="Focus area description"
           placeholder="What is this focus area about? (optional)"
           rows={2}
           className="w-full resize-none bg-transparent font-body text-[15px] leading-relaxed text-[var(--fg-muted)] outline-none placeholder:text-[var(--fg-faint)]"

@@ -33,6 +33,53 @@ import {
   isBiometricEnabled,
 } from "@/lib/biometric-auth";
 
+// Shared sign-in tail: clear any stale cookie, call better-auth, route on
+// success. Returns the error (if any) so callers can branch on it. Pure — closes
+// over no component state, so it lives at module scope.
+async function attemptSignIn(email: string, password: string) {
+  // A stale/corrupt stored cookie is attached to every request including this
+  // sign-in and can make it fail at the transport layer ("fetch failed");
+  // clear it first so a fresh login is always clean. See
+  // plans/auth-is-broken-on-swift-noodle.md.
+  await clearAuthStorage("pre-sign-in");
+  return signIn.email({ email, password });
+}
+
+// Post-login: if biometrics are available and not yet enabled, ask once
+// whether to enable "Sign in with Face ID". Declining is remembered only for
+// this session (we re-ask next login) — cheap and non-nagging enough. Pure —
+// closes over no component state, so it lives at module scope.
+async function maybeOfferBiometric(email: string, password: string) {
+  if (isBiometricEnabled()) return;
+  const cap = await getBiometricCapability();
+  if (!cap.available) return;
+  const label = biometricLabel(cap.type);
+  await new Promise<void>((resolve) => {
+    Alert.alert(
+      `Enable ${label}?`,
+      `Use ${label} to sign in next time instead of typing your password. Your credentials stay encrypted on this device.`,
+      [
+        { text: "Not now", style: "cancel", onPress: () => resolve() },
+        {
+          text: "Enable",
+          onPress: async () => {
+            try {
+              await enableBiometric(email, password);
+            } catch (err) {
+              console.warn("[auth] enableBiometric failed", err);
+              Alert.alert(
+                "Couldn’t enable",
+                `${label} couldn’t be set up. You can try again from Settings.`,
+              );
+            }
+            resolve();
+          },
+        },
+      ],
+    );
+  });
+}
+
 export default function SignInScreen() {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
@@ -63,17 +110,6 @@ export default function SignInScreen() {
       active = false;
     };
   }, [enrolled]);
-
-  // Shared sign-in tail: clear any stale cookie, call better-auth, route on
-  // success. Returns the error (if any) so callers can branch on it.
-  async function attemptSignIn(email: string, password: string) {
-    // A stale/corrupt stored cookie is attached to every request including this
-    // sign-in and can make it fail at the transport layer ("fetch failed");
-    // clear it first so a fresh login is always clean. See
-    // plans/auth-is-broken-on-swift-noodle.md.
-    await clearAuthStorage("pre-sign-in");
-    return signIn.email({ email, password });
-  }
 
   async function handleSubmit() {
     if (busy || bioBusy) return;
@@ -114,40 +150,6 @@ export default function SignInScreen() {
     await maybeOfferBiometric(email, password);
     setBusy(false);
     router.replace("/(tabs)/library");
-  }
-
-  // Post-login: if biometrics are available and not yet enabled, ask once
-  // whether to enable "Sign in with Face ID". Declining is remembered only for
-  // this session (we re-ask next login) — cheap and non-nagging enough.
-  async function maybeOfferBiometric(email: string, password: string) {
-    if (isBiometricEnabled()) return;
-    const cap = await getBiometricCapability();
-    if (!cap.available) return;
-    const label = biometricLabel(cap.type);
-    await new Promise<void>((resolve) => {
-      Alert.alert(
-        `Enable ${label}?`,
-        `Use ${label} to sign in next time instead of typing your password. Your credentials stay encrypted on this device.`,
-        [
-          { text: "Not now", style: "cancel", onPress: () => resolve() },
-          {
-            text: "Enable",
-            onPress: async () => {
-              try {
-                await enableBiometric(email, password);
-              } catch (err) {
-                console.warn("[auth] enableBiometric failed", err);
-                Alert.alert(
-                  "Couldn’t enable",
-                  `${label} couldn’t be set up. You can try again from Settings.`,
-                );
-              }
-              resolve();
-            },
-          },
-        ],
-      );
-    });
   }
 
   async function handleBiometricSignIn() {

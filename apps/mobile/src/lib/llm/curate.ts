@@ -340,7 +340,7 @@ function buildSightPrompt(
 
 // True when SIGHT batches can be drafted on this device: curation on AND the
 // vision model (weights + mmproj projector) is downloaded.
-export async function canDraftSightOnDevice(): Promise<boolean> {
+async function canDraftSightOnDevice(): Promise<boolean> {
   try {
     if (!ON_DEVICE_AI_ENABLED) {
       return false;

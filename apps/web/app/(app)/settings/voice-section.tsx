@@ -74,6 +74,7 @@ export function VoiceSection({ initialVoice }: { initialVoice: string }) {
         <textarea
           value={value}
           maxLength={VOICE_PROFILE_MAX_CHARS}
+          aria-label="Voice profile"
           onChange={(e) => {
             setValue(e.target.value);
             if (saveState !== "idle") setSaveState("idle");
@@ -154,6 +155,7 @@ export function VoiceSection({ initialVoice }: { initialVoice: string }) {
                 <textarea
                   value={pasteBack}
                   onChange={(e) => setPasteBack(e.target.value)}
+                  aria-label="Paste generated voice summary"
                   placeholder="Paste the generated summary here…"
                   rows={4}
                   className="min-w-[260px] flex-1 resize-y border border-[var(--color-rule)] bg-transparent px-4 py-3 font-body text-[14px] leading-[1.6] text-[var(--fg)] placeholder:font-display placeholder:italic placeholder:text-[var(--fg-subtle)] focus:border-[var(--color-accent)] focus:outline-none"

@@ -101,14 +101,6 @@ function recheckSession(): Promise<boolean> {
   return checkServerSession().then((state) => state === "valid");
 }
 
-// Force a server-side session check (single-flight), refreshing the stored
-// cookie if it rotated. Exposed for non-apiGet callers — the SSE channel uses
-// it to recover a rotated cookie before reconnecting, since EventSource has no
-// access to runWithAuthRetry. Resolves true if the session is still valid.
-export function refreshSession(): Promise<boolean> {
-  return recheckSession();
-}
-
 // Last-resort recovery for a caller wedged behind a toxic stored cookie that
 // can't reach runWithAuthRetry (the SSE channel). Clears the persisted auth
 // storage ONLY when the cookie is genuinely suspicious — corrupt bytes or

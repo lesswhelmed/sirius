@@ -19,5 +19,3 @@ export function setCredentials(baseUrl: string, cookie: string): void {
 export function clearCredentials(): void {
   native?.clearCredentials();
 }
-
-export const isAvailable = native != null;

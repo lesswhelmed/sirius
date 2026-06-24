@@ -105,8 +105,8 @@ const FILE_TYPE_TO_EXT: Record<string, string> = {
     "docx",
 };
 
-export const ALLOWED_FILE_KINDS = ["video", "audio", "document"] as const;
-export type FileKind = (typeof ALLOWED_FILE_KINDS)[number];
+const ALLOWED_FILE_KINDS = ["video", "audio", "document"] as const;
+type FileKind = (typeof ALLOWED_FILE_KINDS)[number];
 
 export function kindForMime(mime: string): FileKind | null {
   const lower = mime.toLowerCase().split(";")[0]?.trim() ?? "";

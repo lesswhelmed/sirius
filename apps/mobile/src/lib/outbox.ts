@@ -76,7 +76,7 @@ export async function enqueueOutbox(
   });
 }
 
-export async function countOutbox(): Promise<number> {
+async function countOutbox(): Promise<number> {
   const rows = await db
     .select({ id: pendingSubmissions.id })
     .from(pendingSubmissions)
@@ -126,7 +126,7 @@ export type EnqueueBinaryInput = {
 // Persist a binary upload as a durable queued row BEFORE the network call, so a
 // kill mid-upload leaves a recoverable row. requestJson mirrors uploadFile's args.
 // Returns the inserted row so the caller can send it immediately without a re-read.
-export async function enqueueBinary(input: EnqueueBinaryInput): Promise<PendingRow> {
+async function enqueueBinary(input: EnqueueBinaryInput): Promise<PendingRow> {
   const row: PendingRow = {
     id: randomUUID(),
     localId: input.localId,
@@ -165,7 +165,7 @@ type BinaryRequest = {
 //              (file kept) so the user can Requeue/Discard from the Queue tab.
 //   deferred → offline / 5xx; row reset to `queued` so it auto-resumes on the
 //              next lifecycle trigger. Re-sends are idempotent (server contentHash).
-export async function sendBinaryRow(
+async function sendBinaryRow(
   row: PendingRow,
 ): Promise<"sent" | "failed" | "deferred"> {
   const req = row.requestJson as BinaryRequest;
