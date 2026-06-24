@@ -11,7 +11,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -132,6 +132,11 @@ export default function ComposerScreen() {
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
   // Photo/Video chooser sheet: take with the camera or pick from the library.
   const [mediaSheet, setMediaSheet] = useState<null | "photo" | "video">(null);
+  // A picker (camera/library) must be presented only AFTER the chooser Sheet has
+  // fully dismissed. Presenting a view controller while the modal is still
+  // sliding out wedges the app on iOS (frozen UI, no picker). We stash the launch
+  // here and fire it from the Sheet's onDismiss. See runAfterMediaSheet.
+  const pendingMediaAction = useRef<null | (() => void)>(null);
   // Audio capture sheet: record a voice memo or pick an audio file.
   const [audioSheetOpen, setAudioSheetOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -280,8 +285,21 @@ export default function ComposerScreen() {
     setEditNote("");
   }
 
+  // Close the chooser Sheet, then run `action` only after it has fully dismissed.
+  // On iOS a picker/camera view controller cannot be presented while the modal is
+  // still sliding out — doing so wedges the app (frozen UI, no picker). We defer
+  // via the Sheet's onDismiss; Android has no such restriction so we run inline.
+  function runAfterMediaSheet(action: () => void) {
+    if (Platform.OS === "ios") {
+      pendingMediaAction.current = action;
+      setMediaSheet(null);
+    } else {
+      setMediaSheet(null);
+      action();
+    }
+  }
+
   async function pickImages() {
-    setMediaSheet(null);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert(
@@ -310,7 +328,6 @@ export default function ComposerScreen() {
   }
 
   async function pickVideo() {
-    setMediaSheet(null);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert(
@@ -346,11 +363,21 @@ export default function ComposerScreen() {
       );
       return;
     }
-    setMediaSheet(null);
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      quality: 0.9,
-    });
+    let result: ImagePicker.ImagePickerResult;
+    try {
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.9,
+      });
+    } catch {
+      // The capture session failed to start (e.g. no camera hardware on the
+      // Simulator, or it's in use). Surface it instead of an unhandled rejection.
+      Alert.alert(
+        "Camera unavailable",
+        "Couldn't open the camera. Try again, or choose a photo from your library.",
+      );
+      return;
+    }
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0]!;
     const name = asset.fileName ?? `photo-${Date.now()}.jpg`;
@@ -373,11 +400,21 @@ export default function ComposerScreen() {
       );
       return;
     }
-    setMediaSheet(null);
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["videos"],
-      quality: 1,
-    });
+    let result: ImagePicker.ImagePickerResult;
+    try {
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["videos"],
+        quality: 1,
+      });
+    } catch {
+      // The capture session failed to start (e.g. no camera hardware on the
+      // Simulator, or it's in use). Surface it instead of an unhandled rejection.
+      Alert.alert(
+        "Camera unavailable",
+        "Couldn't open the camera. Try again, or choose a video from your library.",
+      );
+      return;
+    }
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0]!;
     const name = asset.fileName ?? `video-${Date.now()}.mp4`;
@@ -932,14 +969,25 @@ export default function ComposerScreen() {
         visible={mediaSheet !== null}
         title={mediaSheet === "video" ? "Video" : "Photo"}
         onClose={() => setMediaSheet(null)}
+        onDismiss={() => {
+          const action = pendingMediaAction.current;
+          pendingMediaAction.current = null;
+          action?.();
+        }}
       >
         <PrimaryButton
           label={mediaSheet === "video" ? "Record video" : "Take photo"}
-          onPress={mediaSheet === "video" ? captureVideo : capturePhoto}
+          onPress={() =>
+            runAfterMediaSheet(
+              mediaSheet === "video" ? captureVideo : capturePhoto,
+            )
+          }
         />
         <PrimaryButton
           label="Choose from library"
-          onPress={mediaSheet === "video" ? pickVideo : pickImages}
+          onPress={() =>
+            runAfterMediaSheet(mediaSheet === "video" ? pickVideo : pickImages)
+          }
           style={styles.sheetSecondaryButton}
         />
         <View style={styles.sheetCancel}>
@@ -1058,7 +1106,10 @@ export default function ComposerScreen() {
               onChangeText={setPendingNotes}
             />
             <KeyboardDoneButton style={styles.keyboardDone} />
-            <PrimaryButton label="Add to tray" onPress={() => void confirmPending()} />
+            <PrimaryButton
+              label="Add to tray"
+              onPress={() => void confirmPending()}
+            />
             <View style={styles.sheetCancel}>
               <TextLink
                 label="Cancel"
@@ -1173,177 +1224,177 @@ function RepoPreviewCard({ preview }: { preview: RepoPreview }) {
 
 function makeStyles(t: Theme) {
   return StyleSheet.create({
-  flex: { flex: 1 },
-  usageBar: {
-    paddingHorizontal: t.space.xl,
-    paddingVertical: t.space.sm,
-    backgroundColor: t.color.paper,
-    borderTopWidth: 1,
-    borderTopColor: t.color.rule,
-  },
-  container: {
-    padding: t.space.xl,
-    paddingTop: 64,
-    // Clear the floating native tab bar AND the pinned SubmitBar above it, with
-    // extra breathing room so the last scroll content (the on-device "Draft on
-    // device" toggle) sits clearly above the bar rather than tucked against it.
-    paddingBottom: 280,
-    gap: t.space.lg,
-  },
-  header: {
-    gap: t.space.lg,
-    marginBottom: t.space.xs,
-  },
-  headerMain: { gap: t.space.xs },
-  headerToolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: t.space.xl,
-    borderBottomWidth: 1,
-    borderColor: t.color.rule,
-    paddingBottom: t.space.md,
-  },
-  focusEmpty: { gap: t.space.sm },
-  focusEmptyText: {
-    fontFamily: t.font.serif,
-    fontSize: 15,
-    fontStyle: "italic",
-    color: t.color.inkMuted,
-  },
-  prompt: {
-    fontFamily: t.font.serif,
-    fontSize: 20,
-    color: t.color.ink,
-  },
-  grid: { gap: t.space.md },
-  gridRow: { flexDirection: "row", gap: t.space.md },
-  trayHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderColor: t.color.rule,
-    paddingBottom: t.space.sm,
-    marginTop: t.space.sm,
-  },
-  emptyTray: {
-    fontFamily: t.font.serif,
-    fontSize: 15,
-    color: t.color.inkMuted,
-    fontStyle: "italic",
-  },
-  trayList: { gap: t.space.sm },
-  thumb: {
-    width: 44,
-    height: 44,
-    borderRadius: t.radius.none,
-    backgroundColor: t.color.paperSunken,
-    borderWidth: 1,
-    borderColor: t.color.rule,
-  },
-  sheetInput: { minHeight: 120, textAlignVertical: "top", paddingTop: 12 },
-  // Keyboard "Done" sits right-aligned just above the sheet's submit button.
-  keyboardDone: { alignSelf: "flex-end" },
-  sheetCancel: { alignItems: "center" },
-  sheetSecondaryButton: { marginTop: t.space.sm },
-  repoError: {
-    color: t.color.accent,
-    fontFamily: t.font.mono,
-    fontSize: 12,
-  },
-  repoNotesInput: { minHeight: 64, textAlignVertical: "top", paddingTop: 12 },
-  pendingSummary: {
-    fontFamily: t.font.serif,
-    fontSize: 16,
-    fontStyle: "italic",
-    color: t.color.inkMuted,
-    marginBottom: t.space.sm,
-  },
-  repoCard: {
-    borderWidth: 1,
-    borderColor: t.color.rule,
-    backgroundColor: t.color.paperRaised,
-    padding: t.space.md,
-    gap: t.space.sm,
-  },
-  repoCardHead: { flexDirection: "row", gap: t.space.md },
-  repoAvatar: {
-    width: 40,
-    height: 40,
-    backgroundColor: t.color.paperSunken,
-    borderWidth: 1,
-    borderColor: t.color.rule,
-  },
-  repoName: {
-    fontFamily: t.font.serif,
-    fontSize: 17,
-    color: t.color.ink,
-  },
-  repoDescription: {
-    fontFamily: t.font.serif,
-    fontSize: 14,
-    color: t.color.inkMuted,
-    marginTop: 2,
-  },
-  repoMeta: {
-    fontFamily: t.font.mono,
-    fontSize: 12,
-    color: t.color.inkMuted,
-  },
-  repoReadme: {
-    fontFamily: t.font.serif,
-    fontSize: 13,
-    lineHeight: 20,
-    color: t.color.inkMuted,
-    borderLeftWidth: 2,
-    borderLeftColor: t.color.rule,
-    paddingLeft: t.space.sm,
-  },
-  repoFiles: {
-    fontFamily: t.font.mono,
-    fontSize: 11,
-    color: t.color.inkSubtle,
-  },
-  curationRow: {
-    alignItems: "center",
-    backgroundColor: t.color.paperRaised,
-    borderRadius: 10,
-    flexDirection: "row",
-    gap: t.space.md,
-    justifyContent: "space-between",
-    padding: t.space.md,
-  },
-  curationCopy: { flex: 1, gap: t.space.xs },
-  curationLabel: {
-    color: t.color.ink,
-    fontFamily: t.font.serif,
-    fontSize: 16,
-  },
-  curationHint: {
-    color: t.color.inkMuted,
-    fontSize: 13,
-  },
-  focusPicker: { gap: t.space.sm },
-  focusScroll: { flexDirection: "row" },
-  focusChip: {
-    paddingHorizontal: t.space.md,
-    paddingVertical: t.space.xs,
-    borderWidth: 1,
-    borderColor: t.color.rule,
-    marginRight: t.space.sm,
-  },
-  focusChipActive: {
-    borderColor: t.color.accent,
-    backgroundColor: t.color.accent,
-  },
-  focusChipText: {
-    fontFamily: t.font.serif,
-    fontSize: 13,
-    color: t.color.inkMuted,
-  },
-  focusChipTextActive: {
-    color: t.color.paper,
-  },
+    flex: { flex: 1 },
+    usageBar: {
+      paddingHorizontal: t.space.xl,
+      paddingVertical: t.space.sm,
+      backgroundColor: t.color.paper,
+      borderTopWidth: 1,
+      borderTopColor: t.color.rule,
+    },
+    container: {
+      padding: t.space.xl,
+      paddingTop: 64,
+      // Clear the floating native tab bar AND the pinned SubmitBar above it, with
+      // extra breathing room so the last scroll content (the on-device "Draft on
+      // device" toggle) sits clearly above the bar rather than tucked against it.
+      paddingBottom: 280,
+      gap: t.space.lg,
+    },
+    header: {
+      gap: t.space.lg,
+      marginBottom: t.space.xs,
+    },
+    headerMain: { gap: t.space.xs },
+    headerToolbar: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: t.space.xl,
+      borderBottomWidth: 1,
+      borderColor: t.color.rule,
+      paddingBottom: t.space.md,
+    },
+    focusEmpty: { gap: t.space.sm },
+    focusEmptyText: {
+      fontFamily: t.font.serif,
+      fontSize: 15,
+      fontStyle: "italic",
+      color: t.color.inkMuted,
+    },
+    prompt: {
+      fontFamily: t.font.serif,
+      fontSize: 20,
+      color: t.color.ink,
+    },
+    grid: { gap: t.space.md },
+    gridRow: { flexDirection: "row", gap: t.space.md },
+    trayHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderBottomWidth: 1,
+      borderColor: t.color.rule,
+      paddingBottom: t.space.sm,
+      marginTop: t.space.sm,
+    },
+    emptyTray: {
+      fontFamily: t.font.serif,
+      fontSize: 15,
+      color: t.color.inkMuted,
+      fontStyle: "italic",
+    },
+    trayList: { gap: t.space.sm },
+    thumb: {
+      width: 44,
+      height: 44,
+      borderRadius: t.radius.none,
+      backgroundColor: t.color.paperSunken,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+    },
+    sheetInput: { minHeight: 120, textAlignVertical: "top", paddingTop: 12 },
+    // Keyboard "Done" sits right-aligned just above the sheet's submit button.
+    keyboardDone: { alignSelf: "flex-end" },
+    sheetCancel: { alignItems: "center" },
+    sheetSecondaryButton: { marginTop: t.space.sm },
+    repoError: {
+      color: t.color.accent,
+      fontFamily: t.font.mono,
+      fontSize: 12,
+    },
+    repoNotesInput: { minHeight: 64, textAlignVertical: "top", paddingTop: 12 },
+    pendingSummary: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      fontStyle: "italic",
+      color: t.color.inkMuted,
+      marginBottom: t.space.sm,
+    },
+    repoCard: {
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: t.color.paperRaised,
+      padding: t.space.md,
+      gap: t.space.sm,
+    },
+    repoCardHead: { flexDirection: "row", gap: t.space.md },
+    repoAvatar: {
+      width: 40,
+      height: 40,
+      backgroundColor: t.color.paperSunken,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+    },
+    repoName: {
+      fontFamily: t.font.serif,
+      fontSize: 17,
+      color: t.color.ink,
+    },
+    repoDescription: {
+      fontFamily: t.font.serif,
+      fontSize: 14,
+      color: t.color.inkMuted,
+      marginTop: 2,
+    },
+    repoMeta: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.inkMuted,
+    },
+    repoReadme: {
+      fontFamily: t.font.serif,
+      fontSize: 13,
+      lineHeight: 20,
+      color: t.color.inkMuted,
+      borderLeftWidth: 2,
+      borderLeftColor: t.color.rule,
+      paddingLeft: t.space.sm,
+    },
+    repoFiles: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      color: t.color.inkSubtle,
+    },
+    curationRow: {
+      alignItems: "center",
+      backgroundColor: t.color.paperRaised,
+      borderRadius: 10,
+      flexDirection: "row",
+      gap: t.space.md,
+      justifyContent: "space-between",
+      padding: t.space.md,
+    },
+    curationCopy: { flex: 1, gap: t.space.xs },
+    curationLabel: {
+      color: t.color.ink,
+      fontFamily: t.font.serif,
+      fontSize: 16,
+    },
+    curationHint: {
+      color: t.color.inkMuted,
+      fontSize: 13,
+    },
+    focusPicker: { gap: t.space.sm },
+    focusScroll: { flexDirection: "row" },
+    focusChip: {
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.xs,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      marginRight: t.space.sm,
+    },
+    focusChipActive: {
+      borderColor: t.color.accent,
+      backgroundColor: t.color.accent,
+    },
+    focusChipText: {
+      fontFamily: t.font.serif,
+      fontSize: 13,
+      color: t.color.inkMuted,
+    },
+    focusChipTextActive: {
+      color: t.color.paper,
+    },
   });
 }
