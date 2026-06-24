@@ -1,0 +1,9 @@
+{
+  "sirius-corpus": {
+    "type": "http",
+    "url": "http://localhost:4269/mcp",
+    "headers": {
+      "Authorization": "Bearer ${SIRIUS_MCP_API_KEY}"
+    }
+  }
+}

@@ -16,7 +16,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const URL_BASE =
-  process.env.SIRIUS_MCP_URL ?? process.env.MCP_SMOKE_URL ?? "http://localhost:3005/mcp";
+  process.env.SIRIUS_MCP_URL ?? process.env.MCP_SMOKE_URL ?? "http://localhost:4269/mcp";
 const KEY = process.env.SIRIUS_MCP_API_KEY ?? process.env.MCP_SMOKE_KEY;
 
 const EXPECTED_TOOLS = [

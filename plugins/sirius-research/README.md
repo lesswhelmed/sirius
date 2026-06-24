@@ -32,7 +32,7 @@ resources `sirius://post/{slug}` and `sirius://category/{path}`, and prompts
 
 1. **Run the corpus server** (dev):
    ```sh
-   bun --cwd apps/mcp dev      # listens on http://localhost:3005 (MCP_PORT)
+   bun --cwd apps/mcp dev      # listens on http://localhost:4269 in this repo (MCP_PORT; upstream default 3005)
    ```
    To point at production instead, change `url` in `.mcp.json` to
    `https://mcp.lesswhelmed.com/mcp`.
@@ -58,7 +58,7 @@ resources `sirius://post/{slug}` and `sirius://category/{path}`, and prompts
 | Var | Purpose |
 |-----|---------|
 | `SIRIUS_MCP_API_KEY` | **Required.** Plaintext Sirius API key (Bearer). Owner-scopes every call. |
-| `SIRIUS_MCP_URL` | Optional. MCP endpoint (default `http://localhost:3005/mcp`). Used by the smoke script; the plugin's live endpoint is set in `.mcp.json`. |
+| `SIRIUS_MCP_URL` | Optional. MCP endpoint (default `http://localhost:4269/mcp`). Used by the smoke script; the plugin's live endpoint is set in `.mcp.json`. |
 
 No secrets are committed — the key is read from the environment.
 
@@ -95,7 +95,7 @@ assertion.
 
 ## Notes
 
-- `http://localhost:3005` is plain HTTP for **local dev only**. The production
+- `http://localhost:4269` is plain HTTP for **local dev only**. The production
   endpoint (`mcp.lesswhelmed.com`) is HTTPS.
 - The exact MCP tool prefix is
   `mcp__plugin_sirius-research_sirius-corpus__<tool>`; confirm with `/mcp`.

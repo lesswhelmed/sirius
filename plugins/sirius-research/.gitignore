@@ -5,3 +5,8 @@
 *.local
 .env
 .env.*
+
+# The root .gitignore ignores all `.mcp.json` (local MCP configs), but THIS one
+# is the plugin's core connection config and MUST be tracked. Re-include it.
+# It contains no secrets — the API key is read from ${SIRIUS_MCP_API_KEY}.
+!.mcp.json

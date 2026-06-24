@@ -114,7 +114,16 @@ export const auth = betterAuth({
   // /settings; apps/mcp verifies a Bearer key → owning userId via
   // auth.api.verifyApiKey({ body: { key } }). Expiry/revoke/rate-limit are
   // enforced inside the plugin. Keep nextCookies() LAST (better-auth convention).
-  plugins: [admin(), expo(), apiKey(), nextCookies()],
+  // The @better-auth/api-key plugin names its model `apikey` (lowercase), but the
+  // Prisma delegate is camelCase `prisma.apiKey` (table is @@map("apikey")). Without
+  // this modelName override the prisma adapter calls db["apikey"] (undefined) and
+  // every createApiKey/verifyApiKey 500s. Map it to the real delegate name.
+  plugins: [
+    admin(),
+    expo(),
+    apiKey({ schema: { apikey: { modelName: "apiKey" } } }),
+    nextCookies(),
+  ],
 });
 
 export type Session = typeof auth.$Infer.Session;

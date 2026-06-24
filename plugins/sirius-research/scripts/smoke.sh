@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # repo root = plugins/sirius-research/scripts -> up 3
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-URL="${SIRIUS_MCP_URL:-http://localhost:3005/mcp}"
+URL="${SIRIUS_MCP_URL:-http://localhost:4269/mcp}"
 HEALTH="${URL%/mcp}/health"
 
 if [[ -z "${SIRIUS_MCP_API_KEY:-${MCP_SMOKE_KEY:-}}" ]]; then

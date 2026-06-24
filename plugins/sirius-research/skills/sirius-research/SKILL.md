@@ -20,7 +20,9 @@ answering a question strictly from what they have captured.
 The tools only work once the MCP server is reachable and authenticated:
 
 1. The `sirius-corpus` server must be running and configured. In dev it listens
-   on `http://localhost:3005/mcp` (start with `bun --cwd apps/mcp dev`).
+   on `http://localhost:<MCP_PORT>/mcp` — this repo's `.env` sets
+   `MCP_PORT=4269` (the upstream default is 3005). Start it with
+   `bun --cwd apps/mcp dev`; `.mcp.json` targets `:4269`.
 2. The env var **`SIRIUS_MCP_API_KEY`** must hold a Sirius API key (minted in
    the web app at `/settings` → API Keys, or `POST /api/app/api-keys` while
    signed in). The key determines whose corpus is searched.
