@@ -1,6 +1,6 @@
 import type { IngestSubmission } from "@repo/db";
 import { readRepoDigest } from "@repo/github-ingest/digest";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { asc, desc, inArray, ne } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Image } from "expo-image";
@@ -26,7 +26,7 @@ import {
   useTheme,
   useThemedStyles,
 } from "@/constants/theme-context";
-import { apiGet, resolveMediaUrl } from "@/lib/api";
+import { apiDelete, apiGet, resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import {
   type PendingRow,
@@ -107,6 +107,7 @@ export default function LibraryScreen() {
   //   2. Local offline outbox — captures stuck on this device (no connection).
   // Completed server submissions are intentionally NOT shown here; they arrive
   // as synced posts in the mirror list below, already tappable.
+  const queryClient = useQueryClient();
   const { data: queueData } = useQuery({
     queryKey: ["queue"],
     queryFn: () => apiGet<QueuePage>("/api/app/queue?limit=50"),
@@ -122,6 +123,50 @@ export default function LibraryScreen() {
       ),
     [queueData],
   );
+  // The server in-flight strip collapses by default — a single hairline summary
+  // row that, when tapped, reveals the individual pending/processing/failed
+  // rows below it.
+  const [serverExpanded, setServerExpanded] = useState(false);
+  const serverProcessing = useMemo(
+    () =>
+      inFlightServer.filter(
+        (s) => s.status === "pending" || s.status === "processing",
+      ).length,
+    [inFlightServer],
+  );
+  const serverFailed = useMemo(
+    () => inFlightServer.filter((s) => s.status === "failed"),
+    [inFlightServer],
+  );
+  // Discard a single failed server submission via the DELETE endpoint, then
+  // refetch the ["queue"] query so the row drops out of the in-flight set.
+  const discardServer = useCallback(
+    (id: string) => {
+      void apiDelete(`/api/app/queue/${id}`)
+        .catch(() => {
+          // Best-effort — a failed delete just leaves the row; the refetch
+          // below reconciles either way.
+        })
+        .then(() => queryClient.invalidateQueries({ queryKey: ["queue"] }));
+    },
+    [queryClient],
+  );
+  const discardAllServer = useCallback(() => {
+    void Promise.allSettled(
+      serverFailed.map((s) => apiDelete(`/api/app/queue/${s.id}`)),
+    ).then(() => queryClient.invalidateQueries({ queryKey: ["queue"] }));
+  }, [serverFailed, queryClient]);
+  // Terse mono summary: "1 processing · 2 failed" (omit zero segments).
+  const serverSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (serverProcessing > 0) parts.push(`${serverProcessing} processing`);
+    if (serverFailed.length > 0) {
+      parts.push(
+        `${serverFailed.length} failed`,
+      );
+    }
+    return parts.join(" · ");
+  }, [serverProcessing, serverFailed]);
   // Live view of the pending outbox (SQLite) — updates the instant a row is
   // queued, retried, or sent without any polling.
   const { data: pendingRows } = useLiveQuery(
@@ -456,37 +501,88 @@ export default function LibraryScreen() {
                 ) : null}
                 {inFlightServer.length > 0 ? (
                   <View style={styles.serverQueue}>
-                    {inFlightServer.map((item, i) => {
-                      const isFailed = item.status === "failed";
-                      const pip = isFailed
-                        ? t.color.accent
-                        : statusPip[item.status] ?? t.color.inkSubtle;
-                      return (
-                        <View
-                          key={item.id}
-                          style={[
-                            styles.queueRow,
-                            i > 0 && styles.queueRowBorder,
-                          ]}
-                        >
-                          <View style={styles.inFlightRowText}>
-                            <KindLabel>{item.kind.toUpperCase()}</KindLabel>
-                            <Text style={styles.queueRowTitle} numberOfLines={2}>
-                              {describeSubmission(item)}
-                            </Text>
-                            {isFailed ? (
-                              <Text
-                                style={styles.queueRowError}
-                                numberOfLines={3}
-                              >
-                                {item.errorMessage ?? "Processing failed."}
-                              </Text>
-                            ) : null}
+                    {/* Collapsed-by-default summary strip: live dot + terse
+                        count + chevron. Tapping toggles the inline list. */}
+                    <Pressable
+                      onPress={() => setServerExpanded((v) => !v)}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: serverExpanded }}
+                      accessibilityLabel={`In flight — ${serverSummary}`}
+                      style={({ pressed }) => [
+                        styles.serverSummaryRow,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <StatusPip
+                        label=""
+                        color={
+                          serverProcessing > 0
+                            ? t.color.inkSubtle
+                            : t.color.accent
+                        }
+                      />
+                      <Text style={styles.serverSummaryText} numberOfLines={1}>
+                        In flight — {serverSummary}
+                      </Text>
+                      <Text style={styles.serverChevron}>
+                        {serverExpanded ? "▴" : "▾"}
+                      </Text>
+                    </Pressable>
+                    {serverExpanded ? (
+                      <View style={styles.serverList}>
+                        {inFlightServer.map((item, i) => {
+                          const isFailed = item.status === "failed";
+                          const pip = isFailed
+                            ? t.color.accent
+                            : statusPip[item.status] ?? t.color.inkSubtle;
+                          return (
+                            <View
+                              key={item.id}
+                              style={[
+                                styles.queueRow,
+                                i > 0 && styles.queueRowBorder,
+                              ]}
+                            >
+                              <View style={styles.inFlightRowText}>
+                                <KindLabel>{item.kind.toUpperCase()}</KindLabel>
+                                <Text
+                                  style={styles.queueRowTitle}
+                                  numberOfLines={2}
+                                >
+                                  {describeSubmission(item)}
+                                </Text>
+                                {isFailed ? (
+                                  <Text
+                                    style={styles.queueRowError}
+                                    numberOfLines={3}
+                                  >
+                                    {item.errorMessage ?? "Processing failed."}
+                                  </Text>
+                                ) : null}
+                              </View>
+                              {isFailed ? (
+                                <TextLink
+                                  label="Discard"
+                                  tone={t.color.inkMuted}
+                                  onPress={() => discardServer(item.id)}
+                                />
+                              ) : (
+                                <StatusPip label={item.status} color={pip} />
+                              )}
+                            </View>
+                          );
+                        })}
+                        {serverFailed.length > 0 ? (
+                          <View style={styles.serverDiscardAllRow}>
+                            <TextLink
+                              label="Discard all"
+                              tone={t.color.inkMuted}
+                              onPress={discardAllServer}
+                            />
                           </View>
-                          <StatusPip label={item.status} color={pip} />
-                        </View>
-                      );
-                    })}
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
@@ -712,7 +808,39 @@ function makeStyles(t: Theme) {
   serverQueue: {
     backgroundColor: t.color.paperRaised,
     borderRadius: 8,
+  },
+  // Collapsed summary strip: a single hairline row.
+  serverSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: t.space.sm,
     paddingHorizontal: t.space.md,
+    paddingVertical: t.space.sm,
+  },
+  serverSummaryText: {
+    flex: 1,
+    fontFamily: t.font.mono,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: t.color.inkMuted,
+  },
+  serverChevron: {
+    fontFamily: t.font.mono,
+    fontSize: 12,
+    color: t.color.inkSubtle,
+  },
+  serverList: {
+    borderTopWidth: 1,
+    borderTopColor: t.color.rule,
+    paddingHorizontal: t.space.md,
+  },
+  serverDiscardAllRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    borderTopWidth: 1,
+    borderTopColor: t.color.rule,
+    paddingVertical: t.space.sm,
   },
   queueRow: {
     flexDirection: "row",

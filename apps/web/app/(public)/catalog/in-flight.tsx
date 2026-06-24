@@ -83,7 +83,15 @@ const IN_FLIGHT: ReadonlySet<Status> = new Set<Status>([
   "failed",
 ]);
 
-function Row({ item, now }: { item: IngestSubmission; now: number | null }) {
+function Row({
+  item,
+  now,
+  onDismiss,
+}: {
+  item: IngestSubmission;
+  now: number | null;
+  onDismiss: (id: string) => void;
+}) {
   const status = item.status as Status;
   const label = primaryLabel(item);
   const isFailed = status === "failed";
@@ -94,7 +102,7 @@ function Row({ item, now }: { item: IngestSubmission; now: number | null }) {
     <div
       className={[
         "border-b border-[var(--color-rule)] px-1 py-2.5",
-        "md:grid md:grid-cols-[1.5rem_5rem_5rem_1fr_5rem] md:items-baseline md:gap-3",
+        "md:grid md:grid-cols-[1.5rem_5rem_5rem_1fr_5rem_1.5rem] md:items-baseline md:gap-3",
         isFailed ? "opacity-80" : "",
       ]
         .filter(Boolean)
@@ -114,9 +122,7 @@ function Row({ item, now }: { item: IngestSubmission; now: number | null }) {
       <span className="mt-1 flex min-w-0 items-baseline gap-2 md:mt-0">
         <span
           className={`min-w-0 truncate font-display text-[16px] leading-snug md:text-[18px] ${
-            isFailed
-              ? "italic text-[var(--fg-muted)]"
-              : "text-[var(--fg)]"
+            isFailed ? "italic text-[var(--fg-muted)]" : "text-[var(--fg)]"
           }`}
         >
           {label}
@@ -128,6 +134,18 @@ function Row({ item, now }: { item: IngestSubmission; now: number | null }) {
         title={ageTooltip}
         className="mt-1 block font-mono text-[11px] tabular-nums text-[var(--fg-muted)] md:mt-0 md:text-right"
       />
+      {isFailed ? (
+        <button
+          type="button"
+          onClick={() => onDismiss(item.id)}
+          aria-label="Dismiss"
+          className="mt-2 inline-flex h-5 w-5 items-center justify-center self-start justify-self-end font-mono text-[14px] leading-none text-[var(--fg-subtle)] transition-colors hover:text-[var(--color-accent-deep)] md:mt-0"
+        >
+          ✕
+        </button>
+      ) : (
+        <span className="hidden md:block" aria-hidden="true" />
+      )}
       {isFailed && item.errorMessage ? (
         <p className="col-span-full mt-1 font-mono text-[11px] leading-snug text-[var(--fg-muted)]">
           {item.errorMessage}
@@ -141,9 +159,13 @@ export function InFlight() {
   const router = useRouter();
   const [items, setItems] = useState<IngestSubmission[]>([]);
   const [now, setNow] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
   // Track the prior poll's statuses by id so we can detect a row transitioning
   // out of pending/processing into completed and re-fetch the post list in place.
   const prevStatus = useRef<Map<string, Status>>(new Map());
+  // Ids the user dismissed locally. Polls filter these out so the next 3s tick
+  // can't re-add a just-dismissed row before the server DELETE lands.
+  const dismissedIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -179,7 +201,13 @@ export function InFlight() {
         }
         prevStatus.current = nextStatus;
 
-        setItems(data.items.filter((it) => IN_FLIGHT.has(it.status as Status)));
+        setItems(
+          data.items.filter(
+            (it) =>
+              IN_FLIGHT.has(it.status as Status) &&
+              !dismissedIds.current.has(it.id),
+          ),
+        );
 
         if (resolved) router.refresh();
       } catch {
@@ -200,42 +228,108 @@ export function InFlight() {
     return () => window.clearInterval(id);
   }, []);
 
-  const count = items.length;
-  const sectionLabel = useMemo(
-    () => (count === 1 ? "1 in flight" : `${count} in flight`),
-    [count],
-  );
+  async function dismiss(id: string) {
+    // Guard the poller and optimistically remove from the visible list. We drop
+    // the row on a 204 (deleted) OR a 404 (already gone / wrong status) — either
+    // way it should disappear.
+    dismissedIds.current.add(id);
+    setItems((prev) => prev.filter((it) => it.id !== id));
+    try {
+      const res = await fetch(`/api/app/queue/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok && res.status !== 404) {
+        // Server rejected it for some other reason — un-guard so a later poll
+        // can resurface it rather than silently hiding a still-live row.
+        dismissedIds.current.delete(id);
+      }
+    } catch {
+      dismissedIds.current.delete(id);
+    }
+  }
 
-  if (count === 0) return null;
+  function dismissAll() {
+    for (const it of items) {
+      if ((it.status as Status) === "failed") void dismiss(it.id);
+    }
+  }
+
+  const counts = useMemo(() => {
+    let processing = 0;
+    let pending = 0;
+    let failed = 0;
+    for (const it of items) {
+      const s = it.status as Status;
+      if (s === "processing") processing += 1;
+      else if (s === "pending") pending += 1;
+      else if (s === "failed") failed += 1;
+    }
+    return { processing, pending, failed };
+  }, [items]);
+
+  const summary = useMemo(() => {
+    // Fold pending into "processing" so the strip reads like the approved mockup
+    // ("1 processing · 2 failed") and matches the mobile summary — the pending vs
+    // processing distinction isn't meaningful to the owner watching the wire.
+    const inMotion = counts.processing + counts.pending;
+    const segments: string[] = [];
+    if (inMotion > 0) segments.push(`${inMotion} processing`);
+    if (counts.failed > 0) segments.push(`${counts.failed} failed`);
+    return segments.join(" · ");
+  }, [counts]);
+
+  const hasFailed = counts.failed > 0;
+
+  if (items.length === 0) return null;
 
   return (
     <section className="hairline-t mt-7 pt-6" aria-label="In flight">
-      <div className="flex items-baseline justify-between gap-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-          On the wire
-        </p>
-        <div className="flex items-baseline gap-2 text-[var(--fg-subtle)]">
-          <span
-            aria-hidden="true"
-            className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--color-accent)]"
-          />
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em]">
-            {sectionLabel}
-          </span>
-        </div>
-      </div>
-      <div
-        className="mt-4 border-t-2 border-[var(--color-rule-emphatic)]"
-        role="list"
-        aria-label="In-flight submissions"
-        aria-live="polite"
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-3 px-1 py-1 text-left transition-colors hover:opacity-90"
       >
-        {items.map((item) => (
-          <div key={item.id} role="listitem">
-            <Row item={item} now={now} />
+        <span
+          aria-hidden="true"
+          className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-[var(--color-accent)]"
+        />
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
+          In flight — {summary}
+        </span>
+        <span
+          aria-hidden="true"
+          className={`shrink-0 font-mono text-[12px] leading-none text-[var(--fg-subtle)] transition-transform ${
+            expanded ? "rotate-90" : ""
+          }`}
+        >
+          ›
+        </span>
+      </button>
+
+      {expanded ? (
+        <div className="mt-3 border-t-2 border-[var(--color-rule-emphatic)]">
+          <div role="list" aria-label="In-flight submissions" aria-live="polite">
+            {items.map((item) => (
+              <div key={item.id} role="listitem">
+                <Row item={item} now={now} onDismiss={dismiss} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+          {hasFailed ? (
+            <div className="flex justify-end px-1 pt-2.5">
+              <button
+                type="button"
+                onClick={dismissAll}
+                className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)] transition-colors hover:text-[var(--color-accent-deep)]"
+              >
+                Dismiss all
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }

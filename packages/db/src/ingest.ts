@@ -448,6 +448,21 @@ export interface PageResult<T> {
 // variant doesn't exist), which is how this surface leaked every user's queue
 // before. The worker reads its work via claimNextNonImage/claimReadyImageBatch,
 // not this helper, so it is unaffected.
+// Owner-dismisses a needs-attention submission from their queue view. Ownership
+// (submittedById) + terminal-status guard (failed|skipped only) — a hard delete
+// is safe here: failed/skipped rows have no post and already dropped their staged
+// bytes (retention is success-only). Returns the deleted count (0 = not owned or
+// not in a dismissable status).
+export async function dismissSubmission(
+  submittedById: string,
+  id: string,
+): Promise<number> {
+  const res = await prisma.ingestSubmission.deleteMany({
+    where: { id, submittedById, status: { in: ["failed", "skipped"] } },
+  });
+  return res.count;
+}
+
 export async function listSubmissions(
   submittedById: string,
   opts: ListSubmissionsOptions = {},

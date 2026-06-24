@@ -90,6 +90,34 @@ The section lists only **non-terminal / needs-attention** submissions:
   catalog page is already dynamic via session reads.
 - Do not commit; the user will review the working tree.
 
+## Revision 2 (2026-06-24) — collapsible strip + dismissable failures
+
+After shipping v1, the always-expanded in-flight stack felt heavy above the
+catalog, and failed items piled up with no way to clear them. Redesigned (Stitch
+mockup in project 9980782539670641675):
+
+- **Collapsed by default:** the in-flight area becomes a single hairline strip —
+  live dot + terse summary (`In flight — 1 processing · 2 failed`) + chevron.
+  Hidden entirely when nothing is in flight.
+- **Expandable:** chevron reveals a tight inline list of items. Processing rows
+  show a subtle progress glyph (no actions); failed rows get a `×` dismiss on the
+  right + a faint "Dismiss all" link.
+- **New backend (the real pile-up fix):**
+  - `dismissSubmission(submittedById, id): Promise<number>` in
+    `packages/db/src/ingest.ts` — `deleteMany` guarded by `submittedById` AND
+    `status in (failed, skipped)`, returns deleted count. Re-export from
+    `packages/db/src/index.ts`. Hard delete is safe: failed rows have no post and
+    already dropped staged bytes (retention is success-only).
+  - `DELETE /api/app/queue/[id]/route.ts` — session-authed; 401 no session,
+    404 when `dismissSubmission` returns 0 (not owned / wrong status), 204 on
+    success.
+- **Web** (`catalog/in-flight.tsx`): collapsed/expandable strip; `×`/"Dismiss
+  all" call the DELETE endpoint then drop the row from local state (and stop
+  showing it). Keep the existing poll + `router.refresh()`-on-complete behavior.
+- **Mobile** (`library.tsx` in-flight section): collapsible summary row; server
+  failed rows get a Discard wired to the DELETE endpoint (then refetch the
+  `["queue"]` query). The local-outbox Discard stays as-is.
+
 ## Verification (manual — no test runner in repo)
 
 `bun run check-types` + `bun run lint` (filtered to web + mobile) must pass.
