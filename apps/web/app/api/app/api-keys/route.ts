@@ -3,6 +3,15 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { getSessionOrNull } from "../../../../lib/session";
 
+// Default per-key rate limit applied to every minted MCP API key. Sized for
+// interactive corpus research (a deep-research run fans out to dozens of MCP
+// requests; each request = one verifyApiKey = one unit). 1000 requests / hour
+// comfortably covers many research runs while capping abuse on a leaked key.
+// These are SERVER-ONLY fields on the better-auth apiKey() plugin — they can
+// only be set by attributing the key via body.userId (no `headers`), see below.
+const MCP_API_KEY_RATE_LIMIT_MAX = 1000;
+const MCP_API_KEY_RATE_LIMIT_WINDOW_MS = 1000 * 60 * 60; // 1 hour
+
 function jsonError(status: number, error: string) {
   return Response.json({ error }, { status });
 }
@@ -69,15 +78,21 @@ export async function POST(request: Request) {
       ? parsed.data.expiresInDays * 24 * 60 * 60
       : undefined;
 
-  // header-scoped → the plugin attributes the key to the session user
-  // (referenceId = session.user.id). The plaintext `key` is returned ONCE here.
+  // server-scoped (no `headers`) → attribute to the session user via body.userId
+  // (referenceId = session.user.id, identical to the prior header-scoped result;
+  // verified in @better-auth/api-key index.mjs:765-783). Dropping `headers` makes
+  // this a SERVER request so the server-only rateLimit* fields are accepted
+  // (index.mjs:751) and persist to the key row. The plaintext `key` is returned ONCE here.
   const created = await auth.api.createApiKey({
     body: {
       name: parsed.data.name,
       expiresIn: expiresIn ?? null,
       prefix: "sirius_",
+      userId: session.user.id,
+      rateLimitEnabled: true,
+      rateLimitMax: MCP_API_KEY_RATE_LIMIT_MAX,
+      rateLimitTimeWindow: MCP_API_KEY_RATE_LIMIT_WINDOW_MS,
     },
-    headers: await headers(),
   });
 
   return Response.json(
