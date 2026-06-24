@@ -227,9 +227,15 @@ export type SubmitOutcome = {
   label: string;
 };
 
+// Read visibility for the resulting Post, chosen once per compose session and
+// applied to every material in the tray (mirrors projectId). Matches the
+// PostVisibility enum values the server validates.
+export type Visibility = "PRIVATE" | "FRIENDS" | "PUBLIC";
+
 export type SubmitContext = {
   force: boolean;
   projectId: string | null;
+  visibility: Visibility;
 };
 
 interface IngestResponse {
@@ -263,7 +269,7 @@ function errorMessage(err: unknown): string {
 async function submitUrl(
   material: UrlMaterial,
   label: string,
-  { force, projectId }: SubmitContext,
+  { force, projectId, visibility }: SubmitContext,
 ): Promise<SubmitOutcome> {
   try {
     const res = await fetch("/api/app/ingest", {
@@ -274,6 +280,7 @@ async function submitUrl(
         urls: [material.url],
         notes: material.notes ?? "",
         force,
+        visibility,
         ...(projectId ? { projectId } : {}),
       }),
     });
@@ -298,7 +305,7 @@ async function submitUrl(
 async function submitNote(
   material: NoteMaterial,
   label: string,
-  { force, projectId }: SubmitContext,
+  { force, projectId, visibility }: SubmitContext,
 ): Promise<SubmitOutcome> {
   try {
     const res = await fetch("/api/app/ingest", {
@@ -309,6 +316,7 @@ async function submitNote(
         urls: [],
         notes: material.text,
         force,
+        visibility,
         ...(projectId ? { projectId } : {}),
       }),
     });
@@ -335,7 +343,7 @@ async function submitNote(
 // composer.tsx. The image endpoint doesn't accept `force`.
 async function submitImageBatch(
   materials: ImageMaterial[],
-  { projectId }: SubmitContext,
+  { projectId, visibility }: SubmitContext,
 ): Promise<SubmitOutcome[]> {
   const batchId = crypto.randomUUID();
   const total = materials.length;
@@ -350,6 +358,7 @@ async function submitImageBatch(
     fd.append("imageIndex", String(i));
     fd.append("totalCount", String(total));
     fd.append("notes", notes);
+    fd.append("visibility", visibility);
     if (projectId) fd.append("projectId", projectId);
     try {
       const res = await fetch("/api/app/ingest-images", {
@@ -386,12 +395,13 @@ async function submitImageBatch(
 async function submitFile(
   material: VideoMaterial | AudioMaterial | DocumentMaterial,
   label: string,
-  { projectId }: SubmitContext,
+  { projectId, visibility }: SubmitContext,
 ): Promise<SubmitOutcome> {
   const fd = new FormData();
   fd.append("file", material.file, material.name);
   fd.append("kind", material.kind);
   fd.append("notes", material.notes ?? "");
+  fd.append("visibility", visibility);
   if (projectId) fd.append("projectId", projectId);
   try {
     const res = await fetch("/api/app/ingest-file", {

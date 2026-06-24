@@ -3,7 +3,7 @@
 // marks completed, marks failed). State machine: pending → processing →
 // (completed | failed).
 import type { Prisma } from "../generated/prisma";
-import { type IngestSubmission, prisma } from "./index";
+import { type IngestSubmission, type PostVisibility, prisma } from "./index";
 
 export type IngestKind =
   | "url"
@@ -32,6 +32,9 @@ export interface CreateSubmissionInput {
   stagedFilePath?: string | null;
   submittedById?: string | null;
   totalCount?: number | null;
+  // Per-capture read visibility for the resulting Post (composer choice). Null →
+  // the worker leaves Post.visibility at its PRIVATE schema default.
+  visibility?: PostVisibility | null;
 }
 
 export type CreateSubmissionResult =
@@ -58,6 +61,7 @@ export async function createSubmission(
         totalCount: input.totalCount ?? null,
         stagedFilePath: input.stagedFilePath ?? null,
         submittedById: input.submittedById ?? null,
+        visibility: input.visibility ?? null,
         force: input.force ?? false,
       },
     });
@@ -90,6 +94,8 @@ export async function createSubmission(
               completedAt: null,
               payload: input.payload,
               stagedFilePath: input.stagedFilePath ?? null,
+              // Honor the latest visibility pick on a re-submit of a failed row.
+              visibility: input.visibility ?? null,
               force: input.force ?? false,
             },
           });

@@ -15,6 +15,7 @@ import {
   noteIngestBody,
   submitNote,
   submitUrl,
+  type Visibility,
 } from "@/lib/ingest-submit";
 import {
   canDraftOnDevice,
@@ -267,6 +268,10 @@ export function describeMaterial(material: Material): string {
 export type SubmitContext = {
   force: boolean;
   projectId?: string;
+  // Read visibility for the resulting Post(s), applied to every material in this
+  // submit. Optional: undefined → the worker keeps the PRIVATE default (e.g. the
+  // OS share target, which doesn't expose a picker).
+  visibility?: Visibility;
   // Draft notes (and transcribed audio) on-device with the local LLM before
   // submitting, so the worker skips its Gemini stage. The handlers re-check
   // model readiness themselves; this is the user's intent switch.
@@ -341,6 +346,7 @@ const urlHandler: MaterialHandler<"url"> = {
           ctx.force,
           ctx.projectId,
           draft,
+          ctx.visibility,
         );
         if (localId) await linkSubmission(localId, ok.id);
         submitted++;
@@ -367,7 +373,14 @@ const repoHandler: MaterialHandler<"repo"> = {
     // platform split, all GitHub processing happens server-side.
     for (const [i, m] of materials.entries()) {
       try {
-        await submitUrl(m.url, m.notes ?? "", ctx.force, ctx.projectId);
+        await submitUrl(
+          m.url,
+          m.notes ?? "",
+          ctx.force,
+          ctx.projectId,
+          undefined,
+          ctx.visibility,
+        );
         submitted++;
       } catch (err) {
         const label = `Repo ${i + 1}/${materials.length}`;
@@ -405,7 +418,13 @@ const noteHandler: MaterialHandler<"note"> = {
         ? await createLocalDraft({ type: "BLOG", envelope: draft })
         : undefined;
       try {
-        const ok = await submitNote(m.text, ctx.force, ctx.projectId, draft);
+        const ok = await submitNote(
+          m.text,
+          ctx.force,
+          ctx.projectId,
+          draft,
+          ctx.visibility,
+        );
         if (localId) await linkSubmission(localId, ok.id);
         submitted++;
       } catch (err) {
@@ -419,7 +438,13 @@ const noteHandler: MaterialHandler<"note"> = {
           // "Saved offline" instead of vanishing into the outbox until sync.
           const rowId = localId ?? (await createLocalRawNote(m.text));
           await enqueueOutbox(
-            noteIngestBody(m.text, ctx.force, ctx.projectId, draft),
+            noteIngestBody(
+              m.text,
+              ctx.force,
+              ctx.projectId,
+              draft,
+              ctx.visibility,
+            ),
             rowId,
           );
           queued++;
@@ -484,6 +509,7 @@ const imageHandler: MaterialHandler<"image"> = {
           totalCount: String(inputs.length),
           notes,
           ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+          ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
           ...(draftJson ? { draft: draftJson } : {}),
         },
         batchId,
@@ -520,6 +546,7 @@ const videoHandler: MaterialHandler<"video"> = {
           kind: "video",
           notes: m.notes ?? "",
           ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+          ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
         },
       });
       if (result === "sent") submitted++;
@@ -566,6 +593,7 @@ const audioHandler: MaterialHandler<"audio"> = {
               ctx.force,
               ctx.projectId,
               draft,
+              ctx.visibility,
             );
             if (localId) await linkSubmission(localId, ok.id);
             submitted++;
@@ -577,7 +605,13 @@ const audioHandler: MaterialHandler<"audio"> = {
               // the outbox like any other note (tagged with localId so replay
               // links the post). Fully offline voice memos.
               await enqueueOutbox(
-                noteIngestBody(noteText, ctx.force, ctx.projectId, draft),
+                noteIngestBody(
+                  noteText,
+                  ctx.force,
+                  ctx.projectId,
+                  draft,
+                  ctx.visibility,
+                ),
                 localId,
               );
               queued++;
@@ -601,6 +635,7 @@ const audioHandler: MaterialHandler<"audio"> = {
           kind: "audio",
           notes: m.notes ?? "",
           ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+          ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
         },
       });
       if (result === "sent") submitted++;
@@ -628,6 +663,7 @@ const documentHandler: MaterialHandler<"document"> = {
           kind: "document",
           notes: m.notes ?? "",
           ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+          ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
         },
       });
       if (result === "sent") submitted++;

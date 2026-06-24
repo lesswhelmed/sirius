@@ -8,7 +8,13 @@
 import { createHash } from "node:crypto";
 import { copyFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { PostStatus, type PostType, type Prisma, prisma } from "@repo/db";
+import {
+  PostStatus,
+  type PostType,
+  type PostVisibility,
+  type Prisma,
+  prisma,
+} from "@repo/db";
 import { getImageGenConfig } from "../lib/ai-config";
 import { escapeMdxProse } from "../lib/mdx-escape";
 import {
@@ -274,6 +280,15 @@ function getContentDigest(
   return value as Prisma.InputJsonValue;
 }
 
+// The composer's per-capture visibility choice, read off the submission row(s)
+// the worker already loaded (image batches share one value — use the first row,
+// like getSourceHash). Undefined when the submitter didn't choose one (or a
+// bearer ingest), so writePost omits it and the Post keeps its PRIVATE default.
+function getVisibility(input: PipelineInput): PostVisibility | undefined {
+  const row = input.kind === "image" ? input.submissions[0] : input.submission;
+  return row?.visibility ?? undefined;
+}
+
 function getSourceHash(input: PipelineInput): string | null {
   if (input.kind === "image") {
     // NB: an image row's contentHash is SLOT-keyed (sha256 of
@@ -382,6 +397,7 @@ export async function writePost(
   const sourceHash = getSourceHash(input);
   const originalDate = originalDateFromFrontmatter(parsed.frontmatter);
   const contentDigest = getContentDigest(parsed.frontmatter);
+  const visibility = getVisibility(input);
 
   const excerpt =
     typeof parsed.frontmatter.excerpt === "string"
@@ -484,6 +500,10 @@ export async function writePost(
             : {}),
           ...(contentDigest !== null ? { contentDigest } : {}),
           published: !isDraft,
+          // Composer visibility, create-only (like status): set it when the user
+          // chose one, else fall back to the schema PRIVATE default. NOT applied on
+          // update so a later manual visibility edit survives a reprocess.
+          ...(visibility ? { visibility } : {}),
           sourceType: "ingest",
           providerId,
           sourceRecordId,

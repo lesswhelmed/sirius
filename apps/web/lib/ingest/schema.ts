@@ -22,12 +22,23 @@ const flexibleBoolean = z
     return value.trim().toLowerCase() === "true";
   });
 
+// Per-capture read visibility for the resulting Post. Literal union matches the
+// PostVisibility enum. Multipart fields arrive as strings ("" when absent), so a
+// blank/missing value coerces to undefined and the worker keeps PRIVATE. submit.ts
+// additionally drops FRIENDS on the unattributed bearer path.
+const flexibleVisibility = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.length > 0 ? value : undefined,
+  z.enum(["PRIVATE", "FRIENDS", "PUBLIC"]).optional(),
+);
+
 export const urlIngestSchema = z
   .object({
     urls: urlList.optional().default([]),
     notes: z.string().optional().default(""),
     force: flexibleBoolean.optional().default(false),
     projectId: z.string().optional().default(""),
+    visibility: flexibleVisibility,
     // Optional client-supplied draft (on-device LLM). Only honored for
     // note-kind submissions — URLs always go through the worker's url_context
     // fetch, so a draft there is stripped at submit time.
@@ -46,6 +57,7 @@ export const imageMetadataSchema = z.object({
   totalCount: z.coerce.number().int().min(1),
   notes: z.string().optional().default(""),
   projectId: z.string().optional().default(""),
+  visibility: flexibleVisibility,
   // JSON-encoded SightDraftEnvelope (multipart fields are strings) from
   // on-device drafting; parsed + validated in submitImageIngest. Sent on every
   // row of a batch, like notes.
@@ -119,6 +131,7 @@ export const fileMetadataSchema = z.object({
   kind: z.enum(ALLOWED_FILE_KINDS),
   notes: z.string().optional().default(""),
   projectId: z.string().optional().default(""),
+  visibility: flexibleVisibility,
 });
 
 export type FileIngestMetadata = z.infer<typeof fileMetadataSchema>;

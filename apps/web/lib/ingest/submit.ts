@@ -7,6 +7,7 @@ import {
   createSubmission,
   type CreateSubmissionResult,
   getProject,
+  type PostVisibility,
 } from "@repo/db";
 import {
   type SightDraftEnvelope,
@@ -48,6 +49,26 @@ async function validateProjectOwnership(
   }
   const project = await getProject(submittedById, projectId);
   return project ? projectId : null;
+}
+
+// Normalizes the composer's visibility choice for persistence. FRIENDS requires
+// an attributed submitter (the friendship is the owner's) — an unattributed
+// bearer ingest (iOS Shortcut) has no owner, so FRIENDS is meaningless there and
+// drops to null (→ the worker keeps Post.visibility's PRIVATE default). A missing
+// value is null all the same.
+function resolveVisibility(
+  submittedById: string | null,
+  visibility: PostVisibility | undefined,
+  log: Logger,
+): PostVisibility | null {
+  if (!visibility) {
+    return null;
+  }
+  if (visibility === "FRIENDS" && !submittedById) {
+    log("warn", "visibility-friends-dropped-no-submitter");
+    return null;
+  }
+  return visibility;
 }
 
 export type SubmitResultBody = {
@@ -143,6 +164,11 @@ export async function submitUrlIngest(
     submittedById,
     projectId,
   );
+  const visibility = resolveVisibility(
+    submittedById,
+    parsed.data.visibility,
+    log,
+  );
 
   log("info", "received", {
     kind,
@@ -152,6 +178,7 @@ export async function submitUrlIngest(
     drafted: Boolean(draft),
     submittedById,
     projectId: validatedProjectId,
+    visibility,
   });
 
   const result = await createSubmission({
@@ -160,6 +187,7 @@ export async function submitUrlIngest(
     contentHash,
     submittedById,
     projectId: validatedProjectId,
+    visibility,
     // Also persist on the row so a reclaimed/retried job regenerates instead of
     // reusing an existing post (worker idempotency guard reads this column).
     force,
@@ -187,6 +215,9 @@ export interface ParsedImagePayload {
     totalCount: number;
     notes: string;
     projectId: string;
+    // Composer visibility choice; undefined when absent (the multipart field
+    // coerces "" → undefined in imageMetadataSchema). Resolved in submitImageIngest.
+    visibility?: PostVisibility;
     // JSON-encoded SightDraftEnvelope ("" when absent) — multipart fields are
     // strings; validated in submitImageIngest.
     draft: string;
@@ -207,6 +238,7 @@ export async function parseMultipartImage(
     totalCount: form.get("totalCount"),
     notes: form.get("notes") ?? "",
     projectId: form.get("projectId") ?? "",
+    visibility: form.get("visibility") ?? "",
     draft: form.get("draft") ?? "",
   });
   if (!metaParsed.success) {
@@ -234,6 +266,7 @@ export async function parseRawImage(
     totalCount: get("totalCount"),
     notes: get("notes"),
     projectId: get("projectId"),
+    visibility: get("visibility"),
     draft: get("draft"),
   });
   if (!metaParsed.success) {
@@ -364,6 +397,11 @@ export async function submitImageIngest(
     submittedById,
     projectId,
   );
+  const visibility = resolveVisibility(
+    submittedById,
+    payload.metadata.visibility,
+    log,
+  );
 
   log("info", "received", {
     batchId: payload.metadata.batchId,
@@ -375,6 +413,7 @@ export async function submitImageIngest(
     drafted: Boolean(draft),
     submittedById,
     projectId: validatedProjectId,
+    visibility,
   });
 
   const result = await createSubmission({
@@ -394,6 +433,7 @@ export async function submitImageIngest(
     stagedFilePath,
     submittedById,
     projectId: validatedProjectId,
+    visibility,
   });
 
   log("info", SUBMIT_LOG_LABEL[result.status], {
@@ -436,6 +476,7 @@ export async function parseMultipartFile(
     kind: form.get("kind"),
     notes: form.get("notes") ?? "",
     projectId: form.get("projectId") ?? "",
+    visibility: form.get("visibility") ?? "",
   });
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
@@ -464,6 +505,7 @@ export async function parseRawFile(
     kind: get("kind"),
     notes: get("notes"),
     projectId: get("projectId"),
+    visibility: get("visibility"),
   });
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
@@ -498,6 +540,11 @@ export async function submitFileIngest(
     submittedById,
     projectId,
   );
+  const visibility = resolveVisibility(
+    submittedById,
+    payload.metadata.visibility,
+    log,
+  );
 
   log("info", "received", {
     kind: payload.metadata.kind,
@@ -506,6 +553,7 @@ export async function submitFileIngest(
     fileName: payload.fileName,
     submittedById,
     projectId: validatedProjectId,
+    visibility,
   });
 
   const result = await createSubmission({
@@ -520,6 +568,7 @@ export async function submitFileIngest(
     stagedFilePath,
     submittedById,
     projectId: validatedProjectId,
+    visibility,
   });
 
   log("info", SUBMIT_LOG_LABEL[result.status], {

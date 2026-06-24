@@ -27,7 +27,20 @@ import {
   trayTag,
   urlMaterialsFromText,
   type VideoMaterial,
+  type Visibility,
 } from "./materials";
+
+// The three read-visibility choices, in escalating-exposure order. The label is
+// the chip text; the hint is the screen-reader description + sub-caption.
+const VISIBILITY_OPTIONS: {
+  value: Visibility;
+  label: string;
+  hint: string;
+}[] = [
+  { value: "PRIVATE", label: "Private", hint: "Only you can see it" },
+  { value: "FRIENDS", label: "Friends", hint: "You and your friends" },
+  { value: "PUBLIC", label: "Public", hint: "Anyone signed in" },
+];
 
 // File-backed materials that flow through the "Add details" sheet so each can
 // carry an optional note before staging. (url/repo/note collect notes in their
@@ -355,6 +368,9 @@ export function Composer() {
   const [linkNotes, setLinkNotes] = useState("");
   const [force, setForce] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
+  // Per-capture read visibility, applied to every staged material. PRIVATE is the
+  // safe default (matches the Post schema default).
+  const [visibility, setVisibility] = useState<Visibility>("PRIVATE");
   const [pills, setPills] = useState<StatusPill[]>([]);
   const [isPending, startTransition] = useTransition();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -687,7 +703,11 @@ export function Composer() {
     const materials = tray.map((e) => e.material);
     const captured = tray;
     startTransition(async () => {
-      const outcomes = await submitMaterials(materials, { force, projectId });
+      const outcomes = await submitMaterials(materials, {
+        force,
+        projectId,
+        visibility,
+      });
       for (const outcome of outcomes) {
         addPill(outcome.kind, outcome.label);
       }
@@ -699,6 +719,7 @@ export function Composer() {
         setTray([]);
         setForce(false);
         setProjectId(null);
+        setVisibility("PRIVATE");
       }
     });
   };
@@ -773,6 +794,48 @@ export function Composer() {
           </div>
         </div>
       ) : null}
+
+      {/* Visibility picker: who can read the resulting post. Applied to every
+          staged material; PRIVATE by default. */}
+      <div className="flex flex-col gap-2">
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
+          Visibility
+        </span>
+        <div
+          role="radiogroup"
+          aria-label="Post visibility"
+          className="flex gap-2"
+        >
+          {VISIBILITY_OPTIONS.map((opt) => {
+            const selected = visibility === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                aria-label={`${opt.label} — ${opt.hint}`}
+                disabled={isPending}
+                onClick={() => setVisibility(opt.value)}
+                className={`flex flex-1 flex-col items-start gap-0.5 border px-3 py-2 text-left transition-colors disabled:opacity-50 ${
+                  selected
+                    ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]"
+                    : "border-[var(--color-rule-strong)] hover:bg-[var(--color-paper-raised)]"
+                }`}
+              >
+                <span
+                  className={`font-body text-[14px] ${selected ? "text-[var(--fg)]" : "text-[var(--fg-muted)]"}`}
+                >
+                  {opt.label}
+                </span>
+                <span className="font-mono text-[10px] tracking-[0.04em] text-[var(--fg-subtle)]">
+                  {opt.hint}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* No focus selected: auto-org will file this under a Project for you. */}
       {projectId === null ? (

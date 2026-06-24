@@ -272,6 +272,13 @@ model IngestSubmission {
   projectId String?
   project   Project? @relation("ProjectSubmissions", fields: [projectId], references: [id], onDelete: SetNull)
 
+  // Per-capture post visibility chosen in the composer at submit time. The worker
+  // copies it onto the Post it creates (create-only, like status — never clobbers a
+  // later manual visibility edit). Null → fall back to Post.visibility's PRIVATE
+  // default: bearer submits that omit it, FRIENDS coerced away for unattributed
+  // bearer ingests, and pre-migration rows.
+  visibility PostVisibility?
+
   // The Post this submission produced. A SIGHT post maps to N image rows, so the
   // relation lets a post resolve all its source originals. resultPostSlug is kept
   // for back-compat; this FK is the lookup path. SetNull so a post delete doesn't

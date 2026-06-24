@@ -6,6 +6,10 @@ import type { DraftEnvelope } from "@repo/ingest-draft";
 
 import { ApiError, apiPostJson } from "@/lib/api";
 
+// Read visibility for the resulting Post (composer choice). Matches the server's
+// PostVisibility enum. Optional everywhere: omitted → the worker keeps PRIVATE.
+export type Visibility = "PRIVATE" | "FRIENDS" | "PUBLIC";
+
 export type SubmitOk = {
   id: string;
   kind: string;
@@ -28,12 +32,14 @@ export function submitUrl(
   force = false,
   projectId?: string,
   draft?: DraftEnvelope,
+  visibility?: Visibility,
 ): Promise<SubmitOk> {
   return apiPostJson<SubmitOk>("/api/app/ingest", {
     urls: [url],
     notes,
     force,
     ...(projectId ? { projectId } : {}),
+    ...(visibility ? { visibility } : {}),
     // Single-url submissions may carry an on-device draft built from the
     // /api/app/extract summary; the server only honors it for one URL.
     ...(draft ? { draft } : {}),
@@ -63,11 +69,13 @@ export function noteIngestBody(
   force = false,
   projectId?: string,
   draft?: DraftEnvelope,
+  visibility?: Visibility,
 ): {
   urls: string[];
   notes: string;
   force: boolean;
   projectId?: string;
+  visibility?: Visibility;
   draft?: DraftEnvelope;
 } {
   return {
@@ -75,6 +83,7 @@ export function noteIngestBody(
     notes,
     force,
     ...(projectId ? { projectId } : {}),
+    ...(visibility ? { visibility } : {}),
     ...(draft ? { draft } : {}),
   };
 }
@@ -84,12 +93,13 @@ export function submitNote(
   force = false,
   projectId?: string,
   draft?: DraftEnvelope,
+  visibility?: Visibility,
 ): Promise<SubmitOk> {
   return apiPostJson<SubmitOk>(
     "/api/app/ingest",
     // DraftEnvelope is JSON-shaped by construction; apiPostJson's recursive
     // Json type just can't prove it through the zod-inferred object type.
-    noteIngestBody(notes, force, projectId, draft) as Parameters<
+    noteIngestBody(notes, force, projectId, draft, visibility) as Parameters<
       typeof apiPostJson
     >[1],
   );

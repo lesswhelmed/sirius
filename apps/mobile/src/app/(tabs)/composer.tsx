@@ -40,6 +40,7 @@ import {
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
+import type { Visibility } from "@/lib/ingest-submit";
 import { isModelReady } from "@/lib/llm/engine";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
@@ -95,6 +96,14 @@ const FORM_COPY: Record<
   },
 };
 
+// Read-visibility choices for a capture, in escalating-exposure order. PRIVATE is
+// the safe default. Rendered as a chip row mirroring the Focus picker.
+const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
+  { value: "PRIVATE", label: "Private" },
+  { value: "FRIENDS", label: "Friends" },
+  { value: "PUBLIC", label: "Public" },
+];
+
 // Split the grid into rows of two so the action cards lay out as a tidy 2-up
 // grid regardless of how many kinds the registry grows to.
 function pairs<T>(items: T[]): T[][] {
@@ -117,6 +126,9 @@ export default function ComposerScreen() {
   const [busy, setBusy] = useState(false);
   // Focus picker: file a capture under a Project (mirrors the web composer).
   const [projectId, setProjectId] = useState<string | null>(null);
+  // Read visibility for the resulting post(s), applied to the whole tray. PRIVATE
+  // by default (matches the Post schema default).
+  const [visibility, setVisibility] = useState<Visibility>("PRIVATE");
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
   // Photo/Video chooser sheet: take with the camera or pick from the library.
   const [mediaSheet, setMediaSheet] = useState<null | "photo" | "video">(null);
@@ -596,6 +608,7 @@ export default function ComposerScreen() {
         {
           force: false,
           projectId: projectId ?? undefined,
+          visibility,
           onDeviceCuration: curationOn && llmReadyData === true,
         },
       );
@@ -628,6 +641,7 @@ export default function ComposerScreen() {
 
     setTray([]);
     setProjectId(null);
+    setVisibility("PRIVATE");
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
     // Queue folded into the Catalog — the in-flight section there shows these
@@ -740,6 +754,34 @@ export default function ComposerScreen() {
               />
             </View>
           )}
+
+          <View style={styles.focusPicker}>
+            <Eyebrow>Visibility</Eyebrow>
+            <View style={styles.focusScroll}>
+              {VISIBILITY_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[
+                    styles.focusChip,
+                    visibility === opt.value && styles.focusChipActive,
+                  ]}
+                  onPress={() => setVisibility(opt.value)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: visibility === opt.value }}
+                  accessibilityLabel={`Visibility: ${opt.label}`}
+                >
+                  <Text
+                    style={[
+                      styles.focusChipText,
+                      visibility === opt.value && styles.focusChipTextActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
 
           <View style={styles.trayHeader}>
             <Eyebrow>In tray</Eyebrow>
