@@ -2,7 +2,10 @@
 
 **Date:** 2026-06-23
 **Author:** RubyCanyon (agent) for repo owner
-**Status:** Approved; partially blocked on a coworker file lock (see Coordination).
+**Status:** ✅ Shipped + verified (2026-06-24). All four decisions are implemented on
+`main` and were exercised end-to-end in a real browser — see the traced proof in
+[`../verification/2026-06-24-web-friends-redesign-verification.md`](../verification/2026-06-24-web-friends-redesign-verification.md).
+The `(public)/u/**` lock noted below has since cleared; decisions 1 & 2 landed.
 
 ## Goal
 
@@ -62,9 +65,17 @@ So "link to a friend's catalog from web" already works — via a **separate
 
 - Reserved (granted): `friends/[handle]/page.tsx`, `friends/friends-list.tsx`,
   `friends/page.tsx`.
-- **Blocked:** `apps/web/app/(public)/u/**` is under PinkHorizon's active
-  exclusive reservation. The unification edit (decision 1) + retire (2) + repoint
-  (in 3/4) wait on that lock; the sort + avatars (3/4 on the list itself) proceed now.
+- **Blocked (resolved):** `apps/web/app/(public)/u/**` was under PinkHorizon's
+  exclusive reservation. That lock has cleared and the unification edit (decision 1)
+  + retire (2) + repoint (3/4) all landed on `main`.
+
+## Verification (2026-06-24)
+
+All four decisions were driven end-to-end in a real browser; see the traced proof +
+screenshots in `../verification/2026-06-24-web-friends-redesign-verification.md`.
+The Recent/A–Z sort and real-image avatars are gated at `friends.length > 5`, so the
+reviewer account is now seeded with >5 demo friends **through the real friend-request
+endpoints** as a permanent part of `scripts/create-reviewer-account.ts` (`seedFriends`).
 
 ## Stitch reference
 

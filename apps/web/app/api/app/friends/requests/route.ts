@@ -3,6 +3,13 @@ import { friendRequestSchema } from "../../../../../lib/friends/schema";
 import { getSessionOrNull } from "../../../../../lib/session";
 
 // Pending friend requests (incoming + outgoing) and sending a new one.
+//
+// Seeded by: scripts/create-reviewer-account.ts (seedFriends) drives this POST
+// over HTTP — the reviewer signs in and sends a request to each demo friend — so
+// the App Store reviewer's Friends list is populated through the real flow rather
+// than fabricated friendship rows. Keep this endpoint's contract (POST { handle }
+// → 201 sent / 409 already / 404 not-found) in sync with that script's
+// httpSendRequest.
 function jsonError(status: number, error: string) {
   return Response.json({ error }, { status });
 }

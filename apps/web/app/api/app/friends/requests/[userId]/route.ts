@@ -5,6 +5,12 @@ import { getSessionOrNull } from "../../../../../../lib/session";
 // POST: accept or decline an incoming pending request from {userId}. Only the
 // recipient may act (enforced inside the DB helper's where-guard); a non-matching
 // row → 404.
+//
+// Seeded by: scripts/create-reviewer-account.ts (seedFriends) drives this POST
+// over HTTP — each demo friend signs in and accepts the reviewer's pending
+// request ({ action: "accept" }) — completing the real request→accept handshake
+// that populates the reviewer's Friends list. Keep the contract (200 accepted /
+// 404 nothing-pending) in sync with that script's httpAcceptRequest.
 function jsonError(status: number, error: string) {
   return Response.json({ error }, { status });
 }

@@ -10,12 +10,29 @@
 // Gemini). Each post gets a matching "completed" IngestSubmission so the Queue tab
 // shows the capture -> draft -> filed flow.
 //
+// Demo FRIENDS are seeded through the LIVE friend-request endpoints over HTTP —
+// NOT by writing friendship rows directly — so the data is exactly what a real
+// user-to-user request+accept produces (same validation, same sendFriendRequest /
+// acceptFriendRequest helpers, same ordered-pair + acceptedAt). >5 are seeded so
+// the reviewer's Friends list shows its search + sort toolbar (gated at
+// friends.length > 5 in apps/web/app/(app)/friends/friends-list.tsx), with a mix
+// of avatar-image and image-less identities so both the <Image> avatar and the
+// monogram fallback render. This needs the web app reachable (--web-url / WEB_URL,
+// default http://localhost:3000 — a dev-trusted origin) AND a known reviewer
+// password (so the script can sign in as the reviewer to send the requests); on a
+// re-run of an existing account without --password it is skipped with a notice.
+// The two endpoints it drives carry a back-reference to this script:
+//   apps/web/app/api/app/friends/requests/route.ts            (POST: send)
+//   apps/web/app/api/app/friends/requests/[userId]/route.ts   (POST: accept)
+//
 // Run from repo root. Reads DATABASE_URL from env (point it at prod):
 //   DATABASE_URL="<prod-url>" bun run reviewer:seed --password 'StrongPass123'
 //   DATABASE_URL="<prod-url>" REVIEWER_PASSWORD='…' bun run reviewer:seed
 //   DATABASE_URL="<prod-url>" bun run reviewer:seed --handle sirius-review --posts 6
+//   DATABASE_URL="<prod-url>" WEB_URL="https://lesswhelmed.com" bun run reviewer:seed --password '…'
+//   bun run reviewer:seed --no-friends            # skip the friends step
 //   DATABASE_URL="<prod-url>" bun run reviewer:seed --teardown            # remove demo content
-//   DATABASE_URL="<prod-url>" bun run reviewer:seed --teardown --purge-user # also delete the user
+//   DATABASE_URL="<prod-url>" bun run reviewer:seed --teardown --purge-user # also delete the user + demo friends
 
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -44,8 +61,41 @@ const DEFAULT_HANDLE = "sirius-review";
 const DEFAULT_NAME = "App Review";
 const DEMO_PROVIDER_ID = "demo";
 const DEMO_HASH_PREFIX = "demo-";
+// Default web origin the friends step posts to. localhost:3000 is the pinned dev
+// port AND a better-auth dev-trusted origin (packages/auth/src/index.ts), so a
+// local run authenticates with no cert/origin friction. Point it at prod with
+// --web-url / WEB_URL when seeding the live reviewer account.
+const DEFAULT_WEB_URL =
+  process.env.WEB_URL ?? process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
+// Demo friend identities live under this email domain so teardown --purge-user
+// can find and remove exactly the accounts this script created.
+const FRIEND_EMAIL_DOMAIN = "friend.demo";
 // Mirrors HANDLE_REGEX in packages/db/src/users.ts.
 const HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{2,29}$/;
+
+// The reviewer's demo friends. >5 so the Friends list's search + sort toolbar
+// renders (gated at friends.length > 5). The first four carry DiceBear avatar
+// images (remote URLs → next/image `unoptimized` branch, the realistic
+// OAuth/Gravatar case); the rest are image-less so the serif monogram fallback
+// is exercised in the same list. All are throwaway demo identities.
+const DEMO_FRIENDS: { handle: string; name: string; image: string | null }[] = [
+  { handle: "ava-rivers", name: "Ava Rivers" },
+  { handle: "noah-fields", name: "Noah Fields" },
+  { handle: "mira-quinn", name: "Mira Quinn" },
+  { handle: "leo-marsh", name: "Leo Marsh" },
+  { handle: "sana-okafor", name: "Sana Okafor", image: null },
+  { handle: "theo-lindqvist", name: "Theo Lindqvist", image: null },
+  { handle: "iris-nakamura", name: "Iris Nakamura", image: null },
+].map((f, i) => ({
+  ...f,
+  // First four get a deterministic initials avatar; the rest stay null.
+  image:
+    i < 4
+      ? `https://api.dicebear.com/9.x/initials/png?seed=${encodeURIComponent(
+          f.name,
+        )}&radius=50&backgroundColor=8b2e2e,1f2a44,3a5a40&textColor=f5f0e6`
+      : null,
+}));
 
 type ParsedArgs = {
   email: string;
@@ -56,6 +106,8 @@ type ParsedArgs = {
   teardown: boolean;
   purgeUser: boolean;
   scene: boolean;
+  friends: boolean;
+  webUrl: string;
 };
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -69,6 +121,8 @@ function parseArgs(argv: string[]): ParsedArgs {
   let teardown = false;
   let purgeUser = false;
   let scene = true;
+  let friends = true;
+  let webUrl = DEFAULT_WEB_URL;
 
   const takeValue = (
     arg: string,
@@ -85,6 +139,10 @@ function parseArgs(argv: string[]): ParsedArgs {
       purgeUser = true;
     } else if (arg === "--no-scene") {
       scene = false;
+    } else if (arg === "--no-friends") {
+      friends = false;
+    } else if (arg === "--web-url" || arg.startsWith("--web-url=")) {
+      webUrl = takeValue(arg, "--web-url", () => argv[++i]) ?? webUrl;
     } else if (arg === "--password" || arg.startsWith("--password=")) {
       password = takeValue(arg, "--password", () => argv[++i]);
     } else if (arg === "--email" || arg.startsWith("--email=")) {
@@ -111,6 +169,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     teardown,
     purgeUser,
     scene,
+    friends,
+    webUrl: webUrl.replace(/\/+$/, ""),
   };
 }
 
@@ -124,10 +184,12 @@ function usage(): never {
   --name <name>        display name (default "${DEFAULT_NAME}")
   --posts <n>          number of demo posts to seed (default: all)
   --no-scene           skip categories + focus areas (no embeddings; no GEMINI_API_KEY needed)
+  --no-friends         skip seeding the reviewer's demo friends
+  --web-url <url>      web origin for the friends step (default ${DEFAULT_WEB_URL})
   --teardown           remove demo posts + submissions + focus areas
-  --purge-user         with --teardown, also delete the reviewer user
+  --purge-user         with --teardown, also delete the reviewer user + demo friends
 
-Env fallbacks: REVIEWER_EMAIL, REVIEWER_PASSWORD, REVIEWER_HANDLE, REVIEWER_NAME.`,
+Env fallbacks: REVIEWER_EMAIL, REVIEWER_PASSWORD, REVIEWER_HANDLE, REVIEWER_NAME, WEB_URL.`,
   );
   process.exit(1);
 }
@@ -437,6 +499,181 @@ async function ensureReviewerUser(args: ParsedArgs): Promise<{
   };
 }
 
+// --- demo friends (seeded through the live friend-request endpoints) ----------
+
+function friendEmail(handle: string): string {
+  return `${handle}@${FRIEND_EMAIL_DOMAIN}`;
+}
+
+// Ensure a demo friend user exists with a credential login + verified email +
+// handle (+ optional avatar image). Mirrors ensureReviewerUser's pattern, but
+// the password is always (re)set to the supplied one so the script can sign in
+// as this friend over HTTP to accept the reviewer's request. Idempotent.
+async function ensureFriendUser(
+  friend: { handle: string; name: string; image: string | null },
+  password: string,
+): Promise<{ userId: string; email: string; handle: string }> {
+  if (!HANDLE_REGEX.test(friend.handle)) {
+    throw new Error(`Invalid demo-friend handle "${friend.handle}".`);
+  }
+  const email = friendEmail(friend.handle);
+  const user = await prisma.user.upsert({
+    where: { email },
+    create: {
+      email,
+      name: friend.name,
+      emailVerified: true,
+      handle: friend.handle,
+      image: friend.image,
+    },
+    update: {
+      name: friend.name,
+      emailVerified: true,
+      handle: friend.handle,
+      image: friend.image,
+    },
+    select: { id: true, email: true, handle: true },
+  });
+
+  const hashed = await hashPassword(password);
+  const existing = await prisma.account.findFirst({
+    where: { userId: user.id, providerId: "credential" },
+    select: { id: true },
+  });
+  if (existing) {
+    await prisma.account.update({
+      where: { id: existing.id },
+      data: { password: hashed, updatedAt: new Date() },
+    });
+  } else {
+    await prisma.account.create({
+      data: {
+        userId: user.id,
+        accountId: user.id,
+        providerId: "credential",
+        password: hashed,
+      },
+    });
+  }
+  return { userId: user.id, email: user.email, handle: user.handle ?? friend.handle };
+}
+
+// Sign in over HTTP and return a Cookie header carrying the session. Origin is
+// set to the web base so better-auth's trusted-origin check passes (the default
+// http://localhost:3000 is a dev-trusted origin; pass --web-url for prod).
+async function httpSignIn(
+  webUrl: string,
+  email: string,
+  password: string,
+): Promise<string> {
+  const res = await fetch(`${webUrl}/api/auth/sign-in/email`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: webUrl },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `sign-in failed for ${email}: ${res.status} ${(await res.text()).slice(0, 200)}`,
+    );
+  }
+  const setCookies = res.headers.getSetCookie();
+  if (setCookies.length === 0) {
+    throw new Error(`sign-in for ${email} returned no Set-Cookie`);
+  }
+  // Keep just the name=value pair of each cookie for the request Cookie header.
+  return setCookies.map((c) => c.split(";")[0]).join("; ");
+}
+
+// POST the real "send friend request" endpoint. 201 = sent; 409 = already
+// pending/friends (idempotent re-run) — both are success for seeding.
+async function httpSendRequest(
+  webUrl: string,
+  cookie: string,
+  handle: string,
+): Promise<"sent" | "exists"> {
+  const res = await fetch(`${webUrl}/api/app/friends/requests`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: webUrl, cookie },
+    body: JSON.stringify({ handle }),
+  });
+  if (res.status === 201) return "sent";
+  if (res.status === 409) return "exists";
+  throw new Error(
+    `send request → @${handle}: ${res.status} ${(await res.text()).slice(0, 200)}`,
+  );
+}
+
+// POST the real "accept request" endpoint as the recipient. 200 = accepted;
+// 404 = nothing pending (already accepted) — idempotent.
+async function httpAcceptRequest(
+  webUrl: string,
+  cookie: string,
+  requesterUserId: string,
+): Promise<"accepted" | "noop"> {
+  const res = await fetch(`${webUrl}/api/app/friends/requests/${requesterUserId}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: webUrl, cookie },
+    body: JSON.stringify({ action: "accept" }),
+  });
+  if (res.ok) return "accepted";
+  if (res.status === 404) return "noop";
+  throw new Error(
+    `accept from ${requesterUserId}: ${res.status} ${(await res.text()).slice(0, 200)}`,
+  );
+}
+
+// Seed the reviewer's demo friends by driving the real endpoints: the reviewer
+// sends a request to each friend, then each friend signs in and accepts it. The
+// resulting ACCEPTED friendships are byte-for-byte what real user traffic
+// produces (sendFriendRequest → acceptFriendRequest). Needs the web app running
+// and a known reviewer password.
+async function seedFriends(
+  reviewer: { userId: string; email: string; password: string | null },
+  webUrl: string,
+): Promise<void> {
+  if (!reviewer.password) {
+    console.warn(
+      "\nFriends step skipped: the reviewer's password is unknown on this run\n" +
+        "(existing account, no --password). Re-run with --password to set a known\n" +
+        "password so the script can sign in as the reviewer, or pass --no-friends.",
+    );
+    return;
+  }
+
+  // Fail fast with a clear message if the web app isn't reachable.
+  let reviewerCookie: string;
+  try {
+    reviewerCookie = await httpSignIn(webUrl, reviewer.email, reviewer.password);
+  } catch (err) {
+    console.warn(
+      `\nFriends step skipped: could not sign in at ${webUrl} ` +
+        `(${err instanceof Error ? err.message : String(err)}).\n` +
+        "Make sure the web app is running and reachable, then re-run, or pass --no-friends.",
+    );
+    return;
+  }
+
+  let accepted = 0;
+  for (const friend of DEMO_FRIENDS) {
+    const fu = await ensureFriendUser(friend, reviewer.password);
+    const sent = await httpSendRequest(webUrl, reviewerCookie, fu.handle);
+    const friendCookie = await httpSignIn(webUrl, fu.email, reviewer.password);
+    const result = await httpAcceptRequest(
+      webUrl,
+      friendCookie,
+      reviewer.userId,
+    );
+    if (result === "accepted" || sent === "exists") accepted++;
+    console.log(
+      `  • @${fu.handle} (${friend.image ? "avatar" : "monogram"}): request ${sent}, accept ${result}`,
+    );
+  }
+  console.log(
+    `Friends seeded: ${DEMO_FRIENDS.length} demo friend(s) via ${webUrl} ` +
+      `(${accepted} accepted/confirmed).`,
+  );
+}
+
 // One seeded post + the submission that "produced" it, kept so the scene step
 // can run each through the worker pipeline (assignOrg needs the submission).
 type SeededItem = {
@@ -729,9 +966,16 @@ async function teardown(args: ParsedArgs): Promise<void> {
   );
 
   if (args.purgeUser) {
-    // Sessions + accounts cascade on user delete (onDelete: Cascade).
+    // Sessions + accounts cascade on user delete (onDelete: Cascade), as do the
+    // reviewer's Friendship rows (FK onDelete: Cascade), so deleting the demo
+    // friend users below also clears every seeded friendship.
     await prisma.user.delete({ where: { id: user.id } });
     console.log(`Deleted reviewer user ${user.email} (${user.id}).`);
+
+    const friends = await prisma.user.deleteMany({
+      where: { email: { endsWith: `@${FRIEND_EMAIL_DOMAIN}` } },
+    });
+    console.log(`Deleted ${friends.count} demo friend user(s).`);
   }
 }
 
@@ -764,6 +1008,17 @@ async function main(): Promise<void> {
     await seedScene(reviewer.userId, items);
   }
 
+  if (args.friends) {
+    console.log(
+      `\nSeeding reviewer friends via the live endpoints at ${args.webUrl}…`,
+    );
+    // ensureReviewerUser only surfaces a *generated* password (null when one was
+    // supplied), but the account was set to args.password either way — so the
+    // effective sign-in password is whichever is non-null.
+    const signInPassword = reviewer.password ?? args.password ?? null;
+    await seedFriends({ ...reviewer, password: signInPassword }, args.webUrl);
+  }
+
   console.log("\nApp Store reviewer account ready:");
   console.log("--------------------------------------------------");
   console.log(`  Email:    ${reviewer.email}`);
@@ -775,6 +1030,9 @@ async function main(): Promise<void> {
   console.log(`  Demo posts seeded: ${items.length}`);
   console.log(
     `  Categories + focus areas: ${args.scene ? "yes (via worker pipeline)" : "skipped (--no-scene)"}`,
+  );
+  console.log(
+    `  Demo friends: ${args.friends ? `seeded via ${args.webUrl} (real friend-request flow)` : "skipped (--no-friends)"}`,
   );
   console.log("--------------------------------------------------");
   if (reviewer.password) {

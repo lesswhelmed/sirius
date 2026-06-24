@@ -68,9 +68,15 @@ function buildTwitterPrompt(
 ): string {
   const author = evidence.author;
   const handle = author.username ? `@${author.username}` : "unknown author";
+  const article = evidence.article;
   const lines: string[] = [
-    "You are drafting a personal SOCIAL post that captures a tweet (a post on X / Twitter).",
-    "Write in first person as the person saving this tweet — what it says and why it's worth keeping.",
+    article
+      ? "You are drafting a FINDING — a saved long-form X Article (a post on X / Twitter) worth keeping and revisiting. The tweet itself is just a link; the real content is the article below."
+      : "You are drafting a personal SOCIAL post that captures a tweet (a post on X / Twitter).",
+    "Write in first person as the person saving this — what it says and why it's worth keeping.",
+    article
+      ? "Summarize and engage with the article's actual ideas in the body; do not just restate the title."
+      : "",
     "Do not fabricate engagement numbers, claims, or context beyond the evidence below.",
     "",
     "## Tweet evidence",
@@ -79,7 +85,19 @@ function buildTwitterPrompt(
   if (evidence.createdAt) {
     lines.push(`Posted: ${evidence.createdAt}`);
   }
-  lines.push("", "Text:", evidence.text ?? "(no text)");
+  if (article) {
+    lines.push("", "## Linked X Article (the primary content)");
+    if (article.title) {
+      lines.push(`Title: ${article.title}`);
+    }
+    lines.push(
+      "",
+      "Article body:",
+      article.body ?? article.previewText ?? "(no article body)",
+    );
+  } else {
+    lines.push("", "Text:", evidence.text ?? "(no text)");
+  }
   if (evidence.quotedText) {
     lines.push("", "Quoted/retweeted text:", evidence.quotedText);
   }
@@ -159,13 +177,20 @@ export async function runTwitterGemini(
     slug: slugBase,
   };
 
-  const result = toGeminiOutput(draft, "SOCIAL", { originalUrl: evidence.url });
+  // An X Article is substantive written content — type it FINDING (like a
+  // saved URL/article), distinct from an ordinary tweet which stays SOCIAL.
+  // Detection is the presence of a populated `article` object; normal tweets
+  // carry no `article` field at all (verified against the apidojo actor), so
+  // this can't misclassify a plain tweet.
+  const forcedType = evidence.article ? "FINDING" : "SOCIAL";
+  const result = toGeminiOutput(draft, forcedType, { originalUrl: evidence.url });
   // Surface media URL + digest on the result so the post writer can persist
   // them as first-class columns (imageUrl, contentDigest) and provider fields.
   result.frontmatter.image_url = evidence.primaryImageUrl;
   result.frontmatter.content_digest = {
     author: evidence.author,
     text: evidence.text,
+    article: evidence.article,
     quotedText: evidence.quotedText,
     engagement: {
       likeCount: evidence.likeCount,

@@ -1,0 +1,7 @@
+# Local plugin settings (per the .claude/<plugin>.local.md convention)
+.claude/*.local.md
+
+# Never commit API keys or local env
+*.local
+.env
+.env.*

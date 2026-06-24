@@ -13,6 +13,18 @@ export type TwitterAuthor = {
   profileImageUrl: string | null;
 };
 
+// X long-form Article ("X Articles"). When a tweet is an article, its own
+// `text`/`fullText` is just a t.co link to the article — the actual prose lives
+// here, under `article.contentState.blocks[]`. Without lifting this out, the
+// drafted post has no content (the bug this whole field exists to fix).
+export type TwitterArticle = {
+  title: string | null;
+  previewText: string | null;
+  // The full article body: contentState blocks joined into paragraphs.
+  body: string | null;
+  coverImageUrl: string | null;
+};
+
 export type TwitterEvidence = {
   // Source
   tweetId: string | null;
@@ -40,6 +52,9 @@ export type TwitterEvidence = {
   // Media (photos only — videos/GIFs are linked, not attached)
   primaryImageUrl: string | null;
   mediaUrls: string[];
+
+  // Long-form X Article, when this tweet is one (null for normal tweets).
+  article: TwitterArticle | null;
 
   // Context
   author: TwitterAuthor;
@@ -154,6 +169,33 @@ function normalizeMedia(raw: Record<string, unknown>): string[] {
   return out;
 }
 
+// Lift an X Article out of the raw item. The body is reconstructed from
+// `article.contentState.blocks[]` — each block is `{ text, type }`; we keep the
+// text and join blocks with blank lines so paragraph structure survives into the
+// draft. Returns null when there's no article (a normal tweet) or it's empty.
+function normalizeArticle(raw: Record<string, unknown>): TwitterArticle | null {
+  const article = asRecord(raw.article);
+  if (!article) return null;
+
+  const contentState = asRecord(article.contentState);
+  const paragraphs: string[] = [];
+  for (const block of asArray(contentState?.blocks)) {
+    const b = asRecord(block);
+    const text = b ? asString(b.text) : null;
+    if (text) paragraphs.push(text);
+  }
+  const body = paragraphs.length > 0 ? paragraphs.join("\n\n") : null;
+
+  const title = asString(article.title);
+  const previewText = asString(article.previewText);
+  const coverImageUrl = asString(article.coverImage);
+
+  // Nothing usable — treat as no article so the caller can fall back.
+  if (!title && !body && !previewText) return null;
+
+  return { title, previewText, body, coverImageUrl };
+}
+
 function normalizeQuotedText(raw: Record<string, unknown>): string | null {
   const quoted =
     asRecord(raw.quoted_tweet) ??
@@ -172,6 +214,7 @@ export function normalizeApifyItem(item: unknown): TwitterEvidence {
     asString(raw.twitterUrl) ??
     (tweetId ? `https://x.com/i/web/status/${tweetId}` : "");
   const mediaUrls = normalizeMedia(raw);
+  const article = normalizeArticle(raw);
 
   return {
     tweetId,
@@ -192,8 +235,12 @@ export function normalizeApifyItem(item: unknown): TwitterEvidence {
     quoteCount: asNumber(raw.quoteCount) ?? asNumber(raw.quote_count),
     viewCount: asNumber(raw.viewCount) ?? asNumber(raw.views),
 
-    primaryImageUrl: mediaUrls[0] ?? null,
+    // An article with no attached photo still has a cover image — use it so the
+    // post gets a hero image and the model has something to look at.
+    primaryImageUrl: mediaUrls[0] ?? article?.coverImageUrl ?? null,
     mediaUrls,
+
+    article,
 
     author: normalizeAuthor(raw),
 
