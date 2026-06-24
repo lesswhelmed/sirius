@@ -1,4 +1,13 @@
 @import "tailwindcss";
+/* Streamdown ships its own utility classes (bg-background, bg-muted, bg-primary,
+   backdrop-blur-sm, rounded-xl, shadow-lg, …) inside its dist JS — incl. the
+   "Open external link?" link-safety modal. Tailwind only emits those utilities
+   if it SCANS that file. Under bun's hoisted linker streamdown lives in the
+   REPO-ROOT node_modules (../../../ from here), NOT apps/web/node_modules, so the
+   local glob below matches nothing on its own. Without a matching @source the
+   modal renders with zero background = fully transparent. Keep BOTH paths so it
+   resolves under hoisted (root) AND isolated (local) installs. */
+@source "../../../node_modules/streamdown/dist/*.js";
 @source "../node_modules/streamdown/dist/*.js";
 
 @theme {

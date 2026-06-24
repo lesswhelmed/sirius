@@ -32,6 +32,7 @@ import {
   type ViewProps,
   type ViewStyle,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -39,6 +40,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { scheduleOnRN } from "react-native-worklets";
 import type { SFSymbol } from "sf-symbols-typescript";
 
 import { BottomTabInset, type Theme } from "@/constants/theme";
@@ -558,8 +560,15 @@ export function ActionCard({
   );
 }
 
-// A bottom modal sheet that hosts a single capture kind's input form. Tapping
-// the scrim or the OS back gesture dismisses it.
+// Past this much downward drag (or a hard flick), releasing the grabber
+// dismisses the sheet; anything less springs back to rest.
+const SHEET_DISMISS_DISTANCE = 120;
+const SHEET_DISMISS_VELOCITY = 800;
+
+// A bottom modal sheet that hosts a single capture kind's input form. It can be
+// dismissed three ways, so there's always an obvious way out: tap the scrim,
+// tap the header close (✕) button, or drag the grabber down. The OS back
+// gesture works too.
 export function Sheet({
   visible,
   title,
@@ -574,6 +583,33 @@ export function Sheet({
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
+
+  // Drives the drag-to-dismiss gesture. Both branches of onEnd land it back at
+  // rest, so it's always 0 when the sheet is closed — no drag ever carries over
+  // to the next open. Only tracks downward pull: pull down, never up.
+  const dragY = useSharedValue(0);
+
+  const dragGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      dragY.value = Math.max(0, e.translationY);
+    })
+    .onEnd((e) => {
+      if (
+        e.translationY > SHEET_DISMISS_DISTANCE ||
+        e.velocityY > SHEET_DISMISS_VELOCITY
+      ) {
+        // Snap to rest, then let the native slide-out play the exit.
+        dragY.value = 0;
+        scheduleOnRN(onClose);
+      } else {
+        dragY.value = withTiming(0, { duration: 180 });
+      }
+    });
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: dragY.value }],
+  }));
+
   return (
     <Modal
       visible={visible}
@@ -591,18 +627,54 @@ export function Sheet({
           accessibilityLabel="Close"
           onPress={onClose}
         />
-        <View
+        <Animated.View
           style={[
             styles.sheet,
             { paddingBottom: t.space.xl + insets.bottom },
+            sheetStyle,
           ]}
         >
-          <View style={styles.sheetHandle} />
-          {title ? (
-            <Eyebrow accessibilityRole="header" style={styles.sheetTitle}>
-              {title}
-            </Eyebrow>
-          ) : null}
+          {/* The grabber: a drag handle + the title/close row. Pan lives here
+              (not the body) so dragging never fights the ScrollView. */}
+          <GestureDetector gesture={dragGesture}>
+            <View style={styles.sheetGrabber}>
+              {/* Decorative drag affordance — VoiceOver users get the explicit
+                  close button instead, so keep the handle out of the a11y tree. */}
+              <View style={styles.sheetHandle} accessibilityElementsHidden />
+              <View style={styles.sheetHeader}>
+                {title ? (
+                  <Eyebrow accessibilityRole="header" style={styles.sheetTitle}>
+                    {title}
+                  </Eyebrow>
+                ) : null}
+                <Pressable
+                  onPress={onClose}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  style={({ pressed }) => [
+                    styles.sheetClose,
+                    pressed && styles.sheetClosePressed,
+                  ]}
+                >
+                  <SymbolView
+                    name="xmark"
+                    size={16}
+                    weight="semibold"
+                    tintColor={t.color.inkSubtle}
+                    fallback={
+                      <Text
+                        style={styles.sheetCloseGlyph}
+                        accessibilityElementsHidden
+                      >
+                        ✕
+                      </Text>
+                    }
+                  />
+                </Pressable>
+              </View>
+            </View>
+          </GestureDetector>
           {/* Scrollable body so a tall input (or any overflow) can never push
               the action buttons off-screen — everything stays reachable even
               with the keyboard up. */}
@@ -615,7 +687,7 @@ export function Sheet({
           >
             {children}
           </ScrollView>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -1019,6 +1091,9 @@ function makeStyles(t: Theme) {
   },
   sheetBody: { flexShrink: 1 },
   sheetBodyContent: { gap: t.space.lg },
+  // Handle + header grouped so the whole top band is the drag target. Extra
+  // vertical padding gives the grabber a generous, finger-friendly hit area.
+  sheetGrabber: { gap: t.space.md, paddingBottom: t.space.xs },
   sheetHandle: {
     alignSelf: "center",
     width: 44,
@@ -1026,7 +1101,23 @@ function makeStyles(t: Theme) {
     borderRadius: t.radius.pill,
     backgroundColor: t.color.inkFaint,
   },
-  sheetTitle: { marginTop: t.space.xs },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: t.space.md,
+  },
+  sheetTitle: { flex: 1 },
+  sheetClose: {
+    marginLeft: "auto",
+    width: 32,
+    height: 32,
+    borderRadius: t.radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: t.color.paperRaised,
+  },
+  sheetClosePressed: { opacity: 0.6 },
+  sheetCloseGlyph: { fontSize: 16, color: t.color.inkSubtle },
   trayRow: {
     flexDirection: "row",
     alignItems: "center",
