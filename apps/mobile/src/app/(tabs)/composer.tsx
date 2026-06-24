@@ -630,7 +630,9 @@ export default function ComposerScreen() {
     setProjectId(null);
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
-    router.push("/(tabs)/queue");
+    // Queue folded into the Catalog — the in-flight section there shows these
+    // submissions until they resolve into posts in place.
+    router.push("/(tabs)/library");
   }
 
   const formCopy =

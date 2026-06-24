@@ -1,5 +1,7 @@
+import type { IngestSubmission } from "@repo/db";
 import { readRepoDigest } from "@repo/github-ingest/digest";
-import { desc, ne } from "drizzle-orm";
+import { useQuery } from "@tanstack/react-query";
+import { asc, desc, inArray, ne } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Image } from "expo-image";
 import { router } from "expo-router";
@@ -16,17 +18,55 @@ import {
 
 import { FriendsFeedList } from "@/components/friends-feed-list";
 import { Segment, SegmentedControl } from "@/components/segmented";
-import { KindLabel, PageHeader, Screen } from "@/components/sirius";
+import { KindLabel, PageHeader, Screen, StatusPip, TextLink } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import {
   usePostTypeTone,
+  useStatusPip,
   useTheme,
   useThemedStyles,
 } from "@/constants/theme-context";
-import { resolveMediaUrl } from "@/lib/api";
+import { apiGet, resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
-import { type PostRow, posts, type SyncState } from "@/lib/db/schema";
+import {
+  type PendingRow,
+  type PostRow,
+  pendingSubmissions,
+  posts,
+  type SyncState,
+} from "@/lib/db/schema";
+import { discardSubmission, requeueSubmission } from "@/lib/outbox";
 import { kickSync } from "@/lib/sync/engine";
+
+type QueuePage = { items: IngestSubmission[]; nextCursor: string | null };
+
+// Describe a server submission for the in-flight row title (ported from the
+// retired Queue screen). Mirrors the catalog post-title fallback chain.
+function describeSubmission(s: IngestSubmission): string {
+  if (s.kind === "image") {
+    if (s.totalCount && s.totalCount > 1) {
+      return `Image ${(s.imageIndex ?? 0) + 1}/${s.totalCount}`;
+    }
+    return "Image";
+  }
+  const payload = s.payload as unknown;
+  if (payload && typeof payload === "object" && "urls" in payload) {
+    const urls = (payload as { urls?: unknown }).urls;
+    if (Array.isArray(urls) && urls.length > 0) return String(urls[0]);
+  }
+  if (s.kind === "note") return "Note";
+  return s.kind;
+}
+
+// "3 tries · no connection" — only shown once the head outbox item has actually
+// failed at least once. Reads straight off the persisted pending row.
+function describeOutboxStatus(head: PendingRow): string {
+  const parts = [`${head.attempts} ${head.attempts === 1 ? "try" : "tries"}`];
+  if (head.lastError) {
+    parts.push(head.lastError);
+  }
+  return parts.join(" · ");
+}
 
 const TYPE_LABEL: Record<string, string> = {
   CONCRETE: "Concrete",
@@ -61,6 +101,52 @@ export default function LibraryScreen() {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   const postTypeTone = usePostTypeTone();
+  const statusPip = useStatusPip();
+  // In-flight section data (folded in from the retired Queue tab). Two sources:
+  //   1. Server queue — submissions the worker is drafting/has failed. Polled.
+  //   2. Local offline outbox — captures stuck on this device (no connection).
+  // Completed server submissions are intentionally NOT shown here; they arrive
+  // as synced posts in the mirror list below, already tappable.
+  const { data: queueData } = useQuery({
+    queryKey: ["queue"],
+    queryFn: () => apiGet<QueuePage>("/api/app/queue?limit=50"),
+    refetchInterval: 5000,
+  });
+  const inFlightServer = useMemo(
+    () =>
+      (queueData?.items ?? []).filter(
+        (s) =>
+          s.status === "pending" ||
+          s.status === "processing" ||
+          s.status === "failed",
+      ),
+    [queueData],
+  );
+  // Live view of the pending outbox (SQLite) — updates the instant a row is
+  // queued, retried, or sent without any polling.
+  const { data: pendingRows } = useLiveQuery(
+    db
+      .select()
+      .from(pendingSubmissions)
+      .where(
+        inArray(pendingSubmissions.status, ["queued", "in_flight", "failed"]),
+      )
+      .orderBy(asc(pendingSubmissions.createdAt)),
+  );
+  const outboxWaiting = useMemo(
+    () =>
+      (pendingRows ?? []).filter(
+        (r) => r.status === "queued" || r.status === "in_flight",
+      ),
+    [pendingRows],
+  );
+  const outboxFailed = useMemo(
+    () => (pendingRows ?? []).filter((r) => r.status === "failed"),
+    [pendingRows],
+  );
+  const sendNow = useCallback(() => {
+    kickSync("manual");
+  }, []);
   // Live view of the local mirror: local drafts, in-flight submissions, and
   // synced server posts, newest first. Re-renders automatically on any row
   // change (sync pull, SSE reconcile, optimistic write).
@@ -306,6 +392,105 @@ export default function LibraryScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <View style={styles.scopeBar}>{scopeToggle}</View>
+            {/* In-flight section (folded in from the retired Queue tab). Shown
+                only when something is pending/processing/failed on the server or
+                stuck in the local outbox; otherwise the whole block is hidden. */}
+            {inFlightServer.length > 0 ||
+            outboxWaiting.length > 0 ||
+            outboxFailed.length > 0 ? (
+              <View style={styles.inFlight}>
+                <Text style={styles.inFlightEyebrow}>In flight</Text>
+                {outboxWaiting.length > 0 ? (
+                  <View style={styles.outboxBanner}>
+                    <View style={styles.outboxRow}>
+                      <StatusPip
+                        label={
+                          outboxWaiting.some((r) => r.status === "in_flight")
+                            ? "uploading"
+                            : "queued on device"
+                        }
+                        color={t.color.inkSubtle}
+                      />
+                      <Text style={styles.outboxText}>
+                        {outboxWaiting.length} item
+                        {outboxWaiting.length === 1 ? "" : "s"}{" "}
+                        {outboxWaiting.some((r) => r.status === "in_flight")
+                          ? "uploading…"
+                          : "waiting for a connection."}
+                      </Text>
+                      <TextLink label="Send now →" onPress={sendNow} />
+                    </View>
+                    {outboxWaiting[0] && outboxWaiting[0].attempts > 0 ? (
+                      <Text style={styles.outboxStatus}>
+                        {describeOutboxStatus(outboxWaiting[0])}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                {outboxFailed.length > 0 ? (
+                  <View style={styles.failedBanner}>
+                    {outboxFailed.map((row) => (
+                      <View key={row.id} style={styles.failedRow}>
+                        <View style={styles.inFlightRowText}>
+                          <StatusPip label="failed" color={t.color.accent} />
+                          <Text style={styles.outboxStatus} numberOfLines={1}>
+                            {row.lastError ?? "upload failed"}
+                          </Text>
+                        </View>
+                        <TextLink
+                          label="Requeue →"
+                          onPress={() => {
+                            void requeueSubmission(row.id).then(() =>
+                              kickSync("manual"),
+                            );
+                          }}
+                        />
+                        <TextLink
+                          label="Discard"
+                          tone={t.color.inkMuted}
+                          onPress={() => void discardSubmission(row.id)}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                {inFlightServer.length > 0 ? (
+                  <View style={styles.serverQueue}>
+                    {inFlightServer.map((item, i) => {
+                      const isFailed = item.status === "failed";
+                      const pip = isFailed
+                        ? t.color.accent
+                        : statusPip[item.status] ?? t.color.inkSubtle;
+                      return (
+                        <View
+                          key={item.id}
+                          style={[
+                            styles.queueRow,
+                            i > 0 && styles.queueRowBorder,
+                          ]}
+                        >
+                          <View style={styles.inFlightRowText}>
+                            <KindLabel>{item.kind.toUpperCase()}</KindLabel>
+                            <Text style={styles.queueRowTitle} numberOfLines={2}>
+                              {describeSubmission(item)}
+                            </Text>
+                            {isFailed ? (
+                              <Text
+                                style={styles.queueRowError}
+                                numberOfLines={3}
+                              >
+                                {item.errorMessage ?? "Processing failed."}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <StatusPip label={item.status} color={pip} />
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
             <PageHeader
               eyebrow="Section II — Catalogue"
               title="The Catalog"
@@ -480,6 +665,69 @@ function makeStyles(t: Theme) {
   },
   header: { marginBottom: t.space.lg },
   scopeBar: { marginBottom: t.space.lg },
+
+  // In-flight section (folded in from the retired Queue tab).
+  inFlight: { gap: t.space.sm, marginBottom: t.space.lg },
+  inFlightEyebrow: {
+    fontFamily: t.font.mono,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: t.color.inkSubtle,
+  },
+  inFlightRowText: { flex: 1, gap: t.space.xs },
+  outboxBanner: {
+    backgroundColor: t.color.paperRaised,
+    borderRadius: 8,
+    gap: t.space.xs,
+    paddingHorizontal: t.space.md,
+    paddingVertical: t.space.sm,
+  },
+  outboxRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: t.space.sm,
+  },
+  outboxText: {
+    color: t.color.inkMuted,
+    flex: 1,
+    fontSize: 13,
+  },
+  outboxStatus: {
+    color: t.color.inkSubtle,
+    fontSize: 12,
+  },
+  failedBanner: {
+    backgroundColor: t.color.paperRaised,
+    borderRadius: 8,
+    gap: t.space.sm,
+    paddingHorizontal: t.space.md,
+    paddingVertical: t.space.sm,
+  },
+  failedRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: t.space.sm,
+  },
+  serverQueue: {
+    backgroundColor: t.color.paperRaised,
+    borderRadius: 8,
+    paddingHorizontal: t.space.md,
+  },
+  queueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: t.space.md,
+    paddingVertical: t.space.md,
+  },
+  queueRowBorder: { borderTopWidth: 1, borderTopColor: t.color.rule },
+  queueRowTitle: {
+    fontFamily: t.font.serif,
+    fontSize: 16,
+    lineHeight: 21,
+    color: t.color.ink,
+  },
+  queueRowError: { color: t.color.accent, fontSize: 12, lineHeight: 16 },
 
   // Category segmented bar.
   categoryBarScroll: {

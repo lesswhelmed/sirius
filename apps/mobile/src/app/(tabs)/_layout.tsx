@@ -57,10 +57,6 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="point.3.connected.trianglepath.dotted" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="queue">
-        <NativeTabs.Trigger.Label>Queue</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="tray.full" />
-      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
         <NativeTabs.Trigger.Label>Account</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="person.crop.circle" />

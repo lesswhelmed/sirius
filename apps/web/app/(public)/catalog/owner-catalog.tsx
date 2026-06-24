@@ -14,6 +14,7 @@ import { PUBLIC_CATALOG_ENABLED } from "../../../lib/features";
 import { CatalogCard } from "./catalog-card";
 import { CatalogScope } from "./catalog-scope";
 import { CategoryIndex } from "./category-index";
+import { InFlight } from "./in-flight";
 import { OwnerFilters, type SortOption } from "./owner-filters";
 import { Pagination } from "./pagination";
 import { TagFilterBox } from "./tag-filter-box";
@@ -194,6 +195,8 @@ export async function OwnerCatalog({
           </span>
         </div>
       </header>
+
+      <InFlight />
 
       {/* Two-zone layout: the left rail is the primary navigation (category
           index) + the secondary tag refine box; the filter ledger + entry list

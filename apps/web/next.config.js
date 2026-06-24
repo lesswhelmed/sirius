@@ -21,6 +21,24 @@ const nextConfig = {
 			},
 		],
 	},
+	turbopack: {
+		// Suppress a benign Output File Tracing (NFT) warning. lib/originals/
+		// originals-paths.ts resolves the PRIVATE originals/archives roots via
+		// `resolve(process.cwd(), "..", "..", ...)` at request time. @vercel/nft
+		// statically folds that to the repo root and traces the whole project,
+		// then reports "Encountered unexpected file in NFT list" against this
+		// config. The path math is intentional and runtime-only (nothing is
+		// imported from those dirs), and this app deploys via `bun run start`
+		// (pm2), not `output: standalone`, so the NFT list is never consumed. The
+		// documented `/* turbopackIgnore */` magic comment does not suppress this
+		// NFT issue in Next 16.2.x, so we scope-suppress the issue itself.
+		ignoreIssue: [
+			{
+				path: "**/next.config.js",
+				title: "Encountered unexpected file in NFT list",
+			},
+		],
+	},
 };
 
 export default nextConfig;

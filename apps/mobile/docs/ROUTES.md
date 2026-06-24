@@ -29,12 +29,19 @@ drill links and existing deep links keep resolving). `siriusapp://explore` →
 | Capture        | `composer`         | `siriusapp://composer`|
 | Catalog        | `library`          | `siriusapp://library` |
 | Explore        | `tree`             | `siriusapp://tree`    |
-| Queue          | `queue`            | `siriusapp://queue`   |
 | Account        | `settings`         | `siriusapp://settings`|
 
-Only **Queue** has a label that matches its route name. The rest are renamed in the
-layout (`(tabs)/_layout.tsx` via `NativeTabs.Trigger.Label`). The signed-in entry
-point (`/`) redirects to `/(tabs)/library` (the Catalog tab).
+There are **4 tabs**. Every label is renamed in the layout
+(`(tabs)/_layout.tsx` via `NativeTabs.Trigger.Label`) — none matches its route
+name. The signed-in entry point (`/`) redirects to `/(tabs)/library` (the Catalog
+tab).
+
+**Queue is no longer a tab.** Its "in flight" status board folded into the
+Catalog tab — `library.tsx` now renders pending/processing/failed submissions
+(server queue + local offline outbox) in an in-flight section above the post
+list, and completed items appear as normal clickable post cards. The legacy deep
+link `siriusapp://queue` still resolves (back-compat) via the top-level
+`app/queue.tsx`, which redirects to `/library`.
 
 ## Top-level stack routes — `src/app/`
 
@@ -46,6 +53,7 @@ point (`/`) redirects to `/(tabs)/library` (the Catalog tab).
 | `/focus`               | `focus.tsx`                 | `siriusapp://focus`                                                                |
 | `/friends`             | `friends.tsx`               | `siriusapp://friends` (also pushed from Account).                                  |
 | `/help`                | `help.tsx`                  | `siriusapp://help`. "How Sirius works" hub + first-run onboarding.                 |
+| `/queue`               | `queue.tsx`                 | `siriusapp://queue`. Back-compat redirect → `/library` (Queue folded into Catalog; no longer a tab). |
 | `/space`               | `space.tsx`                 | `siriusapp://space`. Full 3D embedding space (the Explore tab's "Map" view also lives here). |
 | `/llm`                 | `llm.tsx`                   | `siriusapp://llm`. On-device model download + chat. Hidden unless `EXPO_PUBLIC_ON_DEVICE_AI=true`. |
 | `/llm-test`            | `llm-test.tsx`              | `siriusapp://llm-test?run=all` (or `?run=ask`). Dev-only draft/ask bench.          |

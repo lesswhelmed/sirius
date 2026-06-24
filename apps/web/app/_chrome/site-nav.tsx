@@ -22,7 +22,6 @@ type MobileNavItemStyle = CSSProperties & {
 export const SIGNED_IN_NAV: readonly NavItem[] = [
   { href: "/catalog", label: "Catalog", folio: "I" },
   { href: "/ingest", label: "Ingest", folio: "II" },
-  { href: "/queue", label: "Queue", folio: "III" },
   { href: "/projects", label: "Focus", folio: "IV" },
   { href: "/space", label: "Space", folio: "V" },
   { href: "/friends", label: "Friends", folio: "VI" },
