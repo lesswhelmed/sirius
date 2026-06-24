@@ -40,7 +40,9 @@ resources `sirius://post/{slug}` and `sirius://category/{path}`, and prompts
 2. **Mint an API key** for the account whose corpus you want to research:
    sign in to the web app → `/settings` → **API Keys** (copy the plaintext once),
    or `POST /api/app/api-keys` while session-authed. The key determines whose
-   corpus is visible — it is owner-scoped.
+   corpus is visible — it is owner-scoped. Minted keys carry a default rate limit
+   of **1000 requests/hour** (each tool call = one request); a key that hits the
+   limit returns `401` until the window resets.
 
 3. **Export the key** so the plugin can authenticate:
    ```sh

@@ -4,7 +4,14 @@
 the new `plugins/sirius-research` plugin against the `apps/mcp` corpus server.
 **Severity:** blocks the entire `apps/mcp` MCP feature locally (and almost
 certainly in prod) — no API key can be minted or verified.
-**Status:** root-caused, one-line fix proposed, awaiting owner approval.
+**Status:** ✅ **RESOLVED** — fix landed in commit `9fcea30` (on `main`,
+pushed + deployed 2026-06-24). Minting/verify confirmed working end-to-end
+(local + prod has 0 legacy keys, so no backfill was needed). A related rate-limit
+default (1000 req/hour at mint) landed in `1c19132`. Kept for the record.
+
+---
+
+_Original report (root-caused, one-line fix proposed, awaiting owner approval):_
 
 ## Symptom
 

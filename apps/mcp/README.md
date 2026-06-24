@@ -5,6 +5,17 @@ external AI agents over the [Model Context Protocol](https://modelcontextprotoco
 (Streamable HTTP). A connected agent can search, semantically retrieve, navigate
 the taxonomy/projects, classify text, and read posts as wiki-like context.
 
+**Why it exists:** let users connect their *own* external LLM chats/agents
+(Claude, ChatGPT, etc.) to their Sirius corpus, so the content they've ingested
+becomes usable context wherever they work — closing the loop between capture and
+use. **Status: WIP / not fully fleshed out** — the read surface below is live and
+validated, but the product around it (key management UX, richer write/curation
+flows, discovery) is still being built.
+
+A ready client lives in this repo: the **`sirius-research` Claude Code plugin**
+(`plugins/sirius-research/`) connects to this server and adds research skills +
+a blackbox smoke harness — see its README.
+
 Design: `docs/superpowers/specs/2026-06-21-mcp-server-design.md`.
 
 ## How it works
@@ -55,6 +66,16 @@ Reads the repo-root `.env` (via the `.env` symlink): `DATABASE_URL`,
 Sign in to the web app, open `/settings` → **API Keys**, mint a key (copy the
 plaintext shown **once**). Or `POST /api/app/api-keys` while session-authed.
 
+Minted keys carry a default rate limit of **1000 requests / hour** (each MCP
+request = one `verifyApiKey` = one unit; a single research run fans out to
+dozens). The default is set at mint in
+`apps/web/app/api/app/api-keys/route.ts` (`MCP_API_KEY_RATE_LIMIT_*` constants).
+The window resets lazily — a key that returns `401` becomes usable again on the
+first request after the window elapses since its last request. (The
+`apiKey()` plugin's own default is 10/day, which is far too low for research;
+that's why we override it at mint. Keys minted before this override keep 10/day
+until backfilled.)
+
 ## Verify (manual — no test runner in this repo)
 
 1. **MCP Inspector**
@@ -82,6 +103,14 @@ plaintext shown **once**). Or `POST /api/app/api-keys` while session-authed.
    expect **"not found"**; confirm `semantic_search` never returns B's posts.
 
 4. **Auth** — no key, revoked key, expired key → all **401**.
+
+> **Validated 2026-06-24.** The end-to-end key smoke (all 9 tools / 2 resources
+> / 3 prompts), tenant isolation (foreign slug → `not found`; `semantic_search`
+> returns only owner posts), and rate-limit enforcement all pass. The reusable
+> harness is `plugins/sirius-research/scripts/smoke.sh`
+> (`SIRIUS_MCP_API_KEY=<key> bash plugins/sirius-research/scripts/smoke.sh`).
+> Note local dev uses `MCP_PORT=4269` in this repo's `.env` (the `:3005` in the
+> examples above is the upstream default + the prod/Caddy port).
 
 ## Deploy
 
