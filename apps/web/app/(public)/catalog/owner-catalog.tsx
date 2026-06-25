@@ -14,6 +14,7 @@ import { PUBLIC_CATALOG_ENABLED } from "../../../lib/features";
 import { CatalogCard } from "./catalog-card";
 import { CatalogScope } from "./catalog-scope";
 import { CategoryIndex } from "./category-index";
+import { CuratedSearch } from "./curated-search";
 import { InFlight } from "./in-flight";
 import { OwnerFilters, type SortOption } from "./owner-filters";
 import { Pagination } from "./pagination";
@@ -195,6 +196,14 @@ export async function OwnerCatalog({
           </span>
         </div>
       </header>
+
+      {/* Curated search: full-text + embedding blend across the viewer's corpus
+          (and friends'/public via scope=all). A live overlay above the browse
+          rail — when the field is empty it's just the input, so the catalog
+          below stays the default view. */}
+      <div className="mt-8">
+        <CuratedSearch scope="all" />
+      </div>
 
       <InFlight />
 

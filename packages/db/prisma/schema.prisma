@@ -36,6 +36,12 @@ model Post {
   lastEdited    DateTime       @updatedAt
   published     Boolean        @default(false)
 
+  // Generated full-text search vector over title+excerpt+content. Managed by a
+  // hand-authored migration (Postgres GENERATED STORED column) and queried only
+  // via raw SQL (searchCorpus → websearch_to_tsquery). Typed Unsupported so
+  // Prisma knows the column exists without trying to write or select it.
+  searchVector Unsupported("tsvector")?
+
   // Provider provenance — tracks where this post came from
   sourceType     String    @default("mdx") // "mdx" | "json" | "api" | "ingest"
   providerId     String    @default("filesystem") // provider identifier
@@ -91,6 +97,10 @@ model Post {
   // PUBLIC catalog scan (when enabled) without a full table scan
   @@index([visibility, status, createdAt])
   @@index([projectId])
+  // Full-text search over post bodies (GIN on the generated tsvector). The index
+  // itself is created by the hand-authored migration; declared here so the schema
+  // reflects the live database.
+  @@index([searchVector], type: Gin)
 }
 
 enum PostType {

@@ -280,9 +280,24 @@ the email link works; expires after `ARCHIVE_TTL_HOURS`, default 7d). Keep `ORIG
 - `(auth)` — sign-in/up, verify-email, forgot/reset password.
 - `(public)` — public catalog: `/catalog`, `/catalog/[handle]`, `/listing/[slug]` + inquiry form.
 - API layout: `/api/app/*` = session-authed app APIs (incl. `/api/app/embedding-scene` →
-  the Observatory/Tree scene); `/api/*` (ingest/ingest-images) = bearer; `/api/catalog/*` =
-  public read; `/api/auth/*` = better-auth. Plus the media catch-alls `/sight/*` + `/social/*`
+  the Observatory/Tree scene, and `/api/app/search` → curated corpus search); `/api/*`
+  (ingest/ingest-images) = bearer; `/api/catalog/*` = public read; `/api/auth/*` =
+  better-auth. Plus the media catch-alls `/sight/*` + `/social/*`
   (see "Serving worker-written media").
+
+### Curated search (`/api/app/search` + web catalog + mobile library)
+
+`@repo/db` `searchCorpus(viewerId, query, opts)` (`packages/db/src/search.ts`) is the single
+search core: it runs Postgres full-text (the generated `Post.searchVector` tsvector + GIN,
+ranked by `ts_rank`) AND brute-force embedding cosine over the viewer-visible `PostEmbedding`
+candidate set, then fuses both ranked lists via Reciprocal Rank Fusion into one
+`SearchHit[]` with `matchReasons` (`exact`/`similar`) badges. Visibility-gated (own posts any
+status + friends' FRIENDS/PUBLIC published + PUBLIC) via the shared `searchVisibilityWhere`,
+so FTS and embedding legs never disagree. The embedding leg degrades gracefully (returns
+`partial: true`, FTS-only) when Gemini is down. `GET /api/app/search?q=&scope=all|mine&cursor=`
+wraps it; web `/catalog` (`curated-search.tsx`) and the mobile library tab
+(`components/corpus-search.tsx`, online-only) both consume it, and the MCP `full_text_search`
+tool was refactored onto the same core so UI and MCP can't drift.
 
 ### The Observatory / Tree (`/space` + mobile Tree tab)
 

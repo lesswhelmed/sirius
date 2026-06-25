@@ -1,15 +1,14 @@
-// Keyword + structured-browse retrieval (swap seam — spec §6). v1 reuses the
-// existing owner-scoped `q` ILIKE filter (title/excerpt/tag names) and the
-// structured PostFilters via @repo/db. Upgrade path (no tool-contract change):
-// Postgres tsvector + GIN with ranked ordering.
-//
-// NOTE: listOwnerPosts returns bare Post rows (no tag/category relations), so
-// the summaries here carry empty categories/tags. The full post (with relations)
-// is available via get_post / the post resource when the agent drills in.
+// Keyword + structured-browse retrieval (swap seam — spec §6). browsePosts still
+// uses the structured owner-scoped PostFilters via @repo/db. keywordSearch now
+// delegates to the shared searchCorpus core (Postgres tsvector + ts_rank, fused
+// with the embedding leg) so the MCP full_text_search tool and the web/mobile
+// search UI share ONE ranked implementation and can never drift. Owner-scoped via
+// scope:"mine".
 import {
   listOwnerPosts,
   type PostStatus,
   type PostType,
+  searchCorpus,
 } from "@repo/db";
 
 import { type PostSummary, postSummary } from "./summary";
@@ -47,20 +46,32 @@ export async function browsePosts(
   };
 }
 
-// Keyword search via the existing `q` filter (ILIKE over title/excerpt/tag
-// names), ordered by recency. Backs `full_text_search`.
+// Keyword search via the shared searchCorpus core (Postgres full-text ranked by
+// ts_rank, fused with embedding similarity), owner-scoped. Backs `full_text_
+// search`. Unlike the old ILIKE path this searches post BODIES (not just title/
+// excerpt/tag names) and returns relevance-ranked results carrying their
+// categories/tags.
 export async function keywordSearch(
   ownerId: string,
   query: string,
   params: { limit?: number; cursor?: string } = {},
 ): Promise<SearchPage> {
-  const page = await listOwnerPosts(ownerId, {
-    q: query,
+  const page = await searchCorpus(ownerId, query, {
+    scope: "mine",
     limit: params.limit,
     cursor: params.cursor,
   });
   return {
-    items: page.items.map((p) => postSummary(p)),
+    items: page.items.map((h) => ({
+      slug: h.slug,
+      title: h.title,
+      excerpt: h.excerpt,
+      type: h.type,
+      status: h.status,
+      categories: h.categories.map((c) => c.slug),
+      tags: h.tags.map((t) => t.slug),
+      createdAt: h.createdAt,
+    })),
     nextCursor: page.nextCursor,
   };
 }

@@ -441,6 +441,31 @@ export function listPostsBySlugs(
   });
 }
 
+// Like listPostsBySlugs but gated by an arbitrary visibility predicate (built by
+// searchVisibilityWhere in search.ts) instead of owner-only — curated search
+// spans the viewer's OWN posts AND friends'/public ones, so owner-scoping would
+// wrongly drop reachable hits. Defense in depth: a slug the viewer can't actually
+// read is silently dropped here even if it leaked into the ranked set. Order is
+// NOT preserved; the caller re-orders by its fused rank and looks rows up by slug.
+export function listPostsBySlugsVisible(
+  slugs: string[],
+  visibilityWhere: Prisma.PostWhereInput,
+): Promise<PostWithRelations[]> {
+  if (slugs.length === 0) {
+    return Promise.resolve([]);
+  }
+  return prisma.post.findMany({
+    where: { AND: [{ slug: { in: slugs } }, visibilityWhere] },
+    include: {
+      tags: true,
+      categories: true,
+      submittedBy: {
+        select: { id: true, name: true, handle: true, image: true },
+      },
+    },
+  }) as Promise<PostWithRelations[]>;
+}
+
 // ---------------------------------------------------------------------------
 // Delta feed for the mobile offline mirror.
 //

@@ -13,9 +13,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
+import { CorpusSearchResults } from "@/components/corpus-search";
 import { FriendsFeedList } from "@/components/friends-feed-list";
 import { Segment, SegmentedControl } from "@/components/segmented";
 import { KindLabel, PageHeader, Screen, StatusPip, TextLink } from "@/components/sirius";
@@ -215,6 +217,9 @@ export default function LibraryScreen() {
   // Mine = the offline mirror (own posts); Friends = the networked feed of
   // posts friends shared with you (online-only, never mirrored).
   const [scope, setScope] = useState<"mine" | "friends">("mine");
+  // Networked curated search (full-text + embedding). When non-empty it takes
+  // over the list below the field; the local offline browse is the default.
+  const [searchQuery, setSearchQuery] = useState("");
 
   const categoryFacets = useMemo(() => {
     const counts = new Map<string, number>();
@@ -419,13 +424,36 @@ export default function LibraryScreen() {
     );
   }
 
+  const searching = searchQuery.trim().length > 0;
+
   return (
     <Screen>
-      <FlatList
-        data={visibleItems}
-        keyExtractor={(p) => p.localId}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
+      {/* Curated search field — pinned above the list as a sibling so it keeps
+          focus when the list below swaps between browse and search results. */}
+      <View style={styles.searchField}>
+        <Text style={styles.searchLabel}>SEARCH</Text>
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search your corpus…"
+          placeholderTextColor={t.color.inkSubtle}
+          style={styles.searchInput}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+          accessibilityLabel="Search your corpus"
+        />
+      </View>
+
+      {searching ? (
+        <CorpusSearchResults query={searchQuery} scope="all" />
+      ) : (
+        <FlatList
+          data={visibleItems}
+          keyExtractor={(p) => p.localId}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
         ItemSeparatorComponent={Separator}
         refreshControl={
           <RefreshControl
@@ -698,7 +726,8 @@ export default function LibraryScreen() {
             </Text>
           </View>
         }
-      />
+        />
+      )}
     </Screen>
   );
 }
@@ -761,6 +790,33 @@ function makeStyles(t: Theme) {
   },
   header: { marginBottom: t.space.lg },
   scopeBar: { marginBottom: t.space.lg },
+
+  // Curated search field — bracketed by ink rules, editorial mono label + serif
+  // italic input, aligned with the list's horizontal padding.
+  searchField: {
+    paddingHorizontal: t.space.xl,
+    paddingTop: 64,
+    paddingBottom: t.space.sm,
+    borderBottomWidth: t.rule.emphatic,
+    borderBottomColor: t.color.ruleEmphatic,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: t.space.md,
+  },
+  searchLabel: {
+    fontFamily: t.font.mono,
+    fontSize: 10,
+    letterSpacing: 2.2,
+    color: t.color.inkSubtle,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: t.font.serif,
+    fontStyle: "italic",
+    fontSize: 18,
+    color: t.color.ink,
+    paddingVertical: t.space.xs,
+  },
 
   // In-flight section (folded in from the retired Queue tab).
   inFlight: { gap: t.space.sm, marginBottom: t.space.lg },

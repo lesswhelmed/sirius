@@ -2,6 +2,7 @@
 // analysis taxonomy; ProjectEmbedding = per-user Focus Area vectors). Kept out
 // of posts.ts (query-only by contract). v1 reverse lookup loads these into
 // memory and does cosine in JS — fine for tens of categories + a few projects.
+import { PostStatus, PostVisibility, type Prisma } from "../generated/prisma";
 import {
   type CategoryEmbedding,
   type PostEmbedding,
@@ -216,6 +217,50 @@ export async function getEmbeddingSceneRows(
   const categories = allCategories.filter((c) => keep.has(c.path));
 
   return { categories, projects, posts };
+}
+
+export interface VisiblePostEmbedding {
+  embedding: number[];
+  retrievalText: string;
+  slug: string;
+  title: string;
+}
+
+// The embedding candidate set a viewer may search: their OWN posts (any status)
+// plus friends' FRIENDS posts and PUBLIC posts (both PUBLISHED-only). Shares its
+// visibility shape with searchVisibilityWhere (search.ts) so the embedding and
+// full-text legs never disagree about what's reachable. Owner-trust: viewerId
+// and friendIds are resolved server-side from the session, never client input.
+export async function listVisiblePostEmbeddings(
+  viewerId: string,
+  friendIds: string[],
+  includePublic: boolean,
+): Promise<VisiblePostEmbedding[]> {
+  const or: Prisma.PostWhereInput[] = [{ submittedById: viewerId }];
+  if (friendIds.length > 0) {
+    or.push({
+      submittedById: { in: friendIds },
+      visibility: PostVisibility.FRIENDS,
+      status: PostStatus.PUBLISHED,
+    });
+  }
+  if (includePublic) {
+    or.push({ visibility: PostVisibility.PUBLIC, status: PostStatus.PUBLISHED });
+  }
+  const rows = await prisma.postEmbedding.findMany({
+    where: { post: { OR: or } },
+    select: {
+      embedding: true,
+      retrievalText: true,
+      post: { select: { slug: true, title: true } },
+    },
+  });
+  return rows.map((r) => ({
+    embedding: r.embedding,
+    retrievalText: r.retrievalText,
+    slug: r.post.slug,
+    title: r.post.title,
+  }));
 }
 
 // Owner's posts not yet embedded — drives the backfill script.

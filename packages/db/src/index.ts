@@ -80,6 +80,7 @@ export * from "./posts";
 export * from "./scene-cache";
 export * from "./projects";
 export * from "./saved";
+export * from "./search";
 export * from "./tags";
 export * from "./users";
 

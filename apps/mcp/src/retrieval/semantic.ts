@@ -30,6 +30,10 @@ export class EmbeddingUnavailableError extends Error {
 
 const SNIPPET_MAX = 280;
 
+// NOTE: this owner-scoped embedding-only search backs the MCP `semantic_search`
+// tool (it returns a per-hit score the tool surfaces). The web/mobile search UI
+// uses @repo/db `searchCorpus`, which fuses THIS embedding leg with full-text via
+// RRF — searchCorpus is the superset; this stays for the score-exposing tool.
 export async function semanticSearch(
   ownerId: string,
   query: string,
