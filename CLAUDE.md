@@ -297,7 +297,10 @@ so FTS and embedding legs never disagree. The embedding leg degrades gracefully 
 `partial: true`, FTS-only) when Gemini is down. `GET /api/app/search?q=&scope=all|mine&cursor=`
 wraps it; web `/catalog` (`curated-search.tsx`) and the mobile library tab
 (`components/corpus-search.tsx`, online-only) both consume it, and the MCP `full_text_search`
-tool was refactored onto the same core so UI and MCP can't drift.
+tool was refactored onto the same core so UI and MCP can't drift. **Ranking principles +
+the field-weighted `searchVector` (title>tags/categories>excerpt>body), the RRF fusion math,
+query operators, and the deterministic test harness are documented in
+`docs/search-ranking.md`.**
 
 ### The Observatory / Tree (`/space` + mobile Tree tab)
 

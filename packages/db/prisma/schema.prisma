@@ -97,10 +97,12 @@ model Post {
   // PUBLIC catalog scan (when enabled) without a full table scan
   @@index([visibility, status, createdAt])
   @@index([projectId])
-  // Full-text search over post bodies (GIN on the generated tsvector). The index
-  // itself is created by the hand-authored migration; declared here so the schema
-  // reflects the live database.
-  @@index([searchVector], type: Gin)
+  // Full-text search over post bodies (GIN on the trigger-maintained tsvector).
+  // The index itself is created by the hand-authored migration; declared here so
+  // the schema reflects the live database. `map:` pins Prisma's expected index
+  // name to the migration's actual name so a future `migrate dev` won't try to
+  // rename it (Prisma's default would be `Post_searchVector_idx`).
+  @@index([searchVector], type: Gin, map: "post_search_vector_idx")
 }
 
 enum PostType {

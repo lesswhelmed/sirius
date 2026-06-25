@@ -15,7 +15,9 @@
 		"db:migrate:reset": "prisma migrate reset",
 		"db:push": "prisma db push",
 		"db:studio": "prisma studio",
-		"check-types": "tsc --noEmit"
+		"check-types": "tsc --noEmit",
+		"test": "bun test src/search.test.ts",
+		"test:search": "bun test --preload ./test/setup-env.ts src/search.test.ts src/search.integration.test.ts"
 	},
 	"dependencies": {
 		"@google/genai": "^2.8.0",

@@ -76,6 +76,14 @@ Then edit `.env.production` and replace every `<...>` placeholder:
    Prisma migrations run as this user via `bun run db:migrate:deploy` during
    deploy, so ownership of the `sirius` database is sufficient.
 
+   > **Heavy-migration note — `20260624130000_weighted_search_vector`.** This
+   > migration rebuilds `Post.searchVector` (field-weighted, trigger-maintained)
+   > and backfills **every** `Post` row inside the deploy transaction (a full
+   > `UPDATE` + a `CREATE INDEX`), briefly locking writes to `Post`. Fine at the
+   > current owner-scoped corpus size. If the corpus ever grows large, split the
+   > backfill into a batched, post-deploy step (e.g. update in id ranges outside
+   > the migration) to avoid a long write lock. Applies once per environment.
+
 5. **Clone the repo**
 
    ```sh
