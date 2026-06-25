@@ -84,7 +84,7 @@ async function fullTextLeg(
     : Prisma.empty;
   const rows = await prisma.$queryRaw<{ slug: string }[]>`
     SELECT p."slug" AS slug,
-           ts_rank(p."searchVector", websearch_to_tsquery('english', ${query})) AS rank
+           ts_rank('{0.1,0.2,0.4,1.0}', p."searchVector", websearch_to_tsquery('english', ${query})) AS rank
     FROM "Post" p
     WHERE p."searchVector" @@ websearch_to_tsquery('english', ${query})
       AND (
