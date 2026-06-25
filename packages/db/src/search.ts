@@ -99,6 +99,26 @@ async function fullTextLeg(
   return rows.map((r) => r.slug);
 }
 
+export type QueryEmbedder = (query: string) => Promise<number[]>;
+
+// Default seam: embed the query in the worker's space (asymmetric query prefix).
+const defaultQueryEmbedder: QueryEmbedder = (q) =>
+  embedContent([{ text: queryPrefix(q) }]);
+
+// Pure cosine ranking — extracted from semanticLeg so it can be unit-tested
+// without a DB or a live embedder.
+export function rankByCosine(
+  queryVector: number[],
+  candidates: { slug: string; embedding: number[] }[],
+  limit: number,
+): string[] {
+  return candidates
+    .map((c) => ({ slug: c.slug, score: cosineSimilarity(queryVector, c.embedding) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((c) => c.slug);
+}
+
 // Embedding leg: embed the query in the worker's space, cosine over the visible
 // candidate set, return slugs ranked by similarity. Returns null (not throw) when
 // the embedding call fails so searchCorpus can degrade to full-text only.
@@ -108,10 +128,11 @@ async function semanticLeg(
   friendIds: string[],
   includePublic: boolean,
   limit: number,
+  embedder: QueryEmbedder,
 ): Promise<string[] | null> {
   let queryVector: number[];
   try {
-    queryVector = await embedContent([{ text: queryPrefix(query) }]);
+    queryVector = await embedder(query);
   } catch {
     return null;
   }
@@ -120,14 +141,7 @@ async function semanticLeg(
     friendIds,
     includePublic,
   );
-  return candidates
-    .map((c) => ({
-      slug: c.slug,
-      score: cosineSimilarity(queryVector, c.embedding),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((c) => c.slug);
+  return rankByCosine(queryVector, candidates, limit);
 }
 
 // Reciprocal Rank Fusion: each list contributes 1/(k+rank); a slug present in
@@ -172,7 +186,12 @@ function makeSnippet(text: string | null): string {
 export async function searchCorpus(
   viewerId: string,
   query: string,
-  opts: { scope?: "all" | "mine"; limit?: number; cursor?: string } = {},
+  opts: {
+    scope?: "all" | "mine";
+    limit?: number;
+    cursor?: string;
+    embedder?: QueryEmbedder;
+  } = {},
 ): Promise<SearchPage> {
   const q = query.trim();
   if (!q) {
@@ -186,9 +205,10 @@ export async function searchCorpus(
   const friendIds = scopeAll ? await friendIdsOf(viewerId) : [];
   const includePublic = scopeAll;
 
+  const embedder = opts.embedder ?? defaultQueryEmbedder;
   const [ftSlugs, semSlugs] = await Promise.all([
     fullTextLeg(viewerId, q, friendIds, includePublic, FUSION_CANDIDATES),
-    semanticLeg(viewerId, q, friendIds, includePublic, FUSION_CANDIDATES),
+    semanticLeg(viewerId, q, friendIds, includePublic, FUSION_CANDIDATES, embedder),
   ]);
   const partial = semSlugs === null;
   const fused = reciprocalRankFusion(ftSlugs, semSlugs ?? []);

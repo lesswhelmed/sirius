@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { reciprocalRankFusion, searchVisibilityWhere } from "./search";
+import { rankByCosine, reciprocalRankFusion, searchVisibilityWhere } from "./search";
 
 describe("reciprocalRankFusion", () => {
   test("a slug in BOTH legs outranks single-leg slugs and merges both reasons", () => {
@@ -43,5 +43,19 @@ describe("searchVisibilityWhere", () => {
   test("adds PUBLIC published clause when includePublic", () => {
     const w = searchVisibilityWhere("u1", [], true);
     expect(w.OR).toContainEqual({ visibility: "PUBLIC", status: "PUBLISHED" });
+  });
+});
+
+describe("rankByCosine", () => {
+  const cands = [
+    { slug: "near", embedding: [0.99, 0.01, 0, 0] },
+    { slug: "far", embedding: [0, 1, 0, 0] },
+    { slug: "mid", embedding: [0.7, 0.7, 0, 0] },
+  ];
+  test("orders candidates by cosine similarity to the query vector, desc", () => {
+    expect(rankByCosine([1, 0, 0, 0], cands, 10)).toEqual(["near", "mid", "far"]);
+  });
+  test("honors the limit", () => {
+    expect(rankByCosine([1, 0, 0, 0], cands, 1)).toEqual(["near"]);
   });
 });
