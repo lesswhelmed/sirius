@@ -28,7 +28,8 @@ import { SubscriptionSection } from "@/components/subscription-section";
 import { VoiceSection } from "@/components/voice-section";
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
-import { signIn, signOut, useSession } from "@/lib/auth-client";
+import { deleteUser, signIn, signOut, useSession } from "@/lib/auth-client";
+import { clearAuthStorage } from "@/lib/auth-recovery";
 import {
   type BiometricType,
   biometricLabel,
@@ -60,6 +61,12 @@ export default function SettingsScreen() {
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const passwordRef = useRef<AuthFieldHandle>(null);
+  // Account-deletion flow (App Store 5.1.1(v)): destructive Alert → password
+  // sheet → authClient.deleteUser({ password }). Kept separate from the biometric
+  // confirm sheet above so the two can't collide.
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const deletePasswordRef = useRef<AuthFieldHandle>(null);
 
   useEffect(() => {
     let active = true;
@@ -125,6 +132,60 @@ export default function SettingsScreen() {
   function handleShareInvite() {
     if (!handle) return;
     setInviteVisible(true);
+  }
+
+  // Step 1: confirm intent with a destructive Alert before we ever ask for the
+  // password. Apple requires the deletion be unmistakable and irreversible.
+  function handleDeleteAccount() {
+    Alert.alert(
+      "Delete account?",
+      "This permanently deletes your account and all your captures, posts, and uploaded files. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => setDeleteVisible(true),
+        },
+      ],
+    );
+  }
+
+  // Step 2: re-enter the password. better-auth verifies it server-side and only
+  // then deletes the user (cascade) and runs the file-purge hook.
+  async function handleConfirmDelete() {
+    if (deleteBusy) return;
+    const password = deletePasswordRef.current?.value() ?? "";
+    if (!password) {
+      Alert.alert(
+        "Enter your password",
+        "Confirm your password to permanently delete your account.",
+      );
+      return;
+    }
+    setDeleteBusy(true);
+    const { error } = await deleteUser({ password });
+    if (error) {
+      setDeleteBusy(false);
+      Alert.alert(
+        "Couldn’t delete account",
+        error.message ?? "That password didn’t match. Try again.",
+      );
+      return;
+    }
+    // Deleted server-side. Tear down all local auth/biometric state so nothing
+    // outlives the account on this device, then return to sign-in.
+    try {
+      await disableBiometric();
+      await clearAuthStorage("account-deleted");
+      await signOut();
+    } catch (err) {
+      console.warn("[settings] post-delete cleanup failed", err);
+    }
+    deletePasswordRef.current?.clear();
+    setDeleteVisible(false);
+    setDeleteBusy(false);
+    router.replace("/(auth)/sign-in");
   }
 
   return (
@@ -248,6 +309,22 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <SecondaryButton label="Sign out" onPress={handleSignOut} />
         </View>
+
+        {/* Danger zone — permanent account deletion. */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Danger zone</Text>
+          <View style={styles.card}>
+            <Text style={styles.toggleSub}>
+              Permanently delete your account and all of your captures, posts,
+              and uploaded files. This can’t be undone.
+            </Text>
+          </View>
+          <SecondaryButton
+            label="Delete account"
+            symbol="trash"
+            onPress={handleDeleteAccount}
+          />
+        </View>
       </ScrollView>
 
       <Sheet
@@ -284,6 +361,51 @@ export default function SettingsScreen() {
               if (confirmBusy) return;
               passwordRef.current?.clear();
               setConfirmVisible(false);
+            }}
+          />
+        </View>
+      </Sheet>
+
+      <Sheet
+        visible={deleteVisible}
+        title="Delete account"
+        onClose={() => {
+          if (deleteBusy) return;
+          deletePasswordRef.current?.clear();
+          setDeleteVisible(false);
+        }}
+      >
+        <Text style={styles.sheetCopy}>
+          Enter your password to permanently delete your account and all of your
+          content. This action cannot be undone.
+        </Text>
+        <AuthField
+          label="Password"
+          placeholder="Your password"
+          accessibilityLabel="Password to confirm account deletion"
+          secureTextEntry
+          autoComplete="password"
+          textContentType="password"
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="go"
+          editable={!deleteBusy}
+          onSubmitEditing={() => void handleConfirmDelete()}
+          ref={deletePasswordRef}
+        />
+        <PrimaryButton
+          label="Delete my account"
+          busy={deleteBusy}
+          onPress={handleConfirmDelete}
+        />
+        <View style={styles.sheetCancel}>
+          <TextLink
+            label="Cancel"
+            tone={t.color.inkMuted}
+            onPress={() => {
+              if (deleteBusy) return;
+              deletePasswordRef.current?.clear();
+              setDeleteVisible(false);
             }}
           />
         </View>

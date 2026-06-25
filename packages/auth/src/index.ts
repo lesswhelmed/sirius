@@ -7,6 +7,7 @@ import { nextCookies } from "better-auth/next-js";
 import { admin } from "better-auth/plugins/admin";
 
 import { DEV_HOSTS } from "../dev-hosts.js";
+import { purgeUserFiles } from "./delete-user-files";
 import { renderEmail, sendEmail } from "./email";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -50,6 +51,20 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       handle: { type: "string", required: false, input: false },
+    },
+    // In-app account deletion (App Store Guideline 5.1.1(v)). Clients call
+    // authClient.deleteUser({ password }); better-auth re-verifies the password
+    // server-side, then deletes the User row — every user-owned table cascades
+    // via `onDelete: Cascade` in the Prisma schema. The only thing the cascade
+    // can't reach is on-disk files (retained originals + archive zips), so the
+    // beforeDelete hook purges those first. Deletion is immediate and permanent
+    // (no temporary deactivation, no email/customer-service step — Apple rejects
+    // those). `request` is unused; the user.id is all purgeUserFiles needs.
+    deleteUser: {
+      enabled: true,
+      beforeDelete: async (user) => {
+        purgeUserFiles(user.id);
+      },
     },
   },
   advanced: {

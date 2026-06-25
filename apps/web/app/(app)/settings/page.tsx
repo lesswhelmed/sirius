@@ -9,6 +9,7 @@ import { AiUsageCard } from "../../_chrome/ai-usage-card";
 import { DateDisplay } from "../../../lib/date-display";
 import { requireSession } from "../../../lib/session";
 import { ApiKeysSection } from "./api-keys-section";
+import { DeleteAccountButton } from "./delete-account-button";
 import { RequestArchiveButton } from "./request-archive-button";
 import { SettingsShell, type SettingsSection } from "./settings-shell";
 import { InviteDialog } from "./invite-dialog";
@@ -213,6 +214,24 @@ export default async function SettingsPage() {
         <div className="space-y-7">
           <SectionHeader eyebrow="API Keys" title="Agent access" />
           <ApiKeysSection />
+        </div>
+      ),
+    },
+    {
+      id: "danger-zone",
+      label: "Delete Account",
+      folio: "vi",
+      blurb: "Permanently delete your account and data.",
+      content: (
+        <div className="space-y-7">
+          <SectionHeader eyebrow="Delete Account" title="Danger zone" />
+          <p className="max-w-[60ch] font-body text-[15px] leading-[1.7] text-[var(--fg-muted)]">
+            Deleting your account permanently removes your profile, every post
+            and capture, all uploaded originals, and any exported archives. This
+            is immediate and cannot be undone. If you’d rather keep a copy,
+            export your data first from the Data Export section.
+          </p>
+          <DeleteAccountButton />
         </div>
       ),
     },

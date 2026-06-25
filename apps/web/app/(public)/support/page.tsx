@@ -70,9 +70,15 @@ export default function SupportPage() {
           </Faq>
 
           <Faq q="How do I delete my account or data?">
-            Email us from your account&rsquo;s email address and ask for
-            deletion. We&rsquo;ll remove your account and associated content.
-            See our{" "}
+            You can delete your account yourself, anytime. In the iOS app, go to
+            the Account tab and tap{" "}
+            <span className="text-[var(--fg)]">Delete account</span>; on the web,
+            open Settings and use the{" "}
+            <span className="text-[var(--fg)]">Delete Account</span> section.
+            Confirm with your password and your account plus all associated
+            content — posts, captures, and uploaded files — is permanently and
+            immediately removed. This can&rsquo;t be undone, so export your data
+            first if you want a copy. If you need help, email us; see our{" "}
             <Link
               className="text-[var(--color-accent)] underline underline-offset-2"
               href="/privacy"

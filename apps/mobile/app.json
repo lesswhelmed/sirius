@@ -67,8 +67,9 @@
 			[
 				"expo-image-picker",
 				{
-					"cameraPermission": "Allow Sirius to take photos and videos for your captures.",
-					"microphonePermission": "Allow Sirius to record audio when you capture a video."
+					"photosPermission": "Sirius needs access to your photo library so you can attach existing photos or videos to a capture — for example, selecting a screenshot to turn into an organized entry in your library.",
+					"cameraPermission": "Sirius uses the camera so you can take a photo or record a video and save it as a capture — for example, snapping a receipt or whiteboard to draft and organize in your private library.",
+					"microphonePermission": "Sirius uses the microphone so you can record a voice memo to save as a capture — for example, dictating a quick idea that Sirius drafts into an organized entry."
 				}
 			],
 			"expo-secure-store",

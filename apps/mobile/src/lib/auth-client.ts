@@ -24,6 +24,7 @@ export const {
   getSession,
   requestPasswordReset,
   resetPassword,
+  deleteUser,
 } = authClient;
 
 export { baseURL as authBaseURL };

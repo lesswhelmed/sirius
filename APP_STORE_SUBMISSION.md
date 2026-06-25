@@ -13,6 +13,62 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-2
 
 ---
 
+## 0. Resubmission — rejection 53b454b8 (2026-06-25)
+
+The first submission (v1.0, build 58, reviewed on iPad Air 11" M3) was rejected for **two**
+issues. Both are now fixed in the repo; they require a **new EAS build + resubmit** (the
+purpose strings are baked into the binary) and a **reply in Resolution Center**.
+
+### Fix 1 — Guideline 5.1.1(ii): purpose strings
+
+The camera / photo-library / microphone purpose strings were vague (photo-library was still the
+Expo default `"Allow $(PRODUCT_NAME) to access your photos"` because `app.json` never set
+`photosPermission`; microphone said "when you capture a video" but the mic is used for voice
+memos). Fixed in `apps/mobile/app.json` → `expo-image-picker` plugin. Final strings (regenerated
+into `ios/Sirius/Info.plist` at build time):
+
+- **NSPhotoLibraryUsageDescription** — "Sirius needs access to your photo library so you can
+  attach existing photos or videos to a capture — for example, selecting a screenshot to turn
+  into an organized entry in your library."
+- **NSCameraUsageDescription** — "Sirius uses the camera so you can take a photo or record a
+  video and save it as a capture — for example, snapping a receipt or whiteboard to draft and
+  organize in your private library."
+- **NSMicrophoneUsageDescription** — "Sirius uses the microphone so you can record a voice memo
+  to save as a capture — for example, dictating a quick idea that Sirius drafts into an organized
+  entry."
+
+### Fix 2 — Guideline 5.1.1(v): in-app account deletion
+
+There was no self-service deletion (the support FAQ only said "email us"). Added a real in-app
+deletion flow on **both iOS and web**, via better-auth's `deleteUser`:
+
+- `packages/auth/src/index.ts` — `user.deleteUser.enabled: true` with a `beforeDelete` hook that
+  calls `purgeUserFiles(userId)` (`packages/auth/src/delete-user-files.ts`) to remove the user's
+  retained originals + archive zips; the User row deletion cascades every user-owned table
+  (`onDelete: Cascade` in `schema.prisma`).
+- **iOS:** Account tab → **Danger zone → Delete account** → destructive confirm → re-enter
+  password → `deleteUser({ password })` → local auth/biometric state wiped → back to sign-in
+  (`apps/mobile/src/app/(tabs)/settings.tsx`).
+- **Web:** Settings → **Delete Account** section → type `DELETE` + password → `deleteUser` →
+  redirect to `/sign-in` (`apps/web/app/(app)/settings/delete-account-button.tsx`).
+- Deletion is **immediate and permanent** — no deactivation, no email/customer-service step.
+- Support FAQ updated to describe the in-app flow (`apps/web/app/(public)/support/page.tsx`).
+
+### Resubmit checklist
+
+- [ ] `bun run deploy` (web) so the new `deleteUser` endpoint + updated FAQ are live on
+  `lesswhelmed.com` **before** the binary is reviewed.
+- [ ] New iOS build + submit (`cd apps/mobile && bunx eas-cli build --profile production
+  --platform ios` → `bunx eas-cli submit --profile production --platform ios --latest`).
+- [ ] **Re-seed the reviewer account** after testing deletion (`DATABASE_URL=<prod> bun run
+  reviewer:seed --password '…'`) — the demo account/content may have been deleted while testing.
+- [ ] **Record the deletion flow on a physical device** (sign in → Account → Delete account →
+  password → signed out) and paste it into App Review Information → **Notes**. Apple explicitly
+  requires this video.
+- [ ] Reply in Resolution Center with the text in **§12 → "Reply to App Review (resubmission)"**.
+
+---
+
 ## ⚠️ Needs your input / decisions
 
 - [ ] **Deploy the new legal pages.** `apps/web/app/(public)/privacy/page.tsx` and
@@ -450,7 +506,18 @@ In App Store Connect → your version:
   (fill in the username/password fields in ASC separately):
 
 ```text
-Sirius requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog. Posts are private to the account.
+Sirius requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog. Posts are private to the account. Account deletion: Account tab → Danger zone → Delete account → confirm with the account password (a screen recording of the full flow is attached).
+```
+
+**Reply to App Review (resubmission — paste into Resolution Center):**
+
+```text
+Guideline 5.1.1(ii) — Purpose strings. Thank you. We updated the camera, photo library, and microphone purpose strings to clearly describe their use with a specific example, included in this new build:
+- Photo Library: "Sirius needs access to your photo library so you can attach existing photos or videos to a capture — for example, selecting a screenshot to turn into an organized entry in your library."
+- Camera: "Sirius uses the camera so you can take a photo or record a video and save it as a capture — for example, snapping a receipt or whiteboard to draft and organize in your private library."
+- Microphone: "Sirius uses the microphone so you can record a voice memo to save as a capture — for example, dictating a quick idea that Sirius drafts into an organized entry."
+
+Guideline 5.1.1(v) — Account deletion. We added in-app account deletion. In the Account (Settings) tab, users tap Delete account, confirm by re-entering their password, and their account plus all associated content (posts, captures, uploaded files, and data) is permanently and immediately deleted — no email or customer-service step is required. A screen recording of the full flow on a physical device is included in the App Review Information Notes.
 ```
 
 - [ ] Choose release option: **Manual release** (recommended for a first launch so you
