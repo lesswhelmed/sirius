@@ -142,6 +142,7 @@
         "@repo/embedding-scene": "*",
         "@repo/extraction": "*",
         "@repo/github-ingest": "*",
+        "@repo/ingest-classify": "*",
         "@repo/ingest-draft": "*",
         "@repo/ui": "*",
         "better-auth": "^1.6.20",
@@ -294,6 +295,21 @@
         "@repo/eslint-config": "*",
         "@repo/typescript-config": "*",
         "@types/bun": "^1.3.14",
+        "@types/node": "^22.15.3",
+        "eslint": "^9.39.1",
+        "typescript": "~6.0.3",
+      },
+    },
+    "packages/ingest-classify": {
+      "name": "@repo/ingest-classify",
+      "version": "0.0.0",
+      "dependencies": {
+        "@repo/db": "*",
+        "@repo/github-ingest": "*",
+      },
+      "devDependencies": {
+        "@repo/eslint-config": "*",
+        "@repo/typescript-config": "*",
         "@types/node": "^22.15.3",
         "eslint": "^9.39.1",
         "typescript": "~6.0.3",
@@ -1001,6 +1017,8 @@
     "@repo/extraction": ["@repo/extraction@workspace:packages/extraction"],
 
     "@repo/github-ingest": ["@repo/github-ingest@workspace:packages/github-ingest"],
+
+    "@repo/ingest-classify": ["@repo/ingest-classify@workspace:packages/ingest-classify"],
 
     "@repo/ingest-draft": ["@repo/ingest-draft@workspace:packages/ingest-draft"],
 

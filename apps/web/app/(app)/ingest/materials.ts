@@ -153,34 +153,13 @@ export function describeMaterial(material: Material): string {
 }
 
 // ── URL parsing ──────────────────────────────────────────────────────────────
-// Reused from the previous composer so the URL preview can badge IG vs other.
-
-const INSTAGRAM_URL_REGEX =
-  /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|tv)\/[A-Za-z0-9_-]+\/?/i;
-
-// An X / Twitter status (tweet) URL — /<user>/status/<id> or /i/web/status/<id>.
-// The worker detects the same host+path and takes its dedicated Apify path.
-const X_URL_REGEX =
-  /^https?:\/\/(www\.|mobile\.)?(x|twitter)\.com\/[^/]+\/status\/\d{15,20}/i;
-
-export type ParsedUrl =
-  | { kind: "instagram"; raw: string }
-  | { kind: "x"; raw: string }
-  | { kind: "other"; raw: string }
-  | { kind: "invalid"; raw: string; reason: string };
-
-export function classifyUrl(raw: string): ParsedUrl {
-  if (INSTAGRAM_URL_REGEX.test(raw)) {
-    return { kind: "instagram", raw };
-  }
-  if (X_URL_REGEX.test(raw)) {
-    return { kind: "x", raw };
-  }
-  if (/^https?:\/\//i.test(raw)) {
-    return { kind: "other", raw };
-  }
-  return { kind: "invalid", raw, reason: "not a URL" };
-}
+// `classifyUrl` (+ its `ParsedUrl` type and the IG/X matchers) MIGRATED to the
+// shared pure package `@repo/ingest-classify`, which is now the single source of
+// truth so the web composer and the mobile Capture tab classify identically.
+// Re-exported here with the identical symbol names + signatures so every
+// existing caller (composer URL preview, etc.) keeps compiling unchanged.
+export { classifyUrl } from "@repo/ingest-classify";
+export type { ParsedUrl } from "@repo/ingest-classify";
 
 // Cap on URLs accepted from one "Add link" action, matching the server's
 // tolerance for fan-out batches (mirrors mobile MAX_URLS_PER_BATCH).

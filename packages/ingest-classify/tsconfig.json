@@ -1,0 +1,16 @@
+{
+	"extends": "@repo/typescript-config/base.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"strictNullChecks": true,
+		// Match the resolution mode of every other @repo/db consumer (web,
+		// worker, mcp): @repo/db is consumed as TS source with extensionless
+		// relative imports, which NodeNext rejects but Bundler tolerates. We
+		// import @repo/db here for a single type-only enum-equality fence
+		// (src/types.ts), so we must resolve it the same way they do.
+		"module": "ESNext",
+		"moduleResolution": "Bundler"
+	},
+	"include": ["src"],
+	"exclude": ["node_modules", "dist"]
+}

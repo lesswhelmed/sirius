@@ -24,6 +24,7 @@
 		"@repo/embedding-scene": "*",
 		"@repo/extraction": "*",
 		"@repo/github-ingest": "*",
+		"@repo/ingest-classify": "*",
 		"@repo/ingest-draft": "*",
 		"@repo/ui": "*",
 		"better-auth": "^1.6.20",
