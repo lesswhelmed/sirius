@@ -34,6 +34,11 @@ import {
   canOverride, // (from, to) -> boolean (OVERRIDE_MATRIX gate)
   dedupKey, // ClassifiedItem -> stable in-tray dedup key
   DUP_KEY, // alias of dedupKey
+  // error-consolidation + in-tray-dedup PRESENTATION (spec §4 + §2.7)
+  consolidateErrors, // items -> { flagged, byId, collapsedCodes, summaries, hasCritical, cardsWithErrors }
+  withDuplicateFlags, // items -> items with the in-tray `duplicate` warn merged in
+  markerLabel, // code -> short per-card marker shown when its code collapses
+  CONSOLIDATE_THRESHOLD, // 3 (+ COLLAPSE_THRESHOLD / ERROR_COLLAPSE_THRESHOLD aliases)
   // typed constants
   OVERRIDE_MATRIX,
   ACCEPTED_MIME,
@@ -100,6 +105,40 @@ Same-endpoint groups only:
   (`/api/app/ingest-images`) — image cannot become video/audio/document and they
   cannot become image.
 - File → url and file → note are always illegal (no text to put there).
+
+### Error consolidation + in-tray dedup (`consolidateErrors`, spec §4 + §2.7)
+
+The collapse + dedup **presentation** is hoisted here so both hosts show
+IDENTICAL copy — the web composer and the mobile Capture tab call
+`consolidateErrors(items)` once and read back the fields they need.
+
+- `withDuplicateFlags(items)` — flags the **2nd+** card sharing a `dedupKey`
+  with a `duplicate` warn (spec §2.7). Pure, idempotent, never mutates inputs.
+- `consolidateErrors(items)` — runs the dedup pass, then collapses any code with
+  **≥ `CONSOLIDATE_THRESHOLD` (= 3)** cards into one tray-level summary line +
+  marks each affected card. Returns:
+  - `flagged` — items with the duplicate warns merged into `.errors` (web reads
+    these directly);
+  - `byId` — `id → effective errors` (mobile reads per-card errors from here);
+  - `collapsedCodes`, `summaries` (one `ErrorSummary` per collapsed code),
+    `hasCritical` (gates submit), `cardsWithErrors` ("N to fix").
+- `markerLabel(code)` — the short per-card marker (`"too large"`, …) shown when
+  the code has collapsed.
+
+**Canonical collapsed-summary copy** (the single source of truth — do not
+re-phrase per host):
+
+| code | summary copy |
+|---|---|
+| `file_too_large` | `{N} files exceeded the {LIMIT} limit.` (e.g. `50 MB`) |
+| `file_unsupported` | `{N} files aren't a supported type.` |
+| `duplicate` | `{N} duplicate links skipped.` |
+| `url_invalid` | `{N} links aren't valid web addresses.` |
+| `url_suspicious` | `{N} links may be hard to read.` |
+| `note_empty` | `{N} notes are empty.` |
+
+`{LIMIT}` is derived from `MAX_FILE_BYTES` (the largest affected cap), so it
+stays in lockstep with the advisory caps above.
 
 ## FileDescriptor adapter contract
 

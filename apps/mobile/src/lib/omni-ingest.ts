@@ -6,24 +6,30 @@
 //   1. A FileDescriptor adapter that wraps an RN/Expo asset and KEEPS the real
 //      `uri` keyed by the ClassifiedItem.id, so we can rebuild the existing
 //      uri-based Material at submit time (the pure core never sees a uri).
-//   2. consolidateErrors(): the §4 "collapse ≥3 same-code errors into one
-//      tray-level summary" derivation. It is pure and could live in the package,
-//      but is host-presentational, so it sits here next to the tray UI.
-//   3. toMaterials(): maps ClassifiedItem[] (+ the uri registry) back onto the
+//   2. toMaterials(): maps ClassifiedItem[] (+ the uri registry) back onto the
 //      EXISTING Material[] union so the FROZEN submitMaterials() path, endpoints,
 //      worker, and DB are all untouched.
 //
-// ZERO classification logic is duplicated here — classifyText/classifyFile/
-// validateItem/canOverride/overrideKind/dedupKey/platformFor all come from the
-// shared package.
+// ZERO classification OR consolidation logic is duplicated here — classifyText/
+// classifyFile/validateItem/canOverride/overrideKind/dedupKey/platformFor AND
+// the §4 error-collapse + §2.7 in-tray-dedup presentation (consolidateErrors,
+// markerLabel, the canonical summary copy) all come from the shared package, so
+// web and mobile show IDENTICAL copy.
 import {
   type ClassifiedItem,
-  dedupKey,
+  consolidateErrors,
+  type ErrorSummary,
   type FileDescriptor,
   type InlineError,
+  markerLabel,
 } from "@repo/ingest-classify";
 
 import type { Material } from "@/lib/materials";
+
+// Re-export the shared consolidation surface under the names the mobile tray
+// components import from this module (no logic — just a thin host re-export).
+export type { ErrorSummary };
+export { markerLabel };
 
 // ── 1. RN asset → FileDescriptor adapter ─────────────────────────────────────
 
@@ -58,60 +64,14 @@ export function descriptorFromAsset(asset: RnAsset): FileDescriptor {
 // in toMaterials() when rebuilding the uri-based Material.
 export type FileRegistry = Map<string, RnAsset>;
 
-// ── 2. Error consolidation (§4) ──────────────────────────────────────────────
+// ── 2. Error consolidation (§4 + §2.7) — delegated to the shared package ──────
 
-export interface ErrorSummary {
-  code: InlineError["code"];
-  count: number;
-  message: string;
-  severity: InlineError["severity"];
-}
-
-// The collapse threshold: ≥3 cards sharing one error code fold into a single
-// tray-level summary line (and each card shows a subtle marker instead of the
-// full sentence). Per-code; mixed codes never merge.
-export const ERROR_COLLAPSE_THRESHOLD = 3;
-
-// Plural summary copy per code. Mirrors the spec's §4 summary strings.
-function summaryMessage(code: InlineError["code"], count: number): string {
-  switch (code) {
-    case "file_too_large":
-      return `${count} files are over the size limit.`;
-    case "file_unsupported":
-      return `${count} files aren't a supported type.`;
-    case "duplicate":
-      return `${count} duplicate items — remove them or submit anyway.`;
-    case "url_invalid":
-      return `${count} links aren't valid web addresses.`;
-    case "url_suspicious":
-      return `${count} links may be hard to read.`;
-    case "note_empty":
-      return `${count} notes are empty.`;
-  }
-}
-
-// Short per-card marker label shown when a card's code is collapsed.
-export function markerLabel(code: InlineError["code"]): string {
-  switch (code) {
-    case "file_too_large":
-      return "too large";
-    case "file_unsupported":
-      return "unsupported";
-    case "duplicate":
-      return "duplicate";
-    case "url_invalid":
-      return "invalid link";
-    case "url_suspicious":
-      return "check link";
-    case "note_empty":
-      return "empty";
-  }
-}
-
-// Re-validate the tray for in-tray duplicates (§2.7) on top of each item's own
-// errors, then return both the per-item effective errors and the set of codes
-// that have collapsed. The first card with a given dedupKey is the keeper; the
-// 2nd+ get a `duplicate` warn. Pure — derived state, never mutates the items.
+// The §4 error-collapse + §2.7 in-tray-dedup PRESENTATION lives ONCE in
+// @repo/ingest-classify (consolidateErrors) so this tab and the web composer
+// show identical copy, incl. the {LIMIT} value. This is the only host glue: it
+// re-shapes the package's TrayConsolidation into the exact fields the mobile
+// tray reads (byId / collapsedCodes / summaries / hasCritical) — no collapse or
+// dedup logic is re-implemented here.
 export function deriveTrayErrors(items: ClassifiedItem[]): {
   // item.id → the effective errors for that card (its own + any duplicate warn).
   byId: Map<string, InlineError[]>;
@@ -122,60 +82,8 @@ export function deriveTrayErrors(items: ClassifiedItem[]): {
   // True iff ANY card carries a critical error → submit is blocked.
   hasCritical: boolean;
 } {
-  const seen = new Map<string, string>(); // dedupKey → first item id
-  const byId = new Map<string, InlineError[]>();
-
-  for (const item of items) {
-    const errors: InlineError[] = [...(item.errors ?? [])];
-    const key = dedupKey(item);
-    const firstId = seen.get(key);
-    if (firstId === undefined) {
-      seen.set(key, item.id);
-    } else {
-      // 2nd+ occurrence: append the duplicate warn (never blocks submit).
-      errors.push({
-        field:
-          item.kind === "url"
-            ? "url"
-            : item.kind === "note"
-              ? "note"
-              : "file",
-        code: "duplicate",
-        message:
-          "Looks like a duplicate of another item — remove it or submit both.",
-        severity: "warn",
-      });
-    }
-    byId.set(item.id, errors);
-  }
-
-  // Count codes across the tray for the collapse decision.
-  const counts = new Map<InlineError["code"], number>();
-  for (const errors of byId.values()) {
-    for (const e of errors) {
-      counts.set(e.code, (counts.get(e.code) ?? 0) + 1);
-    }
-  }
-
-  const collapsedCodes = new Set<InlineError["code"]>();
-  const summaries: ErrorSummary[] = [];
-  for (const [code, count] of counts) {
-    if (count >= ERROR_COLLAPSE_THRESHOLD) {
-      collapsedCodes.add(code);
-      // The summary's severity follows whether ANY instance is critical.
-      const severity: InlineError["severity"] = Array.from(byId.values()).some(
-        (errs) => errs.some((e) => e.code === code && e.severity === "critical"),
-      )
-        ? "critical"
-        : "warn";
-      summaries.push({ code, count, message: summaryMessage(code, count), severity });
-    }
-  }
-
-  const hasCritical = Array.from(byId.values()).some((errs) =>
-    errs.some((e) => e.severity === "critical"),
-  );
-
+  const { byId, collapsedCodes, summaries, hasCritical } =
+    consolidateErrors(items);
   return { byId, collapsedCodes, summaries, hasCritical };
 }
 

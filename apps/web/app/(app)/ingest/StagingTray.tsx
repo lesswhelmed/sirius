@@ -8,40 +8,13 @@
 
 import {
   type ClassifiedItem,
-  dedupKey,
+  consolidateErrors,
   type IngestKind,
-  type InlineError,
 } from "@repo/ingest-classify";
 import { useMemo } from "react";
 
 import { SmartCard } from "./SmartCard";
-import { consolidateErrors } from "./tray-consolidate";
 import { TrayErrorSummary } from "./TrayErrorSummary";
-
-const DUPLICATE_ERROR: InlineError = {
-  field: "note",
-  code: "duplicate",
-  message: "Looks like a duplicate of another item — remove it or submit both.",
-  severity: "warn",
-};
-
-// Inject an in-tray `duplicate` warn onto the SECOND+ card sharing a dedupKey
-// (§2.7). The shared validateItem can't see siblings, so the cross-card
-// duplicate hint is derived here from the package's pure dedupKey.
-function withDuplicateFlags(items: ClassifiedItem[]): ClassifiedItem[] {
-  const seen = new Set<string>();
-  return items.map((item) => {
-    const key = dedupKey(item);
-    if (seen.has(key)) {
-      // Avoid double-adding if a duplicate error is already present.
-      if (item.errors.some((e) => e.code === "duplicate")) return item;
-      const errors = [...item.errors, DUPLICATE_ERROR];
-      return { ...item, errors, error: item.error ?? DUPLICATE_ERROR };
-    }
-    seen.add(key);
-    return item;
-  });
-}
 
 export function StagingTray({
   items,
@@ -59,10 +32,12 @@ export function StagingTray({
   onOverride: (id: string, toKind: IngestKind) => void;
   onRemove: (id: string) => void;
 }) {
-  const flagged = useMemo(() => withDuplicateFlags(items), [items]);
-  const { collapsedCodes, summaries, cardsWithErrors } = useMemo(
-    () => consolidateErrors(flagged),
-    [flagged],
+  // One pure pass from the shared package: flags in-tray duplicates (§2.7) and
+  // collapses dense errors (§4). `flagged` carries the duplicate warns merged
+  // into each item's `.errors`, exactly what SmartCard renders.
+  const { flagged, collapsedCodes, summaries, cardsWithErrors } = useMemo(
+    () => consolidateErrors(items),
+    [items],
   );
 
   // O-4: photo-batch grouping. All image cards submit under one batchId (SIGHT),

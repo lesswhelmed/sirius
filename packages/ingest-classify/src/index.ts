@@ -57,3 +57,16 @@ export type {
 
 export { isYouTubeUrl, parseYouTubeUrl } from "./youtube-url";
 export type { YouTubeUrlParse } from "./youtube-url";
+
+// Error-consolidation + in-tray-dedup PRESENTATION (spec §4 + §2.7). Hoisted
+// here so both hosts collapse dense errors and flag duplicates with IDENTICAL
+// copy (incl. the {LIMIT} value). Pure; no React/DOM/RN.
+export {
+  COLLAPSE_THRESHOLD,
+  CONSOLIDATE_THRESHOLD,
+  consolidateErrors,
+  ERROR_COLLAPSE_THRESHOLD,
+  markerLabel,
+  withDuplicateFlags,
+} from "./consolidate";
+export type { ErrorSummary, TrayConsolidation } from "./consolidate";
