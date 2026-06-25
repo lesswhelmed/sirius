@@ -43,6 +43,10 @@ export interface GoldenQuery {
   // Tier 3: exact full ordering of the first page.
   exactOrder?: string[];
   expectPartial?: boolean; // I9 degraded mode
+  // I3 (fused mode): every both-legs hit (matchReasons = exact+similar) must
+  // rank above every single-leg hit. Guaranteed by RRF math regardless of the
+  // embedding semantics, so it holds even with nonsense probe terms.
+  bothLegsAboveSingle?: boolean;
 }
 
 export const FIXTURE_USERS: FixtureUser[] = [
@@ -142,5 +146,35 @@ export const GOLDEN_QUERIES: GoldenQuery[] = [
     name: "canonical exact ordering: zephyrium scope=mine (FTS)",
     query: "zephyrium", viewerKey: "viewer", scope: "mine", mode: "fts-only",
     exactOrder: ["viewer-draft", "fw-title", "tag-only", "fw-excerpt", "fw-body"],
+  },
+
+  // --- Fused leg + corner cases (flexible, relational assertions) ---
+  {
+    // I3: posts matched by BOTH the FTS and embedding legs (exact+similar) must
+    // outrank posts matched by only one leg. Uses the real snapshot query vector.
+    name: "fused: both-legs (exact+similar) outrank single-leg",
+    query: "zephyrium", viewerKey: "viewer", scope: "mine", mode: "fused",
+    bothLegsAboveSingle: true,
+  },
+  {
+    // Stop-words carry no lexemes → websearch_to_tsquery yields an empty query
+    // that matches nothing; must return [] without throwing.
+    name: "stop-words-only query returns nothing",
+    query: "the and of", viewerKey: "viewer", scope: "mine", mode: "fts-only",
+    exactOrder: [],
+  },
+  {
+    // websearch_to_tsquery negation: `-draft` excludes any post containing
+    // "draft" (viewer-draft) while keeping plain zephyrium hits.
+    name: "negation operator excludes matching posts",
+    query: "zephyrium -draft", viewerKey: "viewer", scope: "mine", mode: "fts-only",
+    mustNotContain: ["viewer-draft"], orderedSubset: ["fw-title"],
+  },
+  {
+    // to_tsvector lowercases, so an upper-case query matches identically and
+    // still honors the title>body weighting.
+    name: "case-insensitive: ZEPHYRIUM matches like zephyrium",
+    query: "ZEPHYRIUM", viewerKey: "viewer", scope: "mine", mode: "fts-only",
+    orderedSubset: ["fw-title", "fw-body"],
   },
 ];

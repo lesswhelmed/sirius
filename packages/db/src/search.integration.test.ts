@@ -52,6 +52,16 @@ suite("searchCorpus integration (golden matrix)", () => {
       if (g.exactOrder) {
         expect(slugs).toEqual(g.exactOrder);
       }
+      if (g.bothLegsAboveSingle) {
+        const reasons = page.items.map((i) => i.matchReasons.length);
+        // Fusion actually produced both kinds (otherwise the invariant is vacuous).
+        expect(reasons).toContain(2);
+        expect(reasons).toContain(1);
+        // Every both-legs hit precedes every single-leg hit.
+        const lastBoth = reasons.lastIndexOf(2);
+        const firstSingle = reasons.indexOf(1);
+        expect(lastBoth).toBeLessThan(firstSingle);
+      }
     });
   }
 
