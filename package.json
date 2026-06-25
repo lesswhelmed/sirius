@@ -32,6 +32,7 @@
 		"db:migrate:reset": "bun --cwd=packages/db run db:migrate:reset",
 		"db:push": "turbo run db:push --filter=@repo/db",
 		"db:studio": "turbo run db:studio --filter=@repo/db",
+		"db:test:setup": "bash scripts/setup-test-db.sh",
 		"mobile:dev": "turbo run dev --filter=mobile",
 		"notmobile:dev": "turbo run dev --filter=!mobile",
 		"worker:dev": "turbo run dev --filter=worker",
