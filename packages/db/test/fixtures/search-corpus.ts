@@ -70,7 +70,7 @@ export const FIXTURE_POSTS: FixturePost[] = [
   // --- I11 tag/category-only match for the same probe term. ---
   { slug: "tag-only", ownerKey: "viewer", title: "Tagged item", excerpt: "Summary.", content: "Body text.", type: "FINDING", status: "PUBLISHED", visibility: "PRIVATE", tags: ["zephyrium"], categories: [], createdAtIso: d(3) },
 
-  // --- I4 more-terms-match > fewer. Query "rust gardening". ---
+  // --- I4 more-terms-match > fewer. Query "rust OR gardening". ---
   { slug: "both-terms", ownerKey: "viewer", title: "Rust and gardening together", excerpt: "On rust and gardening.", content: "Discussion of rust and gardening.", type: "BLOG", status: "PUBLISHED", visibility: "PRIVATE", tags: ["rust-lang", "gardening"], categories: [], createdAtIso: d(4) },
   { slug: "one-term", ownerKey: "viewer", title: "Just gardening", excerpt: "Only gardening here.", content: "All about gardening, nothing else.", type: "BLOG", status: "PUBLISHED", visibility: "PRIVATE", tags: ["gardening"], categories: [], createdAtIso: d(5) },
 
@@ -100,8 +100,12 @@ export const GOLDEN_QUERIES: GoldenQuery[] = [
     rankedAbove: [["fw-title", "tag-only"], ["tag-only", "fw-body"]],
   },
   {
+    // OR semantics: space-separated terms become AND in websearch_to_tsquery,
+    // which would EXCLUDE one-term (no "rust") entirely. The "more matched terms
+    // rank higher" invariant only manifests when both posts can appear, i.e.
+    // under an explicit OR (a supported websearch operator).
     name: "more terms matched ranks higher",
-    query: "rust gardening", viewerKey: "viewer", scope: "mine", mode: "fts-only",
+    query: "rust OR gardening", viewerKey: "viewer", scope: "mine", mode: "fts-only",
     rankedAbove: [["both-terms", "one-term"]],
   },
   {
