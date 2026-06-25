@@ -125,6 +125,14 @@ export interface ColorTokens {
   warning: string;
   warningSoft: string;
 
+  // Rust-red — reserved EXCLUSIVELY for omni-ingest validation errors (the
+  // composer's inline card errors + tray error summary). Distinct from `accent`
+  // (the oxblood primary-action hue) and `danger` (destructive intent) so an
+  // error never reads as an action. `errorText` is the legible-as-text variant.
+  error: string;
+  errorSoft: string;
+  errorText: string;
+
   // Modal/sheet backdrop.
   scrim: string;
 
@@ -213,6 +221,12 @@ const lightColor: ColorTokens = {
   warning: "#876012",
   warningSoft: "rgba(135,96,18,0.14)",
 
+  // Rust-red ~#B5523A (the spec's error hue), darkened to #a4472f as TEXT to
+  // clear AA on warm paper.
+  error: "#a4472f",
+  errorSoft: "rgba(181,82,58,0.12)",
+  errorText: "#a4472f",
+
   scrim: "rgba(28,22,18,0.4)",
 
   onAccent: "#f3ecdc",
@@ -259,6 +273,11 @@ const darkColor: ColorTokens = {
   dangerSoft: "rgba(239,111,103,0.16)",
   warning: "#d9a847",
   warningSoft: "rgba(217,168,71,0.16)",
+
+  // Rust-red ~#B5523A, brightened to #d2654a as text for AA on midnight navy.
+  error: "#c9583c",
+  errorSoft: "rgba(201,88,60,0.18)",
+  errorText: "#d2654a",
 
   scrim: "rgba(0,0,0,0.5)",
 
