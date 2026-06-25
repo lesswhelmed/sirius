@@ -1,4 +1,23 @@
+// The omni-ingest Capture tab. Front door = ONE three-region omni-ingest flow,
+// host adaptation of the SAME design the web composer ships:
+//
+//   [OmniInput] → [StagingTray of SmartCards] → [UnifiedActionButton "Process N"]
+//
+// ALL classification, validation, override-legality, dedup, and platform
+// sub-labelling come from the SHARED, pure @repo/ingest-classify package — the
+// SAME core the web composer consumes (ZERO duplicated logic). This screen only
+// owns host concerns: the native affordances (text field, camera, library,
+// files, audio), the uri/asset registry the pure core never sees, and the
+// FROZEN submitMaterials() submit path (endpoints/worker/DB untouched).
 import type { RepoPreview } from "@repo/github-ingest";
+import {
+  classifyFile,
+  classifyText,
+  type ClassifiedItem,
+  type IngestKind,
+  overrideKind,
+  validateItem,
+} from "@repo/ingest-classify";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AudioModule,
@@ -6,13 +25,13 @@ import {
   setAudioModeAsync,
   useAudioRecorder,
 } from "expo-audio";
-import * as Crypto from "expo-crypto";
 import * as DocumentPicker from "expo-document-picker";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -23,6 +42,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActionCard,
   Eyebrow,
@@ -31,140 +51,98 @@ import {
   PrimaryButton,
   Screen,
   Sheet,
-  SubmitBar,
   TextLink,
   Title,
-  TrayRow,
 } from "@/components/sirius";
+import {
+  SmartCard,
+  TrayErrorSummary,
+  TrayHeader,
+} from "@/components/omni-tray";
 
-import type { Theme } from "@/constants/theme";
+import { BottomTabInset, type Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
 import type { Visibility } from "@/lib/ingest-submit";
 import { isModelReady } from "@/lib/llm/engine";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
+import { type Material, submitMaterials } from "@/lib/materials";
 import {
-  CAPTURE_KINDS,
-  type CaptureKind,
-  type CaptureKindKey,
-  trayTag,
-} from "@/lib/material-kinds";
-import {
-  type AudioMaterial,
-  type DocumentMaterial,
-  describeMaterial,
-  type ImageMaterial,
-  MAX_URLS_PER_BATCH,
-  type Material,
-  submitMaterials,
-  urlMaterialsFromText,
-  type VideoMaterial,
-} from "@/lib/materials";
+  deriveTrayErrors,
+  descriptorFromAsset,
+  type FileRegistry,
+  type RnAsset,
+  toMaterialPairs,
+} from "@/lib/omni-ingest";
 import { discardStagedCopy, stageBinaryCopy } from "@/lib/outbox";
 import { presentPaywall } from "@/lib/purchases";
 import { useAiUsage } from "@/lib/purchases/use-usage";
 import { kickSync } from "@/lib/sync/engine";
 import { UsageMeter } from "@/components/subscription-section";
 
-// A material staged in the tray, with a stable id for keys + removal.
-type StagedMaterial = { uid: string; material: Material };
-
-// File-backed materials picked straight from the OS (no sheet of their own).
-// They flow through the "Add details" sheet so each can carry an optional note
-// before staging — url/repo/note collect notes in their own sheets.
-type FileMaterial =
-  | ImageMaterial
-  | VideoMaterial
-  | AudioMaterial
-  | DocumentMaterial;
-
-const FORM_COPY: Record<
-  Extract<CaptureKindKey, "link" | "note">,
-  { title: string; label: string; placeholder: string }
-> = {
-  link: {
-    title: "Add link",
-    label: "URLs (one per line)",
-    placeholder:
-      "https://example.com/post\nhttps://instagram.com/p/…\nhttps://x.com/user/status/…",
-  },
-  note: {
-    title: "Add note",
-    label: "Note",
-    placeholder: "Anything to remember…",
-  },
-};
+// Monotonic counter for unique fallback filenames (camera/voice-memo captures
+// that arrive without a name). A module-scoped counter keeps name generation
+// out of `Date.now()` — which the React-Compiler purity lint flags as impure
+// even inside async handlers — while still guaranteeing uniqueness per session.
+let captureSeq = 0;
+function nextCaptureName(prefix: string, ext: string): string {
+  captureSeq += 1;
+  return `${prefix}-${captureSeq}.${ext}`;
+}
 
 // Read-visibility choices for a capture, in escalating-exposure order. PRIVATE is
-// the safe default. Rendered as a chip row mirroring the Focus picker.
+// the safe default.
 const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
   { value: "PRIVATE", label: "Private" },
   { value: "FRIENDS", label: "Friends" },
   { value: "PUBLIC", label: "Public" },
 ];
 
-// Split the grid into rows of two so the action cards lay out as a tidy 2-up
-// grid regardless of how many kinds the registry grows to.
-function pairs<T>(items: T[]): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += 2) {
-    out.push(items.slice(i, i + 2));
-  }
-  return out;
-}
-
 export default function ComposerScreen() {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   const queryClient = useQueryClient();
-  const [tray, setTray] = useState<StagedMaterial[]>([]);
-  const [activeKey, setActiveKey] = useState<CaptureKindKey | null>(null);
-  const [draft, setDraft] = useState("");
-  // Optional note applied to every URL parsed from one link-sheet paste.
-  const [linkNotes, setLinkNotes] = useState("");
+
+  // The tray is now ClassifiedItem[] (from the shared package) + a registry that
+  // holds the real RN asset per id (the pure core only ever saw metadata) + a
+  // per-card optional note (kept out of the pure core, which has no notes).
+  // The registry is STATE (not a ref) so the render-time thumbnail/uri reads are
+  // legal under the React-Compiler purity rules; writes go through setRegistry.
+  const [items, setItems] = useState<ClassifiedItem[]>([]);
+  const [registry, setRegistry] = useState<FileRegistry>(new Map());
+  const [notesById, setNotesById] = useState<Map<string, string>>(new Map());
+
+  // Omni text field: paste/type URLs + notes. A multi-URL paste auto-splits into
+  // one card per URL via classifyText (package) on commit.
+  const [omniText, setOmniText] = useState("");
+
   const [busy, setBusy] = useState(false);
-  // Focus picker: file a capture under a Project (mirrors the web composer).
   const [projectId, setProjectId] = useState<string | null>(null);
-  // Read visibility for the resulting post(s), applied to the whole tray. PRIVATE
-  // by default (matches the Post schema default).
   const [visibility, setVisibility] = useState<Visibility>("PRIVATE");
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
-  // Photo/Video chooser sheet: take with the camera or pick from the library.
+
+  // Media chooser sheet (camera vs library). iOS requires the picker fire only
+  // AFTER the sheet dismisses (see runAfterMediaSheet).
   const [mediaSheet, setMediaSheet] = useState<null | "photo" | "video">(null);
-  // A picker (camera/library) must be presented only AFTER the chooser Sheet has
-  // fully dismissed. Presenting a view controller while the modal is still
-  // sliding out wedges the app on iOS (frozen UI, no picker). We stash the launch
-  // here and fire it from the Sheet's onDismiss. See runAfterMediaSheet.
   const pendingMediaAction = useRef<null | (() => void)>(null);
   // Audio capture sheet: record a voice memo or pick an audio file.
   const [audioSheetOpen, setAudioSheetOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  // Repository sheet: paste a GitHub URL, fetch the server-rendered preview
-  // card, confirm into the tray. All GitHub work is server-side.
+  // Repository sheet: paste a GitHub URL, fetch the server-rendered preview.
   const [repoSheetOpen, setRepoSheetOpen] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
-  const [repoNotes, setRepoNotes] = useState("");
   const [repoPreview, setRepoPreview] = useState<RepoPreview | null>(null);
   const [repoLoading, setRepoLoading] = useState(false);
   const [repoError, setRepoError] = useState<string | null>(null);
-  // "Add details" sheet: photos/video/document/audio are picked straight from
-  // the OS, so we hold them here (without notes) until the user confirms an
-  // optional note, then stage. One shared note per capture — a photo batch
-  // becomes one SIGHT post anyway.
-  const [pendingCapture, setPendingCapture] = useState<{
-    summary: string;
-    materials: FileMaterial[];
-  } | null>(null);
-  const [pendingNotes, setPendingNotes] = useState("");
-  // In-tray note editing: edit a staged item's note (or a note item's text)
-  // before submitting. Holds the uid being edited + the working draft.
-  const [editingUid, setEditingUid] = useState<string | null>(null);
-  const [editNote, setEditNote] = useState("");
 
-  // On-device curation: user's toggle plus whether the local model is actually
-  // on disk (the /llm screen manages downloads).
+  // Inline edit sheet: edits a card's content (url/note) or its optional note
+  // (file kinds). Replaces the old Alert.alert one-offs.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+
+  // On-device curation toggle + model-on-disk readiness.
   const { data: llmSettings } = useQuery({
     queryKey: ["llm-settings"],
     queryFn: getLlmSettings,
@@ -182,8 +160,6 @@ export default function ComposerScreen() {
     queryClient.invalidateQueries({ queryKey: ["llm-settings"] });
   }
 
-  // Load active projects once for the Focus picker; if none/forbidden, the
-  // picker simply never renders.
   useEffect(() => {
     apiGet<{ items: { id: string; title: string }[] }>(
       "/api/app/projects?status=active&limit=50",
@@ -192,103 +168,181 @@ export default function ComposerScreen() {
       .catch(() => {});
   }, []);
 
-  const trayCountLabel = useMemo(() => {
-    if (tray.length === 0) return "Tray empty";
-    return `${tray.length} item${tray.length === 1 ? "" : "s"} in tray`;
-  }, [tray.length]);
+  // Derived tray error state from the SHARED validators (validateItem already
+  // ran per item; deriveTrayErrors layers in-tray dedup + the §4 collapse).
+  const trayErrors = useMemo(() => deriveTrayErrors(items), [items]);
 
-  function addToTray(materials: Material[]) {
-    if (materials.length === 0) return;
-    setTray((prev) => [
-      ...prev,
-      ...materials.map((material) => ({ uid: Crypto.randomUUID(), material })),
-    ]);
+  // Photo cards are grouped as ONE SIGHT batch — badge only the first so the
+  // group reads as a single SIGHT post even though each card is independent.
+  const firstImageId = useMemo(
+    () => items.find((i) => i.kind === "image")?.id,
+    [items],
+  );
+
+  const countLabel = useMemo(() => {
+    if (items.length === 0) return "Tray empty";
+    const fix = trayErrors.summaries.length
+      ? `, ${countToFix(items, trayErrors)} need attention`
+      : "";
+    return `${items.length} item${items.length === 1 ? "" : "s"} in tray${fix}`;
+  }, [items, trayErrors]);
+
+  // Append classified items + announce a summarized utterance (one per gesture).
+  function appendItems(next: ClassifiedItem[], announce: string) {
+    if (next.length === 0) return;
+    setItems((prev) => [...prev, ...next]);
+    AccessibilityInfo.announceForAccessibility(announce);
   }
 
-  function removeFromTray(uid: string) {
-    setTray((prev) => {
-      const entry = prev.find((e) => e.uid === uid);
-      const m = entry?.material;
-      // File-backed kinds hold a durable copy in the outbox — delete it so disk
-      // never retains content the user dropped.
-      if (
-        m &&
-        (m.kind === "image" ||
-          m.kind === "video" ||
-          m.kind === "audio" ||
-          m.kind === "document")
-      ) {
-        void discardStagedCopy(m.uri);
-      }
-      return prev.filter((e) => e.uid !== uid);
+  function removeItem(id: string) {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    setNotesById((prev) => {
+      if (!prev.has(id)) return prev;
+      const copy = new Map(prev);
+      copy.delete(id);
+      return copy;
+    });
+    setRegistry((prev) => {
+      const asset = prev.get(id);
+      if (!asset) return prev;
+      void discardStagedCopy(asset.uri);
+      const copy = new Map(prev);
+      copy.delete(id);
+      return copy;
     });
   }
 
-  // Open the "Add details" sheet for freshly-picked file materials so the user
-  // can attach an optional note before they hit the tray.
-  function openPending(summary: string, materials: FileMaterial[]) {
-    if (materials.length === 0) return;
-    setPendingNotes("");
-    setPendingCapture({ summary, materials });
+  // Commit the omni text field: classifyText (package) → N url cards + ≤1 note.
+  function commitOmniText() {
+    const raw = omniText.trim();
+    if (raw.length === 0) return;
+    const { items: next, deduped, capped } = classifyText(raw);
+    if (next.length === 0) {
+      setOmniText("");
+      return;
+    }
+    const urls = next.filter((i) => i.kind === "url").length;
+    const notes = next.filter((i) => i.kind === "note").length;
+    const parts: string[] = [];
+    if (urls > 0) parts.push(`${urls} link${urls === 1 ? "" : "s"}`);
+    if (notes > 0) parts.push(`${notes} note${notes === 1 ? "" : "s"}`);
+    appendItems(next, `Added ${parts.join(" and ")}.`);
+    setOmniText("");
+    if (deduped > 0 || capped > 0) {
+      const msg: string[] = [];
+      if (deduped > 0)
+        msg.push(`${deduped} duplicate${deduped === 1 ? "" : "s"} skipped`);
+      if (capped > 0) msg.push(`${capped} over the limit dropped`);
+      AccessibilityInfo.announceForAccessibility(msg.join(", "));
+    }
   }
 
-  // Confirm the "Add details" sheet: copy each material's bytes into the outbox
-  // (rewriting uri to the durable path), stamp the shared note, then stage.
-  async function confirmPending() {
-    if (!pendingCapture) return;
-    const note = pendingNotes.trim() || undefined;
-    const staged = await Promise.all(
-      pendingCapture.materials.map(async (m) => ({
-        ...m,
-        uri: await stageBinaryCopy(m.uri, m.name),
-        notes: note,
-      })),
+  // Stage assets durably (outbox copy), register each, classify by descriptor
+  // (package), and append. One utterance summarizing the gesture.
+  async function stageAndAddAssets(assets: RnAsset[]) {
+    if (assets.length === 0) return;
+    const classified: ClassifiedItem[] = [];
+    const staged: [string, RnAsset][] = [];
+    for (const asset of assets) {
+      // Copy bytes into the durable outbox so the uri survives; rewrite the
+      // asset's uri to the durable path before registering.
+      const uri = await stageBinaryCopy(asset.uri, asset.name);
+      const durable: RnAsset = { ...asset, uri };
+      const item = classifyFile(descriptorFromAsset(durable));
+      staged.push([item.id, durable]);
+      classified.push(item);
+    }
+    setRegistry((prev) => {
+      const copy = new Map(prev);
+      for (const [id, asset] of staged) copy.set(id, asset);
+      return copy;
+    });
+    const byKind = new Map<IngestKind, number>();
+    for (const c of classified)
+      byKind.set(c.kind, (byKind.get(c.kind) ?? 0) + 1);
+    const parts = Array.from(byKind).map(
+      ([k, n]) => `${n} ${pluralKind(k, n)}`,
     );
-    addToTray(staged);
-    setPendingCapture(null);
-    setPendingNotes("");
+    appendItems(classified, `Added ${parts.join(" and ")}.`);
   }
 
-  // Open the in-tray note editor for a staged item, seeding the draft from its
-  // current note (or, for a plain note material, its text).
-  function openEdit(uid: string) {
-    const entry = tray.find((e) => e.uid === uid);
-    if (!entry) return;
-    const m = entry.material;
-    const current =
-      m.kind === "note" ? m.text : "notes" in m ? (m.notes ?? "") : "";
-    setEditNote(current);
-    setEditingUid(uid);
+  // Override a card's kind via the shared overrideKind (re-derives tag/platform
+  // and re-validates). On a file→file override, drop any platform; on text
+  // overrides the registry entry is irrelevant.
+  function onOverride(id: string, to: IngestKind) {
+    setItems((prev) =>
+      prev.map((i) => (i.id === id ? overrideKind(i, to) : i)),
+    );
+    AccessibilityInfo.announceForAccessibility("Type changed.");
   }
 
-  // Save the edited note back onto the staged material. For note materials the
-  // edit replaces the body text; for everything else it's the optional note
-  // (cleared to undefined when emptied, which drops the ✎ marker).
+  // ── Inline edit ────────────────────────────────────────────────────────────
+  function openEdit(id: string) {
+    const item = items.find((i) => i.id === id);
+    if (!item) return;
+    const seed =
+      item.kind === "url"
+        ? (item.url ?? item.content)
+        : item.kind === "note"
+          ? (item.text ?? item.content)
+          : (notesById.get(id) ?? "");
+    setEditDraft(seed);
+    setEditingId(id);
+  }
+
   function confirmEdit() {
-    if (!editingUid) return;
-    const trimmed = editNote.trim();
-    setTray((prev) =>
-      prev.map((entry) => {
-        if (entry.uid !== editingUid) return entry;
-        const m = entry.material;
-        if (m.kind === "note") {
-          if (!trimmed) return entry; // guard: a note can't be empty
-          return { ...entry, material: { ...m, text: trimmed } };
-        }
-        return {
-          ...entry,
-          material: { ...m, notes: trimmed || undefined },
-        };
-      }),
-    );
-    setEditingUid(null);
-    setEditNote("");
+    if (!editingId) return;
+    const id = editingId;
+    const item = items.find((i) => i.id === id);
+    if (!item) {
+      setEditingId(null);
+      return;
+    }
+    const value = editDraft;
+    if (item.kind === "url") {
+      // Re-derive the card from the edited URL via the package: rebuild the
+      // url payload + re-validate (a fixed link clears the critical error).
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id !== id) return i;
+          const next: ClassifiedItem = {
+            ...i,
+            content: value.trim(),
+            url: value.trim(),
+          };
+          const errors = validateItem(next);
+          return { ...next, errors, error: errors[0] };
+        }),
+      );
+    } else if (item.kind === "note") {
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id !== id) return i;
+          const next: ClassifiedItem = {
+            ...i,
+            content: value.trim(),
+            text: value.trim(),
+          };
+          const errors = validateItem(next);
+          return { ...next, errors, error: errors[0] };
+        }),
+      );
+    } else {
+      // File kind: the edit is the optional note, not the content.
+      setNotesById((prev) => {
+        const copy = new Map(prev);
+        const trimmed = value.trim();
+        if (trimmed) copy.set(id, trimmed);
+        else copy.delete(id);
+        return copy;
+      });
+    }
+    AccessibilityInfo.announceForAccessibility("Updated.");
+    setEditingId(null);
+    setEditDraft("");
   }
 
-  // Close the chooser Sheet, then run `action` only after it has fully dismissed.
-  // On iOS a picker/camera view controller cannot be presented while the modal is
-  // still sliding out — doing so wedges the app (frozen UI, no picker). We defer
-  // via the Sheet's onDismiss; Android has no such restriction so we run inline.
+  // ── Native pickers (funnel into stageAndAddAssets) ──────────────────────────
   function runAfterMediaSheet(action: () => void) {
     if (Platform.OS === "ios") {
       pendingMediaAction.current = action;
@@ -315,15 +369,8 @@ export default function ComposerScreen() {
       selectionLimit: 8,
     });
     if (result.canceled) return;
-    const materials: ImageMaterial[] = result.assets.map((asset, i) => ({
-      kind: "image",
-      uri: asset.uri,
-      name: asset.fileName ?? `img-${i}.jpg`,
-      type: asset.mimeType ?? "image/jpeg",
-    }));
-    openPending(
-      materials.length === 1 ? "1 photo" : `${materials.length} photos`,
-      materials,
+    await stageAndAddAssets(
+      result.assets.map((asset, i) => assetOf(asset, `img-${i}.jpg`, "image/jpeg")),
     );
   }
 
@@ -342,16 +389,7 @@ export default function ComposerScreen() {
       quality: 1,
     });
     if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0]!;
-    const name = asset.fileName ?? "video.mp4";
-    openPending(name, [
-      {
-        kind: "video",
-        uri: asset.uri,
-        name,
-        type: asset.mimeType ?? "video/mp4",
-      },
-    ]);
+    await stageAndAddAssets([assetOf(result.assets[0]!, "video.mp4", "video/mp4")]);
   }
 
   async function capturePhoto() {
@@ -370,8 +408,6 @@ export default function ComposerScreen() {
         quality: 0.9,
       });
     } catch {
-      // The capture session failed to start (e.g. no camera hardware on the
-      // Simulator, or it's in use). Surface it instead of an unhandled rejection.
       Alert.alert(
         "Camera unavailable",
         "Couldn't open the camera. Try again, or choose a photo from your library.",
@@ -379,15 +415,8 @@ export default function ComposerScreen() {
       return;
     }
     if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0]!;
-    const name = asset.fileName ?? `photo-${Date.now()}.jpg`;
-    openPending("1 photo", [
-      {
-        kind: "image",
-        uri: asset.uri,
-        name,
-        type: asset.mimeType ?? "image/jpeg",
-      },
+    await stageAndAddAssets([
+      assetOf(result.assets[0]!, nextCaptureName("photo", "jpg"), "image/jpeg"),
     ]);
   }
 
@@ -407,8 +436,6 @@ export default function ComposerScreen() {
         quality: 1,
       });
     } catch {
-      // The capture session failed to start (e.g. no camera hardware on the
-      // Simulator, or it's in use). Surface it instead of an unhandled rejection.
       Alert.alert(
         "Camera unavailable",
         "Couldn't open the camera. Try again, or choose a video from your library.",
@@ -416,15 +443,8 @@ export default function ComposerScreen() {
       return;
     }
     if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0]!;
-    const name = asset.fileName ?? `video-${Date.now()}.mp4`;
-    openPending(name, [
-      {
-        kind: "video",
-        uri: asset.uri,
-        name,
-        type: asset.mimeType ?? "video/mp4",
-      },
+    await stageAndAddAssets([
+      assetOf(result.assets[0]!, nextCaptureName("video", "mp4"), "video/mp4"),
     ]);
   }
 
@@ -438,13 +458,13 @@ export default function ComposerScreen() {
       copyToCacheDirectory: true,
     });
     if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0]!;
-    openPending(asset.name, [
+    const a = result.assets[0]!;
+    await stageAndAddAssets([
       {
-        kind: "document",
-        uri: asset.uri,
-        name: asset.name,
-        type: asset.mimeType ?? "application/pdf",
+        uri: a.uri,
+        name: a.name,
+        mimeType: a.mimeType ?? "application/pdf",
+        size: a.size ?? 0,
       },
     ]);
   }
@@ -458,8 +478,6 @@ export default function ComposerScreen() {
       );
       return;
     }
-    // iOS blocks recording until the audio session opts into it; expo-audio
-    // throws RecordingDisabledException without this.
     await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
     await audioRecorder.prepareToRecordAsync();
     audioRecorder.record();
@@ -472,14 +490,13 @@ export default function ComposerScreen() {
     setIsRecording(false);
     const uri = audioRecorder.uri;
     if (!uri) return;
-    const name = `voice-memo-${Date.now()}.m4a`;
     setAudioSheetOpen(false);
-    openPending(name, [
+    await stageAndAddAssets([
       {
-        kind: "audio",
         uri,
-        name,
-        type: "audio/x-m4a",
+        name: nextCaptureName("voice-memo", "m4a"),
+        mimeType: "audio/x-m4a",
+        size: 0,
       },
     ]);
   }
@@ -497,52 +514,19 @@ export default function ComposerScreen() {
       copyToCacheDirectory: true,
     });
     if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0]!;
+    const a = result.assets[0]!;
     setAudioSheetOpen(false);
-    openPending(asset.name, [
+    await stageAndAddAssets([
       {
-        kind: "audio",
-        uri: asset.uri,
-        name: asset.name,
-        type: asset.mimeType ?? "audio/mpeg",
+        uri: a.uri,
+        name: a.name,
+        mimeType: a.mimeType ?? "audio/mpeg",
+        size: a.size ?? 0,
       },
     ]);
   }
 
-  function onCardPress(kind: CaptureKind) {
-    if (busy) return;
-    if (kind.key === "photos") {
-      setMediaSheet("photo");
-      return;
-    }
-    if (kind.key === "video") {
-      setMediaSheet("video");
-      return;
-    }
-    if (kind.key === "document") {
-      void pickDocument();
-      return;
-    }
-    if (kind.key === "audio") {
-      setAudioSheetOpen(true);
-      return;
-    }
-    if (kind.key === "repo") {
-      setRepoUrl("");
-      setRepoNotes("");
-      setRepoPreview(null);
-      setRepoError(null);
-      setRepoSheetOpen(true);
-      return;
-    }
-    // form kinds (link, note)
-    setDraft("");
-    setLinkNotes("");
-    setActiveKey(kind.key);
-  }
-
-  // Fetch the confirm-preview card from the shared server endpoint. Mobile does
-  // no GitHub work itself — it just validates + presents before queueing.
+  // ── Repo sheet (server-side preview, then a url card) ──────────────────────
   async function runRepoPreview() {
     const url = repoUrl.trim();
     if (url.length === 0) {
@@ -560,9 +544,7 @@ export default function ComposerScreen() {
       setRepoPreview(preview);
     } catch (err) {
       setRepoError(
-        err instanceof ApiError
-          ? err.message
-          : "Network error reaching preview.",
+        err instanceof ApiError ? err.message : "Network error reaching preview.",
       );
     } finally {
       setRepoLoading(false);
@@ -571,58 +553,19 @@ export default function ComposerScreen() {
 
   function confirmRepo() {
     if (!repoPreview) return;
-    addToTray([
-      {
-        kind: "repo",
-        url: repoPreview.htmlUrl,
-        notes: repoNotes.trim() || undefined,
-      },
-    ]);
+    // Classify the repo URL through the package so it lands as a url card with
+    // the cosmetic `repository` platform pill (the worker still routes by host).
+    const { items: next } = classifyText(repoPreview.htmlUrl);
+    appendItems(next, "Added 1 repository link.");
     setRepoSheetOpen(false);
     setRepoUrl("");
-    setRepoNotes("");
     setRepoPreview(null);
     setRepoError(null);
   }
 
-  function confirmForm() {
-    if (activeKey === "link") {
-      const { materials, deduped, capped } = urlMaterialsFromText(draft);
-      if (materials.length === 0) {
-        Alert.alert("No links", "Paste at least one URL.");
-        return;
-      }
-      const note = linkNotes.trim() || undefined;
-      addToTray(
-        note ? materials.map((m) => ({ ...m, notes: note })) : materials,
-      );
-      if (deduped > 0 || capped > 0) {
-        const parts: string[] = [];
-        if (deduped > 0)
-          parts.push(`${deduped} duplicate${deduped === 1 ? "" : "s"} skipped`);
-        if (capped > 0)
-          parts.push(`${capped} dropped (cap ${MAX_URLS_PER_BATCH})`);
-        Alert.alert("Heads up", parts.join("\n"));
-      }
-    } else if (activeKey === "note") {
-      const text = draft.trim();
-      if (text.length === 0) {
-        Alert.alert("Empty note", "Write something first.");
-        return;
-      }
-      addToTray([{ kind: "note", text }]);
-    }
-    setActiveKey(null);
-    setDraft("");
-    setLinkNotes("");
-  }
-
+  // ── Submit (FROZEN path; only the tray→Material mapping is new) ─────────────
   async function submit() {
-    if (busy || tray.length === 0) return;
-    // Rigid, safe flow: ingest is ALWAYS free. But when this batch will use the
-    // SERVER AI draft (on-device curation off) and a free user is out of weekly
-    // generations, offer the paywall first. Whatever the user decides we still
-    // submit — over-limit ingests land as editable drafts, never lost.
+    if (busy || items.length === 0 || trayErrors.hasCritical) return;
     const willUseServerAI = !(curationOn && llmReadyData === true);
     if (
       willUseServerAI &&
@@ -636,12 +579,15 @@ export default function ComposerScreen() {
       }
     }
     setBusy(true);
+    // Pair each Material with its source card id so a per-item failure (matched
+    // by Material reference) maps back to the exact card to keep staged.
+    const pairs = toMaterialPairs(items, registry, notesById);
     let errors: string[] = [];
     let failed: Material[] = [];
     let queued = 0;
     try {
       const result = await submitMaterials(
-        tray.map((entry) => entry.material),
+        pairs.map((p) => p.material),
         {
           force: false,
           projectId: projectId ?? undefined,
@@ -655,16 +601,15 @@ export default function ComposerScreen() {
     } finally {
       setBusy(false);
     }
-    // Anything parked offline earlier gets another chance whenever we have a
-    // working submit path open, and we pull any posts the worker just wrote.
-    // Fire-and-forget; the live queries reflect it.
     kickSync("submit");
 
     if (errors.length > 0) {
-      // Keep only the materials that failed staged for retry; everything that
-      // submitted is cleared so a re-submit can't re-send already-queued items.
+      // Keep only the cards whose mapped Material failed; clear what submitted.
       const failedSet = new Set<Material>(failed);
-      setTray((prev) => prev.filter((entry) => failedSet.has(entry.material)));
+      const keptIds = new Set(
+        pairs.filter((p) => failedSet.has(p.material)).map((p) => p.id),
+      );
+      setItems((prev) => prev.filter((i) => keptIds.has(i.id)));
       Alert.alert("Some submissions failed", errors.join("\n\n"));
       return;
     }
@@ -676,18 +621,19 @@ export default function ComposerScreen() {
       );
     }
 
-    setTray([]);
+    setItems([]);
+    setNotesById(new Map());
+    setRegistry(new Map());
     setProjectId(null);
     setVisibility("PRIVATE");
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
-    // Queue folded into the Catalog — the in-flight section there shows these
-    // submissions until they resolve into posts in place.
     router.push("/(tabs)/library");
   }
 
-  const formCopy =
-    activeKey === "link" || activeKey === "note" ? FORM_COPY[activeKey] : null;
+  const editingItem = editingId
+    ? items.find((i) => i.id === editingId)
+    : undefined;
 
   return (
     <Screen>
@@ -717,7 +663,6 @@ export default function ComposerScreen() {
                 tone={t.color.accent}
                 onPress={() => router.push("/help")}
               />
-              {/* /llm is fully hidden when on-device AI is off. */}
               {ON_DEVICE_AI_ENABLED ? (
                 <TextLink
                   label="On-device AI →"
@@ -728,41 +673,105 @@ export default function ComposerScreen() {
             </View>
           </View>
 
-          <Text style={styles.prompt}>What are you adding?</Text>
-          <View style={styles.grid}>
-            {pairs(CAPTURE_KINDS).map((row, rowIndex) => (
-              <View key={`row-${rowIndex}`} style={styles.gridRow}>
-                {row.map((kind) => (
-                  <ActionCard
-                    key={kind.key}
-                    label={kind.label}
-                    symbol={kind.symbol}
-                    glyph={kind.glyph}
-                    active={activeKey === kind.key}
-                    accessibilityHint={kind.hint}
-                    disabled={busy}
-                    onPress={() => onCardPress(kind)}
-                  />
-                ))}
-                {row.length === 1 ? <View style={styles.flex} /> : null}
-              </View>
-            ))}
+          {/* ── OmniInput ──────────────────────────────────────────────── */}
+          <View
+            style={styles.omni}
+            accessibilityLabel="Omni input. Paste links, type a note, or attach a file."
+          >
+            <Text style={styles.omniCopy}>
+              Drop any link, file, or note here. We&apos;ll handle the sorting.
+            </Text>
+            <Field
+              style={styles.omniInput}
+              placeholder={
+                "Paste a URL or write a note…\nMultiple links split into separate cards."
+              }
+              multiline
+              autoCapitalize="sentences"
+              autoCorrect
+              value={omniText}
+              onChangeText={setOmniText}
+              accessibilityLabel="Paste links or type a note"
+            />
+            <View style={styles.omniActions}>
+              <PrimaryButton
+                label="Add to tray"
+                onPress={commitOmniText}
+                disabled={busy || omniText.trim().length === 0}
+                style={styles.omniAdd}
+              />
+            </View>
+            <View style={styles.tapTargets}>
+              <ActionCard
+                label="Photos"
+                symbol="photo.on.rectangle"
+                glyph="▦"
+                disabled={busy}
+                accessibilityHint="Take a photo or pick from your library"
+                onPress={() => setMediaSheet("photo")}
+              />
+              <ActionCard
+                label="Video"
+                symbol="video"
+                glyph="▶"
+                disabled={busy}
+                accessibilityHint="Record or pick a video"
+                onPress={() => setMediaSheet("video")}
+              />
+              <ActionCard
+                label="Files"
+                symbol="doc.text"
+                glyph="📄"
+                disabled={busy}
+                accessibilityHint="Pick a PDF or Word document"
+                onPress={() => void pickDocument()}
+              />
+            </View>
+            <View style={styles.tapTargets}>
+              <ActionCard
+                label="Audio"
+                symbol="waveform"
+                glyph="🎙"
+                disabled={busy}
+                accessibilityHint="Record a voice memo or pick an audio file"
+                onPress={() => setAudioSheetOpen(true)}
+              />
+              <ActionCard
+                label="Repo"
+                symbol="chevron.left.forwardslash.chevron.right"
+                glyph="◆"
+                disabled={busy}
+                accessibilityHint="Paste a GitHub repo URL and preview it"
+                onPress={() => {
+                  setRepoUrl("");
+                  setRepoPreview(null);
+                  setRepoError(null);
+                  setRepoSheetOpen(true);
+                }}
+              />
+              <View style={styles.flex} />
+            </View>
+            <Text style={styles.shareHint}>
+              Tip: share anything to Sirius from another app&apos;s share sheet —
+              no need to open this screen.
+            </Text>
           </View>
 
+          {/* ── Focus / Visibility (session-level, unchanged) ──────────── */}
           {projects.length > 0 ? (
-            <View style={styles.focusPicker}>
+            <View style={styles.picker}>
               <Eyebrow>Focus</Eyebrow>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                style={styles.focusScroll}
+                style={styles.pickerScroll}
               >
                 {[{ id: null, title: "None" }, ...projects].map((p) => (
                   <Pressable
                     key={p.id ?? "__none__"}
                     style={({ pressed }) => [
-                      styles.focusChip,
-                      projectId === p.id && styles.focusChipActive,
+                      styles.chip,
+                      projectId === p.id && styles.chipActive,
                       pressed && styles.chipPressed,
                     ]}
                     onPress={() => setProjectId(p.id)}
@@ -771,8 +780,8 @@ export default function ComposerScreen() {
                   >
                     <Text
                       style={[
-                        styles.focusChipText,
-                        projectId === p.id && styles.focusChipTextActive,
+                        styles.chipText,
+                        projectId === p.id && styles.chipTextActive,
                       ]}
                     >
                       {p.title}
@@ -782,9 +791,9 @@ export default function ComposerScreen() {
               </ScrollView>
             </View>
           ) : (
-            <View style={styles.focusEmpty}>
+            <View style={styles.pickerEmpty}>
               <Eyebrow>Focus</Eyebrow>
-              <Text style={styles.focusEmptyText}>No focus areas yet.</Text>
+              <Text style={styles.pickerEmptyText}>No focus areas yet.</Text>
               <TextLink
                 label="Create your first focus area →"
                 tone={t.color.accent}
@@ -793,15 +802,15 @@ export default function ComposerScreen() {
             </View>
           )}
 
-          <View style={styles.focusPicker}>
+          <View style={styles.picker}>
             <Eyebrow>Visibility</Eyebrow>
-            <View style={styles.focusScroll}>
+            <View style={styles.pickerScroll}>
               {VISIBILITY_OPTIONS.map((opt) => (
                 <Pressable
                   key={opt.value}
                   style={({ pressed }) => [
-                    styles.focusChip,
-                    visibility === opt.value && styles.focusChipActive,
+                    styles.chip,
+                    visibility === opt.value && styles.chipActive,
                     pressed && styles.chipPressed,
                   ]}
                   onPress={() => setVisibility(opt.value)}
@@ -811,8 +820,8 @@ export default function ComposerScreen() {
                 >
                   <Text
                     style={[
-                      styles.focusChipText,
-                      visibility === opt.value && styles.focusChipTextActive,
+                      styles.chipText,
+                      visibility === opt.value && styles.chipTextActive,
                     ]}
                   >
                     {opt.label}
@@ -822,51 +831,42 @@ export default function ComposerScreen() {
             </View>
           </View>
 
-          <View style={styles.trayHeader}>
-            <Eyebrow>In tray</Eyebrow>
-            <Eyebrow
-              accessibilityLiveRegion="polite"
-              accessibilityLabel={trayCountLabel}
-            >
-              {tray.length}
-            </Eyebrow>
-          </View>
+          {/* ── StagingTray ─────────────────────────────────────────────── */}
+          <TrayHeader
+            count={items.length}
+            toFix={countToFix(items, trayErrors)}
+            liveLabel={countLabel}
+          />
+          <TrayErrorSummary summaries={trayErrors.summaries} />
 
-          {tray.length === 0 ? (
+          {items.length === 0 ? (
             <Text style={styles.emptyTray}>
-              Nothing staged yet. Pick something above to begin.
+              Nothing staged yet. Paste or attach something above to begin.
             </Text>
           ) : (
             <View style={styles.trayList}>
-              {tray.map((entry) => (
-                <TrayRow
-                  key={entry.uid}
-                  tag={
-                    "notes" in entry.material && entry.material.notes
-                      ? `${trayTag(entry.material)} ✎`
-                      : trayTag(entry.material)
+              {items.map((item) => (
+                <SmartCard
+                  key={item.id}
+                  item={item}
+                  errors={trayErrors.byId.get(item.id) ?? []}
+                  collapsedCodes={trayErrors.collapsedCodes}
+                  thumbUri={
+                    item.kind === "image"
+                      ? registry.get(item.id)?.uri
+                      : undefined
                   }
-                  description={describeMaterial(entry.material)}
-                  onEdit={() => openEdit(entry.uid)}
-                  editLabel={`Edit ${trayTag(entry.material).toLowerCase()} note`}
-                  removeLabel={`Remove ${trayTag(entry.material).toLowerCase()}`}
-                  onRemove={() => removeFromTray(entry.uid)}
-                  leading={
-                    entry.material.kind === "image" ? (
-                      <Image
-                        source={{ uri: entry.material.uri }}
-                        style={styles.thumb}
-                        contentFit="cover"
-                        transition={120}
-                      />
-                    ) : undefined
-                  }
+                  sightBadge={item.kind === "image" && item.id === firstImageId}
+                  onEdit={() => openEdit(item.id)}
+                  onOverride={(to) => onOverride(item.id, to)}
+                  onRemove={() => removeItem(item.id)}
+                  disabled={busy}
                 />
               ))}
             </View>
           )}
 
-          {/* On-device drafting is fully hidden behind the build-time flag. */}
+          {/* On-device drafting toggle (unchanged gating). */}
           {ON_DEVICE_AI_ENABLED && llmReadyData === true ? (
             <View style={styles.curationRow}>
               <View style={styles.curationCopy}>
@@ -883,9 +883,6 @@ export default function ComposerScreen() {
               />
             </View>
           ) : ON_DEVICE_AI_ENABLED && llmReadyIsSuccess ? (
-            // No model on disk: the switch is hidden until the user downloads
-            // one from the /llm screen. (Still loading → render neither, so the
-            // CTA doesn't flash on every composer mount.)
             <View style={styles.curationRow}>
               <View style={styles.curationCopy}>
                 <Text style={styles.curationLabel}>On-device AI</Text>
@@ -903,70 +900,21 @@ export default function ComposerScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Weekly AI-draft budget — shown to free users with a staged tray so the
-          cap is transparent before they submit. Hidden for Pro / empty tray. */}
-      {tray.length > 0 && usage && !usage.isPro ? (
+      {items.length > 0 && usage && !usage.isPro ? (
         <View style={styles.usageBar}>
           <UsageMeter usage={usage} />
         </View>
       ) : null}
 
-      {/* Pinned tray summary + Submit CTA, always visible above the tab bar so
-          submission is discoverable without scrolling to the bottom. */}
-      <SubmitBar
-        count={tray.length}
+      {/* ── UnifiedActionButton: "Process {N} Items" ──────────────────── */}
+      <OmniSubmitBar
+        count={items.length}
+        disabled={trayErrors.hasCritical}
         busy={busy}
         onSubmit={submit}
-        countLabel={trayCountLabel}
       />
 
-      <Sheet
-        visible={activeKey === "link" || activeKey === "note"}
-        title={formCopy?.title}
-        onClose={() => setActiveKey(null)}
-      >
-        {formCopy ? (
-          <>
-            <Field
-              label={formCopy.label}
-              style={styles.sheetInput}
-              placeholder={formCopy.placeholder}
-              multiline
-              autoFocus
-              autoCapitalize={activeKey === "link" ? "none" : "sentences"}
-              autoCorrect={activeKey !== "link"}
-              // Link mode takes URLs (one per line) → URL keyboard + content type
-              // for the right key layout and paste/autofill affordances. Note mode
-              // is prose, so leave it on the default keyboard.
-              keyboardType={activeKey === "link" ? "url" : "default"}
-              textContentType={activeKey === "link" ? "URL" : "none"}
-              value={draft}
-              onChangeText={setDraft}
-            />
-            {activeKey === "link" ? (
-              <Field
-                label="Notes (optional)"
-                style={styles.repoNotesInput}
-                placeholder="What interests you about these links…"
-                multiline
-                autoCapitalize="sentences"
-                value={linkNotes}
-                onChangeText={setLinkNotes}
-              />
-            ) : null}
-            <KeyboardDoneButton style={styles.keyboardDone} />
-            <PrimaryButton label="Add to tray" onPress={confirmForm} />
-            <View style={styles.sheetCancel}>
-              <TextLink
-                label="Cancel"
-                tone={t.color.inkMuted}
-                onPress={() => setActiveKey(null)}
-              />
-            </View>
-          </>
-        ) : null}
-      </Sheet>
-
+      {/* ── Sheets ──────────────────────────────────────────────────────── */}
       <Sheet
         visible={mediaSheet !== null}
         title={mediaSheet === "video" ? "Video" : "Photo"}
@@ -980,9 +928,7 @@ export default function ComposerScreen() {
         <PrimaryButton
           label={mediaSheet === "video" ? "Record video" : "Take photo"}
           onPress={() =>
-            runAfterMediaSheet(
-              mediaSheet === "video" ? captureVideo : capturePhoto,
-            )
+            runAfterMediaSheet(mediaSheet === "video" ? captureVideo : capturePhoto)
           }
         />
         <PrimaryButton
@@ -1060,22 +1006,11 @@ export default function ComposerScreen() {
         ) : null}
         {repoPreview ? <RepoPreviewCard preview={repoPreview} /> : null}
         {repoPreview ? (
-          <>
-            <Field
-              label="Notes (optional)"
-              placeholder="Why this repo caught your eye…"
-              multiline
-              autoCapitalize="sentences"
-              style={styles.repoNotesInput}
-              value={repoNotes}
-              onChangeText={setRepoNotes}
-            />
-            <PrimaryButton
-              label="Add to tray"
-              onPress={confirmRepo}
-              style={styles.sheetSecondaryButton}
-            />
-          </>
+          <PrimaryButton
+            label="Add to tray"
+            onPress={confirmRepo}
+            style={styles.sheetSecondaryButton}
+          />
         ) : null}
         <KeyboardDoneButton style={styles.keyboardDone} />
         <View style={styles.sheetCancel}>
@@ -1090,92 +1025,147 @@ export default function ComposerScreen() {
       </Sheet>
 
       <Sheet
-        visible={pendingCapture !== null}
-        title="Add details"
-        onClose={() => setPendingCapture(null)}
+        visible={editingId !== null}
+        title={
+          editingItem?.kind === "url"
+            ? "Edit link"
+            : editingItem?.kind === "note"
+              ? "Edit note"
+              : "Add a note"
+        }
+        onClose={() => setEditingId(null)}
       >
-        {pendingCapture ? (
+        {editingItem ? (
           <>
-            <Text style={styles.pendingSummary}>{pendingCapture.summary}</Text>
             <Field
-              label="Notes (optional)"
-              style={styles.repoNotesInput}
-              placeholder="What interests you about this…"
-              multiline
+              label={
+                editingItem.kind === "url"
+                  ? "URL"
+                  : editingItem.kind === "note"
+                    ? "Note"
+                    : "Notes (optional)"
+              }
+              style={styles.editInput}
+              placeholder={
+                editingItem.kind === "url"
+                  ? "https://example.com"
+                  : editingItem.kind === "note"
+                    ? "Anything to remember…"
+                    : "What interests you about this…"
+              }
+              multiline={editingItem.kind !== "url"}
               autoFocus
-              autoCapitalize="sentences"
-              value={pendingNotes}
-              onChangeText={setPendingNotes}
+              autoCapitalize={editingItem.kind === "url" ? "none" : "sentences"}
+              autoCorrect={editingItem.kind !== "url"}
+              keyboardType={editingItem.kind === "url" ? "url" : "default"}
+              value={editDraft}
+              onChangeText={setEditDraft}
             />
             <KeyboardDoneButton style={styles.keyboardDone} />
             <PrimaryButton
-              label="Add to tray"
-              onPress={() => void confirmPending()}
+              label="Save"
+              onPress={confirmEdit}
+              disabled={
+                editingItem.kind !== "document" &&
+                editingItem.kind !== "image" &&
+                editingItem.kind !== "video" &&
+                editingItem.kind !== "audio" &&
+                editDraft.trim().length === 0
+              }
             />
             <View style={styles.sheetCancel}>
               <TextLink
                 label="Cancel"
                 tone={t.color.inkMuted}
-                onPress={() => setPendingCapture(null)}
+                onPress={() => setEditingId(null)}
               />
             </View>
           </>
         ) : null}
       </Sheet>
-
-      <Sheet
-        visible={editingUid !== null}
-        title="Edit note"
-        onClose={() => setEditingUid(null)}
-      >
-        {(() => {
-          const entry = editingUid
-            ? tray.find((e) => e.uid === editingUid)
-            : null;
-          if (!entry) return null;
-          const isNoteKind = entry.material.kind === "note";
-          return (
-            <>
-              <Text style={styles.pendingSummary}>
-                {describeMaterial(entry.material)}
-              </Text>
-              <Field
-                label="Note"
-                style={styles.repoNotesInput}
-                placeholder={
-                  isNoteKind
-                    ? "Anything to remember…"
-                    : "What interests you about this…"
-                }
-                multiline
-                autoFocus
-                autoCapitalize="sentences"
-                value={editNote}
-                onChangeText={setEditNote}
-              />
-              <KeyboardDoneButton style={styles.keyboardDone} />
-              <PrimaryButton
-                label="Save"
-                onPress={confirmEdit}
-                disabled={isNoteKind && editNote.trim().length === 0}
-              />
-              <View style={styles.sheetCancel}>
-                <TextLink
-                  label="Cancel"
-                  tone={t.color.inkMuted}
-                  onPress={() => setEditingUid(null)}
-                />
-              </View>
-            </>
-          );
-        })()}
-      </Sheet>
     </Screen>
   );
 }
 
-// The confirm-preview repo card. Renders the server-fetched RepoPreview so the
-// user sees exactly what "ingest this repo" resolves to before queueing.
+// Build an RnAsset from an expo-image-picker asset, defaulting name/type/size.
+function assetOf(
+  asset: ImagePicker.ImagePickerAsset,
+  fallbackName: string,
+  fallbackType: string,
+): RnAsset {
+  return {
+    uri: asset.uri,
+    name: asset.fileName ?? fallbackName,
+    mimeType: asset.mimeType ?? fallbackType,
+    size: asset.fileSize ?? 0,
+  };
+}
+
+// Count of cards carrying a critical error (the "N to fix" figure).
+function countToFix(
+  items: ClassifiedItem[],
+  derived: ReturnType<typeof deriveTrayErrors>,
+): number {
+  let n = 0;
+  for (const item of items) {
+    const errs = derived.byId.get(item.id) ?? [];
+    if (errs.some((e) => e.severity === "critical")) n++;
+  }
+  return n;
+}
+
+function pluralKind(kind: IngestKind, n: number): string {
+  const labels: Record<IngestKind, [string, string]> = {
+    url: ["link", "links"],
+    note: ["note", "notes"],
+    image: ["photo", "photos"],
+    video: ["video", "videos"],
+    audio: ["audio file", "audio files"],
+    document: ["document", "documents"],
+  };
+  const [one, many] = labels[kind];
+  return n === 1 ? one : many;
+}
+
+// The unified bottom action. Label is EXACTLY "Process {N} Items"; disabled when
+// the tray is empty OR any card carries a critical error.
+function OmniSubmitBar({
+  count,
+  disabled,
+  busy,
+  onSubmit,
+}: {
+  count: number;
+  disabled: boolean;
+  busy?: boolean;
+  onSubmit: () => void;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const insets = useSafeAreaInsets();
+  const t = useTheme();
+  const empty = count === 0;
+  const label = empty
+    ? "Add something to begin"
+    : `Process ${count} Item${count === 1 ? "" : "s"}`;
+  return (
+    <View
+      style={[
+        styles.submitBar,
+        { paddingBottom: BottomTabInset + insets.bottom + t.space.md },
+      ]}
+    >
+      <PrimaryButton
+        label={busy ? "Processing…" : label}
+        onPress={onSubmit}
+        busy={busy}
+        disabled={empty || disabled}
+        style={styles.submitButton}
+      />
+    </View>
+  );
+}
+
+// The confirm-preview repo card (unchanged from the prior composer).
 function RepoPreviewCard({ preview }: { preview: RepoPreview }) {
   const styles = useThemedStyles(makeStyles);
   const meta = [
@@ -1237,16 +1227,10 @@ function makeStyles(t: Theme) {
     container: {
       padding: t.space.xl,
       paddingTop: 64,
-      // Clear the floating native tab bar AND the pinned SubmitBar above it, with
-      // extra breathing room so the last scroll content (the on-device "Draft on
-      // device" toggle) sits clearly above the bar rather than tucked against it.
-      paddingBottom: 280,
+      paddingBottom: 220,
       gap: t.space.lg,
     },
-    header: {
-      gap: t.space.lg,
-      marginBottom: t.space.xs,
-    },
+    header: { gap: t.space.lg, marginBottom: t.space.xs },
     headerMain: { gap: t.space.xs },
     headerToolbar: {
       flexDirection: "row",
@@ -1257,29 +1241,66 @@ function makeStyles(t: Theme) {
       borderColor: t.color.rule,
       paddingBottom: t.space.md,
     },
-    focusEmpty: { gap: t.space.sm },
-    focusEmptyText: {
+
+    // OmniInput
+    omni: {
+      borderWidth: 1,
+      borderColor: t.color.ruleStrong,
+      borderStyle: "dashed",
+      backgroundColor: t.color.paperRaised,
+      padding: t.space.lg,
+      gap: t.space.md,
+    },
+    omniCopy: {
+      fontFamily: t.font.serif,
+      fontSize: 17,
+      lineHeight: 23,
+      color: t.color.ink,
+    },
+    omniInput: {
+      minHeight: 96,
+      textAlignVertical: "top",
+      paddingTop: 12,
+      backgroundColor: t.color.paper,
+    },
+    omniActions: { flexDirection: "row", justifyContent: "flex-end" },
+    omniAdd: { paddingHorizontal: t.space.xl },
+    tapTargets: { flexDirection: "row", gap: t.space.md },
+    shareHint: {
+      fontFamily: t.font.serif,
+      fontSize: 13,
+      fontStyle: "italic",
+      color: t.color.inkMuted,
+      lineHeight: 18,
+    },
+
+    // Pickers
+    picker: { gap: t.space.sm },
+    pickerScroll: { flexDirection: "row" },
+    pickerEmpty: { gap: t.space.sm },
+    pickerEmptyText: {
       fontFamily: t.font.serif,
       fontSize: 15,
       fontStyle: "italic",
       color: t.color.inkMuted,
     },
-    prompt: {
-      fontFamily: t.font.serif,
-      fontSize: 20,
-      color: t.color.ink,
-    },
-    grid: { gap: t.space.md },
-    gridRow: { flexDirection: "row", gap: t.space.md },
-    trayHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      borderBottomWidth: 1,
+    chip: {
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.xs,
+      borderWidth: 1,
       borderColor: t.color.rule,
-      paddingBottom: t.space.sm,
-      marginTop: t.space.sm,
+      marginRight: t.space.sm,
     },
+    chipActive: { borderColor: t.color.accent, backgroundColor: t.color.accent },
+    chipPressed: { opacity: 0.6 },
+    chipText: {
+      fontFamily: t.font.serif,
+      fontSize: 13,
+      color: t.color.inkMuted,
+    },
+    chipTextActive: { color: t.color.paper },
+
+    // Tray
     emptyTray: {
       fontFamily: t.font.serif,
       fontSize: 15,
@@ -1287,32 +1308,41 @@ function makeStyles(t: Theme) {
       fontStyle: "italic",
     },
     trayList: { gap: t.space.sm },
-    thumb: {
-      width: 44,
-      height: 44,
-      borderRadius: t.radius.none,
-      backgroundColor: t.color.paperSunken,
-      borderWidth: 1,
-      borderColor: t.color.rule,
+
+    // Curation toggle
+    curationRow: {
+      alignItems: "center",
+      backgroundColor: t.color.paperRaised,
+      borderRadius: 10,
+      flexDirection: "row",
+      gap: t.space.md,
+      justifyContent: "space-between",
+      padding: t.space.md,
     },
-    sheetInput: { minHeight: 120, textAlignVertical: "top", paddingTop: 12 },
-    // Keyboard "Done" sits right-aligned just above the sheet's submit button.
+    curationCopy: { flex: 1, gap: t.space.xs },
+    curationLabel: { color: t.color.ink, fontFamily: t.font.serif, fontSize: 16 },
+    curationHint: { color: t.color.inkMuted, fontSize: 13 },
+
+    // Submit bar
+    submitBar: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: t.color.paper,
+      borderTopWidth: 1,
+      borderColor: t.color.ruleStrong,
+      paddingHorizontal: t.space.xl,
+      paddingTop: t.space.md,
+    },
+    submitButton: { width: "100%" },
+
+    // Sheets
+    editInput: { minHeight: 96, textAlignVertical: "top", paddingTop: 12 },
     keyboardDone: { alignSelf: "flex-end" },
     sheetCancel: { alignItems: "center" },
     sheetSecondaryButton: { marginTop: t.space.sm },
-    repoError: {
-      color: t.color.accent,
-      fontFamily: t.font.mono,
-      fontSize: 12,
-    },
-    repoNotesInput: { minHeight: 64, textAlignVertical: "top", paddingTop: 12 },
-    pendingSummary: {
-      fontFamily: t.font.serif,
-      fontSize: 16,
-      fontStyle: "italic",
-      color: t.color.inkMuted,
-      marginBottom: t.space.sm,
-    },
+    repoError: { color: t.color.error, fontFamily: t.font.mono, fontSize: 12 },
     repoCard: {
       borderWidth: 1,
       borderColor: t.color.rule,
@@ -1328,22 +1358,14 @@ function makeStyles(t: Theme) {
       borderWidth: 1,
       borderColor: t.color.rule,
     },
-    repoName: {
-      fontFamily: t.font.serif,
-      fontSize: 17,
-      color: t.color.ink,
-    },
+    repoName: { fontFamily: t.font.serif, fontSize: 17, color: t.color.ink },
     repoDescription: {
       fontFamily: t.font.serif,
       fontSize: 14,
       color: t.color.inkMuted,
       marginTop: 2,
     },
-    repoMeta: {
-      fontFamily: t.font.mono,
-      fontSize: 12,
-      color: t.color.inkMuted,
-    },
+    repoMeta: { fontFamily: t.font.mono, fontSize: 12, color: t.color.inkMuted },
     repoReadme: {
       fontFamily: t.font.serif,
       fontSize: 13,
@@ -1357,47 +1379,6 @@ function makeStyles(t: Theme) {
       fontFamily: t.font.mono,
       fontSize: 11,
       color: t.color.inkSubtle,
-    },
-    curationRow: {
-      alignItems: "center",
-      backgroundColor: t.color.paperRaised,
-      borderRadius: 10,
-      flexDirection: "row",
-      gap: t.space.md,
-      justifyContent: "space-between",
-      padding: t.space.md,
-    },
-    curationCopy: { flex: 1, gap: t.space.xs },
-    curationLabel: {
-      color: t.color.ink,
-      fontFamily: t.font.serif,
-      fontSize: 16,
-    },
-    curationHint: {
-      color: t.color.inkMuted,
-      fontSize: 13,
-    },
-    focusPicker: { gap: t.space.sm },
-    focusScroll: { flexDirection: "row" },
-    focusChip: {
-      paddingHorizontal: t.space.md,
-      paddingVertical: t.space.xs,
-      borderWidth: 1,
-      borderColor: t.color.rule,
-      marginRight: t.space.sm,
-    },
-    focusChipActive: {
-      borderColor: t.color.accent,
-      backgroundColor: t.color.accent,
-    },
-    chipPressed: { opacity: 0.6 },
-    focusChipText: {
-      fontFamily: t.font.serif,
-      fontSize: 13,
-      color: t.color.inkMuted,
-    },
-    focusChipTextActive: {
-      color: t.color.paper,
     },
   });
 }

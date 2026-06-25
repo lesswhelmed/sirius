@@ -38,6 +38,7 @@
 		"@react-three/fiber": "^9.3.0",
 		"@repo/embedding-scene": "*",
 		"@repo/github-ingest": "*",
+		"@repo/ingest-classify": "*",
 		"@repo/ingest-draft": "*",
 		"@stardazed/streams-text-encoding": "^1.0.2",
 		"@tanstack/react-query": "^5.101.0",
