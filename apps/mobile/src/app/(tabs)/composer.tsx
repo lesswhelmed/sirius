@@ -16,6 +16,7 @@ import {
   type ClassifiedItem,
   type IngestKind,
   overrideKind,
+  platformFor,
   validateItem,
 } from "@repo/ingest-classify";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -309,6 +310,7 @@ export default function ComposerScreen() {
             ...i,
             content: value.trim(),
             url: value.trim(),
+            platform: platformFor(value.trim()),
           };
           const errors = validateItem(next);
           return { ...next, errors, error: errors[0] };

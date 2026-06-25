@@ -13,6 +13,7 @@ import {
   type ClassifiedItem,
   type IngestKind,
   overrideKind,
+  platformFor,
   validateItem,
 } from "@repo/ingest-classify";
 import {
@@ -210,7 +211,7 @@ export function Composer() {
         if (item.id !== id) return item;
         const patched: ClassifiedItem =
           item.kind === "url"
-            ? { ...item, content: value, url: value }
+            ? { ...item, content: value, url: value, platform: platformFor(value) }
             : { ...item, content: value, text: value };
         const errors = validateItem(patched);
         return { ...patched, errors, error: errors[0] };
