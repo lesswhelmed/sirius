@@ -138,4 +138,9 @@ export const GOLDEN_QUERIES: GoldenQuery[] = [
     query: "zephyrium", viewerKey: "viewer", scope: "mine", mode: "fts-only",
     expectPartial: true, orderedSubset: ["fw-title"],
   },
+  {
+    name: "canonical exact ordering: zephyrium scope=mine (FTS)",
+    query: "zephyrium", viewerKey: "viewer", scope: "mine", mode: "fts-only",
+    exactOrder: ["viewer-draft", "fw-title", "tag-only", "fw-excerpt", "fw-body"],
+  },
 ];

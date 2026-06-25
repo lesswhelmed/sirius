@@ -54,4 +54,19 @@ suite("searchCorpus integration (golden matrix)", () => {
       }
     });
   }
+
+  test("pagination is stable: page1 ∪ page2 == full, no dupes/gaps", async () => {
+    const opts = { scope: "all" as const, embedder: throwingEmbedder };
+    const full = await searchCorpus(userId("viewer"), "zephyrium", { ...opts, limit: 50 });
+    const fullSlugs = full.items.map((i) => i.slug);
+
+    const p1 = await searchCorpus(userId("viewer"), "zephyrium", { ...opts, limit: 2 });
+    const p2 = await searchCorpus(userId("viewer"), "zephyrium", {
+      ...opts, limit: 2, cursor: p1.nextCursor ?? undefined,
+    });
+    const paged = [...p1.items, ...p2.items].map((i) => i.slug);
+
+    expect(new Set(paged).size).toBe(paged.length); // no dupes
+    expect(paged).toEqual(fullSlugs.slice(0, paged.length)); // same prefix order
+  });
 });
