@@ -23,3 +23,25 @@ describe("reciprocalRankFusion", () => {
     expect(reciprocalRankFusion([], [])).toEqual([]);
   });
 });
+
+describe("searchVisibilityWhere", () => {
+  test("viewer-only when no friends and public excluded", () => {
+    const w = searchVisibilityWhere("u1", [], false);
+    expect(w.OR).toEqual([{ submittedById: "u1" }]);
+  });
+
+  test("adds friends' published FRIENDS clause when friends present", () => {
+    const w = searchVisibilityWhere("u1", ["f1", "f2"], false);
+    expect(w.OR).toContainEqual({
+      submittedById: { in: ["f1", "f2"] },
+      visibility: "FRIENDS",
+      status: "PUBLISHED",
+    });
+    expect(w.OR).not.toContainEqual({ visibility: "PUBLIC", status: "PUBLISHED" });
+  });
+
+  test("adds PUBLIC published clause when includePublic", () => {
+    const w = searchVisibilityWhere("u1", [], true);
+    expect(w.OR).toContainEqual({ visibility: "PUBLIC", status: "PUBLISHED" });
+  });
+});
