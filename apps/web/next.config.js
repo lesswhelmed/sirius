@@ -12,7 +12,10 @@ const nextConfig = {
 	// next dev on :3000). Next 16 rejects cross-origin dev requests from
 	// unlisted hostnames. The names come from the ONE source of truth shared
 	// with better-auth's trusted origins: packages/auth/dev-hosts.js.
-	allowedDevOrigins: [...DEV_HOSTS],
+	// 10.0.2.2 is the Android emulator's alias for the Mac host loopback — it
+	// hits `next dev` on :3000 directly (portless off). See
+	// apps/mobile/docs/ANDROID-PARITY.md.
+	allowedDevOrigins: [...DEV_HOSTS, "10.0.2.2"],
 	images: {
 		remotePatterns: [
 			{

@@ -58,10 +58,12 @@ export default function ShareIntentScreen() {
 
   // Clear the share payload whenever this pane leaves — including a native
   // swipe-down dismiss, which never runs `dismiss()`. Without this `hasShareIntent`
-  // stays true and `ShareIntentNavigator` (app/_layout.tsx) re-pushes the pane.
-  // `resetShareIntent` isn't memoised by expo-share-intent (fresh identity each
-  // provider render), so hold it in a ref and reset on real unmount only —
-  // otherwise a provider re-render would wipe the payload mid-edit.
+  // stays true: on Android the `ShareIntentNavigator` (app/_layout.tsx, Android-
+  // only) would re-push the pane, and on iOS a stale payload could leak into a
+  // later `+native-intent` open. `resetShareIntent` isn't memoised by
+  // expo-share-intent (fresh identity each provider render), so hold it in a ref
+  // and reset on real unmount only — otherwise a provider re-render would wipe
+  // the payload mid-edit.
   const resetRef = useRef(resetShareIntent);
   useEffect(() => {
     resetRef.current = resetShareIntent;

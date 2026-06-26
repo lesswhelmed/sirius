@@ -12,8 +12,8 @@ import Purchases, {
 import RevenueCatUI from "react-native-purchases-ui";
 import {
   PURCHASES_ENABLED,
+  REVENUECAT_API_KEY,
   REVENUECAT_ENTITLEMENT_ID,
-  REVENUECAT_IOS_KEY,
 } from "./config";
 
 let configured = false;
@@ -32,7 +32,7 @@ export function configurePurchases(): void {
   if (!nativeReady() || configured) return;
   try {
     if (__DEV__) Purchases.setLogLevel(LOG_LEVEL.WARN);
-    Purchases.configure({ apiKey: REVENUECAT_IOS_KEY });
+    Purchases.configure({ apiKey: REVENUECAT_API_KEY });
     configured = true;
   } catch (err) {
     console.warn("[purchases] configure failed", err);

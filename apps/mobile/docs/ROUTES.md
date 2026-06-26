@@ -49,7 +49,7 @@ link `siriusapp://queue` still resolves (back-compat) via the top-level
 | ---------------------- | --------------------------- | --------------------------------------------------------------------------------- |
 | `/`                    | `index.tsx`                 | Entry. → `/(auth)/sign-in` if signed-out, `/help` on first run, else `/(tabs)/library`. |
 | `/capture`             | `capture.tsx`               | App Intents / Shortcuts target. `siriusapp://capture?text=<encoded>` (host or first segment, see `+native-intent.ts`). |
-| `/shareintent`         | `shareintent.tsx`           | Share-extension landing. NOT linked directly — `+native-intent.ts` rewrites the synthetic `mobile://dataUrl=…` share URL here. |
+| `/shareintent`         | `shareintent.tsx`           | Share-extension landing. NOT linked directly. **iOS**: `+native-intent.ts` rewrites the synthetic `mobile://dataUrl=…` share URL here. **Android**: there is no share URL — the Android-only `ShareIntentNavigator` in `_layout.tsx` pushes here off the `hasShareIntent` event. |
 | `/focus`               | `focus.tsx`                 | `siriusapp://focus`                                                                |
 | `/friends`             | `friends.tsx`               | `siriusapp://friends` (also pushed from Account).                                  |
 | `/help`                | `help.tsx`                  | `siriusapp://help`. "How Sirius works" hub + first-run onboarding.                 |
@@ -80,7 +80,7 @@ Routes resolve without the group prefix (`siriusapp://sign-in`, etc.):
 
 `redirectSystemPath` runs for every incoming link before the router matches it:
 
-- `mobile://dataUrl=<shareExtensionKey>?nonce=…` (expo-share-intent) → `/shareintent`.
+- `mobile://dataUrl=<shareExtensionKey>?nonce=…` (expo-share-intent, **iOS only**) → `/shareintent`. Android delivers shares as a native event with no URL, so this rule never fires there — the Android-only `ShareIntentNavigator` in `_layout.tsx` navigates to `/shareintent` instead.
 - `siriusapp://capture?text=…` (App Intents; "capture" as host *or* first segment) → `/capture?…` (query forwarded verbatim).
 - `siriusapp://u/<handle>` → `/u/<handle>` (and `siriusapp://u/<handle>/catalog` → `/u/<handle>/catalog`; the path after the handle is preserved).
 - Anything else passes through unchanged.

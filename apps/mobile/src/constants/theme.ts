@@ -41,20 +41,31 @@ export const Fonts = Platform.select({
     sans: "system-ui",
     /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: "ui-serif",
+    /** Big editorial titles. iOS keeps New York (its design serif) — unchanged. */
+    display: "ui-serif",
     /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: "ui-rounded",
     /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: "ui-monospace",
   },
+  // Android: the bundled web-brand faces, registered natively by the `expo-font`
+  // config plugin in app.json (Android-only `android.fonts`). The family names
+  // here MUST match the `fontFamily` keys declared there. Each family groups its
+  // weights via `fontDefinitions`, so the existing `fontWeight: "600"/"700"`
+  // styles resolve to the right file (Android won't synthesize bold for custom
+  // fonts otherwise). Mirrors web: Newsreader (serif/body), Instrument Serif
+  // (display titles), JetBrains Mono (labels/meta).
   default: {
-    sans: "normal",
-    serif: "serif",
-    rounded: "normal",
-    mono: "monospace",
+    sans: "Newsreader",
+    serif: "Newsreader",
+    display: "InstrumentSerif",
+    rounded: "Newsreader",
+    mono: "JetBrainsMono",
   },
   web: {
     sans: "var(--font-display)",
     serif: "var(--font-serif)",
+    display: "var(--font-display)",
     rounded: "var(--font-rounded)",
     mono: "var(--font-mono)",
   },
@@ -145,7 +156,7 @@ export interface ColorTokens {
 
 export interface Theme {
   color: ColorTokens;
-  font: { serif: string; sans: string; mono: string };
+  font: { serif: string; sans: string; mono: string; display: string };
   radius: { none: number; pill: number };
   space: { xs: number; sm: number; md: number; lg: number; xl: number; xxl: number };
   rule: { hairline: number; emphatic: number };
@@ -153,10 +164,14 @@ export interface Theme {
 
 const font = {
   // iOS resolves these to New York (serif) / SF Mono — an editorial pairing
-  // close to the web's Newsreader + Geist Mono.
+  // close to the web's Newsreader + Geist Mono. Android uses the bundled
+  // Newsreader / Instrument Serif / JetBrains Mono (see `Fonts` above).
   serif: Fonts?.serif ?? "serif",
   sans: Fonts?.sans ?? "system-ui",
   mono: Fonts?.mono ?? "monospace",
+  // Big display titles. `display` falls back to `serif` so any title not yet
+  // migrated to the token keeps its current face.
+  display: Fonts?.display ?? Fonts?.serif ?? "serif",
 };
 
 const radius = {

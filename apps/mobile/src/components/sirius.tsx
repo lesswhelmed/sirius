@@ -867,7 +867,9 @@ function makeStyles(t: Theme) {
       color: t.color.inkSubtle,
     },
     title: {
-      fontFamily: t.font.serif,
+      // Big page headline — the display face (Instrument Serif on Android,
+      // New York on iOS). See theme `font.display`.
+      fontFamily: t.font.display,
       fontSize: 40,
       lineHeight: 42,
       letterSpacing: -0.5,

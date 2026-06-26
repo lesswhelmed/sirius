@@ -5,7 +5,9 @@ import { asc, desc, inArray, ne } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import {
   FlatList,
   Pressable,
@@ -16,6 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { CorpusSearchResults } from "@/components/corpus-search";
 import { FriendsFeedList } from "@/components/friends-feed-list";
@@ -38,6 +41,7 @@ import {
   type SyncState,
 } from "@/lib/db/schema";
 import { discardSubmission, requeueSubmission } from "@/lib/outbox";
+import { confirmAndDeletePost } from "@/lib/post-delete";
 import { kickSync } from "@/lib/sync/engine";
 
 type QueuePage = { items: IngestSubmission[]; nextCursor: string | null };
@@ -330,7 +334,7 @@ export default function LibraryScreen() {
       item.slug
         ? router.push(`/post/${item.slug}?from=Catalog`)
         : router.push(`/post/local/${item.localId}?from=Catalog`);
-    return (
+    const rowInner = (
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -394,6 +398,16 @@ export default function LibraryScreen() {
         </View>
       </Pressable>
     );
+    // Only synced, server-backed posts are swipe-deletable (true web parity).
+    // In-flight / draft / failed rows keep their "In flight" controls untouched.
+    if (item.syncState === "synced" && item.slug) {
+      return (
+        <DeletableRow slug={item.slug} serverId={item.serverId}>
+          {rowInner}
+        </DeletableRow>
+      );
+    }
+    return rowInner;
   }, [postTypeTone, t, styles]);
 
   const scopeToggle = (
@@ -776,6 +790,53 @@ function Separator() {
   return <View style={styles.sep} />;
 }
 
+// Wraps a synced catalog row so it can be swiped left to reveal a destructive
+// Delete action. Tapping Delete snaps the row closed, then confirms; on accept
+// the post is removed server-side and tombstoned locally, so the live query
+// drops the row automatically (no manual list mutation).
+function DeletableRow({
+  slug,
+  serverId,
+  children,
+}: {
+  slug: string;
+  serverId: string | null;
+  children: ReactNode;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const ref = useRef<SwipeableMethods>(null);
+  const renderRightActions = useCallback(
+    () => (
+      <Pressable
+        onPress={() => {
+          ref.current?.close();
+          confirmAndDeletePost({ slug, serverId });
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Delete post"
+        style={({ pressed }) => [
+          styles.swipeAction,
+          pressed && styles.swipeActionPressed,
+        ]}
+      >
+        <Text style={styles.swipeActionText}>Delete</Text>
+      </Pressable>
+    ),
+    [slug, serverId, styles],
+  );
+  return (
+    <ReanimatedSwipeable
+      ref={ref}
+      friction={2}
+      rightThreshold={40}
+      overshootRight={false}
+      renderRightActions={renderRightActions}
+    >
+      {children}
+    </ReanimatedSwipeable>
+  );
+}
+
 function makeStyles(t: Theme) {
   return StyleSheet.create({
   centeredPad: {
@@ -1066,6 +1127,22 @@ function makeStyles(t: Theme) {
     color: t.color.inkSubtle,
   },
   sep: { height: 1, backgroundColor: t.color.rule },
+  // Swipe-to-delete action panel — a full-height destructive button revealed
+  // behind a synced catalog row.
+  swipeAction: {
+    backgroundColor: t.color.danger,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: t.space.xl,
+  },
+  swipeActionPressed: { opacity: 0.8 },
+  swipeActionText: {
+    fontFamily: t.font.mono,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: t.color.onAccent,
+  },
   empty: { padding: 40, alignItems: "center", gap: t.space.sm },
   emptyGlyph: {
     fontFamily: t.font.serif,

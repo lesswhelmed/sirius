@@ -36,6 +36,11 @@ export default function TabsLayout() {
         selected: t.color.accent,
       }}
       indicatorColor={t.color.accentSoft}
+      // Android's Material nav bar defaults to "auto", which hides the labels of
+      // unselected items once there are 4+ tabs — that's why Android showed only
+      // the selected tab's label. Force every label to render so the row matches
+      // iOS (where labels always show). No-op on iOS.
+      labelVisibilityMode="labeled"
       labelStyle={{
         default: { color: t.color.inkMuted },
         selected: { color: t.color.accent },
@@ -44,22 +49,28 @@ export default function TabsLayout() {
       {/* Capture (the composer) leads — it's the primary action: users submit
           URLs/notes/images here first. Explore sits in the middle of the row.
           Route name stays "tree" so /tree/[...node] drill links + deep links
-          keep resolving. */}
+          keep resolving.
+          Every Icon sets BOTH `sf` (iOS SF Symbol) and `md` (Android Material
+          glyph). Without `md`, Android renders no icon (SF Symbols are iOS-only)
+          and the tab bar collapses to bare/unlabeled items. */}
       <NativeTabs.Trigger name="composer">
         <NativeTabs.Trigger.Label>Capture</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="square.and.pencil" />
+        <NativeTabs.Trigger.Icon sf="square.and.pencil" md="edit_square" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="library">
         <NativeTabs.Trigger.Label>Catalog</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="books.vertical" />
+        <NativeTabs.Trigger.Icon sf="books.vertical" md="library_books" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="tree">
         <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="point.3.connected.trianglepath.dotted" />
+        <NativeTabs.Trigger.Icon
+          sf="point.3.connected.trianglepath.dotted"
+          md="hub"
+        />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
         <NativeTabs.Trigger.Label>Account</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="person.crop.circle" />
+        <NativeTabs.Trigger.Icon sf="person.crop.circle" md="account_circle" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );

@@ -25,7 +25,8 @@
       "channel": "preview",
       "env": {
         "EXPO_PUBLIC_AUTH_BASE_URL": "https://lesswhelmed.com",
-        "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_JHDRfhioxKspkGosJYRsGDiVMJP"
+        "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_JHDRfhioxKspkGosJYRsGDiVMJP",
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY": "goog_UiLlycOYEXnCXkWUIBdrcrRIeNc"
       },
       "node": "22.12.0"
     },
@@ -36,9 +37,18 @@
       "env": {
         "EXPO_PUBLIC_AUTH_BASE_URL": "https://lesswhelmed.com",
         "EXPO_PUBLIC_ON_DEVICE_AI": "true",
-        "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_JHDRfhioxKspkGosJYRsGDiVMJP"
+        "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_JHDRfhioxKspkGosJYRsGDiVMJP",
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY": "goog_UiLlycOYEXnCXkWUIBdrcrRIeNc"
       },
       "node": "22.12.0"
+    },
+    "production-device": {
+      "extends": "production",
+      "distribution": "internal",
+      "autoIncrement": false,
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {

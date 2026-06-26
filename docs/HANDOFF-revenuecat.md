@@ -54,6 +54,11 @@ Production also needs these mirrored into the server's `.env` (see `DEPLOY.md` /
 
 - iOS bundle id: `dev.copt.sirius` (`apps/mobile/app.json`)
 - Apple Team ID: `L7U86T3YRV`; App Store Connect app id: `6775729513` (`eas.json`)
+- Entitlement identifier: `Sirius AI Pro` (all three products attach to it)
+- Product ids (must match between App Store Connect and RevenueCat):
+  - `subscription_monthly` — Auto-Renewable Subscription (Monthly)
+  - `subscription_yearly` — Auto-Renewable Subscription (Annual)
+  - `subscription_life` — Non-Consumable (Lifetime)
 - Webhook URL (prod): `https://lesswhelmed.com/api/revenuecat/webhook`
 - Webhook URL (local test): `http://localhost:3000/api/revenuecat/webhook`
 
@@ -62,23 +67,27 @@ Production also needs these mirrored into the server's `.env` (see `DEPLOY.md` /
 ## Configure RevenueCat for real (one-time, in order)
 
 1. **App Store Connect — create the products.** Under your app → Subscriptions / In-App
-   Purchases, create:
-   - `monthly` — Auto-Renewable Subscription (e.g. product id `dev.copt.sirius.pro.monthly`)
-   - `yearly` — Auto-Renewable Subscription (`dev.copt.sirius.pro.yearly`)
-   - `lifetime` — Non-Consumable (`dev.copt.sirius.pro.lifetime`)
-   Put monthly + yearly in one Subscription Group. Fill pricing + a localization so
-   they're "Ready to Submit" (sandbox testing works before review).
+   Purchases, create (these are the **live** product ids — they must match RevenueCat exactly):
+   - Monthly — Auto-Renewable Subscription, product id `subscription_monthly`
+   - Yearly — Auto-Renewable Subscription, product id `subscription_yearly`
+   - Lifetime — Non-Consumable, product id `subscription_life`
+   Put monthly + yearly in one Subscription Group. Fill **price + a localization (display
+   name + description) + review info** on EACH product so they leave **"Missing Metadata"**
+   and reach "Ready to Submit" (sandbox testing works before review). A product stuck on
+   "Missing Metadata" is exactly what RevenueCat surfaces as a missing-product warning.
 2. **App Store Connect — In-App Purchase key.** Users & Access → Integrations →
    In-App Purchase keys → generate one. RevenueCat needs it (key id + issuer id +
    `.p8`) to validate receipts and emit webhook events.
 3. **RevenueCat — project + app.** Create a project, add an **App Store** app with
    bundle id `dev.copt.sirius`, and upload the In-App Purchase key from step 2.
-4. **RevenueCat — products.** Add three products pointing at the App Store product
-   ids from step 1.
+4. **RevenueCat — products.** Add three products whose identifiers match the App Store
+   product ids from step 1 **exactly**: `subscription_monthly`, `subscription_yearly`,
+   `subscription_life`.
 5. **RevenueCat — entitlement.** Create entitlement with identifier **`Sirius AI Pro`**
    (must match `REVENUECAT_ENTITLEMENT_ID`). Attach all three products to it.
 6. **RevenueCat — offering.** Create the **default** offering; add packages Monthly /
-   Annual / Lifetime → the three products. (The mobile paywall shows the default offering.)
+   Annual / Lifetime → `subscription_monthly` / `subscription_yearly` / `subscription_life`.
+   (The mobile paywall shows the default offering.)
 7. **RevenueCat — paywall.** Open the Paywalls editor on the default offering and build
    it (this is the UI `RevenueCatUI.presentPaywall()` renders — designed in the
    dashboard, not in code). Match the Sirius paper-and-ink look.

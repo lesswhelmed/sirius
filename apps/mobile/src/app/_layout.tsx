@@ -2,11 +2,17 @@
 import "@/polyfills";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
-import { ShareIntentProvider } from "expo-share-intent";
+import {
+  DarkTheme,
+  DefaultTheme,
+  router,
+  Stack,
+  ThemeProvider,
+} from "expo-router";
+import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect } from "react";
-import { StyleSheet, Text, useColorScheme } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Platform, StyleSheet, Text, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
@@ -112,6 +118,28 @@ function PurchasesRunner() {
   return null;
 }
 
+// Navigates to the share-extension pane on Android. The two platforms deliver a
+// share differently: iOS opens the app on a synthetic `siriusapp://dataUrl=…`
+// deep link that `+native-intent.ts` rewrites to `/shareintent` (the sole iOS
+// navigator), but Android emits no URL — expo-share-intent surfaces the payload
+// purely as the `hasShareIntent` context event, so nothing would navigate. We
+// drive that navigation off the rising edge of `hasShareIntent` here. Android-
+// ONLY by design: adding a second navigator on iOS stacks a duplicate pane on
+// top of the +native-intent redirect and reproduces the "Nothing shared."
+// double-pane bug. `shareintent.tsx` resets the payload on unmount, flipping
+// `hasShareIntent` back to false so this can fire again for the next share.
+function ShareIntentNavigator() {
+  const { hasShareIntent } = useShareIntentContext();
+  const prev = useRef(false);
+  useEffect(() => {
+    if (Platform.OS === "android" && hasShareIntent && !prev.current) {
+      router.push("/shareintent");
+    }
+    prev.current = hasShareIntent;
+  }, [hasShareIntent]);
+  return null;
+}
+
 // Runs SQLite migrations before the app's screens mount. Screens read the local
 // store via Drizzle's useLiveQuery, which throws if its tables don't exist yet,
 // so first paint of the navigator is gated on migrations resolving. The splash
@@ -197,6 +225,7 @@ function RootContent() {
               <>
                 <SyncRunner />
                 <PurchasesRunner />
+                <ShareIntentNavigator />
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="index" />
                   <Stack.Screen name="(auth)" />

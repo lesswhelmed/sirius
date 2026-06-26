@@ -35,6 +35,7 @@ import { apiGet, resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { type PostRow, posts } from "@/lib/db/schema";
 import { preparePostMarkdown } from "@/lib/post-markdown";
+import { confirmAndDeletePost } from "@/lib/post-delete";
 
 type PostDetail = Post & { tags: Tag[]; categories: Category[] };
 
@@ -254,6 +255,26 @@ export default function PostDetailScreen() {
             <Text style={styles.visValue}>Edit ▸</Text>
           </Pressable>
         ) : null}
+        {/* Delete — owner-only (gated on a mirror-backed row, like the controls
+            above). Destructive: removes the post + its retained source files on
+            the server, then navigates back to the catalog. */}
+        {localRow ? (
+          <Pressable
+            onPress={() =>
+              confirmAndDeletePost({
+                slug,
+                serverId: localRow.serverId,
+                onDone: () => router.back(),
+              })
+            }
+            accessibilityRole="button"
+            accessibilityLabel="Delete post"
+            style={({ pressed }) => [styles.visRow, pressed && styles.visPressed]}
+          >
+            <Text style={styles.visLabel}>Delete</Text>
+            <Text style={styles.deleteValue}>Delete ▸</Text>
+          </Pressable>
+        ) : null}
         {view.tags.length > 0 ? (
           <View style={styles.tagsRow}>
             {view.tags.map((tag) => (
@@ -353,6 +374,13 @@ function makeStyles(t: Theme) {
       letterSpacing: 1,
       textTransform: "uppercase",
       color: t.color.accent,
+    },
+    deleteValue: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.danger,
     },
     tagsRow: {
       flexDirection: "row",
