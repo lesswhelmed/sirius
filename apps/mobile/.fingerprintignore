@@ -1,4 +1,21 @@
+# Volatile native artifacts excluded from the EAS `fingerprint` runtimeVersion policy.
+# Anything listed here must hash IDENTICALLY on a clean EAS install and on a dev
+# machine whose node_modules has been polluted by a local build — otherwise the
+# runtime version diverges and OTA updates published locally won't reach the build.
+
+# iOS build outputs that leak into the package dir after a local `pod install` / build.
 **/node_modules/react-native-reanimated/{Products,.build,.DerivedData,.generated}/**/*
 **/node_modules/react-native-safe-area-context/{Products,.build,.DerivedData,.generated}/**/*
 **/node_modules/react-native-screens/{Products,.build,.DerivedData,.generated}/**/*
 **/node_modules/react-native-worklets/{Products,.build,.DerivedData,.generated}/**/*
+
+# @react-native-masked-view/masked-view (transitive dep of expo-router) is the only
+# autolinked Android package whose build.gradle REWRITES its own AndroidManifest.xml at
+# gradle-configure time (it strips the `package="..."` attribute for AGP >= 7). EAS
+# fingerprints a pristine install (manifest keeps `package=`), but a dev machine that ran
+# `expo run:android` has the stripped manifest — so the masked-view rncoreAutolinkingAndroid
+# source hashed differently (b7bc27d… on EAS vs 8cdd4a8… locally), failing the production
+# Android build in the "Configure expo-updates" phase with a runtime-version mismatch.
+# The manifest is vendored and only changes on a version bump (which still changes
+# package.json/build.gradle, both still fingerprinted), so excluding it is safe.
+**/node_modules/@react-native-masked-view/masked-view/android/src/main/AndroidManifest.xml
