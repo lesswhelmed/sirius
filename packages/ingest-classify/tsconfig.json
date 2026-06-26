@@ -3,6 +3,7 @@
 	"compilerOptions": {
 		"outDir": "dist",
 		"strictNullChecks": true,
+		"types": ["node", "bun"],
 		// Match the resolution mode of every other @repo/db consumer (web,
 		// worker, mcp): @repo/db is consumed as TS source with extensionless
 		// relative imports, which NodeNext rejects but Bundler tolerates. We
