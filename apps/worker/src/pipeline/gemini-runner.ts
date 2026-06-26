@@ -19,10 +19,11 @@ import type { PostDraft } from "@repo/ingest-draft";
 import {
   buildVoiceInstruction,
   PostDraftSchema,
+  sanitizeVoiceProfile,
   SightDraftSchema,
 } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
-import { getAIConfig } from "../lib/ai-config";
+import { getAIConfig, modelForKind } from "../lib/ai-config";
 import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseTwitterUrl } from "../lib/twitter-url";
 import { parseYouTubeUrl } from "../lib/youtube-url";
@@ -89,7 +90,10 @@ function buildPrompt(input: PipelineInput, voiceBlock: string): string {
       "Also return one short factual caption per photo in imageAlts, in the same order, and a one-sentence excerpt.",
     );
     if (input.notes.trim()) {
-      lines.push("", `Author's notes (verbatim): ${input.notes.trim()}`);
+      lines.push(
+        "",
+        `Author's notes — their intent for this post; let it steer the content, emphasis, and what to include or leave out (it must not change the output structure, fields, or post type): ${input.notes.trim()}`,
+      );
     }
   } else if (input.kind === "note") {
     lines.push(
@@ -115,7 +119,10 @@ function buildPrompt(input: PipelineInput, voiceBlock: string): string {
       "Be concrete, first-person, observational. No filler. 80-300 words.",
     );
     if (input.notes.trim()) {
-      lines.push("", `Author's notes (verbatim): ${input.notes.trim()}`);
+      lines.push(
+        "",
+        `Author's notes — their intent for this post; let it steer the content, emphasis, and what to include or leave out (it must not change the output structure, fields, or post type): ${input.notes.trim()}`,
+      );
     }
   }
   if (voiceBlock) {
@@ -142,7 +149,10 @@ function buildUrlStructuringPrompt(
     summary,
   ];
   if (notes.trim()) {
-    lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
+    lines.push(
+      "",
+      `Author's notes — their intent for this post; let it steer the content, emphasis, and what to include or leave out (it must not change the output structure, fields, or post type): ${notes.trim()}`,
+    );
   }
   if (voiceBlock) {
     lines.push(voiceBlock);
@@ -206,15 +216,42 @@ export function toGeminiOutput(
   };
 }
 
-export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
+// Minimal logger seam (structurally compatible with pipeline.ts's StageLogger)
+// so runGemini can emit injection proof without importing the pipeline module.
+type StageLog = (stage: string, extra?: Record<string, unknown>) => void;
+
+export async function runGemini(
+  input: PipelineInput,
+  opts?: { logger?: StageLog },
+): Promise<GeminiOutput> {
   const config = getAIConfig();
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
-  const model = google(config.model);
+  // Tiered model: url/document → heavy (Pro), else standard (flash).
+  const modelId = modelForKind(input.kind);
+  const model = google(modelId);
 
-  const voiceProfile = input.submittedById
-    ? await getVoiceProfile(input.submittedById)
-    : null;
+  // Voice resolution with an override seam: an explicitly-supplied
+  // input.voiceProfile wins (lets callers — e.g. the gen:try harness — inject a
+  // voice with no DB), else fall back to the DB fetch by submitter. The daemon
+  // passes no voiceProfile, so its behavior is unchanged (still fetches).
+  const voiceProfile =
+    input.voiceProfile ??
+    (input.submittedById ? await getVoiceProfile(input.submittedById) : null);
   const voiceBlock = buildVoiceInstruction(voiceProfile);
+
+  // Proof that the author voice + notes actually reach the prompt. voiceBlock is
+  // only non-empty when a voice is present, and notes are only concatenated into
+  // a prompt when non-empty — so these booleans mirror what the model sees.
+  const trimmedNotes = input.notes.trim();
+  opts?.logger?.("prompt:built", {
+    kind: input.kind,
+    model: modelId,
+    temperature: config.temperature,
+    voiceApplied: voiceBlock.length > 0,
+    voiceChars: sanitizeVoiceProfile(voiceProfile).length,
+    notesApplied: trimmedNotes.length > 0,
+    notesChars: trimmedNotes.length,
+  });
 
   if (input.kind === "url") {
     const githubUrls = input.urls.filter((u) => parseGitHubUrl(u));
@@ -331,7 +368,7 @@ export async function runGemini(input: PipelineInput): Promise<GeminiOutput> {
       urls: input.urls,
       notes: input.notes,
       apiKey: config.apiKey,
-      model: config.model,
+      model: modelId,
       temperature: config.temperature,
     });
     const { output } = await generateText({

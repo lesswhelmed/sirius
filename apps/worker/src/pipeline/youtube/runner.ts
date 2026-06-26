@@ -9,7 +9,11 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { buildVoiceInstruction } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
-import { getAIConfig, getYouTubeModel } from "../../lib/ai-config";
+import {
+  getAIConfig,
+  getHeavyModel,
+  getYouTubeModel,
+} from "../../lib/ai-config";
 import {
   buildTimestampUrl,
   parseYouTubeUrl,
@@ -389,7 +393,9 @@ export async function runYouTubeGemini(
   const config = getAIConfig();
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
   const videoModelName = getYouTubeModel();
-  const textModel = google(config.model);
+  // Structuring/analysis text steps → heavy (Pro) tier, matching
+  // modelForKind("url"); the video-understanding step keeps its own model.
+  const textModel = google(getHeavyModel());
 
   const log = (line: string) => console.log(line);
 

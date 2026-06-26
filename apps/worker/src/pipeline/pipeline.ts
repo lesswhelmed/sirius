@@ -82,7 +82,7 @@ export async function processIngest(
   } else {
     // Bearer ingests (iOS Shortcut, no user) are unmetered: no one to attribute.
     if (userId == null) {
-      parsed = await timed("gemini", logger, () => runGemini(input));
+      parsed = await timed("gemini", logger, () => runGemini(input, { logger }));
       logger("gemini:parsed", {
         title: parsed.title,
         slug: parsed.slug,
@@ -102,7 +102,7 @@ export async function processIngest(
         const reservationId = decision.reservationId;
         let postWritten = false;
         try {
-          parsed = await timed("gemini", logger, () => runGemini(input));
+          parsed = await timed("gemini", logger, () => runGemini(input, { logger }));
           logger("gemini:parsed", {
             title: parsed.title,
             slug: parsed.slug,

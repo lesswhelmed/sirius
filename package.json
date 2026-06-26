@@ -37,6 +37,7 @@
 		"notmobile:dev": "turbo run dev --filter=!mobile",
 		"worker:dev": "turbo run dev --filter=worker",
 		"worker:setup": "turbo run setup --filter=worker",
+		"gen:try": "bun apps/worker/scripts/gen-try.ts",
 		"worker:backfill:covers": "bun --cwd=apps/worker run backfill:covers",
 		"scene:backfill": "bun --cwd=apps/worker run scene:backfill",
 		"scene:backfill:cache": "bun --cwd=apps/worker run scripts/backfill-scene-cache.ts",

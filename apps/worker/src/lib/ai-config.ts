@@ -31,8 +31,17 @@ export type AIConfig = {
   embeddingModel: string;
 };
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
+// Standard (flash) text model — the default for note/image/video/audio drafting
+// where speed + cost matter and quality is on par with Pro (see the gen:try A/B).
+// Stable id (no `-preview`), so it won't 404 on a deprecation.
+const DEFAULT_MODEL = "gemini-3.5-flash";
 const DEFAULT_TEMPERATURE = 0.7;
+// Heavy (pro) text model — used for the high-value paths (url/FINDING + its
+// dedicated runners, and document) where the extra reasoning earns its cost.
+// `gemini-3-pro` does not exist and `gemini-3-pro-preview` is deprecated; the
+// only working Gemini-3 Pro text id is this preview. It CAN be retired by
+// Google, so it's env-overridable via AI_MODEL_HEAVY and the harness verifies it.
+const DEFAULT_HEAVY_MODEL = "gemini-3.1-pro-preview";
 // YouTube ingest needs a model that supports fileData YouTube URIs. Preview
 // models (e.g. gemini-3.1-pro-preview) routinely return INVALID_ARGUMENT for
 // YouTube fileData, so we pin a known-good default and let env override.
@@ -46,6 +55,22 @@ export function getAIConfig(apiKeyOverride?: string): AIConfig {
     temperature: Number(process.env.AI_TEMPERATURE ?? DEFAULT_TEMPERATURE),
     embeddingModel: process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
   };
+}
+
+// The Pro-tier model for heavy paths. AI_MODEL_HEAVY overrides it.
+export function getHeavyModel(): string {
+  return process.env.AI_MODEL_HEAVY ?? DEFAULT_HEAVY_MODEL;
+}
+
+// Tiered routing: url (incl. github/twitter/youtube/instagram sub-paths) and
+// document drafting use the heavy Pro model; everything else uses the standard
+// flash model. `kind` is the IngestKind string (typed loosely to avoid a
+// lib->pipeline import cycle).
+export function modelForKind(kind: string): string {
+  if (kind === "url" || kind === "document") {
+    return getHeavyModel();
+  }
+  return process.env.AI_MODEL ?? DEFAULT_MODEL;
 }
 
 export function getYouTubeModel(): string {
@@ -143,6 +168,7 @@ export function getClassifyConfig(): ClassifyConfig {
 }
 
 export {
+  DEFAULT_HEAVY_MODEL,
   DEFAULT_IMAGE_ASPECT_RATIO,
   DEFAULT_IMAGE_BRIEF_MODEL,
   DEFAULT_IMAGE_GEN_MODEL,

@@ -14,7 +14,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { getVoiceProfile } from "@repo/db";
 import { buildVoiceInstruction } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
-import { getAIConfig } from "../../lib/ai-config";
+import { getAIConfig, getHeavyModel } from "../../lib/ai-config";
 import { PostDraftSchema, toGeminiOutput } from "../gemini-runner";
 import type { GeminiOutput, PipelineInput } from "../types";
 import { parseDocxText } from "./parse-docx";
@@ -100,15 +100,18 @@ export async function runDocumentGemini(
     return null;
   }
 
-  // Step 2: structure the evidence into a FINDING draft.
-  const voiceProfile = input.submittedById
-    ? await getVoiceProfile(input.submittedById)
-    : null;
+  // Step 2: structure the evidence into a FINDING draft. Voice resolution uses
+  // the same override seam as runGemini (explicit input.voiceProfile wins, else
+  // DB fetch) so callers like the gen:try harness can inject voice without a DB.
+  const voiceProfile =
+    input.voiceProfile ??
+    (input.submittedById ? await getVoiceProfile(input.submittedById) : null);
   const voiceBlock = buildVoiceInstruction(voiceProfile);
 
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
   const { output } = await generateText({
-    model: google(config.model),
+    // document draft → heavy (Pro) tier, matching modelForKind("document").
+    model: google(getHeavyModel()),
     temperature: config.temperature,
     prompt: buildStructuringPrompt(evidence, docInput.notes, voiceBlock),
     output: Output.object({ schema: PostDraftSchema }),

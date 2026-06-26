@@ -12,7 +12,7 @@ import {
 } from "@repo/github-ingest";
 import { buildVoiceInstruction, PostDraftSchema } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
-import { getAIConfig } from "../../lib/ai-config";
+import { getAIConfig, getHeavyModel } from "../../lib/ai-config";
 import { type PostDraft, toGeminiOutput } from "../gemini-runner";
 import type { GeminiOutput } from "../types";
 
@@ -94,7 +94,8 @@ export async function runGitHubGemini(
 
   const config = getAIConfig();
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
-  const model = google(config.model);
+  // url-derived path → heavy (Pro) tier, matching modelForKind("url").
+  const model = google(getHeavyModel());
 
   const { output } = await generateText({
     model,

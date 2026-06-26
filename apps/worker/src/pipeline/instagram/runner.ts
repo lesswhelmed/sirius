@@ -266,6 +266,10 @@ export async function runInstagramGemini(
 
   const config = getAIConfig();
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
+  // Instagram is a tone-neutral STRUCTURED EXTRACTION with a deterministic,
+  // templated body (no voiced prose) — so it stays on the standard (Flash) model
+  // rather than the Pro tier the other url sub-paths use. Pro buys no quality
+  // here, only cost.
   const model = google(config.model);
   const prompt = buildDigestPrompt(evidence, options.notes);
 

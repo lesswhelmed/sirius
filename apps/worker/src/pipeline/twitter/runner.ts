@@ -9,7 +9,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { PostDraft } from "@repo/ingest-draft";
 import { buildVoiceInstruction, PostDraftSchema } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
-import { getAIConfig } from "../../lib/ai-config";
+import { getAIConfig, getHeavyModel } from "../../lib/ai-config";
 import { parseTwitterUrl, type TwitterUrlParse } from "../../lib/twitter-url";
 import { toGeminiOutput } from "../gemini-runner";
 import type { GeminiOutput } from "../types";
@@ -141,7 +141,8 @@ export async function runTwitterGemini(
 
   const config = getAIConfig();
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
-  const model = google(config.model);
+  // url-derived path → heavy (Pro) tier, matching modelForKind("url").
+  const model = google(getHeavyModel());
   const voiceBlock = buildVoiceInstruction(options.voiceProfile ?? null);
   const prompt = buildTwitterPrompt(evidence, options.notes, voiceBlock);
 
