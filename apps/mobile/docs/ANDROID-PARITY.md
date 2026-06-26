@@ -347,6 +347,16 @@ Goal: run the app on physical hardware with the **same settings iOS production u
 (prod backend `https://lesswhelmed.com`, on-device AI on, both RevenueCat keys), installed
 directly onto the device.
 
+> **RULE (verified 2026-06-26): physical Android devices use PRODUCTION only — never
+> `sirius.local`.** A stock (non-rooted) Android device cannot resolve the portless mDNS
+> name: `adb shell ping sirius.local` → `unknown host`. `.local` names don't resolve through
+> the app network stack and you can't edit `/system/etc/hosts` without root, so bundling the
+> portless CA + a `network_security_config` (the "trust the local CA" approach) is moot —
+> resolution fails before trust ever matters. (Many Wi-Fi APs also isolate phone↔Mac LAN
+> traffic, blocking even the LAN IP.) To exercise a local Mac dev server from a phone you'd
+> need a real-cert public tunnel (Cloudflare/ngrok/Tailscale Funnel); for everything else,
+> point devices at `https://lesswhelmed.com`. The emulator uses `http://10.0.2.2:3000` (§4b).
+
 ### Why a dedicated profile
 The `production` profile is `distribution: "store"` → it builds an **AAB** for the Play
 Store, which you cannot sideload. The new **`production-device`** profile (eas.json)
