@@ -11,6 +11,7 @@ import { parseInstagramUrl } from "../../lib/instagram-url";
 import { parseTwitterUrl } from "../../lib/twitter-url";
 import { parseYouTubeUrl } from "../../lib/youtube-url";
 import type { SafetyConfig } from "./config";
+import { fetchGuardedPdf } from "./safe-fetch";
 import type { PipelineInput, StagedImage } from "../types";
 
 export type ScanTarget =
@@ -74,39 +75,6 @@ export function shouldScan(input: PipelineInput): boolean {
   }
 }
 
-async function fetchPdf(
-  url: string,
-  maxBytes: number,
-): Promise<Buffer | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    // Confirm it's actually a PDF first (catches extension-less PDFs and avoids
-    // downloading a huge non-PDF). A HEAD failure is non-fatal — fall back to
-    // the .pdf-extension signal.
-    let contentType = "";
-    try {
-      const head = await fetch(url, { method: "HEAD", signal: controller.signal });
-      contentType = head.headers.get("content-type") ?? "";
-      const len = Number(head.headers.get("content-length"));
-      if (Number.isFinite(len) && len > maxBytes) return null;
-    } catch {
-      // ignore — decide on extension below
-    }
-    const looksPdf = /application\/pdf/i.test(contentType) || isLikelyPdfUrl(url);
-    if (!looksPdf) return null;
-    const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength === 0 || buf.byteLength > maxBytes) return null;
-    return buf;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 // Builds the actual parts handed to the guardrail. Async because the url path
 // may HEAD + download PDFs. Returns [] when there is nothing user-produced to
 // judge (e.g. a YouTube link with no notes) — the caller then allows.
@@ -150,12 +118,10 @@ export async function collectScanTargets(
       // skipped entirely (their notes, if any, were already added above).
       for (const url of input.urls) {
         if (isThirdPartyLink(url)) continue;
-        const looksPdf = isLikelyPdfUrl(url);
-        // HEAD-check non-.pdf URLs only when notes are absent isn't worth it;
-        // fetchPdf already HEAD-checks content-type, so try any non-social URL
-        // that either ends in .pdf or we can't otherwise classify cheaply.
-        if (!looksPdf) continue;
-        const pdf = await fetchPdf(url, cfg.maxPdfBytes);
+        if (!isLikelyPdfUrl(url)) continue;
+        // SSRF-hardened: validates scheme, blocks private/reserved IPs, pins the
+        // resolved IP (no DNS rebinding), refuses redirects, caps the streamed body.
+        const pdf = await fetchGuardedPdf(url, cfg.maxPdfBytes);
         if (pdf) {
           targets.push({ kind: "file", data: pdf, mediaType: "application/pdf" });
         }
