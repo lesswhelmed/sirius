@@ -23,6 +23,7 @@
 		"build:prod": "bun run verify:native-ai && bunx eas-cli build --profile production --platform all",
 		"build:prod:ios": "bun run verify:native-ai && bunx eas-cli build --profile production --platform ios",
 		"build:prod:android": "bun run verify:native-ai && bunx eas-cli build --profile production --platform android",
+		"build:prod:android:ci": "bun run verify:native-ai && bunx eas-cli build --profile production --platform android --non-interactive",
 		"build:local:ios": "bun run verify:native-ai && bunx eas-cli build --profile production --platform ios --local --output ./sirius-prod.ipa",
 		"build:local:dev:ios": "bun run verify:native-ai && bunx eas-cli build --profile development --platform ios --local --output ./sirius-dev.tar.gz",
 		"submit:prod:ios": "bunx eas-cli submit --profile production --platform ios",
