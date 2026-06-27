@@ -256,7 +256,7 @@ model IngestSubmission {
   imageIndex     Int?
   totalCount     Int?
   stagedFilePath String? // absolute path to staged binary on the host
-  status         String    @default("pending") // "pending" | "processing" | "completed" | "failed" | "skipped"
+  status         String    @default("pending") // "pending" | "processing" | "completed" | "failed" | "skipped" | "flagged"
   attempts       Int       @default(0)
   force          Boolean   @default(false) // bypass idempotent reprocessing skip; regenerate
   errorMessage   String?
@@ -265,6 +265,10 @@ model IngestSubmission {
   updatedAt      DateTime  @updatedAt
   startedAt      DateTime?
   completedAt    DateTime?
+  // Set when the content-safety gate rejects this submission (terminal status
+  // "flagged"). No Post is created; the original is moved to quarantine and a
+  // ModerationEvent records the verdict. See apps/worker/src/pipeline/safety.
+  flaggedAt      DateTime?
 
   // Retained original (liability/retention). On successful processing the worker
   // MOVES the staged binary into ORIGINALS_DIR and records its absolute path here
@@ -298,12 +302,48 @@ model IngestSubmission {
   resultPostId String?
   resultPost   Post?   @relation("PostSourceSubmissions", fields: [resultPostId], references: [id], onDelete: SetNull)
 
+  // Safety-flag audit rows for this submission (CYA). Cascades on submission
+  // delete only because the submission FK is the anchor; the quarantined files
+  // and the evidence in the row are retained independently of the submission.
+  moderationEvents ModerationEvent[] @relation("SubmissionModeration")
+
   @@index([status])
   @@index([batchId])
   @@index([kind])
   @@index([submittedById])
   @@index([projectId])
   @@index([resultPostId])
+}
+
+// Audit record for a content-safety flag (CYA / evidence). One row per flagged
+// submission (an image batch shares one event, keyed off the batch's anchor
+// submission). The actual material is preserved at quarantinePaths, OUTSIDE any
+// served directory. These rows are evidence — never surfaced in any user UI.
+model ModerationEvent {
+  id              String   @id @default(cuid())
+  submissionId    String
+  submission      IngestSubmission @relation("SubmissionModeration", fields: [submissionId], references: [id], onDelete: Cascade)
+  // Submitting user as a plain string (NOT a FK) so deleting a user never erases
+  // the audit trail.
+  submittedById   String?
+  kind            String   // submission kind: note | image | document | audio | video | url
+  action          String   // "flag" | "flag_critical"
+  severity        String   // none | low | medium | high | critical
+  categories      String[] // matched SafetyCategory values
+  rationale       String?  // internal classifier rationale; never shown to the user
+  model           String   // classifier model id
+  contentHash     String?
+  quarantinePaths String[] // absolute paths to quarantined evidence files
+  emailedAt       DateTime? // when the admin alert was sent
+  // Manual review outcome (admin, out-of-band — no dashboard in v1).
+  reviewedById    String?
+  reviewedAt      DateTime?
+  resolution      String?  // "uphold" | "overturn"
+  createdAt       DateTime @default(now())
+
+  @@index([submissionId])
+  @@index([severity])
+  @@index([createdAt])
 }
 
 // A user-requested zip archive of all their retained originals + note text.

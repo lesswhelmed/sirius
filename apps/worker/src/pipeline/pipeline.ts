@@ -16,6 +16,7 @@ import { tryClientDraft } from "./draft-runner";
 import { runGemini } from "./gemini-runner";
 import { buildManualStub } from "./manual-stub";
 import { writePost } from "./post-writer";
+import { runSafetyGate } from "./safety";
 import type { GeminiOutput, PipelineInput, PipelineResult } from "./types";
 
 export type StageLogger = (
@@ -56,6 +57,14 @@ export async function processIngest(
   input: PipelineInput,
   logger: StageLogger = noopLogger,
 ): Promise<PipelineResult> {
+  // SAFETY GATE — runs FIRST, fully decoupled from drafting. Scans user-produced
+  // material (notes/images/docs/audio/video + fetched PDFs) and either passes
+  // through, throws SafetyFlagError (harmful → worker quarantines + flags, NO
+  // post), or throws SafetyScanError (scan couldn't run → retryable failure;
+  // fail-closed, we never publish unscanned content). Out-of-scope kinds (social
+  // / YouTube links) and the disabled switch return immediately.
+  await timed("safety", logger, () => runSafetyGate(input, logger));
+
   // Three drafting paths, in priority order:
   //   1. A valid client-supplied draft (drafted on-device by the mobile app)
   //      skips Gemini entirely and is FREE — never metered.

@@ -16,11 +16,14 @@ import {
   type IngestSubmission,
   markCompleted,
   markFailed,
+  markFlagged,
   notifyPostChanged,
+  notifySubmissionRejected,
   reclaimStaleArchiveRequests,
   reclaimStaleImageBatches,
   reclaimStaleProcessing,
   reclaimStaleSceneRecomputes,
+  recordModerationEvent,
   recordRetainedOriginal,
 } from "@repo/db";
 import { processArchiveRequest } from "./archive/run-archive";
@@ -28,6 +31,12 @@ import { recomputeOwnerScene } from "./scene/recompute";
 import { retainOriginal } from "./lib/originals";
 import { removeStagedFile } from "./lib/staging";
 import { processIngest } from "./pipeline/pipeline";
+import {
+  getSafetyConfig,
+  quarantineOriginal,
+  SafetyFlagError,
+  sendSafetyAlert,
+} from "./pipeline/safety";
 import type { PipelineInput, StagedImage } from "./pipeline/types";
 
 const DEFAULT_POLL_MS = 5000;
@@ -252,6 +261,117 @@ async function retainRowOriginals(rows: IngestSubmission[]): Promise<void> {
   }
 }
 
+// Terminal handling for a content-safety flag. Decoupled from the normal
+// success/fail paths: NO post is created, the original is MOVED to quarantine
+// (evidence — never deleted), a ModerationEvent audit row is written, the admin
+// is alerted, the submission(s) are marked `flagged` (non-retryable), and the
+// device is nudged to drop its optimistic row. Every side-effect is best-effort
+// around the two that MUST happen (quarantine + markFlagged); an alert/notify
+// failure is logged but never resurrects the content.
+async function handleSafetyFlag(
+  rows: IngestSubmission[],
+  error: SafetyFlagError,
+): Promise<void> {
+  const ids = rows.map((r) => r.id);
+  const anchor = rows[0]!;
+  const cfg = getSafetyConfig();
+
+  // 1. Quarantine any staged binaries (images/docs/audio/video/fetched-PDF).
+  //    url/note rows have no binary — their text evidence stays in the retained
+  //    (flagged) submission.payload, so there's nothing to move.
+  const quarantinePaths: string[] = [];
+  for (const row of rows) {
+    if (!row.stagedFilePath) continue;
+    try {
+      const moved = quarantineOriginal({
+        submittedById: row.submittedById,
+        submissionId: row.id,
+        stagedFilePath: row.stagedFilePath,
+        filename: buildOriginalFilename(row),
+      });
+      quarantinePaths.push(moved.path);
+    } catch (e) {
+      log("error", "quarantine-failed", {
+        id: row.id,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  // 2. Alert the admin (best-effort; capture emailedAt only on success).
+  let emailedAt: Date | null = null;
+  try {
+    await sendSafetyAlert({
+      alertEmail: cfg.alertEmail,
+      action: error.action,
+      verdict: error.verdict,
+      kind: anchor.kind,
+      submissionIds: ids,
+      submittedById: anchor.submittedById,
+      quarantinePaths,
+      model: cfg.model,
+    });
+    emailedAt = new Date();
+  } catch (e) {
+    log("error", "safety-alert-failed", {
+      ids,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  // 3. Audit row (CYA) keyed off the anchor submission.
+  try {
+    await recordModerationEvent({
+      submissionId: anchor.id,
+      submittedById: anchor.submittedById,
+      kind: anchor.kind,
+      action: error.action,
+      severity: error.verdict.severity,
+      categories: error.verdict.categories,
+      rationale: error.verdict.rationale,
+      model: cfg.model,
+      contentHash: anchor.contentHash,
+      quarantinePaths,
+      emailedAt,
+    });
+  } catch (e) {
+    log("error", "moderation-event-failed", {
+      ids,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  // 4. Terminal flag (non-retryable) — must happen so the row never reprocesses.
+  await markFlagged(ids);
+
+  // 5. Nudge the device to drop its optimistic row (best-effort; the 5s queue
+  //    poll is the offline-tolerant baseline if this NOTIFY is missed). Use the
+  //    SAME reconciliation key the device stored in posts.submissionId — for an
+  //    image batch that's "batch:<batchId>", not the per-row id (sourceRecordIdFor).
+  try {
+    await notifySubmissionRejected({
+      op: "rejected",
+      submissionId: sourceRecordIdFor(rows),
+      ownerId: anchor.submittedById,
+      reason: "flagged",
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    log("warn", "submission-rejected-notify-failed", {
+      ids,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  log("warn", "flagged", {
+    ids,
+    action: error.action,
+    severity: error.verdict.severity,
+    categories: error.verdict.categories,
+    quarantined: quarantinePaths.length,
+  });
+}
+
 function buildInput(rows: IngestSubmission[]): PipelineInput {
   const first = rows[0];
   if (!first) {
@@ -440,6 +560,23 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
       clearInterval(heartbeat);
     }
   } catch (error) {
+    // Content-safety flag: terminal, decoupled handling (quarantine + audit +
+    // alert + flag + device nudge). NEVER falls through to markFailed (which is
+    // retryable) — a flagged row must not reprocess. A SafetyScanError is NOT a
+    // SafetyFlagError, so it correctly falls through to the retryable path below
+    // (fail-closed: retry the scan, never publish unscanned content).
+    if (error instanceof SafetyFlagError) {
+      try {
+        await handleSafetyFlag(rows, error);
+      } catch (flagError) {
+        // If the flag handling itself fails, fall back to a plain failure so the
+        // row doesn't get stuck in `processing` — but it stays UNpublished.
+        const m = flagError instanceof Error ? flagError.message : String(flagError);
+        log("error", "flag-handling-failed", { ids, error: m });
+        await markFailed(ids, "safety flag handling failed");
+      }
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     log("error", "failed", { ids, error: message });
     await markFailed(ids, message);

@@ -6,7 +6,7 @@ import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import type { ReactNode } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import {
   FlatList,
@@ -43,6 +43,7 @@ import {
 import { discardSubmission, requeueSubmission } from "@/lib/outbox";
 import { confirmAndDeletePost } from "@/lib/post-delete";
 import { kickSync } from "@/lib/sync/engine";
+import { reconcileRejectedSubmissions } from "@/lib/sync/rejected";
 
 type QueuePage = { items: IngestSubmission[]; nextCursor: string | null };
 
@@ -119,6 +120,16 @@ export default function LibraryScreen() {
     queryFn: () => apiGet<QueuePage>("/api/app/queue?limit=50"),
     refetchInterval: 5000,
   });
+  // Offline-tolerant baseline for content-safety removal: when the poll returns a
+  // "flagged" submission, drop its optimistic local row (and outbox row) so the
+  // stuck "Saving…" card disappears. Idempotent + once-only notice; the SSE
+  // "submission-rejected" event does the same instantly when online.
+  useEffect(() => {
+    if (!queueData?.items) return;
+    void reconcileRejectedSubmissions(queueData.items).catch((err) =>
+      console.warn("[sync] rejected reconcile failed", err),
+    );
+  }, [queueData]);
   const inFlightServer = useMemo(
     () =>
       (queueData?.items ?? []).filter(

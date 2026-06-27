@@ -3,6 +3,8 @@ import {
   type CommentChangeNotification,
   POSTS_CHANNEL,
   type PostChangeNotification,
+  SUBMISSIONS_CHANNEL,
+  type SubmissionRejectedNotification,
 } from "@repo/db";
 import { Client } from "pg";
 import { getSessionOrNull } from "../../../../../lib/session";
@@ -54,20 +56,29 @@ export async function GET(request: Request) {
 
       client.on("notification", (msg) => {
         if (
-          (msg.channel !== POSTS_CHANNEL && msg.channel !== COMMENTS_CHANNEL) ||
+          (msg.channel !== POSTS_CHANNEL &&
+            msg.channel !== COMMENTS_CHANNEL &&
+            msg.channel !== SUBMISSIONS_CHANNEL) ||
           !msg.payload
         ) {
           return;
         }
         try {
-          // Both channels' payloads carry an `ownerId`; the client treats every
-          // `change` event identically (re-pull both delta feeds), so the two
-          // channels relay through one event type.
           const payload = JSON.parse(msg.payload) as
             | PostChangeNotification
-            | CommentChangeNotification;
+            | CommentChangeNotification
+            | SubmissionRejectedNotification;
           // Owner-scoped: drop other users' (and unattributed bearer) events.
           if (payload.ownerId !== ownerId) return;
+          // A rejected submission produces NO post, so it can't ride the generic
+          // `change` re-pull (the delta feed has nothing for it). Relay a distinct
+          // event carrying the submissionId so the device drops that exact row.
+          if (msg.channel === SUBMISSIONS_CHANNEL) {
+            enqueue(`event: submission-rejected\ndata: ${msg.payload}\n\n`);
+            return;
+          }
+          // Posts + comments: the client treats every `change` event identically
+          // (re-pull both delta feeds), so the two channels relay through one type.
           enqueue(`event: change\ndata: ${msg.payload}\n\n`);
         } catch {
           // Malformed payload — ignore rather than tear down the stream.
@@ -88,6 +99,7 @@ export async function GET(request: Request) {
         await client.connect();
         await client.query(`LISTEN ${POSTS_CHANNEL}`);
         await client.query(`LISTEN ${COMMENTS_CHANNEL}`);
+        await client.query(`LISTEN ${SUBMISSIONS_CHANNEL}`);
       } catch (err) {
         controller.error(err);
         cleanup();

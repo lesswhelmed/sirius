@@ -16,7 +16,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "expo-crypto";
 
 import { db } from "@/lib/db/client";
-import { type PostImage, posts } from "@/lib/db/schema";
+import { pendingSubmissions, type PostImage, posts } from "@/lib/db/schema";
 
 export type LocalDraftType = "BLOG" | "FINDING" | "SIGHT";
 
@@ -147,6 +147,47 @@ export async function deleteLocalDraft(localId: string): Promise<void> {
   await db
     .delete(posts)
     .where(and(eq(posts.localId, localId), eq(posts.syncState, "local_draft")));
+}
+
+/**
+ * Server-driven removal of a still-optimistic row whose submission was REJECTED
+ * before any post existed — today: the content-safety gate flagged it. Matches by
+ * the reconciliation key in posts.submissionId (note/url: the submission id;
+ * image batch: "batch:<batchId>") — the same key the worker sends. Deletes the
+ * optimistic post AND its outbox row(s) so nothing replays. Guarded to
+ * local_draft|pending so it never touches a row that already reconciled to
+ * `synced` (a flag can only ever beat the post, never undo a real one). Returns
+ * the number of post rows removed so the caller can show a one-time notice.
+ */
+export async function removeLocalBySubmissionId(
+  submissionId: string,
+): Promise<number> {
+  if (!submissionId) return 0;
+  const rows = await db
+    .select({ localId: posts.localId })
+    .from(posts)
+    .where(
+      and(
+        eq(posts.submissionId, submissionId),
+        inArray(posts.syncState, ["local_draft", "pending"]),
+      ),
+    );
+  if (rows.length === 0) return 0;
+  const localIds = rows.map((r) => r.localId);
+  // Drop any queued/in-flight outbox rows for these posts so a replay can't
+  // re-submit the flagged content.
+  await db
+    .delete(pendingSubmissions)
+    .where(inArray(pendingSubmissions.localId, localIds));
+  await db
+    .delete(posts)
+    .where(
+      and(
+        inArray(posts.localId, localIds),
+        inArray(posts.syncState, ["local_draft", "pending"]),
+      ),
+    );
+  return rows.length;
 }
 
 /**

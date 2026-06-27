@@ -84,6 +84,22 @@ AI_TEMPERATURE=0.7
 EMBEDDING_MODEL=gemini-embedding-2
 EMBEDDING_DIMENSIONALITY=768
 
+# ─── Content-safety guardrails (worker) ─────────────────────────────────────
+# A decoupled Gemini gate scans user-produced material (notes/images/docs/audio/
+# video + fetched PDF-by-link) BEFORE drafting; a harm verdict creates NO post,
+# quarantines the original, emails the admin, and removes it from the user's app.
+# Defaults make it ENABLED with no config (uses GEMINI_API_KEY + RESEND_API_KEY
+# above); these are pinned for clarity. See docs/safety-guardrails.md.
+SAFETY_SCAN_ENABLED=true
+SAFETY_MODEL=gemini-2.5-flash-lite
+SAFETY_BLOCK_SEVERITY=medium
+SAFETY_ALERT_EMAIL=saleebmina@copt.dev
+SAFETY_MAX_PDF_BYTES=26214400
+SAFETY_SCAN_RETRIES=2
+# Private quarantine root for flagged originals (evidence/CYA). MUST be outside
+# the web public root and NEVER fronted by Caddy.
+QUARANTINE_DIR=/home/deploy/data/sirius/quarantine
+
 # ─── Auto-org (classify unscoped ingests into Projects/Focus Areas) ─────────
 CLASSIFY_ENABLED=true
 CLASSIFY_PROJECT_MATCH_MIN=0.78

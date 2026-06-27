@@ -8,6 +8,7 @@
 		"dev": "bun run --watch src/index.ts",
 		"setup": "bun run src/setup.ts",
 		"gen:try": "bun run scripts/gen-try.ts",
+		"safety:try": "bun run scripts/safety-try.ts",
 		"backfill:covers": "bun run src/scripts/backfill-cover-images.ts",
 		"backfill:video-thumbnails": "bun run src/scripts/backfill-video-thumbnails.ts",
 		"scene:backfill": "bun run scripts/backfill-project-embeddings.ts && bun run scripts/backfill-post-embeddings.ts && bun run scripts/smoke-scene.ts",

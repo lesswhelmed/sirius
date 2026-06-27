@@ -24,6 +24,7 @@ import {
 } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig, modelForKind } from "../lib/ai-config";
+import { SafetyFlagError, type SafetyVerdict } from "./safety";
 import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseTwitterUrl } from "../lib/twitter-url";
 import { parseYouTubeUrl } from "../lib/youtube-url";
@@ -158,6 +159,40 @@ function buildUrlStructuringPrompt(
     lines.push(voiceBlock);
   }
   return lines.join("\n");
+}
+
+// Defense-in-depth for the DRAFT call (the primary protection is the safety gate
+// in pipeline.ts, which scans BEFORE drafting). The gate already catches medium+
+// harm with a nuanced classifier, so here we only need a blunt backstop for
+// egregious content that slipped through — BLOCK_ONLY_HIGH minimizes false
+// refusals on legitimate edgy content the gate already cleared. (child-safety
+// stays non-configurably blocked regardless.)
+const DRAFT_SAFETY_SETTINGS = [
+  "HARM_CATEGORY_HATE_SPEECH",
+  "HARM_CATEGORY_HARASSMENT",
+  "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+  "HARM_CATEGORY_DANGEROUS_CONTENT",
+].map((category) => ({ category, threshold: "BLOCK_ONLY_HIGH" }));
+
+const DRAFT_PROVIDER_OPTIONS = {
+  google: { safetySettings: DRAFT_SAFETY_SETTINGS },
+} as const;
+
+// If the draft model refused on safety grounds, the content is harmful enough
+// that even Gemini's blunt filter blocked it — escalate to a flag (quarantine +
+// alert) rather than a silent retryable failure. This only fires for items the
+// primary gate missed (a rare false negative).
+function assertDraftNotBlocked(finishReason: string | undefined): void {
+  if (finishReason === "content-filter") {
+    const verdict: SafetyVerdict = {
+      safe: false,
+      severity: "high",
+      categories: [],
+      rationale:
+        "draft model refused on safety grounds (finishReason=content-filter)",
+    };
+    throw new SafetyFlagError(verdict, "flag");
+  }
 }
 
 function loadImagePart(staged: StagedImage) {
@@ -371,12 +406,14 @@ export async function runGemini(
       model: modelId,
       temperature: config.temperature,
     });
-    const { output } = await generateText({
+    const { output, finishReason } = await generateText({
       model,
       temperature: config.temperature,
       prompt: buildUrlStructuringPrompt(summary, input.notes, voiceBlock),
+      providerOptions: DRAFT_PROVIDER_OPTIONS,
       output: Output.object({ schema: PostDraftSchema }),
     });
+    assertDraftNotBlocked(finishReason);
     return toGeminiOutput(output, "FINDING", { originalUrl: input.urls[0] });
   }
 
@@ -397,6 +434,7 @@ export async function runGemini(
             content: [{ type: "text", text: prompt }, ...imageParts],
           },
         ],
+        providerOptions: DRAFT_PROVIDER_OPTIONS,
         output: Output.object({ schema: SightDraftSchema }),
       }),
       ocrEnabled
@@ -410,6 +448,7 @@ export async function runGemini(
           )
         : Promise.resolve(null),
     ]);
+    assertDraftNotBlocked(draftResult.finishReason);
     const { output } = draftResult;
     const result = toGeminiOutput(output, "SIGHT", {
       excerpt: output.excerpt,
@@ -467,7 +506,7 @@ export async function runGemini(
       data: fileData,
       mediaType: input.mimeType as `${string}/${string}`,
     };
-    const { output } = await generateText({
+    const { output, finishReason } = await generateText({
       model,
       temperature: config.temperature,
       messages: [
@@ -476,16 +515,20 @@ export async function runGemini(
           content: [{ type: "text", text: prompt }, filePart],
         },
       ],
+      providerOptions: DRAFT_PROVIDER_OPTIONS,
       output: Output.object({ schema: PostDraftSchema }),
     });
+    assertDraftNotBlocked(finishReason);
     return toGeminiOutput(output, forcedType);
   }
 
-  const { output } = await generateText({
+  const { output, finishReason } = await generateText({
     model,
     temperature: config.temperature,
     prompt,
+    providerOptions: DRAFT_PROVIDER_OPTIONS,
     output: Output.object({ schema: PostDraftSchema }),
   });
+  assertDraftNotBlocked(finishReason);
   return toGeminiOutput(output, "BLOG");
 }

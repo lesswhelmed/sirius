@@ -17,7 +17,10 @@ export type IngestStatus =
   | "processing"
   | "completed"
   | "failed"
-  | "skipped";
+  | "skipped"
+  // Terminal, set by the content-safety gate: rejected, no Post created, original
+  // quarantined. Never retried; hidden from every user UI.
+  | "flagged";
 
 const UNIQUE_VIOLATION = "P2002";
 
@@ -349,6 +352,64 @@ export async function markFailed(
       status: "failed",
       errorMessage: truncated,
       completedAt: new Date(),
+    },
+  });
+}
+
+// Terminal rejection by the content-safety gate. Distinct from markFailed: NOT
+// retryable (the reclaimer never requeues a "flagged" row) and no Post is ever
+// created. errorMessage is left null on purpose — the only thing the user ever
+// sees is a generic "couldn't be processed"; the real verdict/detail lives in
+// the ModerationEvent (recordModerationEvent), never on the submission.
+export async function markFlagged(ids: string[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const now = new Date();
+  await prisma.ingestSubmission.updateMany({
+    where: { id: { in: ids } },
+    data: {
+      status: "flagged",
+      flaggedAt: now,
+      completedAt: now,
+      errorMessage: null,
+    },
+  });
+}
+
+export interface RecordModerationEventInput {
+  submissionId: string;
+  submittedById?: string | null;
+  kind: string;
+  action: string; // "flag" | "flag_critical"
+  severity: string;
+  categories: string[];
+  rationale?: string | null;
+  model: string;
+  contentHash?: string | null;
+  quarantinePaths?: string[];
+  emailedAt?: Date | null;
+}
+
+// Writes the CYA audit row for a flagged submission. Kept separate from
+// markFlagged so the worker can record the full verdict + quarantine evidence
+// even though the submission row itself stays neutral.
+export async function recordModerationEvent(
+  input: RecordModerationEventInput,
+): Promise<void> {
+  await prisma.moderationEvent.create({
+    data: {
+      submissionId: input.submissionId,
+      submittedById: input.submittedById ?? null,
+      kind: input.kind,
+      action: input.action,
+      severity: input.severity,
+      categories: input.categories,
+      rationale: input.rationale ?? null,
+      model: input.model,
+      contentHash: input.contentHash ?? null,
+      quarantinePaths: input.quarantinePaths ?? [],
+      emailedAt: input.emailedAt ?? null,
     },
   });
 }

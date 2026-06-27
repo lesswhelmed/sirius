@@ -48,6 +48,9 @@ export type PostCategoryMatch = Prisma.PostCategoryMatchGetPayload<
 export type ArchiveRequest = Prisma.ArchiveRequestGetPayload<
   Record<string, never>
 >;
+export type ModerationEvent = Prisma.ModerationEventGetPayload<
+  Record<string, never>
+>;
 export type Comment = Prisma.CommentGetPayload<Record<string, never>>;
 export type Friendship = Prisma.FriendshipGetPayload<Record<string, never>>;
 export type UserEntitlement = Prisma.UserEntitlementGetPayload<

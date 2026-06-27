@@ -13,6 +13,7 @@ import { checkServerSession, recoverWedgedAuthCookie } from "@/lib/api";
 import { authBaseURL, authClient, signOut } from "@/lib/auth-client";
 import { pullChanges } from "./changes-pull";
 import { pullCommentChanges } from "./comment-changes-pull";
+import { handleRejectedNudge } from "./rejected";
 
 const STREAM_PATH = "/api/app/posts/stream";
 const MAX_BACKOFF_MS = 30_000;
@@ -21,7 +22,10 @@ const PULL_DEBOUNCE_MS = 300;
 // stored cookie as wedged and attempt a toxic-cookie reset (≈15s of backoff).
 const STUCK_RESET_AFTER_ATTEMPTS = 4;
 
-let source: EventSource<"change"> | null = null;
+// Custom server-sent event names this stream relays beyond the built-ins.
+type StreamEvent = "change" | "submission-rejected";
+
+let source: EventSource<StreamEvent> | null = null;
 let active = false;
 let attempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,7 +113,7 @@ async function open(): Promise<void> {
   source?.removeAllEventListeners();
   source?.close();
 
-  source = new EventSource<"change">(`${authBaseURL}${STREAM_PATH}`, {
+  source = new EventSource<StreamEvent>(`${authBaseURL}${STREAM_PATH}`, {
     headers: { Cookie: cookie },
     pollingInterval: 0, // we own reconnection
   });
@@ -122,6 +126,24 @@ async function open(): Promise<void> {
 
   source.addEventListener("change", () => {
     schedulePull();
+  });
+
+  // A submission was rejected (content-safety flag) — it produced NO post, so it
+  // can't ride the `change` re-pull. Drop the matching optimistic row directly
+  // using the reconciliation key the worker resolved for us.
+  source.addEventListener("submission-rejected", (event) => {
+    const data = (event as { data?: string | null }).data;
+    if (!data) return;
+    try {
+      const payload = JSON.parse(data) as { submissionId?: string };
+      if (payload.submissionId) {
+        void handleRejectedNudge(payload.submissionId).catch((err) =>
+          console.warn("[sync] rejected nudge failed", err),
+        );
+      }
+    } catch {
+      // Malformed payload — ignore rather than tear down the stream.
+    }
   });
 
   source.addEventListener("error", () => {
