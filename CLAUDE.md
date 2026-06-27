@@ -117,9 +117,14 @@ directly (`bun --cwd=apps/mobile run build:dev:ios` builds the simulator dev
 client; the `development-device` profile in `eas.json` is the on-hardware one —
 no root alias yet, ask if you want one).
 
+- **Android cloud build + Play submit runbook:** `apps/mobile/docs/ANDROID-BUILD.md`
+  (server-URL env, the masked-view fingerprint pitfall, service-account key). iOS is the
+  `ios-app-store-deploy` skill.
 - Three profiles/channels: `development` (dev client, localhost), `preview` (internal,
   `lesswhelmed.com`), `production` (store, `lesswhelmed.com`). The per-profile
-  `EXPO_PUBLIC_AUTH_BASE_URL` is the only env that differs.
+  `EXPO_PUBLIC_AUTH_BASE_URL` is the only env that differs — and because `apps/mobile/.env`
+  is gitignored + `requireCommit` builds the committed tree, cloud builds get the URL
+  **only** from the `eas.json` profile `env` (never the dev `sirius.local`).
 - Reproducibility: `cli.appVersionSource: "remote"` (EAS owns build numbers),
   `requireCommit: true` (clean tree only), pinned `node`/`image`.
 - OTA: `expo-updates` with `runtimeVersion.policy: "fingerprint"` — updates only reach
