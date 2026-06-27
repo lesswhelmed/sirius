@@ -166,15 +166,32 @@ export async function removeFriend(
   otherId: string,
 ): Promise<boolean> {
   const pair = orderPair(userId, otherId);
-  const res = await prisma.friendship.deleteMany({
-    where: {
-      ...pair,
-      OR: [
-        { status: FriendshipStatus.ACCEPTED },
-        { status: FriendshipStatus.PENDING, requestedById: userId },
-      ],
-    },
-  });
+  // Cascade: when the friendship ends, each person leaves the OTHER's share
+  // groups (both directions). Membership requires a live friendship, so a removed
+  // friend must immediately lose group-shared reads. The purge runs
+  // unconditionally with the delete in one transaction — it's a harmless no-op
+  // when no memberships exist (e.g. cancelling an outgoing request). The live
+  // areFriends() check in isPostSharedWithViaGroup is the second line of defense
+  // for any in-flight read.
+  const [res] = await prisma.$transaction([
+    prisma.friendship.deleteMany({
+      where: {
+        ...pair,
+        OR: [
+          { status: FriendshipStatus.ACCEPTED },
+          { status: FriendshipStatus.PENDING, requestedById: userId },
+        ],
+      },
+    }),
+    prisma.shareGroupMember.deleteMany({
+      where: {
+        OR: [
+          { userId: otherId, group: { ownerId: userId } },
+          { userId: userId, group: { ownerId: otherId } },
+        ],
+      },
+    }),
+  ]);
   return res.count > 0;
 }
 

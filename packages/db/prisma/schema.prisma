@@ -79,6 +79,10 @@ model Post {
   views           PostView[]      @relation("PostViews")
   comments        Comment[]       @relation("PostComments")
 
+  // The share groups this post is shared with (only meaningful when
+  // visibility = GROUP). Cascades when the post or a group is deleted.
+  shareGroups PostShareGroup[] @relation("PostShareGroups")
+
   // prevent cross-provider slug collisions
   @@unique([providerId, slug])
   // a post's true identity: re-processing the same source updates this row
@@ -122,7 +126,73 @@ enum PostStatus {
 enum PostVisibility {
   PRIVATE // owner only (default — safe)
   FRIENDS // owner + the owner's accepted friends
+  GROUP // owner + current members of the ShareGroup(s) this post is linked to.
+  //         Each member must ALSO still be an accepted friend — the read decision
+  //         lives in canReadPost() (isPostSharedWithViaGroup), never hardcode it.
+  //         A GROUP post with zero links is owner-only (safe, never widens).
   PUBLIC // any signed-in user (gated by PUBLIC_CATALOG_ENABLED at the surface)
+}
+
+// Per-group identity exposure. Default is the most-private: recipients get read
+// access to shared posts but never see the group's name or who else is in it (the
+// group is invisible to non-owners). NAMED lets members see the name + co-member
+// roster. The DEFAULT is PRIVATE so a new group leaks nothing.
+enum ShareGroupVisibility {
+  PRIVATE // only the owner sees the name + roster; group identity hidden from members
+  NAMED // members may see the group name + co-member roster
+}
+
+// A named, reusable audience of the owner's friends. The owner shares posts with
+// one OR MORE groups (Post.visibility = GROUP + PostShareGroup rows). Membership
+// targets must be the owner's CURRENT accepted friends at add time; unfriending
+// cascade-removes the pair from each other's groups (see friends.removeFriend).
+model ShareGroup {
+  id         String               @id @default(cuid())
+  ownerId    String
+  owner      User                 @relation("UserShareGroups", fields: [ownerId], references: [id], onDelete: Cascade)
+  name       String
+  visibility ShareGroupVisibility @default(PRIVATE)
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  members   ShareGroupMember[] @relation("ShareGroupMembers")
+  postLinks PostShareGroup[]   @relation("ShareGroupPostLinks")
+
+  @@unique([ownerId, name]) // one group name per owner
+  @@index([ownerId])
+  @@map("ShareGroup")
+}
+
+// One row per (group, member). Cascades on group delete AND on user delete, so a
+// deleted account leaves no dangling membership and a deleted group cleans up.
+model ShareGroupMember {
+  id        String     @id @default(cuid())
+  groupId   String
+  group     ShareGroup @relation("ShareGroupMembers", fields: [groupId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation("UserShareGroupMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId]) // "which groups is this viewer a member of" — the read path
+  @@index([groupId])
+}
+
+// Explicit Post <-> ShareGroup join: which groups a post is shared with. Explicit
+// (not implicit m2m) because the worker writes these rows create-only, the
+// feed/search read predicate filters through it, and cascade is explicit on both
+// sides.
+model PostShareGroup {
+  id        String     @id @default(cuid())
+  postId    String
+  post      Post       @relation("PostShareGroups", fields: [postId], references: [id], onDelete: Cascade)
+  groupId   String
+  group     ShareGroup @relation("ShareGroupPostLinks", fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@unique([postId, groupId])
+  @@index([groupId])
+  @@index([postId])
 }
 
 model Tag {
@@ -294,6 +364,12 @@ model IngestSubmission {
   // default: bearer submits that omit it, FRIENDS coerced away for unattributed
   // bearer ingests, and pre-migration rows.
   visibility PostVisibility?
+
+  // Composer's chosen share-group ids at submit time, copied onto PostShareGroup
+  // by the worker (create-only, like visibility). Empty → no group sharing. Only
+  // meaningful when visibility = GROUP and there's an attributed submitter
+  // (validated in apps/web/lib/ingest/submit.ts).
+  shareGroupIds String[] @default([])
 
   // The Post this submission produced. A SIGHT post maps to N image rows, so the
   // relation lets a post resolve all its source originals. resultPostSlug is kept
@@ -544,6 +620,11 @@ model User {
   // userBId). A user therefore appears as either side, so two back-relations.
   friendshipsA Friendship[] @relation("FriendshipA")
   friendshipsB Friendship[] @relation("FriendshipB")
+
+  // Share groups this user OWNS, and the groups they are a MEMBER of (someone
+  // else's group). Both cascade on user delete.
+  shareGroups           ShareGroup[]       @relation("UserShareGroups")
+  shareGroupMemberships ShareGroupMember[] @relation("UserShareGroupMemberships")
 
   // Freemium: RevenueCat-sourced "Sirius AI Pro" entitlement (1:1) + the ledger
   // of server (Gemini) AI generations this user has consumed (for the weekly cap).

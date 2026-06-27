@@ -16,13 +16,13 @@ import {
 } from "react-native";
 
 import { AddFriendSheet } from "@/components/add-friend-sheet";
+import { FriendRow, type Friend } from "@/components/friend-row";
 import { Segment, SegmentedControl } from "@/components/segmented";
 import { PageHeader, Screen, SecondaryButton } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiDelete, ApiError, apiGet, apiPostJson } from "@/lib/api";
 
-type Friend = { id: string; name: string; handle: string | null };
 type Request = Friend & { direction: "incoming" | "outgoing" };
 
 // The API returns pending requests as `{ user, direction, createdAt }` with the
@@ -115,6 +115,11 @@ export default function FriendsScreen() {
           symbol="person.badge.plus"
           onPress={() => setAddOpen(true)}
         />
+        <SecondaryButton
+          label="Manage groups"
+          symbol="person.3"
+          onPress={() => router.push("/groups")}
+        />
         <SegmentedControl value={tab} onChange={setTab}>
           <Segment value="friends" label="Friends" count={friends.length} />
           <Segment value="requests" label="Requests" count={requests.length} />
@@ -180,57 +185,6 @@ export default function FriendsScreen() {
   );
 }
 
-function FriendRow({
-  item,
-  busy,
-  children,
-}: {
-  item: Friend;
-  busy: boolean;
-  children: React.ReactNode;
-}) {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTheme();
-  // Tapping the name/handle opens that friend's catalog (guarded: a friend with
-  // no handle has no catalog URL). The action buttons (Remove/Accept/Decline)
-  // live in a SEPARATE sibling region — not nested inside this Pressable — so
-  // pressing them never triggers navigation.
-  const canOpen = Boolean(item.handle);
-  const open = () => {
-    if (item.handle) router.push(`/u/${item.handle}/catalog`);
-  };
-  return (
-    <View style={styles.row}>
-      <Pressable
-        style={styles.rowText}
-        onPress={canOpen ? open : undefined}
-        disabled={!canOpen}
-        accessibilityRole={canOpen ? "button" : undefined}
-        accessibilityLabel={
-          canOpen ? `${item.name} — open catalog` : item.name
-        }
-        hitSlop={8}
-      >
-        {({ pressed }: { pressed: boolean }) => (
-          <>
-            <Text style={[styles.name, pressed && styles.namePressed]}>
-              {item.name}
-            </Text>
-            {item.handle ? (
-              <Text style={styles.handle}>@{item.handle}</Text>
-            ) : null}
-          </>
-        )}
-      </Pressable>
-      {busy ? (
-        <ActivityIndicator color={t.color.accent} />
-      ) : (
-        <View style={styles.actions}>{children}</View>
-      )}
-    </View>
-  );
-}
-
 function Action({
   label,
   muted = false,
@@ -276,22 +230,6 @@ function makeStyles(t: Theme) {
       paddingTop: t.space.md,
       paddingBottom: 120,
     },
-    row: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: t.space.lg,
-      paddingVertical: t.space.md,
-    },
-    rowText: { flexShrink: 1 },
-    name: { fontFamily: t.font.serif, fontSize: 18, color: t.color.ink },
-    namePressed: { color: t.color.accent },
-    handle: {
-      fontFamily: t.font.mono,
-      fontSize: 12,
-      color: t.color.inkSubtle,
-    },
-    actions: { flexDirection: "row", alignItems: "center", gap: t.space.lg },
     action: {
       fontFamily: t.font.mono,
       fontSize: 11,

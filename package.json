@@ -8,6 +8,7 @@
 		"mobile:run:ios": "bun --cwd=apps/mobile ios",
 		"mobile:build:ios": "bun --cwd=apps/mobile run build:prod:ios",
 		"mobile:build:android": "bun --cwd=apps/mobile run build:prod:android",
+		"mobile:build:android:ci": "bun --cwd=apps/mobile run build:prod:android:ci",
 		"mobile:build:all": "bun --cwd=apps/mobile run build:prod",
 		"mobile:build:local:ios": "bun --cwd=apps/mobile run build:local:ios",
 		"mobile:build:local:dev:ios": "bun --cwd=apps/mobile run build:local:dev:ios",

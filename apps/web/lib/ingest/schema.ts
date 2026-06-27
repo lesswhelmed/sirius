@@ -29,8 +29,34 @@ const flexibleBoolean = z
 const flexibleVisibility = z.preprocess(
   (value) =>
     typeof value === "string" && value.length > 0 ? value : undefined,
-  z.enum(["PRIVATE", "FRIENDS", "PUBLIC"]).optional(),
+  z.enum(["PRIVATE", "FRIENDS", "PUBLIC", "GROUP"]).optional(),
 );
+
+// Composer's chosen share-group ids. Arrives as a real array (JSON body) or a
+// string (multipart field): a JSON-encoded array `["a","b"]`, or a comma/newline
+// list, or "" when absent. Always normalizes to string[] (empty when absent).
+// submit.ts validates ownership + drops these for non-GROUP / unattributed bearer.
+const flexibleIdList = z.preprocess((value) => {
+  const raw: unknown[] = (() => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== "string" || value.trim().length === 0) return [];
+    const trimmed = value.trim();
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return trimmed.split(/[\n,]/);
+  })();
+  // Drop empty/blank tokens so a trailing comma or blank line (or a stray "" in a
+  // JSON array) never 400s the whole ingest — they're just ignored.
+  return raw
+    .map((v) => (typeof v === "string" ? v.trim() : v))
+    .filter((v) => typeof v === "string" && v.length > 0);
+}, z.array(z.string().min(1)).default([]));
 
 export const urlIngestSchema = z
   .object({
@@ -39,6 +65,7 @@ export const urlIngestSchema = z
     force: flexibleBoolean.optional().default(false),
     projectId: z.string().optional().default(""),
     visibility: flexibleVisibility,
+    shareGroupIds: flexibleIdList,
     // Optional client-supplied draft (on-device LLM). Only honored for
     // note-kind submissions — URLs always go through the worker's url_context
     // fetch, so a draft there is stripped at submit time.
@@ -58,6 +85,7 @@ export const imageMetadataSchema = z.object({
   notes: z.string().optional().default(""),
   projectId: z.string().optional().default(""),
   visibility: flexibleVisibility,
+  shareGroupIds: flexibleIdList,
   // JSON-encoded SightDraftEnvelope (multipart fields are strings) from
   // on-device drafting; parsed + validated in submitImageIngest. Sent on every
   // row of a batch, like notes.
@@ -132,6 +160,7 @@ export const fileMetadataSchema = z.object({
   notes: z.string().optional().default(""),
   projectId: z.string().optional().default(""),
   visibility: flexibleVisibility,
+  shareGroupIds: flexibleIdList,
 });
 
 export type FileIngestMetadata = z.infer<typeof fileMetadataSchema>;

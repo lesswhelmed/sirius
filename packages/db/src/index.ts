@@ -7,6 +7,7 @@ import {
   PostVisibility,
   Prisma,
   PrismaClient,
+  ShareGroupVisibility,
 } from "../generated/prisma";
 
 export {
@@ -17,6 +18,7 @@ export {
   PostVisibility,
   Prisma,
   PrismaClient,
+  ShareGroupVisibility,
 };
 
 // Model row types come off the generated namespace; re-exporting them by name
@@ -53,6 +55,13 @@ export type ModerationEvent = Prisma.ModerationEventGetPayload<
 >;
 export type Comment = Prisma.CommentGetPayload<Record<string, never>>;
 export type Friendship = Prisma.FriendshipGetPayload<Record<string, never>>;
+export type ShareGroup = Prisma.ShareGroupGetPayload<Record<string, never>>;
+export type ShareGroupMember = Prisma.ShareGroupMemberGetPayload<
+  Record<string, never>
+>;
+export type PostShareGroup = Prisma.PostShareGroupGetPayload<
+  Record<string, never>
+>;
 export type UserEntitlement = Prisma.UserEntitlementGetPayload<
   Record<string, never>
 >;
@@ -75,6 +84,7 @@ export * from "./embed-client";
 export * from "./embeddings";
 export * from "./entitlement";
 export * from "./friends";
+export * from "./groups";
 export * from "./ingest";
 export * from "./notify";
 export * from "./post-delete";

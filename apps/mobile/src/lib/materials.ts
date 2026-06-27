@@ -272,6 +272,10 @@ export type SubmitContext = {
   // submit. Optional: undefined → the worker keeps the PRIVATE default (e.g. the
   // OS share target, which doesn't expose a picker).
   visibility?: Visibility;
+  // Share-group audience for a GROUP-visibility submit. Non-empty IFF
+  // visibility === "GROUP" (the composer's AudienceValue enforces the invariant);
+  // the server validates ownership and drops them for any non-GROUP submit.
+  shareGroupIds?: string[];
   // Draft notes (and transcribed audio) on-device with the local LLM before
   // submitting, so the worker skips its Gemini stage. The handlers re-check
   // model readiness themselves; this is the user's intent switch.
@@ -307,6 +311,16 @@ type MaterialHandler<K extends Material["kind"]> = {
     queued?: number;
   }>;
 };
+
+// Multipart form fields for a GROUP-visibility binary submit. The multipart
+// endpoints (/api/app/ingest-images, /api/app/ingest-file) read shareGroupIds as
+// a JSON-encoded array STRING (the JSON-body /api/app/ingest takes a real array;
+// see ingest-submit). Empty for any non-GROUP submit.
+function shareGroupParam(ctx: SubmitContext): Record<string, string> {
+  return ctx.visibility === "GROUP" && ctx.shareGroupIds?.length
+    ? { shareGroupIds: JSON.stringify(ctx.shareGroupIds) }
+    : {};
+}
 
 const urlHandler: MaterialHandler<"url"> = {
   kind: "url",
@@ -347,6 +361,7 @@ const urlHandler: MaterialHandler<"url"> = {
           ctx.projectId,
           draft,
           ctx.visibility,
+          ctx.shareGroupIds,
         );
         if (localId) await linkSubmission(localId, ok.id);
         submitted++;
@@ -380,6 +395,7 @@ const repoHandler: MaterialHandler<"repo"> = {
           ctx.projectId,
           undefined,
           ctx.visibility,
+          ctx.shareGroupIds,
         );
         submitted++;
       } catch (err) {
@@ -424,6 +440,7 @@ const noteHandler: MaterialHandler<"note"> = {
           ctx.projectId,
           draft,
           ctx.visibility,
+          ctx.shareGroupIds,
         );
         if (localId) await linkSubmission(localId, ok.id);
         submitted++;
@@ -444,6 +461,7 @@ const noteHandler: MaterialHandler<"note"> = {
               ctx.projectId,
               draft,
               ctx.visibility,
+              ctx.shareGroupIds,
             ),
             rowId,
           );
@@ -510,6 +528,7 @@ const imageHandler: MaterialHandler<"image"> = {
           notes,
           ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
           ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
+          ...shareGroupParam(ctx),
           ...(draftJson ? { draft: draftJson } : {}),
         },
         batchId,
@@ -547,6 +566,7 @@ const videoHandler: MaterialHandler<"video"> = {
           notes: m.notes ?? "",
           ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
           ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
+          ...shareGroupParam(ctx),
         },
       });
       if (result === "sent") submitted++;
@@ -594,6 +614,7 @@ const audioHandler: MaterialHandler<"audio"> = {
               ctx.projectId,
               draft,
               ctx.visibility,
+              ctx.shareGroupIds,
             );
             if (localId) await linkSubmission(localId, ok.id);
             submitted++;
@@ -611,6 +632,7 @@ const audioHandler: MaterialHandler<"audio"> = {
                   ctx.projectId,
                   draft,
                   ctx.visibility,
+                  ctx.shareGroupIds,
                 ),
                 localId,
               );
@@ -636,6 +658,7 @@ const audioHandler: MaterialHandler<"audio"> = {
           notes: m.notes ?? "",
           ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
           ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
+          ...shareGroupParam(ctx),
         },
       });
       if (result === "sent") submitted++;
@@ -664,6 +687,7 @@ const documentHandler: MaterialHandler<"document"> = {
           notes: m.notes ?? "",
           ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
           ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
+          ...shareGroupParam(ctx),
         },
       });
       if (result === "sent") submitted++;

@@ -12,7 +12,12 @@
 // assign-to-project, download source originals) must keep their own
 // `post.submittedById === viewerId` checks — sharing a post for reading should
 // never grant write/management rights.
-import { isPostSharedWith, PostStatus, PostVisibility } from "@repo/db";
+import {
+  isPostSharedWith,
+  isPostSharedWithViaGroup,
+  PostStatus,
+  PostVisibility,
+} from "@repo/db";
 
 import { PUBLIC_CATALOG_ENABLED } from "./features";
 
@@ -21,6 +26,9 @@ import { PUBLIC_CATALOG_ENABLED } from "./features";
 // the post they already loaded — no extra query. findPostAttributionBySlug also
 // returns exactly these fields for the lightweight mutation/comment routes.
 export type ReadableSubject = {
+  // Needed for the GROUP tier (isPostSharedWithViaGroup queries PostShareGroup by
+  // postId). findPostBySlug / findPostAttributionBySlug / getCachedPost all carry it.
+  id: string;
   submittedById: string | null;
   status: PostStatus;
   visibility: PostVisibility;
@@ -49,6 +57,13 @@ export async function canReadPost(
   }
 
   if (await isPostSharedWith(post, viewerId)) {
+    return true;
+  }
+
+  // GROUP sharing — a published GROUP post the viewer is a current member of (and
+  // still a friend of the owner). Checked live per request, so unfriending or
+  // removal from the group revokes access immediately.
+  if (await isPostSharedWithViaGroup(post, viewerId)) {
     return true;
   }
 

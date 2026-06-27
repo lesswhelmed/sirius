@@ -243,6 +243,16 @@ export async function listVisiblePostEmbeddings(
       visibility: PostVisibility.FRIENDS,
       status: PostStatus.PUBLISHED,
     });
+    // GROUP: a friend's published GROUP post the viewer is a current member of —
+    // mirrors searchVisibilityWhere so the semantic and full-text legs agree.
+    or.push({
+      submittedById: { in: friendIds },
+      visibility: PostVisibility.GROUP,
+      status: PostStatus.PUBLISHED,
+      shareGroups: {
+        some: { group: { members: { some: { userId: viewerId } } } },
+      },
+    });
   }
   if (includePublic) {
     or.push({ visibility: PostVisibility.PUBLIC, status: PostStatus.PUBLISHED });

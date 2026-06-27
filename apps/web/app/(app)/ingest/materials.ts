@@ -207,14 +207,19 @@ export type SubmitOutcome = {
 };
 
 // Read visibility for the resulting Post, chosen once per compose session and
-// applied to every material in the tray (mirrors projectId). Matches the
-// PostVisibility enum values the server validates.
-export type Visibility = "PRIVATE" | "FRIENDS" | "PUBLIC";
+// applied to every material in the tray (mirrors projectId). The single
+// Visibility union now lives in lib/groups/types (kills the duplicate); GROUP
+// means the post is shared with the SubmitContext.groupIds.
+export type { Visibility } from "../../../lib/groups/types";
+import type { Visibility } from "../../../lib/groups/types";
 
 export type SubmitContext = {
   force: boolean;
   projectId: string | null;
   visibility: Visibility;
+  // The share groups this capture is shared with. Non-empty IFF visibility ===
+  // "GROUP"; the server validates ownership and drops them otherwise.
+  groupIds: string[];
 };
 
 interface IngestResponse {
@@ -248,7 +253,7 @@ function errorMessage(err: unknown): string {
 async function submitUrl(
   material: UrlMaterial,
   label: string,
-  { force, projectId, visibility }: SubmitContext,
+  { force, projectId, visibility, groupIds }: SubmitContext,
 ): Promise<SubmitOutcome> {
   try {
     const res = await fetch("/api/app/ingest", {
@@ -260,6 +265,7 @@ async function submitUrl(
         notes: material.notes ?? "",
         force,
         visibility,
+        shareGroupIds: groupIds,
         ...(projectId ? { projectId } : {}),
       }),
     });
@@ -284,7 +290,7 @@ async function submitUrl(
 async function submitNote(
   material: NoteMaterial,
   label: string,
-  { force, projectId, visibility }: SubmitContext,
+  { force, projectId, visibility, groupIds }: SubmitContext,
 ): Promise<SubmitOutcome> {
   try {
     const res = await fetch("/api/app/ingest", {
@@ -296,6 +302,7 @@ async function submitNote(
         notes: material.text,
         force,
         visibility,
+        shareGroupIds: groupIds,
         ...(projectId ? { projectId } : {}),
       }),
     });
@@ -322,7 +329,7 @@ async function submitNote(
 // composer.tsx. The image endpoint doesn't accept `force`.
 async function submitImageBatch(
   materials: ImageMaterial[],
-  { projectId, visibility }: SubmitContext,
+  { projectId, visibility, groupIds }: SubmitContext,
 ): Promise<SubmitOutcome[]> {
   const batchId = crypto.randomUUID();
   const total = materials.length;
@@ -341,6 +348,7 @@ async function submitImageBatch(
       fd.append("totalCount", String(total));
       fd.append("notes", notes);
       fd.append("visibility", visibility);
+      fd.append("shareGroupIds", JSON.stringify(groupIds));
       if (projectId) fd.append("projectId", projectId);
       try {
         const res = await fetch("/api/app/ingest-images", {
@@ -376,13 +384,14 @@ async function submitImageBatch(
 async function submitFile(
   material: VideoMaterial | AudioMaterial | DocumentMaterial,
   label: string,
-  { projectId, visibility }: SubmitContext,
+  { projectId, visibility, groupIds }: SubmitContext,
 ): Promise<SubmitOutcome> {
   const fd = new FormData();
   fd.append("file", material.file, material.name);
   fd.append("kind", material.kind);
   fd.append("notes", material.notes ?? "");
   fd.append("visibility", visibility);
+  fd.append("shareGroupIds", JSON.stringify(groupIds));
   if (projectId) fd.append("projectId", projectId);
   try {
     const res = await fetch("/api/app/ingest-file", {

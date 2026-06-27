@@ -1,8 +1,11 @@
 import {
   getPostViewStats,
   isPostSaved,
+  listFriends,
+  listPostShareGroups,
   listProjects,
   listRetainedSourcesForPost,
+  listShareGroups,
   listSourceSubmissionsForPost,
 } from "@repo/db";
 import Link from "next/link";
@@ -86,23 +89,53 @@ export default async function PostDetailPage({
   // purpose: sharing a post for reading must never grant these write actions.
   const isOwner = userId != null && post.submittedById === userId;
   const canAssign = isOwner;
-  const [initialSaved, stats, projectPage, retainedSources, sourceSubmissions] =
-    await Promise.all([
-      userId ? isPostSaved(userId, post.id) : Promise.resolve(false),
-      getPostViewStats(post.id),
-      canAssign
-        ? listProjects(userId, { status: "active" })
-        : Promise.resolve(null),
-      isOwner ? listRetainedSourcesForPost(post.id) : Promise.resolve([]),
-      // All source submissions (not just retained) so we can surface note text
-      // and audio originals. Owner-only — the section never renders otherwise.
-      isOwner ? listSourceSubmissionsForPost(post.id) : Promise.resolve([]),
-    ]);
+  const [
+    initialSaved,
+    stats,
+    projectPage,
+    retainedSources,
+    sourceSubmissions,
+    postGroups,
+    ownGroups,
+    friends,
+  ] = await Promise.all([
+    userId ? isPostSaved(userId, post.id) : Promise.resolve(false),
+    getPostViewStats(post.id),
+    canAssign
+      ? listProjects(userId, { status: "active" })
+      : Promise.resolve(null),
+    isOwner ? listRetainedSourcesForPost(post.id) : Promise.resolve([]),
+    // All source submissions (not just retained) so we can surface note text
+    // and audio originals. Owner-only — the section never renders otherwise.
+    isOwner ? listSourceSubmissionsForPost(post.id) : Promise.resolve([]),
+    // Share-groups for the audience picker (owner-only): the post's current
+    // groups, the owner's full group list, and their friends (dialog seed).
+    isOwner && userId
+      ? listPostShareGroups(userId, post.id)
+      : Promise.resolve([]),
+    isOwner && userId ? listShareGroups(userId) : Promise.resolve([]),
+    isOwner && userId ? listFriends(userId) : Promise.resolve([]),
+  ]);
   const projectOptions =
     projectPage?.items.map((p) => ({ id: p.id, title: p.title })) ?? [];
   const sourceFiles = retainedSources.map((s) => ({
     submissionId: s.id,
     originalFilename: s.originalFilename,
+  }));
+  const postGroupIds = postGroups.map((g) => g.id);
+  const ownGroupItems = ownGroups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    visibility: g.visibility,
+    memberCount: g.memberCount,
+    createdAt: g.createdAt.toISOString(),
+    updatedAt: g.updatedAt.toISOString(),
+  }));
+  const friendItems = friends.map((f) => ({
+    id: f.id,
+    name: f.name,
+    handle: f.handle,
+    image: f.image,
   }));
   const originalContent = buildOriginalContent(post.slug, sourceSubmissions);
   const sightImages = parseSightImages(post.images);
@@ -216,6 +249,7 @@ export default async function PostDetailPage({
             sourceHash: post.sourceHash,
             syncStatus: post.syncStatus,
             visibility: post.visibility,
+            groupIds: postGroupIds,
             originalUrl: post.originalUrl,
             imageUrl: post.imageUrl,
             createdAt: post.createdAt,
@@ -242,6 +276,8 @@ export default async function PostDetailPage({
           canEditVisibility={isOwner}
           isOwner={isOwner}
           sourceFiles={sourceFiles}
+          groups={ownGroupItems}
+          friends={friendItems}
         />
       </div>
 

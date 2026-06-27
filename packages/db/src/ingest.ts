@@ -38,6 +38,9 @@ export interface CreateSubmissionInput {
   // Per-capture read visibility for the resulting Post (composer choice). Null →
   // the worker leaves Post.visibility at its PRIVATE schema default.
   visibility?: PostVisibility | null;
+  // Composer's chosen share-group ids (validated/owned by the submitter). The
+  // worker links them create-only when visibility is GROUP. Empty/omitted → none.
+  shareGroupIds?: string[] | null;
 }
 
 export type CreateSubmissionResult =
@@ -65,6 +68,7 @@ export async function createSubmission(
         stagedFilePath: input.stagedFilePath ?? null,
         submittedById: input.submittedById ?? null,
         visibility: input.visibility ?? null,
+        shareGroupIds: input.shareGroupIds ?? [],
         force: input.force ?? false,
       },
     });
@@ -97,8 +101,10 @@ export async function createSubmission(
               completedAt: null,
               payload: input.payload,
               stagedFilePath: input.stagedFilePath ?? null,
-              // Honor the latest visibility pick on a re-submit of a failed row.
+              // Honor the latest visibility + group pick on a re-submit of a
+              // failed row.
               visibility: input.visibility ?? null,
+              shareGroupIds: input.shareGroupIds ?? [],
               force: input.force ?? false,
             },
           });
