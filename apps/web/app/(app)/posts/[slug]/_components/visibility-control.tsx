@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from "react";
 
-export type Visibility = "PRIVATE" | "FRIENDS" | "PUBLIC";
+// GROUP is the share-groups audience; this 3-chip control renders only the base
+// tiers and is superseded by AudiencePicker (Phase B) for GROUP. Kept in the
+// union so post.visibility (now possibly GROUP) flows through ColophonTabs.
+export type Visibility = "PRIVATE" | "FRIENDS" | "PUBLIC" | "GROUP";
 
 const OPTIONS: { value: Visibility; label: string; hint: string }[] = [
   { value: "PRIVATE", label: "Private", hint: "Only you" },

@@ -8,6 +8,7 @@ import {
   type CreateSubmissionResult,
   getProject,
   type PostVisibility,
+  shareGroupIdsOwnedBy,
 } from "@repo/db";
 import {
   type SightDraftEnvelope,
@@ -64,11 +65,46 @@ function resolveVisibility(
   if (!visibility) {
     return null;
   }
-  if (visibility === "FRIENDS" && !submittedById) {
-    log("warn", "visibility-friends-dropped-no-submitter");
+  // FRIENDS and GROUP both require an attributed submitter (the friendship/group
+  // is the owner's). An unattributed bearer ingest (iOS Shortcut) has no owner,
+  // so both are meaningless there and drop to null (→ worker keeps PRIVATE).
+  if (
+    (visibility === "FRIENDS" || visibility === "GROUP") &&
+    !submittedById
+  ) {
+    log("warn", "visibility-friends-or-group-dropped-no-submitter", {
+      visibility,
+    });
     return null;
   }
   return visibility;
+}
+
+// Validates the composer's chosen groups. Requires an attributed submitter and
+// GROUP visibility; returns only ids the submitter actually owns (drops the rest
+// with a warn). Empty when there's no submitter, no groups, or visibility isn't
+// GROUP — the worker then links nothing.
+async function resolveShareGroups(
+  submittedById: string | null,
+  visibility: PostVisibility | null,
+  groupIds: string[],
+  log: Logger,
+): Promise<string[]> {
+  if (!submittedById || groupIds.length === 0) {
+    return [];
+  }
+  if (visibility !== "GROUP") {
+    log("warn", "groups-dropped-not-group-visibility", { visibility });
+    return [];
+  }
+  const owned = await shareGroupIdsOwnedBy(submittedById, groupIds);
+  if (owned.length !== new Set(groupIds).size) {
+    log("warn", "groups-dropped-not-owned", {
+      requested: groupIds.length,
+      owned: owned.length,
+    });
+  }
+  return owned;
 }
 
 export type SubmitResultBody = {
@@ -169,6 +205,12 @@ export async function submitUrlIngest(
     parsed.data.visibility,
     log,
   );
+  const shareGroupIds = await resolveShareGroups(
+    submittedById,
+    visibility,
+    parsed.data.shareGroupIds,
+    log,
+  );
 
   log("info", "received", {
     kind,
@@ -179,6 +221,7 @@ export async function submitUrlIngest(
     submittedById,
     projectId: validatedProjectId,
     visibility,
+    shareGroupCount: shareGroupIds.length,
   });
 
   const result = await createSubmission({
@@ -188,6 +231,7 @@ export async function submitUrlIngest(
     submittedById,
     projectId: validatedProjectId,
     visibility,
+    shareGroupIds,
     // Also persist on the row so a reclaimed/retried job regenerates instead of
     // reusing an existing post (worker idempotency guard reads this column).
     force,
@@ -218,6 +262,9 @@ export interface ParsedImagePayload {
     // Composer visibility choice; undefined when absent (the multipart field
     // coerces "" → undefined in imageMetadataSchema). Resolved in submitImageIngest.
     visibility?: PostVisibility;
+    // Composer's chosen share-group ids (normalized to string[] by the schema's
+    // flexibleIdList). Validated for ownership in submitImageIngest.
+    shareGroupIds: string[];
     // JSON-encoded SightDraftEnvelope ("" when absent) — multipart fields are
     // strings; validated in submitImageIngest.
     draft: string;
@@ -239,6 +286,7 @@ export async function parseMultipartImage(
     notes: form.get("notes") ?? "",
     projectId: form.get("projectId") ?? "",
     visibility: form.get("visibility") ?? "",
+    shareGroupIds: form.get("shareGroupIds") ?? "",
     draft: form.get("draft") ?? "",
   });
   if (!metaParsed.success) {
@@ -267,6 +315,7 @@ export async function parseRawImage(
     notes: get("notes"),
     projectId: get("projectId"),
     visibility: get("visibility"),
+    shareGroupIds: get("shareGroupIds"),
     draft: get("draft"),
   });
   if (!metaParsed.success) {
@@ -402,6 +451,12 @@ export async function submitImageIngest(
     payload.metadata.visibility,
     log,
   );
+  const shareGroupIds = await resolveShareGroups(
+    submittedById,
+    visibility,
+    payload.metadata.shareGroupIds,
+    log,
+  );
 
   log("info", "received", {
     batchId: payload.metadata.batchId,
@@ -414,6 +469,7 @@ export async function submitImageIngest(
     submittedById,
     projectId: validatedProjectId,
     visibility,
+    shareGroupCount: shareGroupIds.length,
   });
 
   const result = await createSubmission({
@@ -434,6 +490,7 @@ export async function submitImageIngest(
     submittedById,
     projectId: validatedProjectId,
     visibility,
+    shareGroupIds,
   });
 
   log("info", SUBMIT_LOG_LABEL[result.status], {
@@ -477,6 +534,7 @@ export async function parseMultipartFile(
     notes: form.get("notes") ?? "",
     projectId: form.get("projectId") ?? "",
     visibility: form.get("visibility") ?? "",
+    shareGroupIds: form.get("shareGroupIds") ?? "",
   });
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
@@ -506,6 +564,7 @@ export async function parseRawFile(
     notes: get("notes"),
     projectId: get("projectId"),
     visibility: get("visibility"),
+    shareGroupIds: get("shareGroupIds"),
   });
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
@@ -545,6 +604,12 @@ export async function submitFileIngest(
     payload.metadata.visibility,
     log,
   );
+  const shareGroupIds = await resolveShareGroups(
+    submittedById,
+    visibility,
+    payload.metadata.shareGroupIds,
+    log,
+  );
 
   log("info", "received", {
     kind: payload.metadata.kind,
@@ -554,6 +619,7 @@ export async function submitFileIngest(
     submittedById,
     projectId: validatedProjectId,
     visibility,
+    shareGroupCount: shareGroupIds.length,
   });
 
   const result = await createSubmission({
@@ -569,6 +635,7 @@ export async function submitFileIngest(
     submittedById,
     projectId: validatedProjectId,
     visibility,
+    shareGroupIds,
   });
 
   log("info", SUBMIT_LOG_LABEL[result.status], {

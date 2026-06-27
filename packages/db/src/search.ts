@@ -60,6 +60,15 @@ export function searchVisibilityWhere(
       visibility: PostVisibility.FRIENDS,
       status: PostStatus.PUBLISHED,
     });
+    // GROUP: a friend's published GROUP post the viewer is a current member of.
+    or.push({
+      submittedById: { in: friendIds },
+      visibility: PostVisibility.GROUP,
+      status: PostStatus.PUBLISHED,
+      shareGroups: {
+        some: { group: { members: { some: { userId: viewerId } } } },
+      },
+    });
   }
   if (includePublic) {
     or.push({ visibility: PostVisibility.PUBLIC, status: PostStatus.PUBLISHED });
@@ -91,6 +100,13 @@ async function fullTextLeg(
         p."submittedById" = ${viewerId}
         OR (p."visibility" = 'FRIENDS' AND p."status" = 'PUBLISHED'
             AND p."submittedById" = ANY(${friendIds}))
+        OR (p."visibility" = 'GROUP' AND p."status" = 'PUBLISHED'
+            AND p."submittedById" = ANY(${friendIds})
+            AND EXISTS (
+              SELECT 1 FROM "PostShareGroup" psg
+              JOIN "ShareGroupMember" sgm ON sgm."groupId" = psg."groupId"
+              WHERE psg."postId" = p."id" AND sgm."userId" = ${viewerId}
+            ))
         ${publicClause}
       )
     ORDER BY rank DESC, p."createdAt" DESC

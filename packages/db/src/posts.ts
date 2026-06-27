@@ -166,6 +166,16 @@ export function visibilityWhereForViewer(
       visibility: PostVisibility.FRIENDS,
       submittedById: { in: friendIds },
     });
+    // GROUP tier: a friend's GROUP post the viewer is a current member of. The
+    // `submittedById in friendIds` clause is defense-in-depth (still a friend);
+    // membership is checked via the PostShareGroup → ShareGroupMember relation.
+    or.push({
+      visibility: PostVisibility.GROUP,
+      submittedById: { in: friendIds },
+      shareGroups: {
+        some: { group: { members: { some: { userId: viewerId } } } },
+      },
+    });
   }
   if (includePublic) {
     or.push({ visibility: PostVisibility.PUBLIC });

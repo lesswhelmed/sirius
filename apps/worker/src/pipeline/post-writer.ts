@@ -289,6 +289,13 @@ function getVisibility(input: PipelineInput): PostVisibility | undefined {
   return row?.visibility ?? undefined;
 }
 
+// The composer's chosen share-group ids, read off the submission row (image
+// batches share one value — first row, like getVisibility). Empty when none.
+function getShareGroupIds(input: PipelineInput): string[] {
+  const row = input.kind === "image" ? input.submissions[0] : input.submission;
+  return row?.shareGroupIds ?? [];
+}
+
 function getSourceHash(input: PipelineInput): string | null {
   if (input.kind === "image") {
     // NB: an image row's contentHash is SLOT-keyed (sha256 of
@@ -544,6 +551,32 @@ export async function writePost(
     throw new Error(
       `post-writer: failed to persist ${providerId}/${sourceRecordId} after retries`,
     );
+  }
+
+  // Link the chosen share groups, create-only (like visibility): only when this
+  // post has NO links yet, so a later manual setPostShareGroups edit survives a
+  // reprocess. Defense in depth — only link groups STILL owned by the submitter.
+  const shareGroupIds = getShareGroupIds(input);
+  if (
+    visibility === "GROUP" &&
+    shareGroupIds.length > 0 &&
+    input.submittedById
+  ) {
+    const existing = await prisma.postShareGroup.count({
+      where: { postId: post.id },
+    });
+    if (existing === 0) {
+      const owned = await prisma.shareGroup.findMany({
+        where: { id: { in: shareGroupIds }, ownerId: input.submittedById },
+        select: { id: true },
+      });
+      if (owned.length > 0) {
+        await prisma.postShareGroup.createMany({
+          data: owned.map((g) => ({ postId: post.id, groupId: g.id })),
+          skipDuplicates: true,
+        });
+      }
+    }
   }
 
   // Best-effort: refresh the web app's cached body + lists for this post.
