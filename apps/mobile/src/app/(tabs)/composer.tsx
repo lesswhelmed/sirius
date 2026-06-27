@@ -60,11 +60,17 @@ import {
   TrayErrorSummary,
   TrayHeader,
 } from "@/components/omni-tray";
+import { AudienceSheet } from "@/components/audience-sheet";
 
 import { BottomTabInset, type Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
-import type { Visibility } from "@/lib/ingest-submit";
+import {
+  type AudienceValue,
+  DEFAULT_AUDIENCE,
+  describeAudience,
+  useGroups,
+} from "@/lib/groups";
 import { isModelReady } from "@/lib/llm/engine";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
@@ -92,14 +98,6 @@ function nextCaptureName(prefix: string, ext: string): string {
   return `${prefix}-${captureSeq}.${ext}`;
 }
 
-// Read-visibility choices for a capture, in escalating-exposure order. PRIVATE is
-// the safe default.
-const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-  { value: "PRIVATE", label: "Private" },
-  { value: "FRIENDS", label: "Friends" },
-  { value: "PUBLIC", label: "Public" },
-];
-
 export default function ComposerScreen() {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
@@ -120,8 +118,15 @@ export default function ComposerScreen() {
 
   const [busy, setBusy] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [visibility, setVisibility] = useState<Visibility>("PRIVATE");
+  // The post audience (read-visibility tier + any chosen share groups). Defaults
+  // to PRIVATE; opening the AudienceSheet lets the user widen it or pick groups.
+  const [audience, setAudience] = useState<AudienceValue>(DEFAULT_AUDIENCE);
+  const [audienceOpen, setAudienceOpen] = useState(false);
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
+
+  // Groups, for the audience summary line (describeAudience names the chosen set).
+  const { data: groupsData } = useGroups();
+  const groups = groupsData?.groups ?? [];
 
   // Media chooser sheet (camera vs library). iOS requires the picker fire only
   // AFTER the sheet dismisses (see runAfterMediaSheet).
@@ -593,7 +598,8 @@ export default function ComposerScreen() {
         {
           force: false,
           projectId: projectId ?? undefined,
-          visibility,
+          visibility: audience.visibility,
+          shareGroupIds: audience.groupIds,
           onDeviceCuration: curationOn && llmReadyData === true,
         },
       );
@@ -627,7 +633,7 @@ export default function ComposerScreen() {
     setNotesById(new Map());
     setRegistry(new Map());
     setProjectId(null);
-    setVisibility("PRIVATE");
+    setAudience(DEFAULT_AUDIENCE);
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
     router.push("/(tabs)/library");
@@ -805,32 +811,21 @@ export default function ComposerScreen() {
           )}
 
           <View style={styles.picker}>
-            <Eyebrow>Visibility</Eyebrow>
-            <View style={styles.pickerScroll}>
-              {VISIBILITY_OPTIONS.map((opt) => (
-                <Pressable
-                  key={opt.value}
-                  style={({ pressed }) => [
-                    styles.chip,
-                    visibility === opt.value && styles.chipActive,
-                    pressed && styles.chipPressed,
-                  ]}
-                  onPress={() => setVisibility(opt.value)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: visibility === opt.value }}
-                  accessibilityLabel={`Visibility: ${opt.label}`}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      visibility === opt.value && styles.chipTextActive,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <Eyebrow>Audience</Eyebrow>
+            <Pressable
+              onPress={() => setAudienceOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Audience: ${describeAudience(audience, groups)}. Tap to change.`}
+              style={({ pressed }) => [
+                styles.audienceRow,
+                pressed && styles.audiencePressed,
+              ]}
+            >
+              <Text style={styles.audienceValue}>
+                {describeAudience(audience, groups)}
+              </Text>
+              <Text style={styles.audienceEdit}>Edit ▸</Text>
+            </Pressable>
           </View>
 
           {/* ── StagingTray ─────────────────────────────────────────────── */}
@@ -1085,6 +1080,14 @@ export default function ComposerScreen() {
           </>
         ) : null}
       </Sheet>
+
+      <AudienceSheet
+        mode="controlled"
+        value={audience}
+        onChange={setAudience}
+        visible={audienceOpen}
+        onClose={() => setAudienceOpen(false)}
+      />
     </Screen>
   );
 }
@@ -1301,6 +1304,32 @@ function makeStyles(t: Theme) {
       color: t.color.inkMuted,
     },
     chipTextActive: { color: t.color.paper },
+
+    // Audience summary row (taps open the AudienceSheet)
+    audienceRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.sm,
+      minHeight: 44,
+    },
+    audiencePressed: { opacity: 0.6 },
+    audienceValue: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      color: t.color.ink,
+      flexShrink: 1,
+    },
+    audienceEdit: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.accent,
+    },
 
     // Tray
     emptyTray: {

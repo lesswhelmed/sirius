@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
+import { Avatar, FriendName } from "./_components/friend-identity";
 
 export interface FriendItem {
   id: string;
@@ -267,40 +267,6 @@ function SortOption({
   );
 }
 
-// A serif monogram in a hairline circle — a calm, image-free avatar that scales
-// to any list length and matches the editorial system.
-function Monogram({ name }: { name: string }) {
-  const initial = (name.trim()[0] ?? "·").toUpperCase();
-  return (
-    <span
-      aria-hidden
-      className="flex size-9 shrink-0 items-center justify-center rounded-full border border-[var(--color-rule)] bg-[var(--color-paper-sunken)] font-display text-[16px] text-[var(--fg-muted)]"
-    >
-      {initial}
-    </span>
-  );
-}
-
-// The friend's profile image when present, else the monogram. Remote URLs stay
-// unoptimized (mirrors PostImage) so a third-party avatar host can't fail the
-// Next optimizer; a load error quietly degrades to the monogram.
-function Avatar({ name, image }: { name: string; image?: string | null }) {
-  const [failed, setFailed] = useState(false);
-  if (!image || failed) return <Monogram name={name} />;
-  return (
-    <Image
-      src={image}
-      alt=""
-      aria-hidden
-      width={36}
-      height={36}
-      unoptimized={!image.startsWith("/")}
-      onError={() => setFailed(true)}
-      className="size-9 shrink-0 rounded-full border border-[var(--color-rule)] object-cover"
-    />
-  );
-}
-
 // An accepted-friend row: the avatar/name/handle/since region is one link to the
 // friend's catalog; Remove is a sibling button so the anchor stays valid. A
 // friend without a handle has no catalog URL, so it renders un-linked.
@@ -316,16 +282,7 @@ function FriendRow({
     <>
       <Avatar name={item.name} image={item.image} />
       <span className="min-w-0">
-        <span className="flex flex-wrap items-baseline gap-x-2">
-          <span className="truncate font-display text-[19px] text-[var(--fg)] transition-colors group-hover:text-[var(--color-accent)]">
-            {item.name}
-          </span>
-          {item.handle ? (
-            <span className="font-mono text-[11px] text-[var(--fg-subtle)]">
-              @{item.handle}
-            </span>
-          ) : null}
-        </span>
+        <FriendName name={item.name} handle={item.handle} size={19} hoverAccent />
         {since ? (
           <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-faint)]">
             Since {since}
@@ -368,16 +325,7 @@ function Row({
     <li className="hairline-b flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3">
       <span className="flex min-w-0 items-center gap-3">
         <Avatar name={item.name} image={item.image} />
-        <span className="flex flex-wrap items-baseline gap-2">
-          <span className="font-display text-[18px] text-[var(--fg)]">
-            {item.name}
-          </span>
-          {item.handle ? (
-            <span className="font-mono text-[11px] text-[var(--fg-subtle)]">
-              @{item.handle}
-            </span>
-          ) : null}
-        </span>
+        <FriendName name={item.name} handle={item.handle} size={18} />
       </span>
       <span className="flex items-baseline gap-4">{children}</span>
     </li>

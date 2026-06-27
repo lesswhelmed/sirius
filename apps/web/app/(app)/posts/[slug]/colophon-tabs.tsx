@@ -5,14 +5,19 @@ import { useState } from "react";
 import { DateDisplay } from "../../../../lib/date-display";
 import type { DateInput } from "../../../../lib/datetime";
 import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
+import type {
+  GroupMember,
+  GroupSummary,
+  Visibility,
+} from "../../../../lib/groups/types";
 import {
   AssignToProject,
   type ProjectOption,
 } from "../../_components/assign-to-project";
+import { AudiencePicker } from "../../_components/audience-picker";
 import { DeletePostButton } from "./delete-post-button";
 import { SaveButton } from "./save-button";
 import { ShareButton } from "./share-button";
-import { type Visibility, VisibilityControl } from "./_components/visibility-control";
 
 export interface SourceFile {
   submissionId: string;
@@ -45,6 +50,9 @@ export interface ColophonPost {
   sourceHash: string | null;
   syncStatus: string;
   visibility: Visibility;
+  // The groups this post is shared with (the active GROUP audience). Empty unless
+  // visibility === "GROUP".
+  groupIds: string[];
   originalUrl: string | null;
   imageUrl: string | null;
   createdAt: DateInput;
@@ -67,6 +75,8 @@ const TABS: { key: TabKey; label: string }[] = [
 // reference on every render.
 const EMPTY_PROJECTS: ProjectOption[] = [];
 const EMPTY_SOURCE_FILES: SourceFile[] = [];
+const EMPTY_GROUPS: GroupSummary[] = [];
+const EMPTY_FRIENDS: GroupMember[] = [];
 
 export function ColophonTabs({
   post,
@@ -78,6 +88,8 @@ export function ColophonTabs({
   canEditVisibility = false,
   isOwner = false,
   sourceFiles = EMPTY_SOURCE_FILES,
+  groups = EMPTY_GROUPS,
+  friends = EMPTY_FRIENDS,
 }: {
   post: ColophonPost;
   stats?: ColophonStats | null;
@@ -88,6 +100,10 @@ export function ColophonTabs({
   canEditVisibility?: boolean;
   isOwner?: boolean;
   sourceFiles?: SourceFile[];
+  // The owner's share groups (for the audience picker) + their friends (seed for
+  // the inline create-group dialog). Owner-only.
+  groups?: GroupSummary[];
+  friends?: GroupMember[];
 }) {
   const [tab, setTab] = useState<TabKey>("details");
   const downloadLinkClass =
@@ -178,9 +194,15 @@ export function ColophonTabs({
 
         {canEditVisibility ? (
           <div className="pt-1">
-            <VisibilityControl
+            <AudiencePicker
+              mode="edit"
               slug={post.slug}
-              currentVisibility={post.visibility}
+              initialValue={{
+                visibility: post.visibility,
+                groupIds: post.groupIds,
+              }}
+              initialGroups={groups}
+              friends={friends}
               canEdit={canEditVisibility}
             />
           </div>

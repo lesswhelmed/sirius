@@ -52,6 +52,8 @@ link `siriusapp://queue` still resolves (back-compat) via the top-level
 | `/shareintent`         | `shareintent.tsx`           | Share-extension landing. NOT linked directly. **iOS**: `+native-intent.ts` rewrites the synthetic `mobile://dataUrl=…` share URL here. **Android**: there is no share URL — the Android-only `ShareIntentNavigator` in `_layout.tsx` pushes here off the `hasShareIntent` event. |
 | `/focus`               | `focus.tsx`                 | `siriusapp://focus`                                                                |
 | `/friends`             | `friends.tsx`               | `siriusapp://friends` (also pushed from Account).                                  |
+| `/groups`              | `groups.tsx`                | `siriusapp://groups`. Share-groups manager (pushed from Friends). Lists groups + hosts the create-group flow. |
+| `/group/[id]`          | `group/[id].tsx`            | `siriusapp://group/<id>`. Group editor: rename, privacy (Private/Shared), add/remove members, delete. |
 | `/help`                | `help.tsx`                  | `siriusapp://help`. "How Sirius works" hub + first-run onboarding.                 |
 | `/queue`               | `queue.tsx`                 | `siriusapp://queue`. Back-compat redirect → `/library` (Queue folded into Catalog; no longer a tab). |
 | `/space`               | `space.tsx`                 | `siriusapp://space`. Full 3D embedding space (the Explore tab's "Map" view also lives here). |

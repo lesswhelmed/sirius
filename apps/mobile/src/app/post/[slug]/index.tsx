@@ -5,7 +5,7 @@
 // seeing THE SAME post before, during, and after sync. The network fetch is only a
 // fallback for a slug that was never pulled into the mirror (a rare deep-link).
 import type { Category, Post, Tag } from "@repo/db";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { and, eq, ne } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Image } from "expo-image";
@@ -23,8 +23,8 @@ import { CommentsSection } from "@/components/comments-section";
 import { RelatedPosts } from "@/components/explore/related-posts";
 import { OriginalContentSection } from "@/components/original-content-section";
 import { PostMarkdown } from "@/components/post-markdown";
+import { AudienceSheet } from "@/components/audience-sheet";
 import { KindLabel, Screen, Title } from "@/components/sirius";
-import { VisibilitySheet } from "@/components/visibility-sheet";
 import type { Theme } from "@/constants/theme";
 import {
   usePostTypeTone,
@@ -144,6 +144,7 @@ export default function PostDetailScreen() {
   }>();
   const [visibilityOpen, setVisibilityOpen] = useState(false);
   const router = useRouter();
+  const qc = useQueryClient();
 
   // Local mirror first. `localRows === undefined` means the live query hasn't
   // resolved yet; an empty array means there's genuinely no local copy.
@@ -235,10 +236,10 @@ export default function PostDetailScreen() {
           <Pressable
             onPress={() => setVisibilityOpen(true)}
             accessibilityRole="button"
-            accessibilityLabel="Change visibility"
+            accessibilityLabel="Change audience"
             style={({ pressed }) => [styles.visRow, pressed && styles.visPressed]}
           >
-            <Text style={styles.visLabel}>Visibility</Text>
+            <Text style={styles.visLabel}>Audience</Text>
             <Text style={styles.visValue}>Edit ▸</Text>
           </Pressable>
         ) : null}
@@ -306,10 +307,14 @@ export default function PostDetailScreen() {
         <CommentsSection postSlug={slug} />
       </ScrollView>
       {localRow ? (
-        <VisibilitySheet
+        <AudienceSheet
+          mode="persist"
           slug={slug}
           visible={visibilityOpen}
           onClose={() => setVisibilityOpen(false)}
+          onSaved={() => {
+            void qc.invalidateQueries({ queryKey: ["post", slug] });
+          }}
         />
       ) : null}
     </Screen>

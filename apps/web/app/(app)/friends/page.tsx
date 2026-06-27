@@ -1,17 +1,15 @@
-import { listFriends, listPendingRequests } from "@repo/db";
+import { listFriends, listPendingRequests, listShareGroups } from "@repo/db";
 import { requireSession } from "../../../lib/session";
-import { AddFriend } from "./add-friend";
-import {
-  type FriendItem,
-  FriendsList,
-  type RequestItem,
-} from "./friends-list";
+import type { GroupSummary } from "../../../lib/groups/types";
+import { FriendsShell } from "./friends-shell";
+import type { FriendItem, RequestItem } from "./friends-list";
 
 export default async function FriendsPage() {
   const session = await requireSession("/friends");
-  const [friends, requests] = await Promise.all([
+  const [friends, requests, groups] = await Promise.all([
     listFriends(session.user.id),
     listPendingRequests(session.user.id),
+    listShareGroups(session.user.id),
   ]);
 
   const friendItems: FriendItem[] = friends.map((f) => ({
@@ -28,6 +26,15 @@ export default async function FriendsPage() {
     image: r.user.image,
     direction: r.direction,
   }));
+  // Serialize the @repo/db Date fields to the client-friendly GroupSummary shape.
+  const groupItems: GroupSummary[] = groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    visibility: g.visibility,
+    memberCount: g.memberCount,
+    createdAt: g.createdAt.toISOString(),
+    updatedAt: g.updatedAt.toISOString(),
+  }));
 
   return (
     <section className="mx-auto max-w-[640px]">
@@ -42,13 +49,10 @@ export default async function FriendsPage() {
       </header>
 
       <div className="mt-8">
-        <AddFriend />
-      </div>
-
-      <div className="mt-10">
-        <FriendsList
-          initialFriends={friendItems}
-          initialRequests={requestItems}
+        <FriendsShell
+          friends={friendItems}
+          requests={requestItems}
+          groups={groupItems}
         />
       </div>
     </section>

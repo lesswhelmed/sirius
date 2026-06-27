@@ -8,7 +8,9 @@ import { ApiError, apiPostJson } from "@/lib/api";
 
 // Read visibility for the resulting Post (composer choice). Matches the server's
 // PostVisibility enum. Optional everywhere: omitted → the worker keeps PRIVATE.
-export type Visibility = "PRIVATE" | "FRIENDS" | "PUBLIC";
+// "GROUP" pairs with a non-empty shareGroupIds array (invariant enforced by the
+// composer's AudienceValue): the post is shared only with those share groups.
+export type Visibility = "PRIVATE" | "FRIENDS" | "PUBLIC" | "GROUP";
 
 export type SubmitOk = {
   id: string;
@@ -33,6 +35,7 @@ export function submitUrl(
   projectId?: string,
   draft?: DraftEnvelope,
   visibility?: Visibility,
+  shareGroupIds?: string[],
 ): Promise<SubmitOk> {
   return apiPostJson<SubmitOk>("/api/app/ingest", {
     urls: [url],
@@ -40,6 +43,11 @@ export function submitUrl(
     force,
     ...(projectId ? { projectId } : {}),
     ...(visibility ? { visibility } : {}),
+    // Share groups apply only to a GROUP-visibility post; the server validates
+    // ownership and drops them otherwise, but we keep the body tidy here too.
+    ...(visibility === "GROUP" && shareGroupIds?.length
+      ? { shareGroupIds }
+      : {}),
     // Single-url submissions may carry an on-device draft built from the
     // /api/app/extract summary; the server only honors it for one URL.
     ...(draft ? { draft } : {}),
@@ -70,12 +78,14 @@ export function noteIngestBody(
   projectId?: string,
   draft?: DraftEnvelope,
   visibility?: Visibility,
+  shareGroupIds?: string[],
 ): {
   urls: string[];
   notes: string;
   force: boolean;
   projectId?: string;
   visibility?: Visibility;
+  shareGroupIds?: string[];
   draft?: DraftEnvelope;
 } {
   return {
@@ -84,6 +94,9 @@ export function noteIngestBody(
     force,
     ...(projectId ? { projectId } : {}),
     ...(visibility ? { visibility } : {}),
+    ...(visibility === "GROUP" && shareGroupIds?.length
+      ? { shareGroupIds }
+      : {}),
     ...(draft ? { draft } : {}),
   };
 }
@@ -94,14 +107,20 @@ export function submitNote(
   projectId?: string,
   draft?: DraftEnvelope,
   visibility?: Visibility,
+  shareGroupIds?: string[],
 ): Promise<SubmitOk> {
   return apiPostJson<SubmitOk>(
     "/api/app/ingest",
     // DraftEnvelope is JSON-shaped by construction; apiPostJson's recursive
     // Json type just can't prove it through the zod-inferred object type.
-    noteIngestBody(notes, force, projectId, draft, visibility) as Parameters<
-      typeof apiPostJson
-    >[1],
+    noteIngestBody(
+      notes,
+      force,
+      projectId,
+      draft,
+      visibility,
+      shareGroupIds,
+    ) as Parameters<typeof apiPostJson>[1],
   );
 }
 
