@@ -1,5 +1,9 @@
 # Android parity + emulator runbook
 
+> **Shipping to Google Play?** This file is about **local emulator** parity testing. For
+> the **EAS cloud production build + Play submit** runbook (server-URL env, fingerprint
+> pitfall, service-account key), see [`ANDROID-BUILD.md`](./ANDROID-BUILD.md).
+
 > **Status:** PLAN — no code changed yet. This file is the single source of truth for
 > bringing the Sirius mobile app to feature parity on Android and running it on an
 > Android emulator for manual testing. Written 2026-06-26 after a full code review of
