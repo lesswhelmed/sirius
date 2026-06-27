@@ -151,10 +151,21 @@ production.
 
 | Root script | EAS command |
 | --- | --- |
-| `mobile:build:android` | `eas build --profile production --platform android` |
+| `mobile:build:android` | `eas build --profile production --platform android` (interactive) |
+| `mobile:build:android:ci` | same + `--non-interactive` (CI / agent / unattended) |
 | `mobile:submit:android` | `eas submit --profile production --platform android` |
 | `mobile:build:preview:android` | `eas build --profile preview --platform android` |
 | `mobile:build:dev:android` | `eas build --profile development --platform android` |
 | `mobile:build:all` | `eas build --profile production --platform all` (iOS + Android) |
 
 OTA JS-only push (no native change, fingerprint must match): `bun --cwd apps/mobile update:prod`.
+
+## 6. Operational notes (from the first live prod run, 2026-06-27)
+
+- **EAS build credits:** the monthly included Android build credits are exhausted — further
+  builds run **pay-as-you-go**. Expect a billing prompt; not an error.
+- **First Play upload must be manual.** `eas submit` (track `internal`) only works after the
+  app exists in the Play Console with at least one release uploaded **by hand** for
+  `dev.copt.sirius`. Do that once, then API submits succeed.
+- **Transient upload failures** (`write EPIPE` mid tarball upload) are network drops, not
+  config — just re-run `mobile:build:android`. Keystore/credentials/fingerprint persist.
