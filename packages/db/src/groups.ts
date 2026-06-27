@@ -10,7 +10,7 @@ import {
   Prisma,
   ShareGroupVisibility,
 } from "../generated/prisma";
-import { areFriends } from "./friends";
+import { areFriends, friendIdsOf } from "./friends";
 import { prisma } from "./index";
 
 const UNIQUE_VIOLATION = "P2002";
@@ -334,14 +334,13 @@ export async function shareGroupIdsOwnedBy(
 }
 
 // The subset of `userIds` that are the owner's current accepted friends. Used to
-// validate seed members on create. Single round-trip via friendIdsOf would also
-// work; this filters to exactly the requested set.
+// validate seed members on create. One round-trip (friendIdsOf) intersected with
+// the requested set, instead of N parallel areFriends lookups.
 async function friendsAmong(
   ownerId: string,
   userIds: string[],
 ): Promise<string[]> {
-  const checks = await Promise.all(
-    [...new Set(userIds)].map(async (id) => ((await areFriends(ownerId, id)) ? id : null)),
-  );
-  return checks.filter((id): id is string => id != null);
+  const requested = new Set(userIds);
+  const friendIds = await friendIdsOf(ownerId);
+  return friendIds.filter((id) => requested.has(id));
 }

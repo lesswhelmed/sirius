@@ -74,7 +74,11 @@ export function AudienceSheet(props: AudienceSheetProps) {
 
   // Persist mode: fetch the post's current base visibility + its groups only
   // while the sheet is open. Controlled mode skips both (value comes from props).
-  const { data: postData, isLoading: postLoading } = useQuery({
+  const {
+    data: postData,
+    isLoading: postLoading,
+    isError: postError,
+  } = useQuery({
     queryKey: ["post-visibility", slug],
     queryFn: () =>
       apiGet<{ visibility: AudienceValue["visibility"] }>(
@@ -82,7 +86,11 @@ export function AudienceSheet(props: AudienceSheetProps) {
       ),
     enabled: persist && props.visible && !!slug,
   });
-  const { data: postGroupsData, isLoading: postGroupsLoading } = useQuery({
+  const {
+    data: postGroupsData,
+    isLoading: postGroupsLoading,
+    isError: postGroupsError,
+  } = useQuery({
     queryKey: ["post-groups", slug],
     queryFn: () =>
       apiGet<{ groups: { id: string }[] }>(`/api/app/posts/${slug}/groups`),
@@ -95,15 +103,23 @@ export function AudienceSheet(props: AudienceSheetProps) {
 
   // The source audience (props in controlled mode; the fetched server state in
   // persist mode) before any pending local edits.
+  // In persist mode BOTH fetches must succeed before we build a source: deriving
+  // groupIds from a FAILED groups fetch would yield {GROUP, []}, and Saving that
+  // would wipe every PostShareGroup link (silent drop to owner-only). Requiring
+  // postGroupsData here means an errored groups fetch leaves source null → the
+  // error branch renders instead of a wipe-capable Save.
   const source: AudienceValue | null =
     props.mode === "controlled"
       ? props.value
-      : postData
+      : postData && postGroupsData
         ? {
             visibility: postData.visibility,
-            groupIds: postGroupsData?.groups.map((g) => g.id) ?? [],
+            groupIds: postGroupsData.groups.map((g) => g.id),
           }
         : null;
+
+  // A persist-mode fetch failed (and the user has no pending local edit to save).
+  const loadFailed = persist && (postError || postGroupsError) && !local;
 
   const current = local ?? source;
 
@@ -145,6 +161,13 @@ export function AudienceSheet(props: AudienceSheetProps) {
 
   async function save() {
     if (props.mode !== "persist" || !current || !slug || saving) return;
+    // Never persist GROUP with an empty set — that would drop the post to
+    // owner-only. The UI can't normally produce it (clearing groups falls back to
+    // a base tier), but guard defensively so a flaky-fetch state can't wipe links.
+    if (current.visibility === "GROUP" && current.groupIds.length === 0) {
+      setError("Pick at least one group, or choose Private / Friends / Public.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -187,6 +210,13 @@ export function AudienceSheet(props: AudienceSheetProps) {
             setView("audience");
           }}
         />
+      ) : loadFailed ? (
+        <View style={styles.loading}>
+          <Text style={styles.error} accessibilityRole="alert">
+            Couldn’t load this post’s audience. Check your connection and try
+            again — your current sharing is unchanged.
+          </Text>
+        </View>
       ) : loading || !current ? (
         <View style={styles.loading}>
           <ActivityIndicator color={t.color.accent} />

@@ -24,7 +24,10 @@ export const groupUpdateSchema = z
 export const memberSchema = z.object({ userId: z.string().min(1) });
 
 export const postGroupsSchema = z.object({
-  groupIds: z.array(z.string().min(1)).max(100),
+  // At least one group: a GROUP post with zero links is owner-only, an
+  // audience-narrowing trap. Callers that want to STOP group-sharing must use the
+  // visibility endpoint (PUT .../visibility) to move to a base tier instead.
+  groupIds: z.array(z.string().min(1)).min(1).max(100),
 });
 
 export type GroupCreateInput = z.infer<typeof groupCreateSchema>;

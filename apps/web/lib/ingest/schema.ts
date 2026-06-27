@@ -37,19 +37,26 @@ const flexibleVisibility = z.preprocess(
 // list, or "" when absent. Always normalizes to string[] (empty when absent).
 // submit.ts validates ownership + drops these for non-GROUP / unattributed bearer.
 const flexibleIdList = z.preprocess((value) => {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || value.trim().length === 0) return [];
-  const trimmed = value.trim();
-  if (trimmed.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
+  const raw: unknown[] = (() => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== "string" || value.trim().length === 0) return [];
+    const trimmed = value.trim();
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
     }
-  }
-  return trimmed.split(/[\n,]/);
-}, z.array(z.string().trim().min(1)).default([]));
+    return trimmed.split(/[\n,]/);
+  })();
+  // Drop empty/blank tokens so a trailing comma or blank line (or a stray "" in a
+  // JSON array) never 400s the whole ingest — they're just ignored.
+  return raw
+    .map((v) => (typeof v === "string" ? v.trim() : v))
+    .filter((v) => typeof v === "string" && v.length > 0);
+}, z.array(z.string().min(1)).default([]));
 
 export const urlIngestSchema = z
   .object({
