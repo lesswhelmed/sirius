@@ -699,31 +699,9 @@ export default function ComposerScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <View style={styles.headerMain}>
-              <Eyebrow>Section III — Ingest</Eyebrow>
-              <Title accent="." accessibilityRole="header">
-                Capture
-              </Title>
-            </View>
-            <View style={styles.headerToolbar}>
-              <TextLink
-                label="Manage focus →"
-                tone={t.color.accent}
-                onPress={() => router.push("/focus")}
-              />
-              <TextLink
-                label="How it works →"
-                tone={t.color.accent}
-                onPress={() => router.push("/help")}
-              />
-              {ON_DEVICE_AI_ENABLED ? (
-                <TextLink
-                  label="On-device AI →"
-                  tone={t.color.accent}
-                  onPress={() => router.push("/llm")}
-                />
-              ) : null}
-            </View>
+            <Title accent="." accessibilityRole="header">
+              Capture
+            </Title>
           </View>
 
           {/* ── OmniInput ──────────────────────────────────────────────── */}
@@ -731,13 +709,10 @@ export default function ComposerScreen() {
             style={styles.omni}
             accessibilityLabel="Omni input. Paste links, type a note, or attach a file."
           >
-            <Text style={styles.omniCopy}>
-              Drop any link, file, or note here. We&apos;ll handle the sorting.
-            </Text>
             <Field
               style={styles.omniInput}
               placeholder={
-                "Paste a URL or write a note…\nMultiple links split into separate cards."
+                "Paste a link or write a note…\nMultiple links split into separate cards."
               }
               multiline
               autoCapitalize="sentences"
@@ -746,9 +721,13 @@ export default function ComposerScreen() {
               onChangeText={setOmniText}
               accessibilityLabel="Paste links or type a note"
             />
+            {/* iOS multiline TextInputs trap the keyboard (no return dismiss, no
+                inputAccessoryView) — this shows only while the keyboard is up and
+                dismisses it so a long note never hides behind it. */}
+            <KeyboardDoneButton style={styles.keyboardDone} />
             <View style={styles.omniActions}>
               <PrimaryButton
-                label="Add to tray"
+                label="Add"
                 onPress={commitOmniText}
                 disabled={busy || omniText.trim().length === 0}
                 style={styles.omniAdd}
@@ -805,138 +784,159 @@ export default function ComposerScreen() {
               <View style={styles.flex} />
             </View>
             <Text style={styles.shareHint}>
-              Tip: share anything to Sirius from another app&apos;s share sheet —
-              no need to open this screen.
+              Tip: share anything to Sirius from another app&apos;s share sheet.
             </Text>
+            <TextLink
+              label="How it works →"
+              tone={t.color.accent}
+              onPress={() => router.push("/help")}
+            />
           </View>
 
-          {/* ── Focus / Visibility (session-level, unchanged) ──────────── */}
-          {projects.length > 0 ? (
-            <View style={styles.picker}>
-              <Eyebrow>Focus</Eyebrow>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.pickerScroll}
-              >
-                {[{ id: null, title: "None" }, ...projects].map((p) => (
-                  <Pressable
-                    key={p.id ?? "__none__"}
-                    style={({ pressed }) => [
-                      styles.chip,
-                      projectId === p.id && styles.chipActive,
-                      pressed && styles.chipPressed,
-                    ]}
-                    onPress={() => setProjectId(p.id)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Focus: ${p.title}`}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        projectId === p.id && styles.chipTextActive,
-                      ]}
-                    >
-                      {p.title}
-                    </Text>
-                  </Pressable>
+          {/* ── StagingTray (revealed once something is added) ──────────── */}
+          {items.length > 0 ? (
+            <View style={styles.trayBlock}>
+              <TrayHeader
+                count={items.length}
+                toFix={countToFix(items, trayErrors)}
+                liveLabel={countLabel}
+              />
+              <TrayErrorSummary summaries={trayErrors.summaries} />
+              <View style={styles.trayList}>
+                {items.map((item) => (
+                  <SmartCard
+                    key={item.id}
+                    item={item}
+                    errors={trayErrors.byId.get(item.id) ?? []}
+                    collapsedCodes={trayErrors.collapsedCodes}
+                    thumbUri={
+                      item.kind === "image"
+                        ? registry.get(item.id)?.uri
+                        : undefined
+                    }
+                    sightBadge={item.kind === "image" && item.id === firstImageId}
+                    onEdit={() => openEdit(item.id)}
+                    onOverride={(to) => onOverride(item.id, to)}
+                    onRemove={() => removeItem(item.id)}
+                    disabled={busy}
+                  />
                 ))}
-              </ScrollView>
-            </View>
-          ) : (
-            <View style={styles.pickerEmpty}>
-              <Eyebrow>Focus</Eyebrow>
-              <Text style={styles.pickerEmptyText}>No focus areas yet.</Text>
-              <TextLink
-                label="Create your first focus area →"
-                tone={t.color.accent}
-                onPress={() => router.push("/focus")}
-              />
-            </View>
-          )}
-
-          <View style={styles.picker}>
-            <Eyebrow>Audience</Eyebrow>
-            <Pressable
-              onPress={() => setAudienceOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel={`Audience: ${describeAudience(audience, groups)}. Tap to change.`}
-              style={({ pressed }) => [
-                styles.audienceRow,
-                pressed && styles.audiencePressed,
-              ]}
-            >
-              <Text style={styles.audienceValue}>
-                {describeAudience(audience, groups)}
-              </Text>
-              <Text style={styles.audienceEdit}>Edit ▸</Text>
-            </Pressable>
-          </View>
-
-          {/* ── StagingTray ─────────────────────────────────────────────── */}
-          <TrayHeader
-            count={items.length}
-            toFix={countToFix(items, trayErrors)}
-            liveLabel={countLabel}
-          />
-          <TrayErrorSummary summaries={trayErrors.summaries} />
-
-          {items.length === 0 ? (
-            <Text style={styles.emptyTray}>
-              Nothing staged yet. Paste or attach something above to begin.
-            </Text>
-          ) : (
-            <View style={styles.trayList}>
-              {items.map((item) => (
-                <SmartCard
-                  key={item.id}
-                  item={item}
-                  errors={trayErrors.byId.get(item.id) ?? []}
-                  collapsedCodes={trayErrors.collapsedCodes}
-                  thumbUri={
-                    item.kind === "image"
-                      ? registry.get(item.id)?.uri
-                      : undefined
-                  }
-                  sightBadge={item.kind === "image" && item.id === firstImageId}
-                  onEdit={() => openEdit(item.id)}
-                  onOverride={(to) => onOverride(item.id, to)}
-                  onRemove={() => removeItem(item.id)}
-                  disabled={busy}
-                />
-              ))}
-            </View>
-          )}
-
-          {/* On-device drafting toggle (unchanged gating). */}
-          {ON_DEVICE_AI_ENABLED && llmReadyData === true ? (
-            <View style={styles.curationRow}>
-              <View style={styles.curationCopy}>
-                <Text style={styles.curationLabel}>Draft on device</Text>
-                <Text style={styles.curationHint}>
-                  Notes are written privately by the local model.
-                </Text>
               </View>
-              <Switch
-                value={curationOn}
-                onValueChange={(v) => void toggleCuration(v)}
-                trackColor={{ true: t.color.ink }}
-                accessibilityLabel="Draft on device"
-              />
             </View>
-          ) : ON_DEVICE_AI_ENABLED && llmReadyIsSuccess ? (
-            <View style={styles.curationRow}>
-              <View style={styles.curationCopy}>
-                <Text style={styles.curationLabel}>On-device AI</Text>
-                <Text style={styles.curationHint}>
-                  Download a model to draft privately.
-                </Text>
-                <TextLink
-                  label="Get the model →"
-                  tone={t.color.accent}
-                  onPress={() => router.push("/llm")}
-                />
+          ) : null}
+
+          {/* ── Refine & send: focus / audience / privacy / on-device only
+              reveal once the tray has something, so the rest state stays a
+              single input. All controls + their handlers are unchanged. ─── */}
+          {items.length > 0 ? (
+            <View style={styles.refineSection}>
+              <Eyebrow>Refine &amp; send</Eyebrow>
+
+              {/* Focus / Visibility (session-level, unchanged) */}
+              {projects.length > 0 ? (
+                <View style={styles.picker}>
+                  <Eyebrow>Focus</Eyebrow>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.pickerScroll}
+                  >
+                    {[{ id: null, title: "None" }, ...projects].map((p) => (
+                      <Pressable
+                        key={p.id ?? "__none__"}
+                        style={({ pressed }) => [
+                          styles.chip,
+                          projectId === p.id && styles.chipActive,
+                          pressed && styles.chipPressed,
+                        ]}
+                        onPress={() => setProjectId(p.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Focus: ${p.title}`}
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+                            projectId === p.id && styles.chipTextActive,
+                          ]}
+                        >
+                          {p.title}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                  <TextLink
+                    label="Manage focus →"
+                    tone={t.color.accent}
+                    onPress={() => router.push("/focus")}
+                  />
+                </View>
+              ) : (
+                <View style={styles.pickerEmpty}>
+                  <Eyebrow>Focus</Eyebrow>
+                  <Text style={styles.pickerEmptyText}>No focus areas yet.</Text>
+                  <TextLink
+                    label="Create your first focus area →"
+                    tone={t.color.accent}
+                    onPress={() => router.push("/focus")}
+                  />
+                </View>
+              )}
+
+              {/* Audience */}
+              <View style={styles.picker}>
+                <Eyebrow>Audience</Eyebrow>
+                <Pressable
+                  onPress={() => setAudienceOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Audience: ${describeAudience(audience, groups)}. Tap to change.`}
+                  style={({ pressed }) => [
+                    styles.audienceRow,
+                    pressed && styles.audiencePressed,
+                  ]}
+                >
+                  <Text style={styles.audienceValue}>
+                    {describeAudience(audience, groups)}
+                  </Text>
+                  <Text style={styles.audienceEdit}>Edit ▸</Text>
+                </Pressable>
               </View>
+
+              {/* On-device drafting toggle (unchanged gating). */}
+              {ON_DEVICE_AI_ENABLED && llmReadyData === true ? (
+                <View style={styles.curationRow}>
+                  <View style={styles.curationCopy}>
+                    <Text style={styles.curationLabel}>Draft on device</Text>
+                    <Text style={styles.curationHint}>
+                      Notes are written privately by the local model.
+                    </Text>
+                    <TextLink
+                      label="On-device AI →"
+                      tone={t.color.accent}
+                      onPress={() => router.push("/llm")}
+                    />
+                  </View>
+                  <Switch
+                    value={curationOn}
+                    onValueChange={(v) => void toggleCuration(v)}
+                    trackColor={{ true: t.color.ink }}
+                    accessibilityLabel="Draft on device"
+                  />
+                </View>
+              ) : ON_DEVICE_AI_ENABLED && llmReadyIsSuccess ? (
+                <View style={styles.curationRow}>
+                  <View style={styles.curationCopy}>
+                    <Text style={styles.curationLabel}>On-device AI</Text>
+                    <Text style={styles.curationHint}>
+                      Download a model to draft privately.
+                    </Text>
+                    <TextLink
+                      label="Get the model →"
+                      tone={t.color.accent}
+                      onPress={() => router.push("/llm")}
+                    />
+                  </View>
+                </View>
+              ) : null}
             </View>
           ) : null}
         </ScrollView>
@@ -1281,16 +1281,6 @@ function makeStyles(t: Theme) {
       gap: t.space.lg,
     },
     header: { gap: t.space.lg, marginBottom: t.space.xs },
-    headerMain: { gap: t.space.xs },
-    headerToolbar: {
-      flexDirection: "row",
-      alignItems: "center",
-      flexWrap: "wrap",
-      gap: t.space.xl,
-      borderBottomWidth: 1,
-      borderColor: t.color.rule,
-      paddingBottom: t.space.md,
-    },
 
     // OmniInput
     omni: {
@@ -1300,12 +1290,6 @@ function makeStyles(t: Theme) {
       backgroundColor: t.color.paperRaised,
       padding: t.space.lg,
       gap: t.space.md,
-    },
-    omniCopy: {
-      fontFamily: t.font.serif,
-      fontSize: 17,
-      lineHeight: 23,
-      color: t.color.ink,
     },
     omniInput: {
       minHeight: 96,
@@ -1377,13 +1361,17 @@ function makeStyles(t: Theme) {
     },
 
     // Tray
-    emptyTray: {
-      fontFamily: t.font.serif,
-      fontSize: 15,
-      color: t.color.inkMuted,
-      fontStyle: "italic",
-    },
+    trayBlock: { gap: t.space.sm },
     trayList: { gap: t.space.sm },
+
+    // Refine & send — the progressively-revealed step. A top hairline rule sets
+    // it off as a distinct editorial band below the input + tray.
+    refineSection: {
+      gap: t.space.lg,
+      borderTopWidth: 1,
+      borderTopColor: t.color.rule,
+      paddingTop: t.space.lg,
+    },
 
     // Curation toggle
     curationRow: {
