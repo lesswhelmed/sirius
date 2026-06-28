@@ -35,6 +35,7 @@ import {
   AccessibilityInfo,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -56,11 +57,7 @@ import {
   TextLink,
   Title,
 } from "@/components/sirius";
-import {
-  SmartCard,
-  TrayErrorSummary,
-  TrayHeader,
-} from "@/components/omni-tray";
+import { SmartCard, TrayErrorSummary } from "@/components/omni-tray";
 import { AudienceSheet } from "@/components/audience-sheet";
 
 import { BottomTabInset, type Theme } from "@/constants/theme";
@@ -153,6 +150,13 @@ export default function ComposerScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
 
+  // Review & send flow. The tray no longer dumps focus/audience/curation inline;
+  // instead a tray bar opens a 2-step wizard (1 = audience, 2 = focus + send) so
+  // it's one decision per screen. `itemsSheetOpen` shows the staged cards for
+  // edit/remove from the tray bar. `reviewStep` null = wizard closed.
+  const [reviewStep, setReviewStep] = useState<null | 1 | 2>(null);
+  const [itemsSheetOpen, setItemsSheetOpen] = useState(false);
+
   // On-device curation toggle + model-on-disk readiness.
   const { data: llmSettings } = useQuery({
     queryKey: ["llm-settings"],
@@ -189,14 +193,6 @@ export default function ComposerScreen() {
     () => items.find((i) => i.kind === "image")?.id,
     [items],
   );
-
-  const countLabel = useMemo(() => {
-    if (items.length === 0) return "Tray empty";
-    const fix = trayErrors.summaries.length
-      ? `, ${countToFix(items, trayErrors)} need attention`
-      : "";
-    return `${items.length} item${items.length === 1 ? "" : "s"} in tray${fix}`;
-  }, [items, trayErrors]);
 
   // Append classified items + announce a summarized utterance (one per gesture).
   function appendItems(next: ClassifiedItem[], announce: string) {
@@ -610,6 +606,8 @@ export default function ComposerScreen() {
     setRegistry(new Map());
     setProjectId(null);
     setAudience(DEFAULT_AUDIENCE);
+    setReviewStep(null);
+    setItemsSheetOpen(false);
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
     router.push("/(tabs)/library");
@@ -742,8 +740,6 @@ export default function ComposerScreen() {
               sublabel="Take one or pick from your library"
               symbol="photo.on.rectangle"
               glyph="▦"
-              framed
-              primary
               disabled={busy}
               accessibilityHint="Take a photo or pick from your library"
               onPress={() => setMediaSheet("photo")}
@@ -798,177 +794,21 @@ export default function ComposerScreen() {
             />
           </View>
 
-          {/* ── StagingTray (revealed once something is added) ──────────── */}
-          {items.length > 0 ? (
-            <View style={styles.trayBlock}>
-              <TrayHeader
-                count={items.length}
-                toFix={countToFix(items, trayErrors)}
-                liveLabel={countLabel}
-              />
-              <TrayErrorSummary summaries={trayErrors.summaries} />
-              <View style={styles.trayList}>
-                {items.map((item) => (
-                  <SmartCard
-                    key={item.id}
-                    item={item}
-                    errors={trayErrors.byId.get(item.id) ?? []}
-                    collapsedCodes={trayErrors.collapsedCodes}
-                    thumbUri={
-                      item.kind === "image"
-                        ? registry.get(item.id)?.uri
-                        : undefined
-                    }
-                    sightBadge={item.kind === "image" && item.id === firstImageId}
-                    onEdit={() => openEdit(item.id)}
-                    onOverride={(to) => onOverride(item.id, to)}
-                    onRemove={() => removeItem(item.id)}
-                    disabled={busy}
-                  />
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {/* ── Refine & send: focus / audience / privacy / on-device only
-              reveal once the tray has something, so the rest state stays a
-              single input. All controls + their handlers are unchanged. ─── */}
-          {items.length > 0 ? (
-            <View style={styles.refineSection}>
-              <Eyebrow>Refine &amp; send</Eyebrow>
-
-              {/* Focus / Visibility (session-level, unchanged) */}
-              {projects.length > 0 ? (
-                <View style={styles.picker}>
-                  <Eyebrow>Focus</Eyebrow>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.pickerScroll}
-                  >
-                    {[{ id: null, title: "Auto" }, ...projects].map((p) => (
-                      <Pressable
-                        key={p.id ?? "__none__"}
-                        style={({ pressed }) => [
-                          styles.chip,
-                          projectId === p.id && styles.chipActive,
-                          pressed && styles.chipPressed,
-                        ]}
-                        onPress={() => setProjectId(p.id)}
-                        accessibilityRole="button"
-                        accessibilityLabel={
-                          p.id === null
-                            ? "Focus: Auto. Sirius picks the best focus for you; tap another to override."
-                            : `Focus: ${p.title}`
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            projectId === p.id && styles.chipTextActive,
-                          ]}
-                        >
-                          {p.title}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                  <Text style={styles.shareHint}>
-                    {projectId === null
-                      ? "On Auto, Sirius files this under the best focus for you. Tap one to choose it yourself."
-                      : "You picked the focus. Tap Auto to let Sirius choose instead."}
-                  </Text>
-                  <TextLink
-                    label="Manage focus →"
-                    tone={t.color.accent}
-                    onPress={() => router.push("/focus")}
-                  />
-                </View>
-              ) : (
-                <View style={styles.pickerEmpty}>
-                  <Eyebrow>Focus</Eyebrow>
-                  <Text style={styles.pickerEmptyText}>No focus areas yet.</Text>
-                  <TextLink
-                    label="Create your first focus area →"
-                    tone={t.color.accent}
-                    onPress={() => router.push("/focus")}
-                  />
-                </View>
-              )}
-
-              {/* Audience */}
-              <View style={styles.picker}>
-                <Eyebrow>Audience</Eyebrow>
-                <Pressable
-                  onPress={() => setAudienceOpen(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Audience: ${describeAudience(audience, groups)}. Tap to change.`}
-                  style={({ pressed }) => [
-                    styles.audienceRow,
-                    pressed && styles.audiencePressed,
-                  ]}
-                >
-                  <Text style={styles.audienceValue}>
-                    {describeAudience(audience, groups)}
-                  </Text>
-                  <Text style={styles.audienceEdit}>Edit ▸</Text>
-                </Pressable>
-              </View>
-
-              {/* On-device drafting toggle (unchanged gating). */}
-              {ON_DEVICE_AI_ENABLED && llmReadyData === true ? (
-                <View style={styles.curationRow}>
-                  <View style={styles.curationCopy}>
-                    <Text style={styles.curationLabel}>Draft on device</Text>
-                    <Text style={styles.curationHint}>
-                      Notes are written privately by the local model.
-                    </Text>
-                    <TextLink
-                      label="On-device AI →"
-                      tone={t.color.accent}
-                      onPress={() => router.push("/llm")}
-                    />
-                  </View>
-                  <Switch
-                    value={curationOn}
-                    onValueChange={(v) => void toggleCuration(v)}
-                    trackColor={{ true: t.color.ink }}
-                    accessibilityLabel="Draft on device"
-                  />
-                </View>
-              ) : ON_DEVICE_AI_ENABLED && llmReadyIsSuccess ? (
-                <View style={styles.curationRow}>
-                  <View style={styles.curationCopy}>
-                    <Text style={styles.curationLabel}>On-device AI</Text>
-                    <Text style={styles.curationHint}>
-                      Download a model to draft privately.
-                    </Text>
-                    <TextLink
-                      label="Get the model →"
-                      tone={t.color.accent}
-                      onPress={() => router.push("/llm")}
-                    />
-                  </View>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {items.length > 0 && usage && !usage.isPro ? (
-        <View style={styles.usageBar}>
-          <UsageMeter usage={usage} />
-        </View>
+      {/* ── Tray bar: the ONLY thing that appears once items are staged.
+          Tapping the item area reviews/edits the cards; "Review & send"
+          opens the 2-step wizard. Replaces the old inline settings wall. ── */}
+      {items.length > 0 ? (
+        <TrayBar
+          count={items.length}
+          thumbUri={firstImageId ? registry.get(firstImageId)?.uri : undefined}
+          onReview={() => setItemsSheetOpen(true)}
+          onSend={() => setReviewStep(1)}
+          disabled={trayErrors.hasCritical}
+        />
       ) : null}
-
-      {/* ── UnifiedActionButton: "Process {N} Items" ──────────────────── */}
-      <OmniSubmitBar
-        count={items.length}
-        disabled={trayErrors.hasCritical}
-        busy={busy}
-        onSubmit={submit}
-      />
 
       {/* ── Sheets ──────────────────────────────────────────────────────── */}
       <Sheet
@@ -1147,6 +987,253 @@ export default function ComposerScreen() {
         visible={audienceOpen}
         onClose={() => setAudienceOpen(false)}
       />
+
+      {/* Items review — the staged cards, for edit / change-type / remove. */}
+      <Sheet
+        visible={itemsSheetOpen}
+        title="In tray"
+        onClose={() => setItemsSheetOpen(false)}
+      >
+        <TrayErrorSummary summaries={trayErrors.summaries} />
+        {items.length === 0 ? (
+          <Text style={styles.pickerEmptyText}>Your tray is empty.</Text>
+        ) : (
+          <View style={styles.trayList}>
+            {items.map((item) => (
+              <SmartCard
+                key={item.id}
+                item={item}
+                errors={trayErrors.byId.get(item.id) ?? []}
+                collapsedCodes={trayErrors.collapsedCodes}
+                thumbUri={
+                  item.kind === "image"
+                    ? registry.get(item.id)?.uri
+                    : undefined
+                }
+                sightBadge={item.kind === "image" && item.id === firstImageId}
+                onEdit={() => openEdit(item.id)}
+                onOverride={(to) => onOverride(item.id, to)}
+                onRemove={() => removeItem(item.id)}
+                disabled={busy}
+              />
+            ))}
+          </View>
+        )}
+      </Sheet>
+
+      {/* ── Review & send wizard: one decision per screen ───────────────── */}
+      <Modal
+        visible={reviewStep !== null}
+        animationType="slide"
+        onRequestClose={() => setReviewStep(null)}
+      >
+        <Screen>
+          <View style={styles.wizHeader}>
+            <Pressable
+              onPress={() =>
+                reviewStep === 2 ? setReviewStep(1) : setReviewStep(null)
+              }
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={reviewStep === 2 ? "Back" : "Close"}
+            >
+              <Text style={styles.wizBack}>‹</Text>
+            </Pressable>
+            <View style={styles.wizStep}>
+              <Text style={styles.wizStepText}>Step {reviewStep} / 2</Text>
+              <View style={styles.dots}>
+                <View style={[styles.dot, styles.dotOn]} />
+                <View style={[styles.dot, reviewStep === 2 && styles.dotOn]} />
+              </View>
+            </View>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.wizBody}
+            keyboardShouldPersistTaps="handled"
+          >
+            {reviewStep === 1 ? (
+              <>
+                <Title accent="." accessibilityRole="header">
+                  Who can see this
+                </Title>
+                {(["PRIVATE", "FRIENDS", "PUBLIC"] as const).map((v) => {
+                  const meta = AUDIENCE_META[v];
+                  const selected = audience.visibility === v;
+                  return (
+                    <Pressable
+                      key={v}
+                      onPress={() =>
+                        setAudience({ visibility: v, groupIds: [] })
+                      }
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`${meta.label}. ${meta.sub}.`}
+                      style={({ pressed }) => [
+                        styles.audRow,
+                        pressed && styles.audiencePressed,
+                      ]}
+                    >
+                      <View style={styles.audText}>
+                        <Text style={styles.audLabel}>{meta.label}</Text>
+                        <Text style={styles.audSub}>{meta.sub}</Text>
+                      </View>
+                      <View
+                        style={[styles.radio, selected && styles.radioOn]}
+                      />
+                    </Pressable>
+                  );
+                })}
+                <Pressable
+                  onPress={() => setAudienceOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share with named groups"
+                  style={({ pressed }) => [
+                    styles.audRow,
+                    pressed && styles.audiencePressed,
+                  ]}
+                >
+                  <View style={styles.audText}>
+                    <Text style={styles.audLabel}>Groups…</Text>
+                    <Text style={styles.audSub}>
+                      {audience.visibility === "GROUP"
+                        ? describeAudience(audience, groups)
+                        : "Share with named groups"}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.radio,
+                      audience.visibility === "GROUP" && styles.radioOn,
+                    ]}
+                  />
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Title accent="." accessibilityRole="header">
+                  File it under
+                </Title>
+                {projects.length > 0 ? (
+                  <View style={styles.picker}>
+                    <Eyebrow>Focus</Eyebrow>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.pickerScroll}
+                    >
+                      {[{ id: null, title: "Auto" }, ...projects].map((p) => (
+                        <Pressable
+                          key={p.id ?? "__none__"}
+                          style={({ pressed }) => [
+                            styles.chip,
+                            projectId === p.id && styles.chipActive,
+                            pressed && styles.chipPressed,
+                          ]}
+                          onPress={() => setProjectId(p.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            p.id === null
+                              ? "Focus: Auto. Sirius picks the best focus for you; tap another to override."
+                              : `Focus: ${p.title}`
+                          }
+                        >
+                          <Text
+                            style={[
+                              styles.chipText,
+                              projectId === p.id && styles.chipTextActive,
+                            ]}
+                          >
+                            {p.title}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                    <Text style={styles.shareHint}>
+                      {projectId === null
+                        ? "On Auto, Sirius files this under the best focus for you. Tap one to choose it yourself."
+                        : "You picked the focus. Tap Auto to let Sirius choose instead."}
+                    </Text>
+                    <TextLink
+                      label="Manage focus →"
+                      tone={t.color.accent}
+                      onPress={() => router.push("/focus")}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.pickerEmpty}>
+                    <Eyebrow>Focus</Eyebrow>
+                    <Text style={styles.pickerEmptyText}>
+                      No focus areas yet — Sirius will file this automatically.
+                    </Text>
+                    <TextLink
+                      label="Create your first focus area →"
+                      tone={t.color.accent}
+                      onPress={() => router.push("/focus")}
+                    />
+                  </View>
+                )}
+
+                {ON_DEVICE_AI_ENABLED && llmReadyData === true ? (
+                  <View style={styles.curationRow}>
+                    <View style={styles.curationCopy}>
+                      <Text style={styles.curationLabel}>Draft on device</Text>
+                      <Text style={styles.curationHint}>
+                        Notes are written privately by the local model.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={curationOn}
+                      onValueChange={(v) => void toggleCuration(v)}
+                      trackColor={{ true: t.color.ink }}
+                      accessibilityLabel="Draft on device"
+                    />
+                  </View>
+                ) : ON_DEVICE_AI_ENABLED && llmReadyIsSuccess ? (
+                  <View style={styles.curationRow}>
+                    <View style={styles.curationCopy}>
+                      <Text style={styles.curationLabel}>On-device AI</Text>
+                      <Text style={styles.curationHint}>
+                        Download a model to draft privately.
+                      </Text>
+                      <TextLink
+                        label="Get the model →"
+                        tone={t.color.accent}
+                        onPress={() => router.push("/llm")}
+                      />
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            )}
+          </ScrollView>
+
+          <View style={styles.wizFooter}>
+            {reviewStep === 1 ? (
+              <PrimaryButton
+                label="Next →"
+                onPress={() => setReviewStep(2)}
+                style={styles.submitButton}
+              />
+            ) : (
+              <>
+                {usage && !usage.isPro ? <UsageMeter usage={usage} /> : null}
+                <PrimaryButton
+                  label={
+                    busy
+                      ? "Processing…"
+                      : `Process ${items.length} item${items.length === 1 ? "" : "s"}`
+                  }
+                  onPress={submit}
+                  busy={busy}
+                  disabled={trayErrors.hasCritical}
+                  style={styles.submitButton}
+                />
+              </>
+            )}
+          </View>
+        </Screen>
+      </Modal>
     </Screen>
   );
 }
@@ -1163,19 +1250,6 @@ function assetOf(
     mimeType: asset.mimeType ?? fallbackType,
     size: asset.fileSize ?? 0,
   };
-}
-
-// Count of cards carrying a critical error (the "N to fix" figure).
-function countToFix(
-  items: ClassifiedItem[],
-  derived: ReturnType<typeof deriveTrayErrors>,
-): number {
-  let n = 0;
-  for (const item of items) {
-    const errs = derived.byId.get(item.id) ?? [];
-    if (errs.some((e) => e.severity === "critical")) n++;
-  }
-  return n;
 }
 
 function pluralKind(kind: IngestKind, n: number): string {
@@ -1295,40 +1369,74 @@ function MediaChip({
   );
 }
 
-// The unified bottom action. Label is EXACTLY "Process {N} Items"; disabled when
-// the tray is empty OR any card carries a critical error.
-function OmniSubmitBar({
+// Audience tiers shown as rows in the wizard's step 1 (GROUP is reached via the
+// existing AudienceSheet so group selection isn't duplicated).
+const AUDIENCE_META = {
+  PRIVATE: { label: "Only you", sub: "Private to your account" },
+  FRIENDS: { label: "Friends", sub: "People you've added" },
+  PUBLIC: { label: "Public", sub: "Anyone signed in" },
+} as const;
+
+// The sticky tray bar — the single thing shown once items are staged. The left
+// (thumbnail + count) opens the items review; "Review & send →" opens the
+// 2-step wizard. Replaces the old always-on "Process N" bar + inline settings.
+function TrayBar({
   count,
+  thumbUri,
+  onReview,
+  onSend,
   disabled,
-  busy,
-  onSubmit,
 }: {
   count: number;
-  disabled: boolean;
-  busy?: boolean;
-  onSubmit: () => void;
+  thumbUri?: string;
+  onReview: () => void;
+  onSend: () => void;
+  disabled?: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const t = useTheme();
-  const empty = count === 0;
-  const label = empty
-    ? "Add something to begin"
-    : `Process ${count} Item${count === 1 ? "" : "s"}`;
   return (
     <View
       style={[
-        styles.submitBar,
+        styles.trayBar,
         { paddingBottom: BottomTabInset + insets.bottom + t.space.md },
       ]}
     >
-      <PrimaryButton
-        label={busy ? "Processing…" : label}
-        onPress={onSubmit}
-        busy={busy}
-        disabled={empty || disabled}
-        style={styles.submitButton}
-      />
+      <Pressable
+        onPress={onReview}
+        accessibilityRole="button"
+        accessibilityLabel={`${count} item${count === 1 ? "" : "s"} in tray. Tap to review.`}
+        style={({ pressed }) => [styles.trayBarItem, pressed && styles.heroPressed]}
+      >
+        <View style={styles.trayThumb}>
+          {thumbUri ? (
+            <Image
+              source={{ uri: thumbUri }}
+              style={styles.trayThumbImg}
+              contentFit="cover"
+            />
+          ) : (
+            <Text style={styles.trayThumbCount}>{count}</Text>
+          )}
+        </View>
+        <Text style={styles.trayBarLabel}>
+          {count} item{count === 1 ? "" : "s"} in tray
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={onSend}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel="Review and send"
+        style={({ pressed }) => [
+          styles.trayBarSend,
+          disabled && styles.trayBarSendOff,
+          pressed && styles.heroPressed,
+        ]}
+      >
+        <Text style={styles.trayBarSendText}>Review &amp; send →</Text>
+      </Pressable>
     </View>
   );
 }
@@ -1400,13 +1508,8 @@ function makeStyles(t: Theme) {
     },
     header: { gap: t.space.lg, marginBottom: t.space.xs },
 
-    // OmniInput
+    // OmniInput — no box around the whole section; just stacked, plain.
     omni: {
-      borderWidth: 1,
-      borderColor: t.color.ruleStrong,
-      borderStyle: "dashed",
-      backgroundColor: t.color.paperRaised,
-      padding: t.space.lg,
       gap: t.space.md,
     },
     omniInput: {
@@ -1509,44 +1612,10 @@ function makeStyles(t: Theme) {
     },
     chipTextActive: { color: t.color.paper },
 
-    // Audience summary row (taps open the AudienceSheet)
-    audienceRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      borderWidth: 1,
-      borderColor: t.color.rule,
-      paddingHorizontal: t.space.md,
-      paddingVertical: t.space.sm,
-      minHeight: 44,
-    },
     audiencePressed: { opacity: 0.6 },
-    audienceValue: {
-      fontFamily: t.font.serif,
-      fontSize: 16,
-      color: t.color.ink,
-      flexShrink: 1,
-    },
-    audienceEdit: {
-      fontFamily: t.font.mono,
-      fontSize: 11,
-      letterSpacing: 1,
-      textTransform: "uppercase",
-      color: t.color.accent,
-    },
 
     // Tray
-    trayBlock: { gap: t.space.sm },
     trayList: { gap: t.space.sm },
-
-    // Refine & send — the progressively-revealed step. A top hairline rule sets
-    // it off as a distinct editorial band below the input + tray.
-    refineSection: {
-      gap: t.space.lg,
-      borderTopWidth: 1,
-      borderTopColor: t.color.rule,
-      paddingTop: t.space.lg,
-    },
 
     // Curation toggle
     curationRow: {
@@ -1562,19 +1631,111 @@ function makeStyles(t: Theme) {
     curationLabel: { color: t.color.ink, fontFamily: t.font.serif, fontSize: 16 },
     curationHint: { color: t.color.inkMuted, fontSize: 13 },
 
-    // Submit bar
-    submitBar: {
+    // Tray bar (sticky entry into the review flow)
+    trayBar: {
       position: "absolute",
       left: 0,
       right: 0,
       bottom: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.md,
       backgroundColor: t.color.paper,
       borderTopWidth: 1,
       borderColor: t.color.ruleStrong,
       paddingHorizontal: t.space.xl,
       paddingTop: t.space.md,
     },
+    trayBarItem: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.md,
+    },
+    trayThumb: {
+      width: 40,
+      height: 40,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: t.color.paperSunken,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    trayThumbImg: { width: "100%", height: "100%" },
+    trayThumbCount: {
+      fontFamily: t.font.mono,
+      fontSize: 16,
+      color: t.color.ink,
+    },
+    trayBarLabel: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      color: t.color.ink,
+      flexShrink: 1,
+    },
+    trayBarSend: {
+      backgroundColor: t.color.accent,
+      paddingHorizontal: t.space.lg,
+      paddingVertical: t.space.md,
+    },
+    trayBarSendOff: { opacity: 0.4 },
+    trayBarSendText: {
+      fontFamily: t.font.serif,
+      fontSize: 16,
+      color: t.color.paper,
+    },
     submitButton: { width: "100%" },
+
+    // Review & send wizard
+    wizHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingTop: t.space.sm,
+      paddingBottom: t.space.md,
+    },
+    wizBack: { fontFamily: t.font.serif, fontSize: 34, color: t.color.ink },
+    wizStep: { flexDirection: "row", alignItems: "center", gap: t.space.sm },
+    wizStepText: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      color: t.color.inkMuted,
+    },
+    dots: { flexDirection: "row", gap: t.space.xs },
+    dot: {
+      width: 8,
+      height: 8,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+    },
+    dotOn: { backgroundColor: t.color.accent, borderColor: t.color.accent },
+    wizBody: { gap: t.space.lg, paddingBottom: t.space.xl },
+    wizFooter: {
+      gap: t.space.sm,
+      paddingTop: t.space.md,
+      borderTopWidth: 1,
+      borderColor: t.color.rule,
+    },
+    audRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderBottomWidth: 1,
+      borderBottomColor: t.color.rule,
+      paddingVertical: t.space.lg,
+    },
+    audText: { flex: 1, gap: 2 },
+    audLabel: { fontFamily: t.font.serif, fontSize: 20, color: t.color.ink },
+    audSub: { fontFamily: t.font.serif, fontSize: 14, color: t.color.inkMuted },
+    radio: {
+      width: 22,
+      height: 22,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+    },
+    radioOn: { backgroundColor: t.color.accent, borderColor: t.color.accent },
 
     // Sheets
     editInput: { minHeight: 96, textAlignVertical: "top", paddingTop: 12 },
