@@ -62,6 +62,10 @@ Run interactively so portless holds :443: `! bun run dev`. Open the **Capture** 
 3. **Add reveals refine** — tap **Add**: the item card, the "Refine & send" band (Focus
    chips, Audience row, Draft-on-device toggle when the model is ready), and "Process 1 Item"
    appear inline.
+   - **Focus default reads "Auto"** (not "None") with the hint *"On Auto, Sirius files this
+     under the best focus for you. Tap one to choose it yourself."* Tapping a project chip
+     swaps the hint to *"You picked the focus. Tap Auto to let Sirius choose instead."* This
+     reflects the worker's auto-assign behavior (`assign-org.ts`); no worker change.
 4. **Regression sweep (lose nothing):**
    - Paste several URLs at once → splits into one card each.
    - Attach via each of Photos / Video / Files / Audio / Repo.

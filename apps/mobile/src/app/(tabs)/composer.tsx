@@ -841,7 +841,7 @@ export default function ComposerScreen() {
                     showsHorizontalScrollIndicator={false}
                     style={styles.pickerScroll}
                   >
-                    {[{ id: null, title: "None" }, ...projects].map((p) => (
+                    {[{ id: null, title: "Auto" }, ...projects].map((p) => (
                       <Pressable
                         key={p.id ?? "__none__"}
                         style={({ pressed }) => [
@@ -851,7 +851,11 @@ export default function ComposerScreen() {
                         ]}
                         onPress={() => setProjectId(p.id)}
                         accessibilityRole="button"
-                        accessibilityLabel={`Focus: ${p.title}`}
+                        accessibilityLabel={
+                          p.id === null
+                            ? "Focus: Auto. Sirius picks the best focus for you; tap another to override."
+                            : `Focus: ${p.title}`
+                        }
                       >
                         <Text
                           style={[
@@ -864,6 +868,11 @@ export default function ComposerScreen() {
                       </Pressable>
                     ))}
                   </ScrollView>
+                  <Text style={styles.shareHint}>
+                    {projectId === null
+                      ? "On Auto, Sirius files this under the best focus for you. Tap one to choose it yourself."
+                      : "You picked the focus. Tap Auto to let Sirius choose instead."}
+                  </Text>
                   <TextLink
                     label="Manage focus →"
                     tone={t.color.accent}

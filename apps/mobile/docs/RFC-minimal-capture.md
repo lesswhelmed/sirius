@@ -53,6 +53,18 @@ long note always has an out and stays visible above the keyboard. Input stays **
 | Enter behavior | **Multiline + prominent `Add`** | Single-line, Return submits | Binding Return would break newline entry in notes and readable multi-line paste. |
 | Header | **Slim `Capture.` only**, relocate 3 links | Keep eyebrow + toolbar | Removes the "control panel" feel; links live where they're relevant. |
 | Keyboard | Reuse `KeyboardDoneButton` | New input-accessory logic | Matches an established in-app precedent; zero new keyboard code. |
+| Default Focus chip | **"Auto"** + hint | Leave it "None" | When `projectId` is null the worker **auto-assigns** a focus (see below), so "None" was a lie. "Auto" + a one-line hint tells the user Sirius picks the best focus and they can tap one to override. |
+
+### Focus is auto-assigned, not "none"
+
+Leaving Focus unset does **not** mean no focus. When a submission has `projectId == null`,
+`apps/worker/src/pipeline/classification/assign-org.ts` (`assignOrg`, runs right after the
+post is written) assigns one: best-match existing project by embedding cosine similarity →
+title-match fallback → auto-create a project (+ aspiration, `metadata.autoCreated`). Proven by
+`apps/worker/scripts/smoke-assign-org.ts`, which submits with `projectId: null` and asserts a
+project was assigned. So the chip now reads **"Auto"** with copy: *"On Auto, Sirius files this
+under the best focus for you. Tap one to choose it yourself."* (and the inverse once the user
+picks one). Worker behavior is unchanged — this is UI copy that tells the truth.
 
 The 3 toolbar links were **relocated, not deleted**: `How it works →` (under the share tip),
 `Manage focus →` (in the Focus block), `On-device AI →` (in the curation ready-branch).
