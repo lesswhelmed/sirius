@@ -36,6 +36,7 @@ import {
   type Material,
   materialsFromShareIntent,
   submitMaterials,
+  type SubmitMaterialsResult,
 } from "@/lib/materials";
 
 export default function ShareIntentScreen() {
@@ -75,28 +76,58 @@ export default function ShareIntentScreen() {
     dismissModal();
   }
 
-  async function submit() {
-    if (busy || submittable.length === 0) return;
+  // Submit a set of ALREADY-note-applied materials. Factored out so a forced
+  // re-process (after a content-hash dedup) can resubmit the exact same objects
+  // without re-applying the note (which would double it).
+  async function doSubmit(prepared: Material[], force: boolean) {
     setBusy(true);
-    let errors: string[] = [];
+    let result: SubmitMaterialsResult;
     try {
-      const result = await submitMaterials(
-        applyNote(materials, note.trim() || undefined),
-        { force: false },
-      );
-      errors = result.errors;
+      result = await submitMaterials(prepared, { force });
     } finally {
       setBusy(false);
     }
 
-    if (errors.length > 0) {
-      Alert.alert("Some submissions failed", errors.join("\n\n"));
+    if (result.errors.length > 0) {
+      Alert.alert("Some submissions failed", result.errors.join("\n\n"));
       return;
     }
 
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
+
+    // The server already had some (or all) of these — content-hash dedup created
+    // nothing new, so they're NOT in the queue. Don't claim success; tell the
+    // user and offer to force a fresh post instead of silently doing nothing.
+    if (result.deduped.length > 0) {
+      const dupes = result.deduped;
+      const madeProgress = result.submitted > 0 || result.queued > 0;
+      const n = dupes.length;
+      Alert.alert(
+        "Already shared",
+        `${n === 1 ? "This is" : `${n} of these are`} already in your catalog, so ${
+          n === 1 ? "it wasn't" : "they weren't"
+        } queued again. Process ${
+          n === 1 ? "it" : "them"
+        } again to create a fresh post?`,
+        [
+          { text: "Process again", onPress: () => void doSubmit(dupes, true) },
+          {
+            text: madeProgress ? "Done" : "Not now",
+            style: "cancel",
+            onPress: () => (madeProgress ? setDone(true) : dismiss()),
+          },
+        ],
+      );
+      return;
+    }
+
     setDone(true);
+  }
+
+  function submit() {
+    if (busy || submittable.length === 0) return;
+    void doSubmit(applyNote(materials, note.trim() || undefined), false);
   }
 
   if (isPending) {

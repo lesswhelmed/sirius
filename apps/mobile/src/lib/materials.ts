@@ -290,6 +290,12 @@ export type SubmitMaterialsResult = {
   // The exact material objects that failed to submit, by reference, so callers
   // can keep only the failures staged for retry and clear what succeeded.
   failed: Material[];
+  // Materials the server already had (content-hash dedup): NO new submission was
+  // created for these, so they neither queued work nor errored. Returned by
+  // reference so a caller can offer a forced re-process (submit again with
+  // force:true). Only url/note/repo dedup — image/file kinds carry a fresh
+  // batchId/byte identity per share, so they never collide.
+  deduped: Material[];
   // Note-kind materials captured while offline: parked in the on-device outbox
   // (flushed automatically later), so they're neither submitted nor failed.
   queued: number;
@@ -307,6 +313,9 @@ type MaterialHandler<K extends Material["kind"]> = {
     submitted: number;
     errors: string[];
     failed: Extract<Material, { kind: K }>[];
+    // Materials the server deduped (content already existed → no new row).
+    // Returned by reference for an optional forced re-process. Absent means none.
+    deduped?: Extract<Material, { kind: K }>[];
     // Parked in the offline outbox (note-kind only); absent means 0.
     queued?: number;
   }>;
@@ -327,6 +336,7 @@ const urlHandler: MaterialHandler<"url"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     const failed: UrlMaterial[] = [];
+    const deduped: UrlMaterial[] = [];
     let submitted = 0;
     // Extraction/generation split: with curation on and a model ready, fetch
     // the de-identified page summary from the server, draft the FINDING
@@ -363,8 +373,17 @@ const urlHandler: MaterialHandler<"url"> = {
           ctx.visibility,
           ctx.shareGroupIds,
         );
-        if (localId) await linkSubmission(localId, ok.id);
-        submitted++;
+        if (ok.deduped) {
+          // Server already had this exact content (content-hash dedup) — it
+          // created NO new submission. Drop the optimistic draft so we don't
+          // leave an orphaned card, and report it so the caller can offer a
+          // forced re-process instead of a misleading "queued" message.
+          if (localId) await deleteLocalDraft(localId);
+          deduped.push(m);
+        } else {
+          if (localId) await linkSubmission(localId, ok.id);
+          submitted++;
+        }
       } catch (err) {
         if (localId) await markLocalFailed(localId);
         const label = `URL ${i + 1}/${materials.length}`;
@@ -373,7 +392,7 @@ const urlHandler: MaterialHandler<"url"> = {
         failed.push(m);
       }
     }
-    return { submitted, errors, failed };
+    return { submitted, errors, failed, deduped };
   },
 };
 
@@ -382,13 +401,14 @@ const repoHandler: MaterialHandler<"repo"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     const failed: RepoMaterial[] = [];
+    const deduped: RepoMaterial[] = [];
     let submitted = 0;
     // A repo is a URL submission — the worker's github.com detection routes it
     // to the dedicated structure+key-files path. No on-device drafting: per the
     // platform split, all GitHub processing happens server-side.
     for (const [i, m] of materials.entries()) {
       try {
-        await submitUrl(
+        const ok = await submitUrl(
           m.url,
           m.notes ?? "",
           ctx.force,
@@ -397,7 +417,10 @@ const repoHandler: MaterialHandler<"repo"> = {
           ctx.visibility,
           ctx.shareGroupIds,
         );
-        submitted++;
+        // Server already had this repo (content-hash dedup) — nothing new was
+        // created; report it for an optional forced re-process.
+        if (ok.deduped) deduped.push(m);
+        else submitted++;
       } catch (err) {
         const label = `Repo ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
@@ -405,7 +428,7 @@ const repoHandler: MaterialHandler<"repo"> = {
         failed.push(m);
       }
     }
-    return { submitted, errors, failed };
+    return { submitted, errors, failed, deduped };
   },
 };
 
@@ -414,6 +437,7 @@ const noteHandler: MaterialHandler<"note"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     const failed: NoteMaterial[] = [];
+    const deduped: NoteMaterial[] = [];
     let submitted = 0;
     let queued = 0;
     // Resolve once per batch: model readiness doesn't change mid-submit.
@@ -442,8 +466,15 @@ const noteHandler: MaterialHandler<"note"> = {
           ctx.visibility,
           ctx.shareGroupIds,
         );
-        if (localId) await linkSubmission(localId, ok.id);
-        submitted++;
+        if (ok.deduped) {
+          // Identical note already submitted (content-hash dedup) — no new row.
+          // Drop the optimistic draft and report it for an optional re-process.
+          if (localId) await deleteLocalDraft(localId);
+          deduped.push(m);
+        } else {
+          if (localId) await linkSubmission(localId, ok.id);
+          submitted++;
+        }
       } catch (err) {
         if (!(err instanceof ApiError)) {
           // No server response — offline or unreachable. Park the exact request
@@ -475,7 +506,7 @@ const noteHandler: MaterialHandler<"note"> = {
         failed.push(m);
       }
     }
-    return { submitted, errors, failed, queued };
+    return { submitted, errors, failed, deduped, queued };
   },
 };
 
@@ -734,6 +765,7 @@ export async function submitMaterials(
   const grouped = groupByKind(materials);
   const errors: string[] = [];
   const failed: Material[] = [];
+  const deduped: Material[] = [];
   let submitted = 0;
   let queued = 0;
 
@@ -741,41 +773,55 @@ export async function submitMaterials(
   submitted += urlResult.submitted;
   errors.push(...urlResult.errors);
   failed.push(...urlResult.failed);
+  deduped.push(...(urlResult.deduped ?? []));
 
   const repoResult = await HANDLERS.repo.submit(grouped.repo, ctx);
   submitted += repoResult.submitted;
   errors.push(...repoResult.errors);
   failed.push(...repoResult.failed);
+  deduped.push(...(repoResult.deduped ?? []));
 
   const noteResult = await HANDLERS.note.submit(grouped.note, ctx);
   submitted += noteResult.submitted;
   errors.push(...noteResult.errors);
   failed.push(...noteResult.failed);
+  deduped.push(...(noteResult.deduped ?? []));
   queued += noteResult.queued ?? 0;
 
   const imageResult = await HANDLERS.image.submit(grouped.image, ctx);
   submitted += imageResult.submitted;
   errors.push(...imageResult.errors);
   failed.push(...imageResult.failed);
+  deduped.push(...(imageResult.deduped ?? []));
   queued += imageResult.queued ?? 0;
 
   const videoResult = await HANDLERS.video.submit(grouped.video, ctx);
   submitted += videoResult.submitted;
   errors.push(...videoResult.errors);
   failed.push(...videoResult.failed);
+  deduped.push(...(videoResult.deduped ?? []));
   queued += videoResult.queued ?? 0;
 
   const audioResult = await HANDLERS.audio.submit(grouped.audio, ctx);
   submitted += audioResult.submitted;
   errors.push(...audioResult.errors);
   failed.push(...audioResult.failed);
+  deduped.push(...(audioResult.deduped ?? []));
   queued += audioResult.queued ?? 0;
 
   const documentResult = await HANDLERS.document.submit(grouped.document, ctx);
   submitted += documentResult.submitted;
   errors.push(...documentResult.errors);
   failed.push(...documentResult.failed);
+  deduped.push(...(documentResult.deduped ?? []));
   queued += documentResult.queued ?? 0;
 
-  return { submitted, errors, skipped: grouped.unsupported, failed, queued };
+  return {
+    submitted,
+    errors,
+    skipped: grouped.unsupported,
+    failed,
+    deduped,
+    queued,
+  };
 }

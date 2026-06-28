@@ -9,7 +9,7 @@ import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Image } from "expo-image";
 import { Redirect, Stack, useLocalSearchParams } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { PostMarkdown } from "@/components/post-markdown";
+import { PostBody } from "@/components/post-body";
 import { KindLabel, Screen, Title } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import {
@@ -20,7 +20,6 @@ import {
 import { resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { posts, type SyncState } from "@/lib/db/schema";
-import { preparePostMarkdown } from "@/lib/post-markdown";
 
 const TYPE_LABEL: Record<string, string> = {
   CONCRETE: "Concrete",
@@ -131,11 +130,7 @@ export default function LocalPostScreen() {
         ) : null}
         {row.excerpt ? <Text style={styles.excerpt}>{row.excerpt}</Text> : null}
         {row.body ? (
-          <PostMarkdown
-            markdown={preparePostMarkdown(row.body, {
-              hasGallery: images.length > 0,
-            })}
-          />
+          <PostBody content={row.body} hasGallery={images.length > 0} />
         ) : null}
         {/* Comments attach to a server post; this row has no slug yet. */}
         <View style={styles.commentsLocked}>

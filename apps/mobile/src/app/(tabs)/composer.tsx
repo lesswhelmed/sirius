@@ -74,7 +74,11 @@ import {
 import { isModelReady } from "@/lib/llm/engine";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
-import { type Material, submitMaterials } from "@/lib/materials";
+import {
+  type Material,
+  submitMaterials,
+  type SubmitMaterialsResult,
+} from "@/lib/materials";
 import {
   deriveTrayErrors,
   descriptorFromAsset,
@@ -571,6 +575,55 @@ export default function ComposerScreen() {
   }
 
   // ── Submit (FROZEN path; only the tray→Material mapping is new) ─────────────
+  // Run the frozen submit path for a set of materials with the current session
+  // options (focus/audience/curation). Busy is always reset; the result carries
+  // submitted/queued/failed/deduped for the caller to act on.
+  async function runSubmit(
+    toSubmit: Material[],
+    force: boolean,
+  ): Promise<SubmitMaterialsResult> {
+    setBusy(true);
+    try {
+      return await submitMaterials(toSubmit, {
+        force,
+        projectId: projectId ?? undefined,
+        visibility: audience.visibility,
+        shareGroupIds: audience.groupIds,
+        onDeviceCuration: curationOn && llmReadyData === true,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Clear the tray + session pickers and route to the Catalog after a submit.
+  function finishSubmit(queued: number) {
+    if (queued > 0) {
+      Alert.alert(
+        "Saved on this device",
+        `${queued} item${queued === 1 ? "" : "s"} queued — they'll finish uploading automatically when you're back online.`,
+      );
+    }
+    setItems([]);
+    setNotesById(new Map());
+    setRegistry(new Map());
+    setProjectId(null);
+    setAudience(DEFAULT_AUDIENCE);
+    queryClient.invalidateQueries({ queryKey: ["queue"] });
+    queryClient.invalidateQueries({ queryKey: ["posts"] });
+    router.push("/(tabs)/library");
+  }
+
+  // Force a fresh post for items the server deduped, then finish the flow.
+  async function forceReprocess(dupes: Material[]) {
+    const result = await runSubmit(dupes, true);
+    kickSync("submit");
+    if (result.errors.length > 0) {
+      Alert.alert("Some submissions failed", result.errors.join("\n\n"));
+    }
+    finishSubmit(result.queued);
+  }
+
   async function submit() {
     if (busy || items.length === 0 || trayErrors.hasCritical) return;
     const willUseServerAI = !(curationOn && llmReadyData === true);
@@ -585,58 +638,50 @@ export default function ComposerScreen() {
         queryClient.invalidateQueries({ queryKey: ["ai-usage"] });
       }
     }
-    setBusy(true);
     // Pair each Material with its source card id so a per-item failure (matched
     // by Material reference) maps back to the exact card to keep staged.
     const pairs = toMaterialPairs(items, registry, notesById);
-    let errors: string[] = [];
-    let failed: Material[] = [];
-    let queued = 0;
-    try {
-      const result = await submitMaterials(
-        pairs.map((p) => p.material),
-        {
-          force: false,
-          projectId: projectId ?? undefined,
-          visibility: audience.visibility,
-          shareGroupIds: audience.groupIds,
-          onDeviceCuration: curationOn && llmReadyData === true,
-        },
-      );
-      errors = result.errors;
-      failed = result.failed;
-      queued = result.queued;
-    } finally {
-      setBusy(false);
-    }
+    const result = await runSubmit(
+      pairs.map((p) => p.material),
+      false,
+    );
     kickSync("submit");
 
-    if (errors.length > 0) {
+    if (result.errors.length > 0) {
       // Keep only the cards whose mapped Material failed; clear what submitted.
-      const failedSet = new Set<Material>(failed);
+      const failedSet = new Set<Material>(result.failed);
       const keptIds = new Set(
         pairs.filter((p) => failedSet.has(p.material)).map((p) => p.id),
       );
       setItems((prev) => prev.filter((i) => keptIds.has(i.id)));
-      Alert.alert("Some submissions failed", errors.join("\n\n"));
+      Alert.alert("Some submissions failed", result.errors.join("\n\n"));
       return;
     }
 
-    if (queued > 0) {
+    // The server already had some (or all) of these — content-hash dedup created
+    // nothing new, so they aren't queued. Offer a forced re-process rather than
+    // silently navigating away as if everything went through.
+    if (result.deduped.length > 0) {
+      const dupes = result.deduped;
+      const n = dupes.length;
       Alert.alert(
-        "Saved on this device",
-        `${queued} item${queued === 1 ? "" : "s"} queued — they'll finish uploading automatically when you're back online.`,
+        "Already in your catalog",
+        `${n === 1 ? "1 item was" : `${n} items were`} already shared, so ${
+          n === 1 ? "it wasn't" : "they weren't"
+        } queued again. Process again to create a fresh post?`,
+        [
+          { text: "Process again", onPress: () => void forceReprocess(dupes) },
+          {
+            text: "Skip",
+            style: "cancel",
+            onPress: () => finishSubmit(result.queued),
+          },
+        ],
       );
+      return;
     }
 
-    setItems([]);
-    setNotesById(new Map());
-    setRegistry(new Map());
-    setProjectId(null);
-    setAudience(DEFAULT_AUDIENCE);
-    queryClient.invalidateQueries({ queryKey: ["queue"] });
-    queryClient.invalidateQueries({ queryKey: ["posts"] });
-    router.push("/(tabs)/library");
+    finishSubmit(result.queued);
   }
 
   const editingItem = editingId

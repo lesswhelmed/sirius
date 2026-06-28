@@ -22,7 +22,7 @@ import {
 import { CommentsSection } from "@/components/comments-section";
 import { RelatedPosts } from "@/components/explore/related-posts";
 import { OriginalContentSection } from "@/components/original-content-section";
-import { PostMarkdown } from "@/components/post-markdown";
+import { PostBody } from "@/components/post-body";
 import { AudienceSheet } from "@/components/audience-sheet";
 import { KindLabel, Screen, Title } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
@@ -34,7 +34,6 @@ import {
 import { apiGet, resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { type PostRow, posts } from "@/lib/db/schema";
-import { preparePostMarkdown } from "@/lib/post-markdown";
 import { confirmAndDeletePost } from "@/lib/post-delete";
 
 type PostDetail = Post & { tags: Tag[]; categories: Category[] };
@@ -289,10 +288,9 @@ export default function PostDetailScreen() {
           <Text style={styles.excerpt}>{view.excerpt}</Text>
         ) : null}
         {view.content ? (
-          <PostMarkdown
-            markdown={preparePostMarkdown(view.content, {
-              hasGallery: sightImages.length > 0,
-            })}
+          <PostBody
+            content={view.content}
+            hasGallery={sightImages.length > 0}
           />
         ) : null}
         {/* Comments attach to synced posts only — this slug-routed screen is
