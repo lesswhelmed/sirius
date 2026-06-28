@@ -44,8 +44,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SymbolView } from "expo-symbols";
+import type { SFSymbol } from "sf-symbols-typescript";
 import {
-  ActionCard,
   Eyebrow,
   Field,
   KeyboardDoneButton,
@@ -733,37 +734,31 @@ export default function ComposerScreen() {
                 style={styles.omniAdd}
               />
             </View>
-            {/* Attachment grid — noun labels under an "Add media" header so the
-                square tiles read as tappable add actions. Handlers unchanged. */}
+            {/* Attachment area — two primary "hero" rows (Photos, Audio) plus a
+                compact chip row for the rest. Handlers unchanged. */}
             <Eyebrow>Add media</Eyebrow>
-            <View style={styles.tapTargets}>
-              <ActionCard
-                label="Photos"
-                symbol="photo.on.rectangle"
-                glyph="▦"
-                disabled={busy}
-                accessibilityHint="Take a photo or pick from your library"
-                onPress={() => setMediaSheet("photo")}
-              />
-              <ActionCard
-                label="Audio"
-                symbol="waveform"
-                glyph="🎙"
-                disabled={busy}
-                accessibilityHint="Record a voice memo or pick an audio file"
-                onPress={() => setAudioSheetOpen(true)}
-              />
-              <ActionCard
-                label="Files"
-                symbol="doc.text"
-                glyph="📄"
-                disabled={busy}
-                accessibilityHint="Pick a PDF or Word document"
-                onPress={() => void pickDocument()}
-              />
-            </View>
-            <View style={styles.tapTargets}>
-              <ActionCard
+            <MediaHero
+              label="Add photos"
+              sublabel="Take one or pick from your library"
+              symbol="photo.on.rectangle"
+              glyph="▦"
+              framed
+              primary
+              disabled={busy}
+              accessibilityHint="Take a photo or pick from your library"
+              onPress={() => setMediaSheet("photo")}
+            />
+            <MediaHero
+              label="Record audio"
+              sublabel="Capture a voice memo"
+              symbol="waveform"
+              glyph="🎙"
+              disabled={busy}
+              accessibilityHint="Record a voice memo or pick an audio file"
+              onPress={() => setAudioSheetOpen(true)}
+            />
+            <View style={styles.chipRow}>
+              <MediaChip
                 label="Video"
                 symbol="video"
                 glyph="▶"
@@ -771,7 +766,15 @@ export default function ComposerScreen() {
                 accessibilityHint="Record or pick a video"
                 onPress={() => setMediaSheet("video")}
               />
-              <ActionCard
+              <MediaChip
+                label="Files"
+                symbol="doc.text"
+                glyph="📄"
+                disabled={busy}
+                accessibilityHint="Pick a PDF or Word document"
+                onPress={() => void pickDocument()}
+              />
+              <MediaChip
                 label="Repo"
                 symbol="chevron.left.forwardslash.chevron.right"
                 glyph="◆"
@@ -784,7 +787,6 @@ export default function ComposerScreen() {
                   setRepoSheetOpen(true);
                 }}
               />
-              <View style={styles.flex} />
             </View>
             <Text style={styles.shareHint}>
               Tip: share anything to Sirius from another app&apos;s share sheet.
@@ -1189,6 +1191,110 @@ function pluralKind(kind: IngestKind, n: number): string {
   return n === 1 ? one : many;
 }
 
+// A wide, short "hero" attachment action: framed/plain icon on the left, a serif
+// title + muted subtitle to its right. `primary` paints the border with the
+// accent (the standout action); `framed` boxes the icon in an accent outline.
+function MediaHero({
+  label,
+  sublabel,
+  symbol,
+  glyph,
+  framed,
+  primary,
+  disabled,
+  accessibilityHint,
+  onPress,
+}: {
+  label: string;
+  sublabel: string;
+  symbol: SFSymbol;
+  glyph: string;
+  framed?: boolean;
+  primary?: boolean;
+  disabled?: boolean;
+  accessibilityHint?: string;
+  onPress?: () => void;
+}) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.hero,
+        primary && styles.heroPrimary,
+        pressed && styles.heroPressed,
+      ]}
+    >
+      <View style={[styles.heroIcon, framed && styles.heroIconFramed]}>
+        <SymbolView
+          name={symbol}
+          size={26}
+          weight="regular"
+          tintColor={primary ? t.color.accent : t.color.ink}
+          fallback={
+            <Text style={styles.heroGlyph} accessibilityElementsHidden>
+              {glyph}
+            </Text>
+          }
+        />
+      </View>
+      <View style={styles.heroText}>
+        <Text style={styles.heroTitle}>{label}</Text>
+        <Text style={styles.heroSub}>{sublabel}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+// A compact attachment chip: centered icon + mono label, hairline border. Sits
+// in a row of equal-width chips for the secondary media kinds.
+function MediaChip({
+  label,
+  symbol,
+  glyph,
+  disabled,
+  accessibilityHint,
+  onPress,
+}: {
+  label: string;
+  symbol: SFSymbol;
+  glyph: string;
+  disabled?: boolean;
+  accessibilityHint?: string;
+  onPress?: () => void;
+}) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.mediaChip, pressed && styles.heroPressed]}
+    >
+      <SymbolView
+        name={symbol}
+        size={16}
+        weight="regular"
+        tintColor={t.color.ink}
+        fallback={
+          <Text style={styles.mediaChipGlyph} accessibilityElementsHidden>
+            {glyph}
+          </Text>
+        }
+      />
+      <Text style={styles.mediaChipLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 // The unified bottom action. Label is EXACTLY "Process {N} Items"; disabled when
 // the tray is empty OR any card carries a critical error.
 function OmniSubmitBar({
@@ -1311,7 +1417,64 @@ function makeStyles(t: Theme) {
     },
     omniActions: { flexDirection: "row", justifyContent: "flex-end" },
     omniAdd: { paddingHorizontal: t.space.xl },
-    tapTargets: { flexDirection: "row", gap: t.space.md },
+
+    // Attachment hero rows (Photos, Audio) + the secondary chip row.
+    hero: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.lg,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: t.color.paperRaised,
+      paddingVertical: t.space.lg,
+      paddingHorizontal: t.space.lg,
+    },
+    heroPrimary: { borderColor: t.color.accent },
+    heroPressed: { backgroundColor: t.color.paperSunken },
+    heroIcon: {
+      width: 46,
+      height: 46,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    heroIconFramed: { borderWidth: 1, borderColor: t.color.accent },
+    heroGlyph: { fontSize: 24, color: t.color.ink, fontFamily: t.font.serif },
+    heroText: { flex: 1, gap: 2 },
+    heroTitle: {
+      fontFamily: t.font.serif,
+      fontSize: 24,
+      lineHeight: 30,
+      color: t.color.ink,
+    },
+    heroSub: {
+      fontFamily: t.font.serif,
+      fontSize: 15,
+      lineHeight: 20,
+      color: t.color.inkMuted,
+    },
+    chipRow: { flexDirection: "row", gap: t.space.md },
+    mediaChip: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: t.space.sm,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      paddingVertical: t.space.md,
+    },
+    mediaChipGlyph: {
+      fontSize: 14,
+      color: t.color.ink,
+      fontFamily: t.font.serif,
+    },
+    mediaChipLabel: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      color: t.color.inkMuted,
+    },
     shareHint: {
       fontFamily: t.font.serif,
       fontSize: 13,
