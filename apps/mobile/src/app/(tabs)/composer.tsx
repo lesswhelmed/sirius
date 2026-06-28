@@ -733,27 +733,33 @@ export default function ComposerScreen() {
                 style={styles.omniAdd}
               />
             </View>
+            {/* Attachment grid — noun labels, a "+" badge so each square tile
+                reads as an "add" action. Handlers unchanged. */}
+            <Eyebrow>Add media</Eyebrow>
             <View style={styles.tapTargets}>
               <ActionCard
                 label="Photos"
                 symbol="photo.on.rectangle"
                 glyph="▦"
+                badge
                 disabled={busy}
                 accessibilityHint="Take a photo or pick from your library"
                 onPress={() => setMediaSheet("photo")}
               />
               <ActionCard
-                label="Video"
-                symbol="video"
-                glyph="▶"
+                label="Audio"
+                symbol="waveform"
+                glyph="🎙"
+                badge
                 disabled={busy}
-                accessibilityHint="Record or pick a video"
-                onPress={() => setMediaSheet("video")}
+                accessibilityHint="Record a voice memo or pick an audio file"
+                onPress={() => setAudioSheetOpen(true)}
               />
               <ActionCard
                 label="Files"
                 symbol="doc.text"
                 glyph="📄"
+                badge
                 disabled={busy}
                 accessibilityHint="Pick a PDF or Word document"
                 onPress={() => void pickDocument()}
@@ -761,17 +767,19 @@ export default function ComposerScreen() {
             </View>
             <View style={styles.tapTargets}>
               <ActionCard
-                label="Audio"
-                symbol="waveform"
-                glyph="🎙"
+                label="Video"
+                symbol="video"
+                glyph="▶"
+                badge
                 disabled={busy}
-                accessibilityHint="Record a voice memo or pick an audio file"
-                onPress={() => setAudioSheetOpen(true)}
+                accessibilityHint="Record or pick a video"
+                onPress={() => setMediaSheet("video")}
               />
               <ActionCard
                 label="Repo"
                 symbol="chevron.left.forwardslash.chevron.right"
                 glyph="◆"
+                badge
                 disabled={busy}
                 accessibilityHint="Paste a GitHub repo URL and preview it"
                 onPress={() => {

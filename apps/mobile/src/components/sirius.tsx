@@ -506,6 +506,7 @@ export function ActionCard({
   symbol,
   glyph,
   active,
+  badge,
   style,
   accessibilityHint,
   ...rest
@@ -514,6 +515,8 @@ export function ActionCard({
   symbol: SFSymbol;
   glyph: string;
   active?: boolean;
+  // Show a small "+" badge in the corner so the card reads as an "add" action.
+  badge?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTheme();
@@ -532,6 +535,11 @@ export function ActionCard({
       ]}
       {...rest}
     >
+      {badge ? (
+        <Text style={styles.actionBadge} accessibilityElementsHidden>
+          +
+        </Text>
+      ) : null}
       <SymbolView
         name={symbol}
         size={26}
@@ -1046,7 +1054,8 @@ function makeStyles(t: Theme) {
     },
     actionCard: {
       flex: 1,
-      minHeight: 104,
+      // Square, clean tiles — width comes from flex, height matches via 1:1.
+      aspectRatio: 1,
       borderWidth: 1,
       borderColor: t.color.rule,
       borderRadius: t.radius.none,
@@ -1054,13 +1063,22 @@ function makeStyles(t: Theme) {
       alignItems: "center",
       justifyContent: "center",
       gap: t.space.sm,
-      paddingVertical: t.space.lg,
     },
     actionCardActive: {
       borderColor: t.color.accent,
       backgroundColor: t.color.accentSoft,
     },
     actionCardPressed: { backgroundColor: t.color.paperSunken },
+    // "+" affordance pinned to the tile's top-left corner.
+    actionBadge: {
+      position: "absolute",
+      top: t.space.xs,
+      left: t.space.sm,
+      fontFamily: t.font.mono,
+      fontSize: 18,
+      lineHeight: 22,
+      color: t.color.accent,
+    },
     actionGlyph: {
       fontSize: 26,
       lineHeight: 30,
