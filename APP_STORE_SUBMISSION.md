@@ -13,7 +13,85 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-2
 
 ---
 
-## 0. Resubmission — rejection 53b454b8 (2026-06-25)
+## 0. Resubmission — rejection d1343e4d (2026-06-28) — subscriptions / IAP
+
+**Current blocker.** Submission `d1343e4d-28c1-4c29-9e0d-afde0c218059`, v1.0 (build 66),
+reviewed on iPad Air 11" M3 + iPhone 17 Pro Max, rejected for **two** subscription issues.
+Most of the fix is **App Store Connect + RevenueCat dashboard config** (no repo code), plus
+one optional code change. A **new binary is required regardless** (Guideline 2.1(b) wants the
+IAP submitted *with* a build).
+
+**What we have today:**
+
+- Subscription = **"Sirius AI Pro"**, sold via **RevenueCat** (`react-native-purchases` +
+  `react-native-purchases-ui`). Native paywall shown by `presentPaywall()`
+  (`apps/mobile/src/lib/purchases/`), surfaced from the Settings "Subscription" section
+  (`apps/mobile/src/components/subscription-section.tsx`).
+- Privacy Policy page **exists** → `https://lesswhelmed.com/privacy`.
+- **No Terms of Use / EULA page** in the repo — and **decision made: use Apple's standard
+  EULA** (`https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`). No web page
+  to write.
+- The mobile app currently shows **no Privacy or Terms links** anywhere (paywall, Settings,
+  sign-up).
+
+### Issue 1 — Guideline 2.1(b): the IAP product wasn't submitted with the binary
+
+The "Sirius AI Pro" auto-renewable subscription exists (RevenueCat points at it) but was never
+attached to the version / submitted for review. **App Store Connect only, no code:**
+
+- [ ] App Store Connect → app → **Subscriptions** → "Sirius AI Pro": complete metadata —
+  localized display name, description, **price**, and a **subscription review screenshot**
+  (mandatory; the IAP can't be submitted without it).
+- [ ] Move the subscription to **"Ready to Submit"** and **attach it to the app version** so
+  it is submitted **together with** the new binary. (A first subscription must ride along with
+  a binary submission — exactly what Apple is asking for.)
+
+### Issue 2 — Guideline 3.1.2(c): required subscription disclosures missing
+
+**Part A — inside the app (the purchase flow).** Must show title, length, price (+ price-per-
+unit if relevant) **and functional links to Privacy Policy and Terms of Use (EULA)**. Title /
+length / price come from the products automatically; the real gap is the **two links**.
+
+- [ ] **RevenueCat dashboard** → paywall editor for the current offering → enable the footer
+  **Terms & Privacy** links:
+  - Privacy → `https://lesswhelmed.com/privacy`
+  - Terms (EULA) → `https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`
+  - This makes the **in-app** links functional with no app-code change (the RevenueCat-hosted
+    paywall is remote-configured). You're shipping a new binary for Issue 1 anyway.
+- [x] *(Optional, belt-and-suspenders)* **DONE** — added always-visible **Privacy Policy** +
+  **Terms of Use** links at the bottom of the Settings Subscription card
+  (`apps/mobile/src/components/subscription-section.tsx`), opening via
+  `expo-web-browser`'s `openBrowserAsync` (Privacy → `/privacy`, Terms → Apple standard EULA).
+  Ungated (always render). Typecheck + lint pass. Ships in the next binary; strengthens the
+  screen recording. Independent of the RevenueCat paywall footer links.
+
+**Part B — App Store metadata.**
+
+- [ ] **Privacy Policy** field in App Store Connect → confirm `https://lesswhelmed.com/privacy`.
+- [ ] **App Description** → add a line with both links (standard-EULA path requires the EULA
+  link in the description):
+  - Privacy: `https://lesswhelmed.com/privacy`
+  - Terms (EULA): `https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`
+
+### Resubmit checklist
+
+- [ ] Configure the RevenueCat paywall footer links (Issue 2A).
+- [ ] *(Optional)* add the links to `subscription-section.tsx`.
+- [ ] Complete the subscription metadata + review screenshot, set "Ready to Submit", attach to
+  the version (Issue 1).
+- [ ] Add the Privacy + EULA links to the **App Description**; confirm the Privacy Policy field
+  (Issue 2B).
+- [ ] **New iOS build + submit** (`cd apps/mobile && bunx eas-cli build --profile production
+  --platform ios` → `bunx eas-cli submit --profile production --platform ios --latest`).
+- [ ] **Record the paywall** on device showing title / length / price + both functional links;
+  attach it to the reply and note it in **App Review Information → Notes** (Apple explicitly
+  asked for this).
+- [ ] Reply in Resolution Center with the text in **§12 → "Reply to App Review (subscriptions
+  resubmission)"**.
+
+---
+
+## 0b. Resubmission — rejection 53b454b8 (2026-06-25)
 
 The first submission (v1.0, build 58, reviewed on iPad Air 11" M3) was rejected for **two**
 issues. Both are now fixed in the repo; they require a **new EAS build + resubmit** (the
@@ -509,7 +587,18 @@ In App Store Connect → your version:
 Sirius requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog. Posts are private to the account. Account deletion: Account tab → Danger zone → Delete account → confirm with the account password (a screen recording of the full flow is attached).
 ```
 
-**Reply to App Review (resubmission — paste into Resolution Center):**
+**Reply to App Review (subscriptions resubmission — paste into Resolution Center):**
+
+```text
+Guideline 2.1(b) — In-App Purchase submitted. Thank you. The auto-renewable subscription "Sirius AI Pro" now has complete metadata and a review screenshot, is in the "Ready to Submit" state, and has been attached to this version so it is submitted together with this new binary for review.
+
+Guideline 3.1.2(c) — Subscription information. The required information is now present in both the app and the metadata:
+- In the purchase flow (paywall): the subscription title, length, and price are displayed, along with functional links to our Privacy Policy (https://lesswhelmed.com/privacy) and the standard Apple Terms of Use / EULA (https://www.apple.com/legal/internet-services/itunes/dev/stdeula/).
+- In the App Store metadata: the Privacy Policy field links to https://lesswhelmed.com/privacy, and the App Description includes a functional link to the standard Apple Terms of Use (EULA).
+A screen recording of the purchase flow showing the title, length, price, and both functional links is included in the App Review Information Notes.
+```
+
+**Reply to App Review (5.1.1 resubmission — paste into Resolution Center):**
 
 ```text
 Guideline 5.1.1(ii) — Purpose strings. Thank you. We updated the camera, photo library, and microphone purpose strings to clearly describe their use with a specific example, included in this new build:

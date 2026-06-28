@@ -2,8 +2,9 @@
 // UsageMeter. The weekly cap is enforced server-side; here we show the user
 // where they stand and route them to the RevenueCat paywall / Customer Center.
 import { useQueryClient } from "@tanstack/react-query";
+import { openBrowserAsync } from "expo-web-browser";
 import { useCallback } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton, SecondaryButton } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
@@ -15,6 +16,19 @@ import {
 } from "@/lib/purchases";
 import { PURCHASES_ENABLED } from "@/lib/purchases/config";
 import { type AiUsage, useAiUsage } from "@/lib/purchases/use-usage";
+
+// App Store Guideline 3.1.2(c): Privacy Policy + Terms of Use (EULA) must be
+// visible in the subscription surface, independent of the RevenueCat paywall.
+const PRIVACY_URL = "https://lesswhelmed.com/privacy";
+const TERMS_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+
+async function openLegal(url: string) {
+  try {
+    await openBrowserAsync(url);
+  } catch {
+    // A failed open shouldn't crash settings; ignore.
+  }
+}
 
 function formatReset(resetsAt: string | null): string | null {
   if (!resetsAt) return null;
@@ -95,6 +109,27 @@ export function SubscriptionSection() {
           />
         </>
       ) : null}
+      <View style={styles.legal}>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Open Privacy Policy"
+          onPress={() => {
+            void openLegal(PRIVACY_URL);
+          }}
+        >
+          <Text style={styles.legalLink}>Privacy Policy</Text>
+        </Pressable>
+        <Text style={styles.legalDot}>·</Text>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Open Terms of Use"
+          onPress={() => {
+            void openLegal(TERMS_URL);
+          }}
+        >
+          <Text style={styles.legalLink}>Terms of Use</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -148,6 +183,23 @@ function makeStyles(t: Theme) {
       fontFamily: t.font.mono,
       fontSize: 12,
       color: t.color.accent,
+    },
+    legal: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.xs,
+      paddingTop: t.space.xs,
+    },
+    legalLink: {
+      fontFamily: t.font.sans,
+      fontSize: 13,
+      color: t.color.accent,
+      textDecorationLine: "underline",
+    },
+    legalDot: {
+      fontFamily: t.font.sans,
+      fontSize: 13,
+      color: t.color.inkSubtle,
     },
   });
 }
