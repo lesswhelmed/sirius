@@ -76,6 +76,9 @@ export function Collapsible({
 function makeStyles(t: Theme) {
   return StyleSheet.create({
     wrap: {
+      // Breathing room above the top rule so the header doesn't crowd the prose
+      // (or the preceding collapsible) directly above it.
+      marginTop: t.space.xl,
       marginBottom: t.space.lg,
       borderTopWidth: t.rule.hairline,
       borderColor: t.color.rule,
@@ -84,7 +87,8 @@ function makeStyles(t: Theme) {
       flexDirection: "row",
       alignItems: "center",
       gap: t.space.sm,
-      paddingVertical: t.space.md,
+      paddingTop: t.space.lg,
+      paddingBottom: t.space.md,
     },
     headerPressed: { opacity: 0.6 },
     summary: {
