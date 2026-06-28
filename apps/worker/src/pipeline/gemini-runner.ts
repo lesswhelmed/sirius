@@ -22,7 +22,7 @@ import {
   sanitizeVoiceProfile,
   SightDraftSchema,
 } from "@repo/ingest-draft";
-import { generateText, Output } from "ai";
+import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { getAIConfig, modelForKind } from "../lib/ai-config";
 import { SafetyFlagError, type SafetyVerdict } from "./safety";
 import { parseInstagramUrl } from "../lib/instagram-url";
@@ -211,14 +211,21 @@ export function toGeminiOutput(
   const title = draft.title.trim() || "Untitled Ingest";
   const slug = slugify(draft.slug?.trim() || title);
   const trimmedUrl = opts?.originalUrl?.trim() || "";
+  // Enforce the tag/category counts HERE rather than in the Zod schema: the
+  // draft schema deliberately drops .min/.max (Gemini ignores minItems/maxItems,
+  // so a strict bound failed the whole post on over-production). Clamp to the
+  // documented limits; the model orders most-representative first, so slicing
+  // keeps the best ones.
+  const tags = (draft.tags ?? []).slice(0, 5);
+  const categories = (draft.categories ?? []).slice(0, 3);
   const frontmatter: Record<string, unknown> = {
     title,
     type: forcedType,
     status: "DRAFT",
     published: false,
     date: new Date().toISOString().slice(0, 10),
-    tags: draft.tags,
-    categories: draft.categories,
+    tags,
+    categories,
     slug,
   };
   if (trimmedUrl) {
@@ -254,6 +261,65 @@ export function toGeminiOutput(
 // Minimal logger seam (structurally compatible with pipeline.ts's StageLogger)
 // so runGemini can emit injection proof without importing the pipeline module.
 type StageLog = (stage: string, extra?: Record<string, unknown>) => void;
+
+// Number of attempts for a structured-output (Output.object) call before the
+// failure propagates. The first attempt plus (N-1) retries. Gemini's structured
+// output is occasionally non-deterministically malformed (unparseable JSON, an
+// empty completion when the thinking budget is exhausted); a fresh sample at the
+// same temperature usually succeeds. Schema-shape mismatches are already handled
+// by the lenient draft schema + clamp, so this only catches the genuinely
+// transient cases. Override with GEMINI_OBJECT_MAX_ATTEMPTS.
+const OBJECT_MAX_ATTEMPTS = Math.max(
+  1,
+  Number(process.env.GEMINI_OBJECT_MAX_ATTEMPTS ?? 3),
+);
+
+// Pull the diagnostic fields off an AI SDK NoObjectGeneratedError so the worker
+// logs WHY structured output failed (which the bare error.message hides): the
+// finish reason, token usage, the offending validation/parse cause, and a short
+// slice of the raw text. Returns null for any other error so callers can spread
+// it unconditionally. Exported so pipeline.ts can enrich its dead-letter log.
+export function noObjectErrorDetail(
+  error: unknown,
+): Record<string, unknown> | null {
+  if (!NoObjectGeneratedError.isInstance(error)) {
+    return null;
+  }
+  const { cause, finishReason, usage, text } = error;
+  return {
+    noObject: true,
+    finishReason,
+    usage,
+    cause: cause instanceof Error ? cause.message : cause ? String(cause) : null,
+    textSnippet: typeof text === "string" ? text.slice(0, 400) : null,
+  };
+}
+
+// Retry wrapper for Output.object calls. Only retries NoObjectGeneratedError
+// (the recoverable "model returned bad/empty structured output" case) — any
+// other error (network, auth, content-filter) rethrows immediately so we don't
+// mask real failures or burn quota on a permanent error.
+async function withObjectRetry<T>(
+  label: string,
+  logger: StageLog | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= OBJECT_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const detail = noObjectErrorDetail(error);
+      if (detail && attempt < OBJECT_MAX_ATTEMPTS) {
+        logger?.("gemini:object-retry", { label, attempt, ...detail });
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
 
 export async function runGemini(
   input: PipelineInput,
@@ -406,13 +472,18 @@ export async function runGemini(
       model: modelId,
       temperature: config.temperature,
     });
-    const { output, finishReason } = await generateText({
-      model,
-      temperature: config.temperature,
-      prompt: buildUrlStructuringPrompt(summary, input.notes, voiceBlock),
-      providerOptions: DRAFT_PROVIDER_OPTIONS,
-      output: Output.object({ schema: PostDraftSchema }),
-    });
+    const { output, finishReason } = await withObjectRetry(
+      "url",
+      opts?.logger,
+      () =>
+        generateText({
+          model,
+          temperature: config.temperature,
+          prompt: buildUrlStructuringPrompt(summary, input.notes, voiceBlock),
+          providerOptions: DRAFT_PROVIDER_OPTIONS,
+          output: Output.object({ schema: PostDraftSchema }),
+        }),
+    );
     assertDraftNotBlocked(finishReason);
     return toGeminiOutput(output, "FINDING", { originalUrl: input.urls[0] });
   }
@@ -425,18 +496,20 @@ export async function runGemini(
     // Master switch OCR_ENABLED (default ON); set to "false" to disable.
     const ocrEnabled = process.env.OCR_ENABLED !== "false";
     const [draftResult, ocrText] = await Promise.all([
-      generateText({
-        model,
-        temperature: config.temperature,
-        messages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: prompt }, ...imageParts],
-          },
-        ],
-        providerOptions: DRAFT_PROVIDER_OPTIONS,
-        output: Output.object({ schema: SightDraftSchema }),
-      }),
+      withObjectRetry("image", opts?.logger, () =>
+        generateText({
+          model,
+          temperature: config.temperature,
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: prompt }, ...imageParts],
+            },
+          ],
+          providerOptions: DRAFT_PROVIDER_OPTIONS,
+          output: Output.object({ schema: SightDraftSchema }),
+        }),
+      ),
       ocrEnabled
         ? extractImageOcr(input.images, config.apiKey, config.model).catch(
             (error) => {
@@ -450,8 +523,13 @@ export async function runGemini(
     ]);
     assertDraftNotBlocked(draftResult.finishReason);
     const { output } = draftResult;
+    // excerpt is optional in the schema (flash sometimes omits it). Fall back to
+    // the first sentence of the body so the post still has a summary line.
+    const excerpt =
+      output.excerpt?.trim() ||
+      output.body.trim().split(/(?<=[.!?])\s+/)[0]?.slice(0, 200);
     const result = toGeminiOutput(output, "SIGHT", {
-      excerpt: output.excerpt,
+      excerpt,
       imageAlts: output.imageAlts,
     });
     // Non-null OCR text becomes embeddable/searchable: appended to the body as
@@ -506,29 +584,39 @@ export async function runGemini(
       data: fileData,
       mediaType: input.mimeType as `${string}/${string}`,
     };
-    const { output, finishReason } = await generateText({
-      model,
-      temperature: config.temperature,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: prompt }, filePart],
-        },
-      ],
-      providerOptions: DRAFT_PROVIDER_OPTIONS,
-      output: Output.object({ schema: PostDraftSchema }),
-    });
+    const { output, finishReason } = await withObjectRetry(
+      input.kind,
+      opts?.logger,
+      () =>
+        generateText({
+          model,
+          temperature: config.temperature,
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: prompt }, filePart],
+            },
+          ],
+          providerOptions: DRAFT_PROVIDER_OPTIONS,
+          output: Output.object({ schema: PostDraftSchema }),
+        }),
+    );
     assertDraftNotBlocked(finishReason);
     return toGeminiOutput(output, forcedType);
   }
 
-  const { output, finishReason } = await generateText({
-    model,
-    temperature: config.temperature,
-    prompt,
-    providerOptions: DRAFT_PROVIDER_OPTIONS,
-    output: Output.object({ schema: PostDraftSchema }),
-  });
+  const { output, finishReason } = await withObjectRetry(
+    "note",
+    opts?.logger,
+    () =>
+      generateText({
+        model,
+        temperature: config.temperature,
+        prompt,
+        providerOptions: DRAFT_PROVIDER_OPTIONS,
+        output: Output.object({ schema: PostDraftSchema }),
+      }),
+  );
   assertDraftNotBlocked(finishReason);
   return toGeminiOutput(output, "BLOG");
 }

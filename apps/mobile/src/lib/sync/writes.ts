@@ -53,7 +53,7 @@ export async function createLocalDraft(
     ? input.imageUris.map((url, i) => ({ url, alt: alts?.[i] }))
     : null;
   const excerpt = isSightEnvelope(input.envelope)
-    ? input.envelope.post.excerpt
+    ? (input.envelope.post.excerpt ?? null)
     : null;
 
   await db.insert(posts).values({

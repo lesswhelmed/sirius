@@ -13,7 +13,7 @@ import {
 import { buildClassificationInput } from "./classification/adapters";
 import { assignOrg, sceneRowWarning } from "./classification/assign-org";
 import { tryClientDraft } from "./draft-runner";
-import { runGemini } from "./gemini-runner";
+import { noObjectErrorDetail, runGemini } from "./gemini-runner";
 import { buildManualStub } from "./manual-stub";
 import { writePost } from "./post-writer";
 import { runSafetyGate } from "./safety";
@@ -41,6 +41,10 @@ async function timed<T>(
     logger(`${stage}:error`, {
       ms: Date.now() - start,
       error: error instanceof Error ? error.message : String(error),
+      // Surface the AI SDK's structured-output failure detail (finishReason,
+      // the offending validation/parse cause, raw text) which error.message
+      // hides — otherwise a dead-lettered draft tells us nothing about WHY.
+      ...(noObjectErrorDetail(error) ?? {}),
     });
     throw error;
   }

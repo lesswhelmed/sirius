@@ -21,17 +21,19 @@ export const PostDraftSchema = z.object({
     .describe(
       "Lowercase kebab-case slug derived from the title; the worker will normalize",
     ),
+  // NOTE: tags/categories carry NO .min/.max here on purpose. Gemini (esp. flash)
+  // does not reliably honor JSON-schema minItems/maxItems, so a strict bound made
+  // every over-production ("4 categories instead of 3") fail Zod validation —
+  // surfacing as the AI SDK's "No object generated: response did not match schema."
+  // and losing the whole post. The count is enforced by clamping in the worker
+  // (toGeminiOutput) instead; the guidance below still steers the model.
   tags: z
     .array(z.string())
-    .min(1)
-    .max(5)
-    .describe("1-5 lowercase kebab-case tags"),
+    .describe("1-5 lowercase kebab-case tags (the worker keeps the first 5)"),
   categories: z
     .array(z.string())
-    .min(1)
-    .max(3)
     .describe(
-      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'technology/artificial-intelligence', 'design/typography'), ORDERED most-representative first (the post keeps only the single best-fitting category; the rest become tags). Reuse common broad top-level fields (technology, design, business, history, science, art, lifestyle, finance) rather than inventing near-duplicates. A single broad term with no subtopic is fine (e.g. 'cooking').",
+      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'technology/artificial-intelligence', 'design/typography'), ORDERED most-representative first — the worker keeps the first 3 (the post itself keeps only the single best-fitting category; the rest become tags). Reuse common broad top-level fields (technology, design, business, history, science, art, lifestyle, finance) rather than inventing near-duplicates. A single broad term with no subtopic is fine (e.g. 'cooking').",
     ),
   body: z
     .string()
@@ -59,17 +61,16 @@ export const SightDraftSchema = z.object({
     .string()
     .optional()
     .describe("Lowercase kebab-case slug; the worker will normalize"),
+  // See PostDraftSchema: no .min/.max on the arrays — bounds are clamped in the
+  // worker (toGeminiOutput), not validated, so Gemini's loose adherence to
+  // minItems/maxItems can't fail the post.
   tags: z
     .array(z.string())
-    .min(1)
-    .max(5)
-    .describe("1-5 lowercase kebab-case tags"),
+    .describe("1-5 lowercase kebab-case tags (the worker keeps the first 5)"),
   categories: z
     .array(z.string())
-    .min(1)
-    .max(3)
     .describe(
-      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'objects/footwear', 'nature/plants'), ORDERED most-representative first (the post keeps only the single best-fitting category; the rest become tags). Reuse common broad top-level fields rather than inventing near-duplicates. A single broad term with no subtopic is fine.",
+      "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'objects/footwear', 'nature/plants'), ORDERED most-representative first — the worker keeps the first 3 (the post itself keeps only the single best-fitting category; the rest become tags). Reuse common broad top-level fields rather than inventing near-duplicates. A single broad term with no subtopic is fine.",
     ),
   body: z
     .string()
@@ -77,9 +78,11 @@ export const SightDraftSchema = z.object({
     .describe(
       "60-160 words, first person, plain and concrete. Describe only what is visibly present. No intensifiers (almost, blinding, neon, aggressive), no metaphor or simile, no mood-painting. No image markdown or URLs — the photos render separately.",
     ),
+  // Optional: flash sometimes omits it. The worker falls back to the first
+  // sentence of the body rather than failing the post on a missing excerpt.
   excerpt: z
     .string()
-    .min(1)
+    .optional()
     .describe("One plain declarative sentence summarizing the photo. No hype."),
   imageAlts: z
     .array(z.string())
