@@ -733,15 +733,14 @@ export default function ComposerScreen() {
                 style={styles.omniAdd}
               />
             </View>
-            {/* Attachment grid — noun labels, a "+" badge so each square tile
-                reads as an "add" action. Handlers unchanged. */}
+            {/* Attachment grid — noun labels under an "Add media" header so the
+                square tiles read as tappable add actions. Handlers unchanged. */}
             <Eyebrow>Add media</Eyebrow>
             <View style={styles.tapTargets}>
               <ActionCard
                 label="Photos"
                 symbol="photo.on.rectangle"
                 glyph="▦"
-                badge
                 disabled={busy}
                 accessibilityHint="Take a photo or pick from your library"
                 onPress={() => setMediaSheet("photo")}
@@ -750,7 +749,6 @@ export default function ComposerScreen() {
                 label="Audio"
                 symbol="waveform"
                 glyph="🎙"
-                badge
                 disabled={busy}
                 accessibilityHint="Record a voice memo or pick an audio file"
                 onPress={() => setAudioSheetOpen(true)}
@@ -759,7 +757,6 @@ export default function ComposerScreen() {
                 label="Files"
                 symbol="doc.text"
                 glyph="📄"
-                badge
                 disabled={busy}
                 accessibilityHint="Pick a PDF or Word document"
                 onPress={() => void pickDocument()}
@@ -770,7 +767,6 @@ export default function ComposerScreen() {
                 label="Video"
                 symbol="video"
                 glyph="▶"
-                badge
                 disabled={busy}
                 accessibilityHint="Record or pick a video"
                 onPress={() => setMediaSheet("video")}
@@ -779,7 +775,6 @@ export default function ComposerScreen() {
                 label="Repo"
                 symbol="chevron.left.forwardslash.chevron.right"
                 glyph="◆"
-                badge
                 disabled={busy}
                 accessibilityHint="Paste a GitHub repo URL and preview it"
                 onPress={() => {
