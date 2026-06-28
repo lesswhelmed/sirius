@@ -40,7 +40,10 @@
         "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_JHDRfhioxKspkGosJYRsGDiVMJP",
         "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY": "goog_UiLlycOYEXnCXkWUIBdrcrRIeNc"
       },
-      "node": "22.12.0"
+      "node": "22.12.0",
+      "android": {
+        "resourceClass": "large"
+      }
     },
     "production-device": {
       "extends": "production",
