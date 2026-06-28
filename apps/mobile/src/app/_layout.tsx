@@ -16,6 +16,7 @@ import { Platform, StyleSheet, Text, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { ErrorBoundary, LastCrashBanner } from "@/components/error-boundary";
 import { Screen } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import {
@@ -28,6 +29,7 @@ import {
   clearCaptureCredentials,
   syncCaptureCredentials,
 } from "@/lib/capture-credentials";
+import { installCrashCapture } from "@/lib/crash-log";
 import { runMigrations } from "@/lib/db/client";
 import { ensureLocalOwner } from "@/lib/db/owner";
 // Side-effect import: defines the background sync task at global scope so
@@ -39,6 +41,12 @@ import {
   resetUser,
 } from "@/lib/purchases";
 import { startSync, stopSync } from "@/lib/sync/engine";
+
+// Hook the global JS error + unhandled-rejection channels at module scope,
+// BEFORE the React tree mounts, so a fatal during initial render/launch is
+// recorded. expo-updates' ErrorRecovery otherwise re-throws and aborts (SIGABRT)
+// with no trace of the original error in the native crash report.
+installCrashCapture();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -170,18 +178,27 @@ function useDbReady(): { ready: boolean; error: Error | null } {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ShareIntentProvider
-        options={{
-          debug: __DEV__,
-          resetOnBackground: true,
-        }}
-      >
-        <QueryClientProvider client={queryClient}>
-          <SiriusThemeProvider>
-            <RootContent />
-          </SiriusThemeProvider>
-        </QueryClientProvider>
-      </ShareIntentProvider>
+      <ErrorBoundary>
+        <ShareIntentProvider
+          options={{
+            debug: __DEV__,
+            // Do NOT reset on background. The share pane owns payload lifecycle:
+            // it clears the payload on real unmount (shareintent.tsx). With
+            // resetOnBackground:true, briefly backgrounding the app mid-edit (to
+            // copy text, switch apps, etc.) wiped `hasShareIntent` → the pane
+            // re-rendered as "Nothing shared." and dropped the user's typed note
+            // on return. Keeping the payload across background preserves the
+            // in-progress share; the unmount reset still re-arms the next share.
+            resetOnBackground: false,
+          }}
+        >
+          <QueryClientProvider client={queryClient}>
+            <SiriusThemeProvider>
+              <RootContent />
+            </SiriusThemeProvider>
+          </QueryClientProvider>
+        </ShareIntentProvider>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }
@@ -213,6 +230,7 @@ function RootContent() {
   return (
     <ThemeProvider value={navTheme}>
       <AnimatedSplashOverlay />
+      <LastCrashBanner />
       <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       {error ? (
               <Screen style={styles.centeredPad}>
