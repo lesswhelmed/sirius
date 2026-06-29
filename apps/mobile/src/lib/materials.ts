@@ -551,6 +551,10 @@ const imageHandler: MaterialHandler<"image"> = {
 
     let submitted = 0;
     let queued = 0;
+    // Only ENQUEUE THROWS (no durable row created) land here, so the card can be
+    // kept for retry. A `result === "failed"` row DOES exist and lives in the
+    // In-flight section — that one is never re-staged (failed stays out of it).
+    const failed: ImageMaterial[] = [];
     for (let i = 0; i < inputs.length; i++) {
       const img = inputs[i]!;
       try {
@@ -578,14 +582,18 @@ const imageHandler: MaterialHandler<"image"> = {
         else if (result === "deferred") queued++;
         else errors.push(`Image ${i + 1} failed — retry from the Queue.`);
       } catch {
-        // Surface the throw instead of crashing the whole submit; the batch's
-        // optimistic post stays pending until any landed rows reconcile.
-        errors.push(`Image ${i + 1} couldn't be saved — retry from the Queue.`);
+        // No durable outbox row was created (insert/pre-upload threw). Keep this
+        // image as a tray card so it isn't lost — matching the single-file
+        // handlers and Spec B's durability invariant (tray card OR durable row).
+        failed.push(materials[i]!);
+        errors.push(
+          `Image ${i + 1} couldn't be saved — kept in your tray so you can try again.`,
+        );
       }
     }
-    // failed:[] — binary failures live as `failed` outbox rows (Requeue), never
-    // re-staged in the tray.
-    return { submitted, errors, failed: [], queued };
+    // `failed` holds ONLY enqueue-throw images (kept in the tray). Images that
+    // returned "failed" have a durable row and live in the In-flight section.
+    return { submitted, errors, failed, queued };
   },
 };
 
