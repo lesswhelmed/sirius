@@ -17,6 +17,20 @@ no 6.5" or iPad set is needed (the app sets no `supportsTablet`).
 |     4 | `04-tree.png`        | Explore → Categories — the taxonomy/Observatory outline + Rediscover rail           |
 |     5 | `05-post-detail.png` | A drafted post — hero image, title, tags, source, body                              |
 |     6 | `06-explore.png`     | Explore → Map — the 3D constellation of topics & posts                              |
+|     7 | `07-sight-cat.png`   | A SIGHT post — photo-led capture (the cat)                                          |
+|     8 | `08-friends.png`     | Friends — the shared feed (your + friends' posts with audience badges)              |
+
+> **`08-friends.png` provenance.** Normalized from a 1290 × 2796 manual capture
+> ("Sirius 6.5 Plus" sim) to the exact 6.9" deliverable: uniform scale to width 1320,
+> alpha flattened onto the app's `#131923` ground, padded 7 px at the bottom to reach
+> 1320 × 2868, sRGB, **no alpha**. Verified with `sips`. For a perfectly native
+> re-capture, shoot it from the 6.9" ProMax sim via the script below (route
+> `siriusapp://feed`).
+>
+> **Alpha caveat (action needed).** App Store Connect rejects screenshots that contain
+> an alpha channel. As of 2026-06-29, `01`–`06` still carry one (`sips -g hasAlpha`);
+> `07`–`08` are flattened. Flatten the rest before upload, e.g.
+> `magick in.png -background '#131923' -alpha remove -alpha off -colorspace sRGB PNG24:in.png`.
 
 Apple requires at least 1 screenshot; 3–5 is the sweet spot. Upload in the order above
 (or pick the strongest 3–5). The filenames are stable — the marketing page
