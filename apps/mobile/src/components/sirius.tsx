@@ -43,7 +43,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
 import type { SFSymbol } from "sf-symbols-typescript";
 
-import { BottomTabInset, type Theme } from "@/constants/theme";
+import { BottomTabInset, MaxContentWidth, type Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 
 // A multiline TextInput grows with its content. Left uncapped it eventually
@@ -52,10 +52,22 @@ import { useTheme, useThemedStyles } from "@/constants/theme-context";
 // internally instead, keeping the surrounding controls reachable.
 const MULTILINE_MAX_HEIGHT = Math.round(Dimensions.get("window").height * 0.4);
 
-// Full-bleed paper background. Screens layer their own padding on top.
-export function Screen({ style, ...rest }: ViewProps) {
+// Full-bleed paper background with a centered, width-capped content column.
+// The outer View keeps the paper ground edge-to-edge; the inner column caps at
+// `MaxContentWidth` and centers, so on wide windows — iPad, and "Designed for
+// iPad" running resizable on Apple Silicon Macs — content reads as a comfortable
+// editorial column with paper gutters instead of stretching full-bleed. On a
+// phone the window is narrower than the cap, so the column is just 100% width
+// (no visible effect). The caller's `style` lands on the inner column (where the
+// children live) so existing per-screen layout — `centered` loading states,
+// padded `container`s — behaves exactly as before.
+export function Screen({ style, children, ...rest }: ViewProps) {
   const styles = useThemedStyles(makeStyles);
-  return <View style={[styles.screen, style]} {...rest} />;
+  return (
+    <View style={styles.screen} {...rest}>
+      <View style={[styles.screenContent, style]}>{children}</View>
+    </View>
+  );
 }
 
 // Mono uppercase eyebrow/folio label — the recurring "Section II — Catalogue"
@@ -841,6 +853,12 @@ export function SubmitBar({
 function makeStyles(t: Theme) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.color.paper },
+    screenContent: {
+      flex: 1,
+      width: "100%",
+      maxWidth: MaxContentWidth,
+      alignSelf: "center",
+    },
     captureDone: {
       justifyContent: "center",
       paddingHorizontal: t.space.xl,
