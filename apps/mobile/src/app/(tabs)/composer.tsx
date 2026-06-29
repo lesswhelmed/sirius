@@ -154,6 +154,12 @@ export default function ComposerScreen() {
   // edit/remove from the tray bar. `reviewStep` null = wizard closed.
   const [reviewStep, setReviewStep] = useState<null | 1 | 2>(null);
   const [itemsSheetOpen, setItemsSheetOpen] = useState(false);
+  // Step 2 is a [FOCUS | NOTE] tabbed screen. `submissionNote` is one optional
+  // note for the WHOLE submission (a per-card note overrides it per item); it
+  // lives in component state so it survives back/forth nav and is only cleared
+  // in finishSubmit.
+  const [refineTab, setRefineTab] = useState<"focus" | "note">("focus");
+  const [submissionNote, setSubmissionNote] = useState("");
 
   // Step 2 (focus) search + inline create. `focusQuery` filters the focus list
   // and doubles as the title for a new focus; creating one POSTs to the SAME
@@ -430,7 +436,9 @@ export default function ComposerScreen() {
     });
     if (result.canceled) return;
     await stageAndAddAssets(
-      result.assets.map((asset, i) => assetOf(asset, `img-${i}.jpg`, "image/jpeg")),
+      result.assets.map((asset, i) =>
+        assetOf(asset, `img-${i}.jpg`, "image/jpeg"),
+      ),
     );
   }
 
@@ -449,7 +457,9 @@ export default function ComposerScreen() {
       quality: 1,
     });
     if (result.canceled || result.assets.length === 0) return;
-    await stageAndAddAssets([assetOf(result.assets[0]!, "video.mp4", "video/mp4")]);
+    await stageAndAddAssets([
+      assetOf(result.assets[0]!, "video.mp4", "video/mp4"),
+    ]);
   }
 
   async function capturePhoto() {
@@ -604,7 +614,9 @@ export default function ComposerScreen() {
       setRepoPreview(preview);
     } catch (err) {
       setRepoError(
-        err instanceof ApiError ? err.message : "Network error reaching preview.",
+        err instanceof ApiError
+          ? err.message
+          : "Network error reaching preview.",
       );
     } finally {
       setRepoLoading(false);
@@ -655,6 +667,9 @@ export default function ComposerScreen() {
     }
     setItems([]);
     setNotesById(new Map());
+    setSubmissionNote("");
+    setRefineTab("focus");
+    setEditingId(null);
     setRegistry(new Map());
     setProjectId(null);
     setAudience(DEFAULT_AUDIENCE);
@@ -701,7 +716,7 @@ export default function ComposerScreen() {
     setRegistry(restaged);
     // Pair each Material with its source card id so a per-item failure (matched
     // by Material reference) maps back to the exact card to keep staged.
-    const pairs = toMaterialPairs(items, restaged, notesById);
+    const pairs = toMaterialPairs(items, restaged, notesById, submissionNote);
     const result = await runSubmit(
       pairs.map((p) => p.material),
       false,
@@ -744,10 +759,6 @@ export default function ComposerScreen() {
 
     finishSubmit(result.queued);
   }
-
-  const editingItem = editingId
-    ? items.find((i) => i.id === editingId)
-    : undefined;
 
   // Step 2 focus list, filtered by the search box. "Auto" stays pinned at the
   // top unless the query clearly doesn't match it. The create row appears when
@@ -897,7 +908,6 @@ export default function ComposerScreen() {
               onPress={() => router.push("/help")}
             />
           </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -909,7 +919,13 @@ export default function ComposerScreen() {
           count={items.length}
           thumbUri={firstImageId ? registry.get(firstImageId)?.uri : undefined}
           onReview={() => setItemsSheetOpen(true)}
-          onSend={() => setReviewStep(1)}
+          onSend={() => {
+            // One-modal invariant: close the items sheet + any inline edit
+            // before presenting the wizard Modal (two RN Modals wedge iOS).
+            setEditingId(null);
+            setItemsSheetOpen(false);
+            setReviewStep(1);
+          }}
           disabled={trayErrors.hasCritical}
         />
       ) : null}
@@ -928,7 +944,9 @@ export default function ComposerScreen() {
         <PrimaryButton
           label={mediaSheet === "video" ? "Record video" : "Take photo"}
           onPress={() =>
-            runAfterMediaSheet(mediaSheet === "video" ? captureVideo : capturePhoto)
+            runAfterMediaSheet(
+              mediaSheet === "video" ? captureVideo : capturePhoto,
+            )
           }
         />
         <PrimaryButton
@@ -1024,65 +1042,9 @@ export default function ComposerScreen() {
         </View>
       </Sheet>
 
-      <Sheet
-        visible={editingId !== null}
-        title={
-          editingItem?.kind === "url"
-            ? "Edit link"
-            : editingItem?.kind === "note"
-              ? "Edit note"
-              : "Add a note"
-        }
-        onClose={() => setEditingId(null)}
-      >
-        {editingItem ? (
-          <>
-            <Field
-              label={
-                editingItem.kind === "url"
-                  ? "URL"
-                  : editingItem.kind === "note"
-                    ? "Note"
-                    : "Notes (optional)"
-              }
-              style={styles.editInput}
-              placeholder={
-                editingItem.kind === "url"
-                  ? "https://example.com"
-                  : editingItem.kind === "note"
-                    ? "Anything to remember…"
-                    : "What interests you about this…"
-              }
-              multiline={editingItem.kind !== "url"}
-              autoFocus
-              autoCapitalize={editingItem.kind === "url" ? "none" : "sentences"}
-              autoCorrect={editingItem.kind !== "url"}
-              keyboardType={editingItem.kind === "url" ? "url" : "default"}
-              value={editDraft}
-              onChangeText={setEditDraft}
-            />
-            <KeyboardDoneButton style={styles.keyboardDone} />
-            <PrimaryButton
-              label="Save"
-              onPress={confirmEdit}
-              disabled={
-                editingItem.kind !== "document" &&
-                editingItem.kind !== "image" &&
-                editingItem.kind !== "video" &&
-                editingItem.kind !== "audio" &&
-                editDraft.trim().length === 0
-              }
-            />
-            <View style={styles.sheetCancel}>
-              <TextLink
-                label="Cancel"
-                tone={t.color.inkMuted}
-                onPress={() => setEditingId(null)}
-              />
-            </View>
-          </>
-        ) : null}
-      </Sheet>
+      {/* (The per-card edit was a standalone Sheet here; it stacked a 2nd Modal
+          over the "In tray" Sheet and wedged iOS. Edit is now inline in the tray
+          list above — see the editingId === item.id branch.) */}
 
       <AudienceSheet
         mode="controlled"
@@ -1092,35 +1054,94 @@ export default function ComposerScreen() {
         onClose={() => setAudienceOpen(false)}
       />
 
-      {/* Items review — the staged cards, for edit / change-type / remove. */}
+      {/* Items review — the staged cards, for edit / change-type / remove.
+          Edit is INLINE (swaps the card for a Field) — never a second Modal,
+          which would stack over this Sheet and wedge iOS. */}
       <Sheet
         visible={itemsSheetOpen}
         title="In tray"
-        onClose={() => setItemsSheetOpen(false)}
+        onClose={() => {
+          setEditingId(null);
+          setItemsSheetOpen(false);
+        }}
       >
         <TrayErrorSummary summaries={trayErrors.summaries} />
         {items.length === 0 ? (
           <Text style={styles.pickerEmptyText}>Your tray is empty.</Text>
         ) : (
           <View style={styles.trayList}>
-            {items.map((item) => (
-              <SmartCard
-                key={item.id}
-                item={item}
-                errors={trayErrors.byId.get(item.id) ?? []}
-                collapsedCodes={trayErrors.collapsedCodes}
-                thumbUri={
-                  item.kind === "image"
-                    ? registry.get(item.id)?.uri
-                    : undefined
-                }
-                sightBadge={item.kind === "image" && item.id === firstImageId}
-                onEdit={() => openEdit(item.id)}
-                onOverride={(to) => onOverride(item.id, to)}
-                onRemove={() => removeItem(item.id)}
-                disabled={busy}
-              />
-            ))}
+            {items.map((item) =>
+              editingId === item.id ? (
+                // Inline edit row (replaces the card). Same kind-derived Field as
+                // the old edit sheet; url/text re-validate, file kinds write the
+                // per-card note. confirmEdit clears editingId → back to the card.
+                <View key={item.id} style={styles.trayEditRow}>
+                  <Field
+                    label={
+                      item.kind === "url"
+                        ? "URL"
+                        : item.kind === "note"
+                          ? "Note"
+                          : "Notes (optional)"
+                    }
+                    style={styles.editInput}
+                    placeholder={
+                      item.kind === "url"
+                        ? "https://example.com"
+                        : item.kind === "note"
+                          ? "Anything to remember…"
+                          : "What interests you about this…"
+                    }
+                    multiline={item.kind !== "url"}
+                    autoFocus
+                    autoCapitalize={item.kind === "url" ? "none" : "sentences"}
+                    autoCorrect={item.kind !== "url"}
+                    keyboardType={item.kind === "url" ? "url" : "default"}
+                    value={editDraft}
+                    onChangeText={setEditDraft}
+                  />
+                  <KeyboardDoneButton style={styles.keyboardDone} />
+                  <View style={styles.trayEditActions}>
+                    <TextLink
+                      label="Cancel"
+                      tone={t.color.inkMuted}
+                      onPress={() => {
+                        setEditingId(null);
+                        setEditDraft("");
+                      }}
+                    />
+                    <PrimaryButton
+                      label="Save"
+                      onPress={confirmEdit}
+                      disabled={
+                        item.kind !== "document" &&
+                        item.kind !== "image" &&
+                        item.kind !== "video" &&
+                        item.kind !== "audio" &&
+                        editDraft.trim().length === 0
+                      }
+                    />
+                  </View>
+                </View>
+              ) : (
+                <SmartCard
+                  key={item.id}
+                  item={item}
+                  errors={trayErrors.byId.get(item.id) ?? []}
+                  collapsedCodes={trayErrors.collapsedCodes}
+                  thumbUri={
+                    item.kind === "image"
+                      ? registry.get(item.id)?.uri
+                      : undefined
+                  }
+                  sightBadge={item.kind === "image" && item.id === firstImageId}
+                  onEdit={() => openEdit(item.id)}
+                  onOverride={(to) => onOverride(item.id, to)}
+                  onRemove={() => removeItem(item.id)}
+                  disabled={busy}
+                />
+              ),
+            )}
           </View>
         )}
       </Sheet>
@@ -1132,7 +1153,9 @@ export default function ComposerScreen() {
         onRequestClose={() => setReviewStep(null)}
       >
         <Screen>
-          <View style={[styles.wizHeader, { paddingTop: insets.top + t.space.sm }]}>
+          <View
+            style={[styles.wizHeader, { paddingTop: insets.top + t.space.sm }]}
+          >
             <Pressable
               onPress={() =>
                 reviewStep === 2 ? setReviewStep(1) : setReviewStep(null)
@@ -1231,143 +1254,209 @@ export default function ComposerScreen() {
               </>
             ) : (
               <>
-                <Title accent="." accessibilityRole="header">
-                  File it under
-                </Title>
-                <Text style={styles.wizHelper}>
-                  Pick a focus, or let Sirius file it automatically.
-                </Text>
-
-                {/* Search box doubles as the new-focus title. */}
-                <View style={styles.focusSearch}>
-                  <SymbolView
-                    name="magnifyingglass"
-                    size={16}
-                    tintColor={t.color.inkMuted}
-                    fallback={<Text style={styles.focusSearchGlyph}>⌕</Text>}
-                  />
-                  <TextInput
-                    ref={focusSearchRef}
-                    style={styles.focusSearchInput}
-                    value={focusQuery}
-                    onChangeText={(text) => {
-                      setFocusQuery(text);
-                      if (focusError) setFocusError(null);
-                    }}
-                    placeholder="Search or create a focus…"
-                    placeholderTextColor={t.color.inkSubtle}
-                    selectionColor={t.color.accent}
-                    autoCapitalize="sentences"
-                    autoCorrect={false}
-                    returnKeyType="search"
-                    accessibilityLabel="Search or create a focus"
-                  />
-                  {focusQuery.length > 0 ? (
+                {/* [ FOCUS | NOTE ] — two whole-submission decisions, one screen. */}
+                <View style={styles.segmented}>
+                  {(["focus", "note"] as const).map((tab) => (
                     <Pressable
-                      onPress={() => setFocusQuery("")}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel="Clear search"
+                      key={tab}
+                      onPress={() => setRefineTab(tab)}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: refineTab === tab }}
+                      accessibilityLabel={tab === "focus" ? "Focus" : "Note"}
+                      style={[
+                        styles.segment,
+                        refineTab === tab && styles.segmentOn,
+                      ]}
                     >
-                      <Text style={styles.focusSearchClear}>✕</Text>
+                      <Text
+                        style={[
+                          styles.segmentText,
+                          refineTab === tab && styles.segmentTextOn,
+                        ]}
+                      >
+                        {tab === "focus" ? "FOCUS" : "NOTE"}
+                      </Text>
                     </Pressable>
-                  ) : null}
+                  ))}
                 </View>
 
-                {/* Auto — the recommended default. */}
-                {showAutoRow ? (
-                  <Pressable
-                    onPress={() => setProjectId(null)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: projectId === null }}
-                    accessibilityLabel="Auto. Sirius picks the best focus for you. Recommended."
-                    style={({ pressed }) => [
-                      styles.audRow,
-                      pressed && styles.audiencePressed,
-                    ]}
-                  >
-                    <View style={styles.audText}>
-                      <View style={styles.focusAutoHead}>
-                        <Text style={styles.audLabel}>Auto</Text>
-                        <Text style={styles.focusRecTag}>RECOMMENDED</Text>
-                      </View>
-                      <Text style={styles.audSub}>
-                        Sirius picks the best focus for you
-                      </Text>
-                    </View>
-                    <View
-                      style={[styles.radio, projectId === null && styles.radioOn]}
-                    />
-                  </Pressable>
-                ) : null}
-
-                {/* Existing focus areas, filtered by the search box. */}
-                {filteredProjects.map((p) => (
-                  <Pressable
-                    key={p.id}
-                    onPress={() => setProjectId(p.id)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: projectId === p.id }}
-                    accessibilityLabel={`Focus: ${p.title}`}
-                    style={({ pressed }) => [
-                      styles.audRow,
-                      pressed && styles.audiencePressed,
-                    ]}
-                  >
-                    <View style={styles.audText}>
-                      <Text style={styles.audLabel}>{p.title}</Text>
-                    </View>
-                    <View
-                      style={[styles.radio, projectId === p.id && styles.radioOn]}
-                    />
-                  </Pressable>
-                ))}
-
-                {!showAutoRow && filteredProjects.length === 0 && !showCreateRow ? (
-                  <Text style={styles.pickerEmptyText}>No matches.</Text>
-                ) : null}
-
-                {/* Create a new focus inline (POSTs to /api/app/projects). */}
-                {showCreateRow ? (
-                  <Pressable
-                    onPress={() => {
-                      if (focusQ.length > 0) void createFocus(focusQuery);
-                      else focusSearchRef.current?.focus();
-                    }}
-                    disabled={creatingFocus}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      focusQ.length > 0
-                        ? `Create focus ${focusQ}`
-                        : "Create a new focus"
-                    }
-                    style={({ pressed }) => [
-                      styles.focusCreateRow,
-                      pressed && styles.audiencePressed,
-                    ]}
-                  >
-                    <Text style={styles.focusCreatePlus}>＋</Text>
-                    <Text style={styles.focusCreateLabel}>
-                      {creatingFocus
-                        ? "Creating…"
-                        : focusQ.length > 0
-                          ? `Create “${focusQ}”`
-                          : "Create a new focus"}
+                {refineTab === "note" ? (
+                  <>
+                    <Title accent="." accessibilityRole="header">
+                      Add a note
+                    </Title>
+                    <Text style={styles.wizHelper}>
+                      One note for everything in this batch — what caught your
+                      eye, why it matters. A per-card note overrides it.
+                      Optional.
                     </Text>
-                  </Pressable>
+                    <TextInput
+                      style={styles.noteArea}
+                      value={submissionNote}
+                      onChangeText={setSubmissionNote}
+                      placeholder="What interests you about this…"
+                      placeholderTextColor={t.color.inkSubtle}
+                      selectionColor={t.color.accent}
+                      multiline
+                      textAlignVertical="top"
+                      autoCapitalize="sentences"
+                      accessibilityLabel="Note for this submission"
+                    />
+                    <KeyboardDoneButton style={styles.keyboardDone} />
+                  </>
                 ) : null}
 
-                {focusError ? (
-                  <Text style={styles.repoError} accessibilityRole="alert">
-                    {focusError}
-                  </Text>
-                ) : null}
+                {refineTab === "focus" ? (
+                  <>
+                    <Title accent="." accessibilityRole="header">
+                      File it under
+                    </Title>
+                    <Text style={styles.wizHelper}>
+                      Pick a focus, or let Sirius file it automatically.
+                    </Text>
 
-                <TextLink
-                  label="Manage focus →"
-                  tone={t.color.accent}
-                  onPress={() => router.push("/focus")}
-                />
+                    {/* Search box doubles as the new-focus title. */}
+                    <View style={styles.focusSearch}>
+                      <SymbolView
+                        name="magnifyingglass"
+                        size={16}
+                        tintColor={t.color.inkMuted}
+                        fallback={
+                          <Text style={styles.focusSearchGlyph}>⌕</Text>
+                        }
+                      />
+                      <TextInput
+                        ref={focusSearchRef}
+                        style={styles.focusSearchInput}
+                        value={focusQuery}
+                        onChangeText={(text) => {
+                          setFocusQuery(text);
+                          if (focusError) setFocusError(null);
+                        }}
+                        placeholder="Search or create a focus…"
+                        placeholderTextColor={t.color.inkSubtle}
+                        selectionColor={t.color.accent}
+                        autoCapitalize="sentences"
+                        autoCorrect={false}
+                        returnKeyType="search"
+                        accessibilityLabel="Search or create a focus"
+                      />
+                      {focusQuery.length > 0 ? (
+                        <Pressable
+                          onPress={() => setFocusQuery("")}
+                          hitSlop={10}
+                          accessibilityRole="button"
+                          accessibilityLabel="Clear search"
+                        >
+                          <Text style={styles.focusSearchClear}>✕</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+
+                    {/* Auto — the recommended default. */}
+                    {showAutoRow ? (
+                      <Pressable
+                        onPress={() => setProjectId(null)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: projectId === null }}
+                        accessibilityLabel="Auto. Sirius picks the best focus for you. Recommended."
+                        style={({ pressed }) => [
+                          styles.audRow,
+                          pressed && styles.audiencePressed,
+                        ]}
+                      >
+                        <View style={styles.audText}>
+                          <View style={styles.focusAutoHead}>
+                            <Text style={styles.audLabel}>Auto</Text>
+                            <Text style={styles.focusRecTag}>RECOMMENDED</Text>
+                          </View>
+                          <Text style={styles.audSub}>
+                            Sirius picks the best focus for you
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.radio,
+                            projectId === null && styles.radioOn,
+                          ]}
+                        />
+                      </Pressable>
+                    ) : null}
+
+                    {/* Existing focus areas, filtered by the search box. */}
+                    {filteredProjects.map((p) => (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => setProjectId(p.id)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: projectId === p.id }}
+                        accessibilityLabel={`Focus: ${p.title}`}
+                        style={({ pressed }) => [
+                          styles.audRow,
+                          pressed && styles.audiencePressed,
+                        ]}
+                      >
+                        <View style={styles.audText}>
+                          <Text style={styles.audLabel}>{p.title}</Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.radio,
+                            projectId === p.id && styles.radioOn,
+                          ]}
+                        />
+                      </Pressable>
+                    ))}
+
+                    {!showAutoRow &&
+                    filteredProjects.length === 0 &&
+                    !showCreateRow ? (
+                      <Text style={styles.pickerEmptyText}>No matches.</Text>
+                    ) : null}
+
+                    {/* Create a new focus inline (POSTs to /api/app/projects). */}
+                    {showCreateRow ? (
+                      <Pressable
+                        onPress={() => {
+                          if (focusQ.length > 0) void createFocus(focusQuery);
+                          else focusSearchRef.current?.focus();
+                        }}
+                        disabled={creatingFocus}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          focusQ.length > 0
+                            ? `Create focus ${focusQ}`
+                            : "Create a new focus"
+                        }
+                        style={({ pressed }) => [
+                          styles.focusCreateRow,
+                          pressed && styles.audiencePressed,
+                        ]}
+                      >
+                        <Text style={styles.focusCreatePlus}>＋</Text>
+                        <Text style={styles.focusCreateLabel}>
+                          {creatingFocus
+                            ? "Creating…"
+                            : focusQ.length > 0
+                              ? `Create “${focusQ}”`
+                              : "Create a new focus"}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+
+                    {focusError ? (
+                      <Text style={styles.repoError} accessibilityRole="alert">
+                        {focusError}
+                      </Text>
+                    ) : null}
+
+                    <TextLink
+                      label="Manage focus →"
+                      tone={t.color.accent}
+                      onPress={() => router.push("/focus")}
+                    />
+                  </>
+                ) : null}
               </>
             )}
           </ScrollView>
@@ -1567,7 +1656,10 @@ function TrayBar({
         onPress={onReview}
         accessibilityRole="button"
         accessibilityLabel={`${count} item${count === 1 ? "" : "s"} in tray. Tap to review.`}
-        style={({ pressed }) => [styles.trayBarItem, pressed && styles.heroPressed]}
+        style={({ pressed }) => [
+          styles.trayBarItem,
+          pressed && styles.heroPressed,
+        ]}
       >
         <View style={styles.trayThumb}>
           {thumbUri ? (
@@ -1715,7 +1807,11 @@ function makeStyles(t: Theme) {
       paddingVertical: t.space.lg,
       paddingHorizontal: t.space.sm,
     },
-    mediaTileGlyph: { fontSize: 22, color: t.color.ink, fontFamily: t.font.serif },
+    mediaTileGlyph: {
+      fontSize: 22,
+      color: t.color.ink,
+      fontFamily: t.font.serif,
+    },
     mediaTileLabel: {
       fontFamily: t.font.serif,
       fontSize: 18,
@@ -1773,6 +1869,19 @@ function makeStyles(t: Theme) {
 
     // Tray
     trayList: { gap: t.space.sm },
+    trayEditRow: {
+      gap: t.space.sm,
+      borderWidth: 1,
+      borderColor: t.color.accent,
+      backgroundColor: t.color.paperRaised,
+      padding: t.space.md,
+    },
+    trayEditActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      gap: t.space.md,
+    },
 
     // Tray bar (sticky entry into the review flow)
     trayBar: {
@@ -1889,6 +1998,40 @@ function makeStyles(t: Theme) {
       borderColor: t.color.rule,
     },
 
+    // Step 2 — [ FOCUS | NOTE ] segmented control + whole-submission note area
+    segmented: {
+      flexDirection: "row",
+      borderWidth: 1,
+      borderColor: t.color.rule,
+    },
+    segment: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: t.space.sm,
+      backgroundColor: t.color.paper,
+    },
+    segmentOn: { backgroundColor: t.color.accent },
+    segmentText: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: t.color.inkMuted,
+    },
+    segmentTextOn: { color: t.color.onAccent },
+    noteArea: {
+      minHeight: 140,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: t.color.paperRaised,
+      padding: t.space.md,
+      fontFamily: t.font.serif,
+      fontSize: 17,
+      lineHeight: 24,
+      color: t.color.ink,
+      textAlignVertical: "top",
+    },
+
     // Step 2 — focus search + create
     focusSearch: {
       flexDirection: "row",
@@ -1913,7 +2056,11 @@ function makeStyles(t: Theme) {
       fontSize: 13,
       color: t.color.inkMuted,
     },
-    focusAutoHead: { flexDirection: "row", alignItems: "center", gap: t.space.sm },
+    focusAutoHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.sm,
+    },
     focusRecTag: {
       fontFamily: t.font.mono,
       fontSize: 9,
@@ -1993,7 +2140,11 @@ function makeStyles(t: Theme) {
       color: t.color.inkMuted,
       marginTop: 2,
     },
-    repoMeta: { fontFamily: t.font.mono, fontSize: 12, color: t.color.inkMuted },
+    repoMeta: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.inkMuted,
+    },
     repoReadme: {
       fontFamily: t.font.serif,
       fontSize: 13,

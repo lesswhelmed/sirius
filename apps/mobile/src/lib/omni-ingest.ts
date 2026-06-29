@@ -108,8 +108,17 @@ export function toMaterial(
       }
       return { kind: "url", url, notes };
     }
-    case "note":
-      return { kind: "note", text: item.text ?? item.content };
+    case "note": {
+      // NoteMaterial carries no `notes` field — a resolved (global) note is
+      // merged into the text using the same format as applyNote, so it reaches
+      // the BLOG draft. A note-kind card's inline edit changes its text (it has
+      // no notesById entry), so `notes` here is only ever the submission note.
+      const base = item.text ?? item.content;
+      return {
+        kind: "note",
+        text: notes ? `${base}\n\nAuthor's notes: ${notes}` : base,
+      };
+    }
     case "image":
     case "video":
     case "audio":
@@ -135,21 +144,29 @@ export function toMaterialPairs(
   items: ClassifiedItem[],
   registry: FileRegistry,
   notesById: Map<string, string>,
+  submissionNote?: string,
 ): { id: string; material: Material }[] {
   const pairs: { id: string; material: Material }[] = [];
+  // The whole-submission note applies to every item; a per-item tray note
+  // (notesById) overrides it for that item. Empty → undefined (note omitted).
+  const global = submissionNote?.trim() || undefined;
   for (const item of items) {
-    const note = notesById.get(item.id)?.trim() || undefined;
+    const note = notesById.get(item.id)?.trim() || global;
     const material = toMaterial(item, registry, note);
     if (material) pairs.push({ id: item.id, material });
   }
   return pairs;
 }
 
-// Map the whole tray. `notesById` carries the per-card note (id → text).
+// Map the whole tray. `notesById` carries the per-card note (id → text);
+// `submissionNote` is the optional whole-submission note (per-item overrides it).
 export function toMaterials(
   items: ClassifiedItem[],
   registry: FileRegistry,
   notesById: Map<string, string>,
+  submissionNote?: string,
 ): Material[] {
-  return toMaterialPairs(items, registry, notesById).map((p) => p.material);
+  return toMaterialPairs(items, registry, notesById, submissionNote).map(
+    (p) => p.material,
+  );
 }

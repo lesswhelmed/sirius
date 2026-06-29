@@ -515,7 +515,14 @@ const imageHandler: MaterialHandler<"image"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     if (materials.length === 0) return { submitted: 0, errors, failed: [] };
-    const notes = materials.find((m) => m.notes)?.notes ?? "";
+    // One SIGHT post for the batch → one note. Join the DISTINCT non-empty
+    // per-photo notes instead of silently keeping only the first; when every
+    // image carries the same threaded global note the Set collapses it to one.
+    const notes = Array.from(
+      new Set(
+        materials.map((m) => m.notes?.trim()).filter((n): n is string => !!n),
+      ),
+    ).join("\n\n");
     const inputs: ImageInput[] = materials.map((m) => ({
       uri: m.uri,
       name: m.name,
