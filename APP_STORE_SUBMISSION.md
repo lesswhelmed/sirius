@@ -73,6 +73,34 @@ length / price come from the products automatically; the real gap is the **two l
   - Privacy: `https://lesswhelmed.com/privacy`
   - Terms (EULA): `https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`
 
+### Note — the IAP review screenshot vs. the screen recording (don't conflate them)
+
+Two different artifacts satisfy two different guidelines. Get this wrong and you waste time
+fighting the RevenueCat dashboard.
+
+- **IAP "review screenshot"** (App Store Connect → the subscription product) → unblocks
+  **2.1(b)**. It is **mandatory** (you can't submit the IAP without it), but its only job is to
+  show the reviewer *what the purchase screen looks like*. It does **NOT** need to show the
+  Privacy/Terms footer. A clean shot of the paywall (title, price, Upgrade button) is fine.
+- **Screen recording** (your reply in Resolution Center) → proves **3.1.2(c)**. Apple verifies
+  the Privacy + Terms links against the **running app**, not a static image — that's why they
+  ask for a *recording* showing you tapping each link and it opening.
+
+**RevenueCat's "generate screenshot" omits the footer — that's expected.** The dashboard
+generator renders the template preview and doesn't draw runtime-only chrome (the footer links
+render when the paywall is actually `presentPaywall()`'d on a device). So:
+
+- **Don't** rely on the dashboard generator to prove the footer. Showing the footer in the IAP
+  review screenshot is **not required** — upload whatever clean paywall image you have to
+  unblock 2.1(b).
+- **Best path:** capture the paywall from the **running app on the iOS Simulator** instead. One
+  real capture (a) works as the App Store Connect IAP review screenshot, (b) includes the
+  footer naturally (it's the real presented paywall), and (c) the same flow recorded becomes the
+  3.1.2(c) screen recording — one capture, three needs.
+- Regardless of the RevenueCat footer, the native Privacy/Terms links we added to the Settings
+  subscription card (Issue 2A) render independently, so the in-app disclosure is unambiguous
+  even if the footer is flaky.
+
 ### Resubmit checklist
 
 - [ ] Configure the RevenueCat paywall footer links (Issue 2A).
