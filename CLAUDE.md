@@ -165,8 +165,10 @@ Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zo
 - `apps/web` — Next.js 16 App Router. The product: the public catalog, ingest UI, queue, auth pages, and all HTTP APIs.
 - `apps/worker` — long-running Bun daemon. Polls the DB for ingest jobs, runs the Gemini pipeline. Runs via `bun run src/index.ts` (no build step).
 - `apps/mobile` — Expo / React Native client. Tabs (UI label ≠ route name): **Capture**
-  (route `composer`), **Catalog** (route `library`), **Explore** (route `tree` — the
-  analysis-taxonomy outline + 3D map, native counterpart of web's Observatory, see below),
+  (route `composer`), **Catalog** (route `library`), **Friends** (route `feed` — NOT
+  `friends`, which is the off-tab People manager; the merged shared-posts feed, see
+  "The Friends hub" below), **Explore** (route `tree` — the analysis-taxonomy outline +
+  3D map, native counterpart of web's Observatory, see below),
   **Queue** (`queue`), **Account** (route `settings`). URL scheme is **`siriusapp://`**
   (the bundle id `dev.copt.sirius` is for `simctl launch`, NOT a deep-link scheme); there is
   **no `/explore` route** — the Explore tab is `siriusapp://tree`. The full route + deep-link
@@ -306,6 +308,24 @@ tool was refactored onto the same core so UI and MCP can't drift. **Ranking prin
 the field-weighted `searchVector` (title>tags/categories>excerpt>body), the RRF fusion math,
 query operators, and the deterministic test harness are documented in
 `docs/search-ranking.md`.**
+
+### The Friends hub + shared feed (`/friends` + mobile `feed` tab)
+
+The shared-posts feed is a first-class surface, separate from the catalog. The
+catalog (`/catalog`, mobile `library`) is a **private archive only**; the Friends
+hub holds the merged feed. Web `/friends` is a `[Feed|People|Groups]` hub
+(`apps/web/app/(app)/friends/`, Feed default); mobile has a dedicated bottom tab
+(label "Friends", **route `feed`** — `friends` is taken by the People manager).
+Both render the **same merged stream**: the viewer's own SHARED posts
+(FRIENDS/GROUP/PUBLIC — **never** their own PRIVATE) interleaved with friends'
+posts shared with them. The single query is `listVisibleToViewer` /
+`visibilityWhereForViewer` in `packages/db/src/posts.ts` (mobile via
+`GET /api/app/feed`, web direct). Own posts carry an **owner-only `ownAudience`
+badge** (Friends / Public / group name → deep-link to the group, pre-selected);
+peers' rows carry no group data (`ownAudience` is populated only for
+`submittedById === viewerId` and `shareGroups` is stripped from every row — the
+privacy invariant). **Full write-up + maintained code links in
+`docs/friends-feed.md`.**
 
 ### The Observatory / Tree (`/space` + mobile Tree tab)
 
