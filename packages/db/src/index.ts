@@ -97,6 +97,11 @@ export * from "./search";
 export * from "./tags";
 export * from "./users";
 
+// Pure PUBLIC-tier policy derivation (no DB) — re-exported by name rather than
+// `export *` to match the typed surface above and keep Turbopack quiet.
+export { publicTierPolicy } from "./visibility-policy";
+export type { PublicTierPolicy } from "./visibility-policy";
+
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };

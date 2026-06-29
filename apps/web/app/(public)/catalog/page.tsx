@@ -1,6 +1,9 @@
-import { getUserHandle } from "@repo/db";
+import { getUserHandle, publicTierPolicy } from "@repo/db";
 import { redirect } from "next/navigation";
-import { PUBLIC_CATALOG_ENABLED } from "../../../lib/features";
+import {
+  ANONYMOUS_CATALOG_ENABLED,
+  PUBLIC_CATALOG_ENABLED,
+} from "../../../lib/features";
 import { getSessionOrNull } from "../../../lib/session";
 import { OwnerCatalog } from "./owner-catalog";
 import { PublicCatalog } from "./public-catalog";
@@ -11,8 +14,9 @@ import { PublicCatalog } from "./public-catalog";
 // The shared (public) chrome already swaps in the signed-in nav when a session
 // is present, so the page only needs to branch the body.
 //
-// While PUBLIC_CATALOG_ENABLED is false the signed-out body is gated: there is
-// no public, cross-user catalog, so anonymous visitors are sent to sign in.
+// The signed-out body is an ANONYMOUS surface, so it gates on the policy's
+// anonymousPublic tier: while truly-anonymous browsing is off there is no public,
+// cross-user catalog and anonymous visitors are sent to sign in.
 export default async function CatalogPage({
   searchParams,
 }: {
@@ -35,7 +39,11 @@ export default async function CatalogPage({
     );
   }
 
-  if (!PUBLIC_CATALOG_ENABLED) {
+  const { anonymousPublic } = publicTierPolicy({
+    publicCatalogEnabled: PUBLIC_CATALOG_ENABLED,
+    anonymousCatalogEnabled: ANONYMOUS_CATALOG_ENABLED,
+  });
+  if (!anonymousPublic) {
     redirect("/sign-in?next=/catalog");
   }
 

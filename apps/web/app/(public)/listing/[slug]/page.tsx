@@ -1,4 +1,4 @@
-import { listCommentsForPost, PostStatus, PostVisibility } from "@repo/db";
+import { listCommentsForPost } from "@repo/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Streamdown } from "streamdown";
@@ -7,7 +7,6 @@ import { CommentsSection } from "./comments-section";
 import { RelatedPosts } from "./related-posts";
 import { denyCatalogAccess } from "../../../../lib/catalog-access";
 import { DateDisplay } from "../../../../lib/date-display";
-import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
 import { canReadPost } from "../../../../lib/post-access";
 import { getSessionOrNull } from "../../../../lib/session";
 import { PostImage } from "../../../_chrome/post-image";
@@ -38,20 +37,12 @@ export default async function ListingPage({
     notFound();
   }
 
-  // Read gating lives in canReadPost (owner-only today; widened for friends
-  // later). The public, published-for-anyone path only opens when the public
-  // catalog is enabled; otherwise non-owners are redirected.
+  // Read gating lives entirely in canReadPost: owner / friends / group tiers plus
+  // the PUBLIC tier, which now distinguishes the anonymous viewer (viewerId null →
+  // anonymousPublic) from a signed-in viewer (signedInPublic). A non-owner is
+  // redirected when no tier admits them.
   const viewerId = (await getSessionOrNull())?.user.id ?? null;
-  // The anonymous/public fast-path may ONLY surface a post the owner deliberately
-  // marked PUBLIC — status === PUBLISHED is not enough (the default tier is
-  // PRIVATE). Without the visibility check, flipping PUBLIC_CATALOG_ENABLED would
-  // expose every published PRIVATE/FRIENDS/GROUP post to anyone with the slug.
-  // Signed-in tiered reads (own / friends / group) still flow through canReadPost.
-  const publicOk =
-    PUBLIC_CATALOG_ENABLED &&
-    post.status === PostStatus.PUBLISHED &&
-    post.visibility === PostVisibility.PUBLIC;
-  if (!publicOk && !(await canReadPost(post, viewerId))) {
+  if (!(await canReadPost(post, viewerId))) {
     denyCatalogAccess(viewerId, `/listing/${slug}`);
   }
 

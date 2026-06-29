@@ -1,6 +1,6 @@
 # Design: Centralize the public-tier visibility policy
 
-**Status:** Proposed (not yet implemented) — awaiting review.
+**Status:** Implemented 2026-06-29 (ao-cds). See "Implementation notes" at the end.
 **Origin:** Findings 1 & 2 of `post-visibility-audit-2026-06-29.md`.
 
 ## Problem
@@ -81,3 +81,29 @@ table test written first (it will pass for the already-fixed behavior and lock i
 
 The LOW findings (3–5) and the `bio` product decision (6) are tracked separately as beads;
 they are not part of this centralization.
+
+## Implementation notes (2026-06-29)
+
+Implemented as the **lower-ripple** variant: `canReadPost(post, viewerId)` kept its
+signature (no param-threading to its ~7 callers) and consults `publicTierPolicy` internally,
+branching the PUBLIC tier on `viewerId == null ? anonymousPublic : signedInPublic`.
+
+- New pure module `packages/db/src/visibility-policy.ts` (+ `visibility-policy.test.ts`, 5
+  cases incl. the `anonymousPublic ⇒ signedInPublic` invariant), exported from `index.ts`.
+- `canReadPost` (`apps/web/lib/post-access.ts`) now distinguishes anonymous vs signed-in
+  PUBLIC reads — closes the gap where `ANONYMOUS_CATALOG_ENABLED` was dead code.
+- `/listing/[slug]` collapsed to a single `canReadPost` call (the anonymous fast-path folded
+  into the gate, strictly tighter).
+- Signed-in PUBLIC admission (`feed` route, `search` route, web `friends-feed.tsx`) derives
+  `includePublic`/`publicCatalogEnabled` from `policy.signedInPublic`.
+- Anonymous catalog surfaces (`catalog/page.tsx`, `catalog/[handle]/page.tsx`,
+  `api/catalog/*`) gate on `policy.anonymousPublic`.
+
+Validated: typecheck 9/9 (forced), lint 7/7 (`--max-warnings 0`), search golden matrix
+24/24, policy unit 5/5, adversarial diff review PASS. Behavior is identical today (both flags
+`false`); the win is one source of truth and the now-meaningful anonymous gate.
+
+**Not centralized (intentional):** the cockpit Share-to-public-listing button
+(`colophon-tabs.tsx`) still reads `PUBLIC_CATALOG_ENABLED` directly — a signed-in UI
+render-gate, behaviorally identical, left out of scope. Doc-only comment references to the
+flag (robots, sitemap, nav, etc.) were not swept.

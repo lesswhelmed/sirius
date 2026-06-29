@@ -17,9 +17,10 @@ import {
   isPostSharedWithViaGroup,
   PostStatus,
   PostVisibility,
+  publicTierPolicy,
 } from "@repo/db";
 
-import { PUBLIC_CATALOG_ENABLED } from "./features";
+import { ANONYMOUS_CATALOG_ENABLED, PUBLIC_CATALOG_ENABLED } from "./features";
 
 // The minimal shape a post must expose to be authorized. Both findPostBySlug
 // (PostWithRelations) and getCachedPost satisfy it structurally, so callers pass
@@ -42,8 +43,12 @@ export type ReadableSubject = {
 //      The friendship is checked live per request (isPostSharedWith → areFriends),
 //      never cached, so unfriending revokes access immediately.
 //   3. PUBLIC — a published PUBLIC post, but only while the cross-user catalog is
-//      switched on (PUBLIC_CATALOG_ENABLED). Default-PRIVATE posts mean flipping
-//      that flag exposes nothing until an owner deliberately marks a post PUBLIC.
+//      switched on. The PUBLIC tier distinguishes the ANONYMOUS viewer (viewerId
+//      == null, gated on policy.anonymousPublic) from a SIGNED-IN viewer (gated on
+//      policy.signedInPublic) — both derived ONCE from the two surface flags via
+//      publicTierPolicy (anonymous exposure implies signed-in exposure). Default-
+//      PRIVATE posts mean flipping a flag exposes nothing until an owner
+//      deliberately marks a post PUBLIC.
 //
 // READ only. Owner-only mutations (delete, assign-to-project, download originals,
 // set visibility) keep their own `submittedById === viewerId` checks — sharing a
@@ -67,8 +72,14 @@ export async function canReadPost(
     return true;
   }
 
+  const policy = publicTierPolicy({
+    publicCatalogEnabled: PUBLIC_CATALOG_ENABLED,
+    anonymousCatalogEnabled: ANONYMOUS_CATALOG_ENABLED,
+  });
+  const allowPublic =
+    viewerId == null ? policy.anonymousPublic : policy.signedInPublic;
   if (
-    PUBLIC_CATALOG_ENABLED &&
+    allowPublic &&
     post.visibility === PostVisibility.PUBLIC &&
     post.status === PostStatus.PUBLISHED
   ) {

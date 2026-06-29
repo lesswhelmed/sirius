@@ -1,10 +1,13 @@
-import { friendshipState } from "@repo/db";
+import { friendshipState, publicTierPolicy } from "@repo/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCachedStorefront } from "../../../../lib/cached";
 import { denyCatalogAccess } from "../../../../lib/catalog-access";
 import { DateDisplay } from "../../../../lib/date-display";
-import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
+import {
+  ANONYMOUS_CATALOG_ENABLED,
+  PUBLIC_CATALOG_ENABLED,
+} from "../../../../lib/features";
 import { getSessionOrNull } from "../../../../lib/session";
 import { PostImage } from "../../../_chrome/post-image";
 import { AddFriendButton } from "./add-friend-button";
@@ -22,9 +25,18 @@ export default async function PublicCatalogPage({
 
   const viewerId = (await getSessionOrNull())?.user.id ?? null;
 
-  // While the public catalog is disabled, a storefront is only its owner's
-  // (published-only) self-preview. Everyone else is redirected.
-  if (!PUBLIC_CATALOG_ENABLED && (viewerId == null || result.user.id !== viewerId)) {
+  // A storefront is always its owner's (published-only) self-preview. For anyone
+  // else the PUBLIC tier applies, distinguishing the anonymous visitor
+  // (anonymousPublic) from a signed-in non-owner (signedInPublic) — both derived
+  // from the shared policy. While the relevant tier is off, they're redirected.
+  const policy = publicTierPolicy({
+    publicCatalogEnabled: PUBLIC_CATALOG_ENABLED,
+    anonymousCatalogEnabled: ANONYMOUS_CATALOG_ENABLED,
+  });
+  const isOwner = viewerId != null && result.user.id === viewerId;
+  const allowPublic =
+    viewerId == null ? policy.anonymousPublic : policy.signedInPublic;
+  if (!isOwner && !allowPublic) {
     denyCatalogAccess(viewerId, `/catalog/${handle}`);
   }
 

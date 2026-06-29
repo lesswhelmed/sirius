@@ -1,6 +1,9 @@
-import { friendIdsOf, listVisibleToViewer } from "@repo/db";
+import { friendIdsOf, listVisibleToViewer, publicTierPolicy } from "@repo/db";
 import Link from "next/link";
-import { PUBLIC_CATALOG_ENABLED } from "../../../lib/features";
+import {
+  ANONYMOUS_CATALOG_ENABLED,
+  PUBLIC_CATALOG_ENABLED,
+} from "../../../lib/features";
 import { CatalogCard } from "../../(public)/catalog/catalog-card";
 
 const FEED_PAGE = 48;
@@ -10,10 +13,16 @@ const FEED_PAGE = 48;
 // owner sees their own shared work badged with its audience.
 export async function FriendsFeed({ userId }: { userId: string }) {
   const friendIds = await friendIdsOf(userId);
+  // Signed-in surface: cross-user PUBLIC admission comes from the shared PUBLIC
+  // policy (same signed-in tier as the feed route + canReadPost), not a raw flag.
+  const { signedInPublic } = publicTierPolicy({
+    publicCatalogEnabled: PUBLIC_CATALOG_ENABLED,
+    anonymousCatalogEnabled: ANONYMOUS_CATALOG_ENABLED,
+  });
   const { items } = await listVisibleToViewer({
     viewerId: userId,
     friendIds,
-    includePublic: PUBLIC_CATALOG_ENABLED,
+    includePublic: signedInPublic,
     limit: FEED_PAGE,
   });
 

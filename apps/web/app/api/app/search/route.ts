@@ -1,5 +1,8 @@
-import { searchCorpus } from "@repo/db";
-import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
+import { searchCorpus, publicTierPolicy } from "@repo/db";
+import {
+  ANONYMOUS_CATALOG_ENABLED,
+  PUBLIC_CATALOG_ENABLED,
+} from "../../../../lib/features";
 import { getSessionOrNull } from "../../../../lib/session";
 
 // Curated corpus search (full-text + embedding, RRF-fused) — the UI counterpart
@@ -29,14 +32,19 @@ export async function GET(request: Request) {
     return Response.json({ items: [], nextCursor: null, partial: false });
   }
 
+  // Signed-in surface: derive cross-user PUBLIC admission from the shared PUBLIC
+  // policy (the same signed-in tier canReadPost uses), so search can't surface
+  // other users' PUBLIC posts while the cross-user catalog is disabled.
+  const { signedInPublic } = publicTierPolicy({
+    publicCatalogEnabled: PUBLIC_CATALOG_ENABLED,
+    anonymousCatalogEnabled: ANONYMOUS_CATALOG_ENABLED,
+  });
   try {
     const page = await searchCorpus(session.user.id, q, {
       scope,
       cursor,
       limit,
-      // Honor the same PUBLIC kill-switch canReadPost uses, so search can't surface
-      // other users' PUBLIC posts while the cross-user catalog is disabled.
-      publicCatalogEnabled: PUBLIC_CATALOG_ENABLED,
+      publicCatalogEnabled: signedInPublic,
     });
     return Response.json(page);
   } catch (err) {

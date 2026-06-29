@@ -1,5 +1,8 @@
-import { listVisibleToViewer, type PostType } from "@repo/db";
-import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
+import { listVisibleToViewer, type PostType, publicTierPolicy } from "@repo/db";
+import {
+  ANONYMOUS_CATALOG_ENABLED,
+  PUBLIC_CATALOG_ENABLED,
+} from "../../../../lib/features";
 import { getViewerFriendIds } from "../../../../lib/friends-access";
 import { getSessionOrNull } from "../../../../lib/session";
 
@@ -39,10 +42,16 @@ export async function GET(request: Request) {
   const friendsOnly = Boolean(url.searchParams.get("friendsOnly"));
 
   const friendIds = await getViewerFriendIds(session.user.id);
+  // Signed-in surface: cross-user PUBLIC admission is the signed-in tier of the
+  // shared PUBLIC policy (one source of truth across canReadPost + the DB legs).
+  const { signedInPublic } = publicTierPolicy({
+    publicCatalogEnabled: PUBLIC_CATALOG_ENABLED,
+    anonymousCatalogEnabled: ANONYMOUS_CATALOG_ENABLED,
+  });
   const page = await listVisibleToViewer({
     viewerId: session.user.id,
     friendIds,
-    includePublic: PUBLIC_CATALOG_ENABLED,
+    includePublic: signedInPublic,
     friendsOnly,
     limit: Number.isFinite(limit) ? limit : undefined,
     cursor,

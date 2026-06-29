@@ -1,13 +1,21 @@
-import { listUserStorefront } from "@repo/db";
-import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
+import { listUserStorefront, publicTierPolicy } from "@repo/db";
+import {
+  ANONYMOUS_CATALOG_ENABLED,
+  PUBLIC_CATALOG_ENABLED,
+} from "../../../../lib/features";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ handle: string }> },
 ) {
-  // No public storefront feed while the catalog is private. 404 so the
-  // endpoint's existence isn't advertised. Re-enable via the flag.
-  if (!PUBLIC_CATALOG_ENABLED) {
+  // Anonymous storefront feed — gated on the policy's anonymousPublic tier. No
+  // public feed while truly-anonymous browsing is off. 404 so the endpoint's
+  // existence isn't advertised. Re-enable via the flag.
+  const { anonymousPublic } = publicTierPolicy({
+    publicCatalogEnabled: PUBLIC_CATALOG_ENABLED,
+    anonymousCatalogEnabled: ANONYMOUS_CATALOG_ENABLED,
+  });
+  if (!anonymousPublic) {
     return new Response("Not found", { status: 404 });
   }
 
