@@ -5,7 +5,7 @@
 // shared CreateGroupDialog (same flow as the composer + post editor). Group state
 // lives in the shared useGroups hook.
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { GroupDetail, GroupSummary } from "../../../lib/groups/types";
 import { useFriends, useGroups } from "../../../lib/groups/use-groups";
@@ -18,14 +18,23 @@ const PRIVACY_LABEL: Record<GroupSummary["visibility"], string> = {
 
 export function GroupsManager({
   initialGroups,
+  selectedGroupId,
 }: {
   initialGroups: GroupSummary[];
+  // Deep-link target from the audience badge (/friends?tab=groups&group=<id>):
+  // the matching group is highlighted, scrolled into view, and its edit/members
+  // panel opens. No-op if absent or the group was since deleted.
+  selectedGroupId?: string;
 }) {
   const groupsApi = useGroups(initialGroups);
   const friendsApi = useFriends();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editGroup, setEditGroup] = useState<GroupDetail | undefined>(undefined);
   const [loadError, setLoadError] = useState(false);
+  const [activeGroupId, setActiveGroupId] = useState<string | undefined>(
+    selectedGroupId,
+  );
+  const rowRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
   const { groups, error, deleteGroup, reload } = groupsApi;
 
@@ -35,7 +44,7 @@ export function GroupsManager({
     setDialogOpen(true);
   };
 
-  const openEdit = async (id: string) => {
+  const openEdit = useCallback(async (id: string) => {
     setLoadError(false);
     try {
       const res = await fetch(`/api/app/groups/${id}`, {
@@ -48,7 +57,24 @@ export function GroupsManager({
     } catch {
       setLoadError(true);
     }
-  };
+  }, []);
+
+  // Honor the ?group= deep-link once: highlight the matching row, scroll it into
+  // view, and open its edit/members panel. Guarded so a later reload (which
+  // rebuilds `groups`) doesn't re-trigger the dialog.
+  const deepLinkedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkedRef.current || !selectedGroupId) return;
+    const match = groups.find((g) => g.id === selectedGroupId);
+    if (!match) return;
+    deepLinkedRef.current = true;
+    setActiveGroupId(selectedGroupId);
+    rowRefs.current[selectedGroupId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    void openEdit(selectedGroupId);
+  }, [selectedGroupId, groups, openEdit]);
 
   const confirmDelete = (g: GroupSummary) => {
     if (
@@ -102,10 +128,19 @@ export function GroupsManager({
         </div>
       ) : (
         <ul className="space-y-0">
-          {groups.map((g) => (
+          {groups.map((g) => {
+            const isActive = g.id === activeGroupId;
+            return (
             <li
               key={g.id}
-              className="hairline-b flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-4"
+              ref={(el) => {
+                rowRefs.current[g.id] = el;
+              }}
+              className={`hairline-b flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-4 ${
+                isActive
+                  ? "border-l-2 border-[var(--color-accent)] pl-3"
+                  : ""
+              }`}
             >
               <span className="min-w-0">
                 <span className="block truncate font-display text-[19px] text-[var(--fg)]">
@@ -136,7 +171,8 @@ export function GroupsManager({
                 </button>
               </span>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 

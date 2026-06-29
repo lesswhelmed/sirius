@@ -1,16 +1,32 @@
 import { listFriends, listPendingRequests, listShareGroups } from "@repo/db";
 import { requireSession } from "../../../lib/session";
 import type { GroupSummary } from "../../../lib/groups/types";
-import { FriendsShell } from "./friends-shell";
+import { FriendsFeed } from "./friends-feed";
+import { FriendsShell, type FriendsTab } from "./friends-shell";
 import type { FriendItem, RequestItem } from "./friends-list";
 
-export default async function FriendsPage() {
-  const session = await requireSession("/friends");
+export default async function FriendsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [session, params] = await Promise.all([
+    requireSession("/friends"),
+    searchParams,
+  ]);
   const [friends, requests, groups] = await Promise.all([
     listFriends(session.user.id),
     listPendingRequests(session.user.id),
     listShareGroups(session.user.id),
   ]);
+
+  // The active sub-tab + an optional deep-linked group (from the audience badge:
+  // /friends?tab=groups&group=<id>). Feed is the default landing.
+  const tabParam = typeof params.tab === "string" ? params.tab : undefined;
+  const initialTab: FriendsTab =
+    tabParam === "people" || tabParam === "groups" ? tabParam : "feed";
+  const selectedGroupId =
+    typeof params.group === "string" ? params.group : undefined;
 
   const friendItems: FriendItem[] = friends.map((f) => ({
     id: f.id,
@@ -53,6 +69,9 @@ export default async function FriendsPage() {
           friends={friendItems}
           requests={requestItems}
           groups={groupItems}
+          initialTab={initialTab}
+          selectedGroupId={selectedGroupId}
+          feed={<FriendsFeed userId={session.user.id} />}
         />
       </div>
     </section>

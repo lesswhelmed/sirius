@@ -1,9 +1,4 @@
-import type {
-  PostListItem,
-  PostStatus,
-  PostType,
-  PostVisibility,
-} from "@repo/db";
+import type { PostListItem, PostStatus, PostType } from "@repo/db";
 import Link from "next/link";
 import { DateDisplay } from "../../../lib/date-display";
 import { PostImage } from "../../_chrome/post-image";
@@ -44,25 +39,38 @@ function StatusPip({ status }: { status: PostStatus }) {
   );
 }
 
-// Quiet badge for non-private posts. PRIVATE is the default and the norm in the
-// owner catalog, so showing it would be noise — only FRIENDS/PUBLIC get a mark.
-const VIS_BADGE: Partial<
-  Record<PostVisibility, { glyph: string; label: string; tone: string }>
-> = {
-  FRIENDS: { glyph: "◐", label: "friends", tone: "text-[var(--color-sage)]" },
-  PUBLIC: { glyph: "◯", label: "public", tone: "text-[var(--color-accent)]" },
-};
-
-function VisibilityBadge({ visibility }: { visibility: PostVisibility }) {
-  const badge = VIS_BADGE[visibility];
-  if (!badge) return null;
+// The owner-facing audience mark: shows whom *you* shared this with. Driven by
+// ownAudience (owner-only — peer rows carry null, so nothing renders). PRIVATE
+// is silent. GROUP shows the group name and deep-links to the manager.
+function AudienceBadge({ audience }: { audience: PostListItem["ownAudience"] }) {
+  if (!audience) return null;
+  if (audience.visibility === "FRIENDS") {
+    return (
+      <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-sage)]">
+        <span aria-hidden="true">◐</span>friends
+      </span>
+    );
+  }
+  if (audience.visibility === "PUBLIC") {
+    return (
+      <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-accent)]">
+        <span aria-hidden="true">◯</span>public
+      </span>
+    );
+  }
+  // GROUP
+  const [first, ...rest] = audience.groups;
+  if (!first) return null;
+  const extra = rest.length > 0 ? ` +${rest.length}` : "";
   return (
-    <span
-      className={`flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-[0.18em] ${badge.tone}`}
+    <Link
+      href={`/friends?tab=groups&group=${encodeURIComponent(first.id)}`}
+      className="flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-mark-text)] transition-colors hover:text-[var(--color-accent)]"
     >
-      <span aria-hidden="true">{badge.glyph}</span>
-      {badge.label}
-    </span>
+      <span aria-hidden="true">▣</span>
+      {first.name}
+      {extra} <span aria-hidden="true">→</span>
+    </Link>
   );
 }
 
@@ -174,7 +182,7 @@ export function CatalogCard({
               {TYPE_LABEL[post.type]}
             </span>
             <span className="flex items-center gap-3">
-              <VisibilityBadge visibility={post.visibility} />
+              <AudienceBadge audience={post.ownAudience} />
               <StatusPip status={post.status} />
             </span>
           </div>

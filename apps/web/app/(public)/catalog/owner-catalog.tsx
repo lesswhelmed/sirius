@@ -1,18 +1,14 @@
 import {
   countPosts,
-  friendIdsOf,
   listOwnerCategories,
   listOwnerTags,
   listPostsPage,
-  listVisibleToViewer,
   type PostSort,
   type PostStatus,
   type PostType,
 } from "@repo/db";
 import Link from "next/link";
-import { PUBLIC_CATALOG_ENABLED } from "../../../lib/features";
 import { CatalogCard } from "./catalog-card";
-import { CatalogScope } from "./catalog-scope";
 import { CategoryIndex } from "./category-index";
 import { CuratedSearch } from "./curated-search";
 import { InFlight } from "./in-flight";
@@ -63,19 +59,6 @@ export async function OwnerCatalog({
   handle: string | null;
   searchParams: Record<string, string | string[] | undefined>;
 }) {
-  // Scope: "mine" (own posts, any status) vs "friends" (published posts friends
-  // shared with you + public). The Friends feed is a distinct query (cursor-based,
-  // cross-author) so it renders its own branch rather than reusing the owner rail.
-  const scope = searchParams.scope === "friends" ? "friends" : "mine";
-  if (scope === "friends") {
-    return (
-      <FriendsFeed
-        userId={userId}
-        q={typeof searchParams.q === "string" ? searchParams.q : undefined}
-      />
-    );
-  }
-
   const typeParam =
     typeof searchParams.type === "string" ? searchParams.type : null;
   const statusParam =
@@ -133,6 +116,7 @@ export async function OwnerCatalog({
       page: Number.isFinite(pageParam) ? pageParam : 1,
       pageSize: PAGE_SIZE,
       includeTaxonomy: true,
+      includeOwnAudience: true,
     }),
     listOwnerTags(userId),
     listOwnerCategories(userId),
@@ -158,9 +142,6 @@ export async function OwnerCatalog({
 
   return (
     <section>
-      <div className="mb-6">
-        <CatalogScope scope="mine" />
-      </div>
       <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
@@ -305,106 +286,6 @@ export async function OwnerCatalog({
             </div>
           ) : null}
         </div>
-      </div>
-    </section>
-  );
-}
-
-const FRIENDS_PAGE = 48;
-
-// The Friends feed: published posts shared with the viewer — friends' FRIENDS
-// posts plus PUBLIC posts (when the cross-user catalog is on). Read access is
-// enforced in the query (listVisibleToViewer), not filtered client-side. Cursor-
-// based, so v1 shows the first page; a "load more" can graduate this later.
-async function FriendsFeed({
-  userId,
-  q,
-}: {
-  userId: string;
-  q: string | undefined;
-}) {
-  const friendIds = await friendIdsOf(userId);
-  const { items, nextCursor } = await listVisibleToViewer({
-    viewerId: userId,
-    friendIds,
-    includePublic: PUBLIC_CATALOG_ENABLED,
-    q,
-    limit: FRIENDS_PAGE,
-  });
-  // The feed is "mine + shared"; the viewer's own posts always match, so filter
-  // them out here to show only what OTHERS shared (Mine is the other tab).
-  const shared = items.filter((p) => p.submittedById !== userId);
-
-  return (
-    <section>
-      <div className="mb-6">
-        <CatalogScope scope="friends" />
-      </div>
-      <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-            Shared with you
-          </p>
-          <h1 className="mt-1 font-display italic text-[44px] leading-[0.95] tracking-[-0.01em] text-balance sm:text-[56px]">
-            Friends<span className="text-[var(--color-accent)]">.</span>
-          </h1>
-          <p className="mt-3 max-w-md font-display italic text-[17px] leading-snug text-[var(--fg-muted)]">
-            Published posts your friends have shared with you.
-          </p>
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="font-display italic text-[36px] leading-none text-[var(--color-accent)] nums-oldstyle">
-            {shared.length}
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-            shared
-          </span>
-        </div>
-      </header>
-
-      <div className="hairline-t mt-7 pt-7">
-        <div className="h-[60vh] min-h-[420px] overflow-y-auto border-t border-[var(--color-rule-emphatic)] [scrollbar-color:var(--color-rule-strong)_transparent] [scrollbar-width:thin]">
-          {shared.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-              <p
-                aria-hidden="true"
-                className="font-display italic text-[56px] leading-none text-[var(--color-rule-strong)]"
-              >
-                ∅
-              </p>
-              <p className="mt-5 font-display italic text-[26px] leading-tight text-[var(--fg-muted)]">
-                Nothing shared with you yet.
-              </p>
-              <p className="mt-3 text-[15px] text-[var(--fg-subtle)]">
-                When a friend sets a post to <em>Friends</em>, it shows up here.
-                Add people on{" "}
-                <Link
-                  href="/friends"
-                  className="text-[var(--color-accent)] underline underline-offset-4"
-                >
-                  Friends
-                </Link>
-                .
-              </p>
-            </div>
-          ) : (
-            <ul>
-              {shared.map((post) => (
-                <li
-                  key={post.id}
-                  className="border-b border-[var(--color-rule)] transition-colors hover:bg-[var(--color-paper-raised)]/40"
-                >
-                  <CatalogCard post={post} showAuthor />
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        {nextCursor ? (
-          <p className="rule-emphatic-t mt-6 pt-4 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
-            Showing the most recent {FRIENDS_PAGE}.
-          </p>
-        ) : null}
       </div>
     </section>
   );

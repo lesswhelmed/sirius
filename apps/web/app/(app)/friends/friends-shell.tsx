@@ -1,10 +1,13 @@
 "use client";
 
-// People / Groups tablist for the Friends section. Hash-synced like SettingsShell
-// (#people / #groups) so a tab is deep-linkable and survives a refresh. Owns only
-// the active-tab state; the People panel (friends + requests) and the Groups panel
-// (share-group manager) own their own data/mutations.
+// Feed / People / Groups tablist for the Friends hub. Feed (the merged shared-
+// posts stream) is the default landing; People (friends + requests) and Groups
+// (share-group manager) own their own data/mutations. The active tab is synced to
+// the `?tab=` query param so a tab — and the group deep-link from the audience
+// badge (?tab=groups&group=<id>) — survives a refresh and is shareable. The Feed
+// itself is a server component passed in as the `feed` node.
 
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import type { GroupSummary } from "../../../lib/groups/types";
@@ -16,9 +19,10 @@ import {
 } from "./friends-list";
 import { GroupsManager } from "./groups-manager";
 
-type TabKey = "people" | "groups";
+export type FriendsTab = "feed" | "people" | "groups";
 
-const TABS: { key: TabKey; label: string }[] = [
+const TABS: { key: FriendsTab; label: string }[] = [
+  { key: "feed", label: "Feed" },
   { key: "people", label: "People" },
   { key: "groups", label: "Groups" },
 ];
@@ -27,28 +31,51 @@ export function FriendsShell({
   friends,
   requests,
   groups,
+  feed,
+  initialTab = "feed",
+  selectedGroupId,
 }: {
   friends: FriendItem[];
   requests: RequestItem[];
   groups: GroupSummary[];
+  feed: ReactNode;
+  initialTab?: FriendsTab;
+  selectedGroupId?: string;
 }) {
-  const [tab, setTab] = useState<TabKey>("people");
+  const [tab, setTab] = useState<FriendsTab>(initialTab);
 
-  // Sync from the hash on mount + on back/forward (server always renders People).
+  // Sync from the `?tab=` query on back/forward (the server picks the initial
+  // tab; this keeps the UI in step when the URL changes without a reload).
   useEffect(() => {
-    const fromHash = () => {
-      const hash = window.location.hash.replace(/^#/, "");
-      if (hash === "people" || hash === "groups") setTab(hash);
+    const fromUrl = () => {
+      const value = new URLSearchParams(window.location.search).get("tab");
+      if (value === "feed" || value === "people" || value === "groups") {
+        setTab(value);
+      } else {
+        setTab("feed");
+      }
     };
-    fromHash();
-    window.addEventListener("hashchange", fromHash);
-    return () => window.removeEventListener("hashchange", fromHash);
+    window.addEventListener("popstate", fromUrl);
+    return () => window.removeEventListener("popstate", fromUrl);
   }, []);
 
-  const select = (key: TabKey) => {
+  const select = (key: FriendsTab) => {
     setTab(key);
     if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", `#${key}`);
+      const sp = new URLSearchParams(window.location.search);
+      if (key === "feed") {
+        sp.delete("tab");
+      } else {
+        sp.set("tab", key);
+      }
+      // Leaving the Groups tab drops the deep-linked group selection.
+      if (key !== "groups") sp.delete("group");
+      const qs = sp.toString();
+      window.history.replaceState(
+        null,
+        "",
+        qs ? `${window.location.pathname}?${qs}` : window.location.pathname,
+      );
     }
   };
 
@@ -86,14 +113,19 @@ export function FriendsShell({
         })}
       </div>
 
-      {tab === "people" ? (
+      {tab === "feed" ? (
+        <div className="panel-in">{feed}</div>
+      ) : tab === "people" ? (
         <div className="panel-in space-y-10">
           <AddFriend />
           <FriendsList initialFriends={friends} initialRequests={requests} />
         </div>
       ) : (
         <div className="panel-in">
-          <GroupsManager initialGroups={groups} />
+          <GroupsManager
+            initialGroups={groups}
+            selectedGroupId={selectedGroupId}
+          />
         </div>
       )}
     </div>
