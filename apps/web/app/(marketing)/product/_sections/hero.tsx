@@ -9,16 +9,16 @@ export function Hero() {
   return (
     <section className="grid grid-cols-1 items-center gap-10 pt-8 pb-16 sm:gap-12 sm:pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:pt-16 lg:pb-24">
       <div>
-        <Eyebrow>A personal content catalog</Eyebrow>
+        <Eyebrow>The life-context engine</Eyebrow>
         <h1 className="mt-5 font-display text-[clamp(2.75rem,8.5vw,5rem)] leading-[0.98] tracking-[-0.02em] text-balance text-[var(--color-ink)]">
-          Everything you capture, drafted into something{" "}
-          <em className="italic text-[var(--color-accent)]">worth keeping.</em>
+          Your life,{" "}
+          <em className="italic text-[var(--color-accent)]">in context.</em>
         </h1>
         <p className="mt-6 max-w-xl text-[16px] leading-relaxed text-pretty text-[var(--fg-muted)] sm:mt-7 sm:text-[17px]">
-          Sirius takes the links, photos, notes, repositories, videos,
-          documents, and voice memos you throw at it — and drafts a clean,
-          organized post with AI. You review, then keep it private or publish it
-          to your catalog.
+          Capture anything — links, photos, notes, repositories, videos,
+          documents, voice memos — and Sirius drafts a clean, organized post you
+          review and keep. Every capture becomes private context about your
+          life, and the longer you use it, the more it understands.
         </p>
         <div className="mt-8 sm:mt-9">
           <CtaBlock />
@@ -43,7 +43,7 @@ function HeroMedia() {
     <figure className="paper-card mx-auto w-full max-w-[360px] p-3">
       <figcaption className="hairline-b flex items-center justify-between gap-3 pb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
         <span>Specimen · Demo</span>
-        <span className="text-[var(--color-accent)]">Capture → Catalog</span>
+        <span className="text-[var(--color-accent)]">Capture → Context</span>
       </figcaption>
       <div className="relative mt-3 aspect-[1320/2868] w-full overflow-hidden bg-[var(--color-paper-sunken)]">
         <video

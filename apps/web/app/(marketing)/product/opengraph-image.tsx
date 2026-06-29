@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Sirius — Capture anything. Keep what matters.";
+export const alt = "Sirius — Your life, in context.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -41,7 +41,7 @@ export default function OgImage() {
           color: INK_SUBTLE,
         }}
       >
-        <span>A personal content catalog</span>
+        <span>The life-context engine</span>
         <span style={{ color: ACCENT }}>iOS · Web</span>
       </div>
 
@@ -70,7 +70,7 @@ export default function OgImage() {
             maxWidth: 920,
           }}
         >
-          Everything you capture, drafted into something worth keeping.
+          Everything you capture becomes context you can use.
         </div>
       </div>
 

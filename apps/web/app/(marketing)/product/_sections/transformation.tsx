@@ -9,12 +9,12 @@ export function Transformation() {
       <div className="text-center">
         <Eyebrow className="text-center">The whole point</Eyebrow>
         <h2 className="mx-auto mt-4 max-w-3xl font-display text-[clamp(2rem,4.5vw,3.25rem)] leading-[1.02] tracking-[-0.01em] text-balance text-[var(--color-ink)]">
-          From a scrap to an entry.
+          From clutter to context.
         </h2>
         <p className="mx-auto mt-5 max-w-xl text-[16px] leading-relaxed text-pretty text-[var(--fg-muted)]">
-          Paste a link or jot a note. Sirius reads what you gave it and writes
-          the title, summary, tags, and details. On iPhone it can even draft
-          on-device.
+          Paste a link or jot a note. Sirius reads what you gave it, writes the
+          title, summary, tags, and details, and files it as context you can use
+          later. On iPhone it can even draft on-device.
         </p>
       </div>
 
@@ -43,7 +43,7 @@ export function Transformation() {
         {/* Finished entry */}
         <article className="paper-card p-6">
           <div className="hairline-b flex items-center justify-between gap-3 pb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--fg-subtle)]">
-            <span>Entry · what you get</span>
+            <span>Context · what you get</span>
             <span className="nums-oldstyle">No. 001 · Finding</span>
           </div>
           <h3 className="mt-4 font-display text-[26px] leading-tight tracking-[-0.01em] text-[var(--color-ink)]">

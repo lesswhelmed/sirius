@@ -3,7 +3,7 @@ import { Eyebrow } from "./primitives";
 const FEATURES = [
   {
     title: "Capture anything",
-    body: "Links, photos, notes, code repositories, videos, documents, and voice memos — one inbox for everything worth remembering.",
+    body: "Links, photos, notes, code repositories, videos, documents, and voice memos — the raw material of your life, in one inbox.",
   },
   {
     title: "AI drafting",
@@ -11,7 +11,7 @@ const FEATURES = [
   },
   {
     title: "Your catalog",
-    body: "Your whole library in one place, from first draft to published entry, searchable and yours.",
+    body: "Your whole library in one place, from first draft to published entry — a growing map of your context, searchable and yours.",
   },
   {
     title: "A live queue",

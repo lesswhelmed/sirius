@@ -1,20 +1,27 @@
 # Sirius — Selling points
 
-_Reusable marketing copy for the product page, App Store, and social. Last updated 2026-06-15._
+_Reusable marketing copy for the product page, App Store, and social. Last updated 2026-06-29._
 
-Sirius is a **personal content catalog**. You capture anything — links, photos, notes, code
+> **Superseded by the launch doc set.** The canonical brand, messaging, and launch copy now
+> live in [`../launch/`](../launch/) — start with [`../launch/product/03-launch-copy.md`](../launch/product/03-launch-copy.md)
+> and [`../launch/brand/01-messaging-framework.md`](../launch/brand/01-messaging-framework.md).
+> This file is kept as a quick-reference and has been updated to the new thesis.
+
+Sirius is the **life-context engine**. You capture anything — links, photos, notes, code
 repositories, videos, documents, even voice memos — and AI drafts a clean, structured post.
-You review it, then keep it private or publish it to your own catalog. On iPhone it can draft
-entirely on-device.
+Every capture becomes private **context about your life**, and the longer you use it, the more
+it understands. You review each draft, then keep it private or publish it to your own catalog.
+On iPhone it can draft entirely on-device.
 
 ---
 
 ## Taglines (pick one for the hero; rest are alternates)
 
-- **Everything you capture, drafted into something worth keeping.** ← primary
-- Capture anything. Sirius drafts the rest.
+- **Your life, in context.** ← primary (brand line)
+- Everything you capture becomes context you can use.
 - Capture now. Sorted later.
-- Throw it in. Get back a clean post.
+- The longer you use it, the more it knows.
+- Capture anything. Sirius drafts the rest.
 
 ## Punchy hooks (page bands, social, App Store promo)
 

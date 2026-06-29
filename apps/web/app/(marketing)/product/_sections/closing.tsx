@@ -19,11 +19,12 @@ export function Closing() {
       {/* Final CTA */}
       <div className="rule-emphatic-t mt-20 flex flex-col items-center gap-8 pt-16 text-center">
         <h2 className="font-display text-[clamp(2.5rem,6vw,4.5rem)] leading-[0.98] tracking-[-0.02em] text-balance text-[var(--color-ink)]">
-          Start your catalog.
+          Start saving your context.
         </h2>
         <p className="-mt-2 max-w-md text-[15px] leading-relaxed text-pretty text-[var(--fg-muted)]">
-          Get the clutter off your plate and into something you can actually use
-          — so you can focus on what truly matters.
+          Stop losing the context of your life to a hundred open tabs. Capture
+          it, and let Sirius turn it into something you can actually use. Feel
+          lesswhelmed.
         </p>
         <CtaBlock align="center" />
       </div>

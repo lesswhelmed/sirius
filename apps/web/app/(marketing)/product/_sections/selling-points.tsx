@@ -2,8 +2,8 @@ import { Asterism } from "./primitives";
 
 const HOOKS = [
   "Capture now. Sorted later.",
-  "AI drafts it. You decide what's worth keeping.",
-  "Your stuff — drafted, organized, and still yours.",
+  "Every capture becomes context.",
+  "The longer you use it, the more it knows.",
   "Less to hold in your head. More room for what matters.",
 ] as const;
 

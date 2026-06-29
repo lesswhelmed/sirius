@@ -43,7 +43,7 @@ export default function MarketingLayout({
         <footer>
           <div className="hairline-t mt-8 flex flex-wrap items-center justify-between gap-3 pt-5 pb-10 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
             <span className="nums-lining">
-              Sirius · A personal content catalog
+              Sirius · The life-context engine
             </span>
             <span aria-hidden="true" className="text-[var(--color-accent)]">
               ⁂

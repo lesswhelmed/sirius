@@ -22,7 +22,7 @@ const STEPS = [
   {
     folio: "III",
     title: "Organize",
-    body: "Everything lands in your catalog and sorts itself by theme. The Tree groups related entries so your collection stays navigable.",
+    body: "Everything lands in your catalog and sorts itself by theme — building a map of your context. The Tree groups related entries so your collection stays navigable.",
     screen: SCREENS.tree,
     alt: "The Tree taxonomy screen",
   },
