@@ -157,7 +157,8 @@ export function listOwnerPosts(
 // once per request by the caller.
 // ---------------------------------------------------------------------------
 
-// "posts that are mine, OR a friend's FRIENDS post, OR PUBLIC (when enabled)".
+// "posts I SHARED (FRIENDS/GROUP/PUBLIC — never my own PRIVATE), OR a friend's
+// FRIENDS post, OR a friend's GROUP post I'm a member of, OR PUBLIC (when enabled)".
 // When `friendsOnly` is true the viewer's own-posts clause is DROPPED so the
 // feed shows only OTHERS' shared posts. Edge case: friendsOnly with no friends
 // and no public access must match ZERO rows — an empty `OR: []` is permissive
@@ -171,7 +172,22 @@ export function visibilityWhereForViewer(
 ): Prisma.PostWhereInput {
   const or: Prisma.PostWhereInput[] = friendsOnly
     ? []
-    : [{ submittedById: viewerId }];
+    : [
+        {
+          submittedById: viewerId,
+          // Own posts in the feed are SHARED only — the owner's PRIVATE cockpit
+          // posts live solely in the catalog and must never surface here (this is
+          // "everything beyond the owner cockpit"). FRIENDS/GROUP/PUBLIC all count
+          // as shared regardless of who can ultimately read them.
+          visibility: {
+            in: [
+              PostVisibility.FRIENDS,
+              PostVisibility.GROUP,
+              PostVisibility.PUBLIC,
+            ],
+          },
+        },
+      ];
   if (friendIds.length > 0) {
     or.push({
       visibility: PostVisibility.FRIENDS,
