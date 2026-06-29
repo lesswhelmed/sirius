@@ -72,8 +72,9 @@ own rows; supports `cursor`, `q`, `type`, `tag`, `category`, `limit`. Returns
 | Group deep-link target (pre-selects the group) | [`groups-manager.tsx`](<../apps/web/app/(app)/friends/groups-manager.tsx>) |
 
 - The group badge links to `/friends?tab=groups&group=<id>`; the shell opens the
-  Groups tab and the manager highlights + scrolls to that group (and opens its
-  edit/members surface). Multiple groups render `▣ <first> +N →`.
+  Groups tab and the manager highlights + scrolls to that group and **expands its
+  members inline** (no auto-opened modal — `Edit` stays an explicit action).
+  Multiple groups render `▣ <first> +N →`.
 - `CatalogCard` renders the same badge in both the feed (with `showAuthor` for
   peers) and `/catalog`. Peers' rows show the author handle, never an audience badge.
 - The deleted `catalog-scope.tsx` (the old Mine/Friends switch) is gone — the

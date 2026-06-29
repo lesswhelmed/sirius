@@ -22,8 +22,8 @@ export function GroupsManager({
 }: {
   initialGroups: GroupSummary[];
   // Deep-link target from the audience badge (/friends?tab=groups&group=<id>):
-  // the matching group is highlighted, scrolled into view, and its edit/members
-  // panel opens. No-op if absent or the group was since deleted.
+  // the matching group is highlighted, scrolled into view, and its members are
+  // expanded INLINE (no auto-opened modal). No-op if absent or since deleted.
   selectedGroupId?: string;
 }) {
   const groupsApi = useGroups(initialGroups);
@@ -35,6 +35,13 @@ export function GroupsManager({
     selectedGroupId,
   );
   const rowRefs = useRef<Record<string, HTMLLIElement | null>>({});
+  // Inline members expansion: the selected row reveals its roster in place — no
+  // modal. Rosters are fetched on demand from GET /api/app/groups/[id] and
+  // cached; the cache is cleared after an edit so it can't go stale.
+  const [expandedId, setExpandedId] = useState<string | undefined>(undefined);
+  const [details, setDetails] = useState<Record<string, GroupDetail>>({});
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const [detailErrorId, setDetailErrorId] = useState<string | null>(null);
 
   const { groups, error, deleteGroup, reload } = groupsApi;
 
@@ -59,9 +66,36 @@ export function GroupsManager({
     }
   }, []);
 
+  // Load a group's roster on demand (for the inline members panel) and cache it.
+  const loadDetail = useCallback(async (id: string) => {
+    setDetailErrorId(null);
+    setDetailLoadingId(id);
+    try {
+      const res = await fetch(`/api/app/groups/${id}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { group: GroupDetail };
+      setDetails((prev) => ({ ...prev, [id]: data.group }));
+    } catch {
+      setDetailErrorId(id);
+    } finally {
+      setDetailLoadingId(null);
+    }
+  }, []);
+
+  // Toggle a row's inline members panel; first open fetches the roster.
+  const toggleMembers = (id: string) => {
+    const opening = expandedId !== id;
+    setExpandedId(opening ? id : undefined);
+    setActiveGroupId(id);
+    if (opening && !details[id]) void loadDetail(id);
+  };
+
   // Honor the ?group= deep-link once: highlight the matching row, scroll it into
-  // view, and open its edit/members panel. Guarded so a later reload (which
-  // rebuilds `groups`) doesn't re-trigger the dialog.
+  // view, and EXPAND its members inline — selection + in-place roster, never an
+  // auto-opened mutation surface. Guarded so a later reload (which rebuilds
+  // `groups`) doesn't re-trigger it.
   const deepLinkedRef = useRef(false);
   useEffect(() => {
     if (deepLinkedRef.current || !selectedGroupId) return;
@@ -69,12 +103,13 @@ export function GroupsManager({
     if (!match) return;
     deepLinkedRef.current = true;
     setActiveGroupId(selectedGroupId);
+    setExpandedId(selectedGroupId);
+    void loadDetail(selectedGroupId);
     rowRefs.current[selectedGroupId]?.scrollIntoView({
       behavior: "smooth",
       block: "center",
     });
-    void openEdit(selectedGroupId);
-  }, [selectedGroupId, groups, openEdit]);
+  }, [selectedGroupId, groups, loadDetail]);
 
   const confirmDelete = (g: GroupSummary) => {
     if (
@@ -130,46 +165,85 @@ export function GroupsManager({
         <ul className="space-y-0">
           {groups.map((g) => {
             const isActive = g.id === activeGroupId;
+            const expanded = g.id === expandedId;
+            const detail = details[g.id];
             return (
             <li
               key={g.id}
               ref={(el) => {
                 rowRefs.current[g.id] = el;
               }}
-              className={`hairline-b flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-4 ${
-                isActive
-                  ? "border-l-2 border-[var(--color-accent)] pl-3"
-                  : ""
+              className={`hairline-b py-4 ${
+                isActive ? "border-l-2 border-[var(--color-accent)] pl-3" : ""
               }`}
             >
-              <span className="min-w-0">
-                <span className="block truncate font-display text-[19px] text-[var(--fg)]">
-                  {g.name}
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <span className="min-w-0">
+                  <span className="block truncate font-display text-[19px] text-[var(--fg)]">
+                    {g.name}
+                  </span>
+                  <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+                    <span className="text-[var(--color-accent)]">
+                      {g.memberCount}
+                    </span>{" "}
+                    {g.memberCount === 1 ? "member" : "members"} ·{" "}
+                    {PRIVACY_LABEL[g.visibility]}
+                  </span>
                 </span>
-                <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
-                  <span className="text-[var(--color-accent)]">
-                    {g.memberCount}
-                  </span>{" "}
-                  {g.memberCount === 1 ? "member" : "members"} ·{" "}
-                  {PRIVACY_LABEL[g.visibility]}
+                <span className="flex items-baseline gap-4">
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    onClick={() => toggleMembers(g.id)}
+                    className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-muted)] underline decoration-transparent underline-offset-4 transition-colors hover:decoration-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                  >
+                    {expanded ? "Hide" : "Members"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openEdit(g.id)}
+                    className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-muted)] underline decoration-transparent underline-offset-4 transition-colors hover:decoration-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => confirmDelete(g)}
+                    className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)] underline decoration-transparent underline-offset-4 transition-colors hover:decoration-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                  >
+                    Delete
+                  </button>
                 </span>
-              </span>
-              <span className="flex items-baseline gap-4">
-                <button
-                  type="button"
-                  onClick={() => openEdit(g.id)}
-                  className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-muted)] underline decoration-transparent underline-offset-4 transition-colors hover:decoration-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => confirmDelete(g)}
-                  className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)] underline decoration-transparent underline-offset-4 transition-colors hover:decoration-[var(--color-accent)] hover:text-[var(--color-accent)]"
-                >
-                  Delete
-                </button>
-              </span>
+              </div>
+
+              {expanded ? (
+                <div className="mt-3 pl-1">
+                  {detailErrorId === g.id ? (
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-accent)]">
+                      Couldn’t load members — try again.
+                    </p>
+                  ) : !detail ? (
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+                      {detailLoadingId === g.id ? "Loading members…" : ""}
+                    </p>
+                  ) : detail.members.length === 0 ? (
+                    <p className="font-display italic text-[14px] text-[var(--fg-muted)]">
+                      No members yet — add a few from Edit.
+                    </p>
+                  ) : (
+                    <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+                      {detail.members.map((m) => (
+                        <li
+                          key={m.id}
+                          className="font-mono text-[11px] text-[var(--fg-muted)]"
+                        >
+                          {m.handle ? `@${m.handle}` : m.name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
             </li>
             );
           })}
@@ -179,7 +253,10 @@ export function GroupsManager({
       {dialogOpen ? (
         <CreateGroupDialog
           onClose={() => setDialogOpen(false)}
-          onSaved={() => void reload()}
+          onSaved={() => {
+            setDetails({});
+            void reload();
+          }}
           createGroup={groupsApi.createGroup}
           updateGroup={groupsApi.updateGroup}
           addMember={groupsApi.addMember}
