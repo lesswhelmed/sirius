@@ -22,6 +22,17 @@ export type SubmitterSummary = {
 
 export type PostWithSubmitter = Post & {
   submittedBy: SubmitterSummary | null;
+  ownAudience?: OwnAudience | null;
+};
+
+export type OwnAudienceGroup = { id: string; name: string };
+export type OwnAudience = {
+  // The viewer's own sharing choice for this post. Only FRIENDS | GROUP | PUBLIC
+  // ever appear (PRIVATE posts are not in the feed and get no badge).
+  visibility: PostVisibility;
+  // Non-empty IFF visibility === "GROUP". Each entry is one ShareGroup the post
+  // is shared to. Owner-only — never populated for another author's post.
+  groups: OwnAudienceGroup[];
 };
 
 export interface PostFilters {
@@ -226,14 +237,40 @@ export async function listVisibleToViewer(
       submittedBy: {
         select: { id: true, name: true, handle: true, image: true },
       },
+      shareGroups: {
+        select: { group: { select: { id: true, name: true } } },
+      },
     },
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
   const hasMore = items.length > take;
   const trimmed = hasMore ? items.slice(0, take) : items;
-  const last = trimmed[trimmed.length - 1];
+  // Enrich the viewer's OWN non-PRIVATE rows with their audience summary, and
+  // strip the raw shareGroups relation from EVERY row so a peer's group name
+  // never crosses the wire.
+  const enriched = trimmed.map((row) => {
+    const { shareGroups, ...rest } = row as typeof row & {
+      shareGroups: { group: { id: string; name: string } }[];
+    };
+    const isOwn = rest.submittedById === opts.viewerId;
+    const ownAudience: OwnAudience | null =
+      isOwn && rest.visibility !== PostVisibility.PRIVATE
+        ? {
+            visibility: rest.visibility,
+            groups:
+              rest.visibility === PostVisibility.GROUP
+                ? shareGroups.map((sg) => ({
+                    id: sg.group.id,
+                    name: sg.group.name,
+                  }))
+                : [],
+          }
+        : null;
+    return { ...rest, ownAudience } as PostWithSubmitter;
+  });
+  const last = enriched[enriched.length - 1];
   return {
-    items: trimmed as PostWithSubmitter[],
+    items: enriched,
     nextCursor: hasMore && last ? last.id : null,
   };
 }
@@ -312,6 +349,9 @@ export interface ListPostsPageOptions extends PostFilters {
   // Include the post's tags + single category so the catalog card can render its
   // taxonomy footer (category pill + tag chips) without an N+1 follow-up query.
   includeTaxonomy?: boolean;
+  // Attach the owner's audience (visibility + group names) to each row. Only
+  // meaningful when the page is scoped to the owner's own posts (submittedById).
+  includeOwnAudience?: boolean;
 }
 
 export type PageNumberResult<T> = {
@@ -328,6 +368,7 @@ export type PostListItem = Post & {
   submittedBy?: SubmitterSummary | null;
   tags?: Tag[];
   categories?: Category[];
+  ownAudience?: OwnAudience | null;
 };
 
 export async function listPostsPage(
@@ -357,6 +398,11 @@ export async function listPostsPage(
     include.tags = true;
     include.categories = true;
   }
+  if (opts.includeOwnAudience) {
+    include.shareGroups = {
+      select: { group: { select: { id: true, name: true } } },
+    };
+  }
   const hasInclude = Object.keys(include).length > 0;
 
   const items = await prisma.post.findMany({
@@ -367,7 +413,29 @@ export async function listPostsPage(
     ...(hasInclude ? { include } : {}),
   });
 
-  return { items: items as PostListItem[], page, pageSize, total, totalPages };
+  // Catalog rows are always the owner's own posts, so each non-PRIVATE row may
+  // carry an ownAudience. Strip the raw shareGroups relation when present.
+  const mapped = items.map((row) => {
+    if (!opts.includeOwnAudience) return row as PostListItem;
+    const { shareGroups, ...rest } = row as typeof row & {
+      shareGroups: { group: { id: string; name: string } }[];
+    };
+    const ownAudience: OwnAudience | null =
+      rest.visibility !== PostVisibility.PRIVATE
+        ? {
+            visibility: rest.visibility,
+            groups:
+              rest.visibility === PostVisibility.GROUP
+                ? shareGroups.map((sg) => ({
+                    id: sg.group.id,
+                    name: sg.group.name,
+                  }))
+                : [],
+          }
+        : null;
+    return { ...rest, ownAudience } as PostListItem;
+  });
+  return { items: mapped, page, pageSize, total, totalPages };
 }
 
 export function countPosts(filters: PostFilters = {}): Promise<number> {
