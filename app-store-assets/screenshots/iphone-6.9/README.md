@@ -27,10 +27,12 @@ no 6.5" or iPad set is needed (the app sets no `supportsTablet`).
 > re-capture, shoot it from the 6.9" ProMax sim via the script below (route
 > `siriusapp://feed`).
 >
-> **Alpha caveat (action needed).** App Store Connect rejects screenshots that contain
-> an alpha channel. As of 2026-06-29, `01`–`06` still carry one (`sips -g hasAlpha`);
-> `07`–`08` are flattened. Flatten the rest before upload, e.g.
-> `magick in.png -background '#131923' -alpha remove -alpha off -colorspace sRGB PNG24:in.png`.
+> **Alpha channel: resolved (2026-06-29).** App Store Connect rejects screenshots that
+> contain an alpha channel. Every shot in this set is now flattened (`sips -g hasAlpha`
+> → `no`), verified lossless (each was fully opaque, so RGB is byte-identical). The
+> sibling `iphone-6.5/`, `iphone-15plus-native/` sets and `paywall.png` were flattened
+> too. If a future capture re-introduces alpha, flatten with:
+> `magick in.png -alpha off -colorspace sRGB PNG24:in.png`.
 
 Apple requires at least 1 screenshot; 3–5 is the sweet spot. Upload in the order above
 (or pick the strongest 3–5). The filenames are stable — the marketing page
