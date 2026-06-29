@@ -19,13 +19,14 @@ import {
   platformFor,
   validateItem,
 } from "@repo/ingest-classify";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AudioModule,
   RecordingPresets,
   setAudioModeAsync,
   useAudioRecorder,
 } from "expo-audio";
+import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -40,8 +41,8 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -69,9 +70,6 @@ import {
   describeAudience,
   useGroups,
 } from "@/lib/groups";
-import { isModelReady } from "@/lib/llm/engine";
-import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
-import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
 import {
   type Material,
   submitMaterials,
@@ -157,23 +155,44 @@ export default function ComposerScreen() {
   const [reviewStep, setReviewStep] = useState<null | 1 | 2>(null);
   const [itemsSheetOpen, setItemsSheetOpen] = useState(false);
 
-  // On-device curation toggle + model-on-disk readiness.
-  const { data: llmSettings } = useQuery({
-    queryKey: ["llm-settings"],
-    queryFn: getLlmSettings,
-  });
-  const { data: llmReadyData, isSuccess: llmReadyIsSuccess } = useQuery({
-    queryKey: ["llm-model-ready", llmSettings?.modelId],
-    queryFn: () => isModelReady(llmSettings!.modelId),
-    enabled: Boolean(llmSettings?.modelId),
-  });
-  const curationOn = llmSettings?.onDeviceCuration === true;
-  const { data: usage } = useAiUsage();
+  // Step 2 (focus) search + inline create. `focusQuery` filters the focus list
+  // and doubles as the title for a new focus; creating one POSTs to the SAME
+  // /api/app/projects endpoint the web app uses, then selects it — the wizard
+  // stays open so no staged item/text/audience context is lost.
+  const insets = useSafeAreaInsets();
+  const focusSearchRef = useRef<TextInput>(null);
+  const [focusQuery, setFocusQuery] = useState("");
+  const [creatingFocus, setCreatingFocus] = useState(false);
+  const [focusError, setFocusError] = useState<string | null>(null);
 
-  async function toggleCuration(value: boolean) {
-    await updateLlmSettings({ onDeviceCuration: value });
-    queryClient.invalidateQueries({ queryKey: ["llm-settings"] });
+  async function createFocus(rawTitle: string) {
+    const title = rawTitle.trim();
+    if (title.length === 0 || creatingFocus) return;
+    setCreatingFocus(true);
+    setFocusError(null);
+    try {
+      const { project } = await apiPostJson<{
+        project: { id: string; title: string };
+      }>("/api/app/projects", { title });
+      setProjects((prev) => [
+        { id: project.id, title: project.title },
+        ...prev.filter((p) => p.id !== project.id),
+      ]);
+      setProjectId(project.id);
+      setFocusQuery("");
+      focusSearchRef.current?.blur();
+    } catch (e) {
+      setFocusError(
+        e instanceof ApiError ? e.message : "Couldn't create that focus.",
+      );
+    } finally {
+      setCreatingFocus(false);
+    }
   }
+
+  // Drafting always runs server-side for now — on-device curation is parked
+  // until the feature is solidified, so it's intentionally not surfaced here.
+  const { data: usage } = useAiUsage();
 
   useEffect(() => {
     apiGet<{ items: { id: string; title: string }[] }>(
@@ -220,6 +239,20 @@ export default function ComposerScreen() {
   }
 
   // Commit the omni text field: classifyText (package) → N url cards + ≤1 note.
+  // One-tap paste: pull the clipboard string straight into the omni input so the
+  // user doesn't have to focus the field + long-press + paste. Appends below any
+  // existing text rather than clobbering it. expo-clipboard is cross-platform.
+  async function pasteFromClipboard() {
+    const clip = (await Clipboard.getStringAsync()).trim();
+    if (clip.length === 0) {
+      AccessibilityInfo.announceForAccessibility("Clipboard is empty");
+      return;
+    }
+    setOmniText((prev) =>
+      prev.trim().length === 0 ? clip : `${prev.replace(/\s+$/, "")}\n${clip}`,
+    );
+  }
+
   function commitOmniText() {
     const raw = omniText.trim();
     if (raw.length === 0) return;
@@ -586,7 +619,7 @@ export default function ComposerScreen() {
         projectId: projectId ?? undefined,
         visibility: audience.visibility,
         shareGroupIds: audience.groupIds,
-        onDeviceCuration: curationOn && llmReadyData === true,
+        onDeviceCuration: false,
       });
     } finally {
       setBusy(false);
@@ -625,13 +658,8 @@ export default function ComposerScreen() {
 
   async function submit() {
     if (busy || items.length === 0 || trayErrors.hasCritical) return;
-    const willUseServerAI = !(curationOn && llmReadyData === true);
-    if (
-      willUseServerAI &&
-      usage &&
-      !usage.isPro &&
-      (usage.remaining ?? 0) <= 0
-    ) {
+    // Drafting is always server-side now, so the usage cap always applies.
+    if (usage && !usage.isPro && (usage.remaining ?? 0) <= 0) {
       const becamePro = await presentPaywall();
       if (becamePro) {
         queryClient.invalidateQueries({ queryKey: ["ai-usage"] });
@@ -687,6 +715,20 @@ export default function ComposerScreen() {
     ? items.find((i) => i.id === editingId)
     : undefined;
 
+  // Step 2 focus list, filtered by the search box. "Auto" stays pinned at the
+  // top unless the query clearly doesn't match it. The create row appears when
+  // the query names a focus that doesn't already exist (exact, case-insensitive).
+  const focusQ = focusQuery.trim();
+  const focusQLower = focusQ.toLowerCase();
+  const filteredProjects = focusQLower
+    ? projects.filter((p) => p.title.toLowerCase().includes(focusQLower))
+    : projects;
+  const showAutoRow = focusQLower === "" || "auto".includes(focusQLower);
+  const focusExactExists = projects.some(
+    (p) => p.title.trim().toLowerCase() === focusQLower,
+  );
+  const showCreateRow = focusQ === "" || !focusExactExists;
+
   return (
     <Screen>
       <KeyboardAvoidingView
@@ -725,6 +767,31 @@ export default function ComposerScreen() {
                 dismisses it so a long note never hides behind it. */}
             <KeyboardDoneButton style={styles.keyboardDone} />
             <View style={styles.omniActions}>
+              <Pressable
+                onPress={() => void pasteFromClipboard()}
+                disabled={busy}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Paste from clipboard"
+                accessibilityHint="Adds your copied text or link to the input"
+                style={({ pressed }) => [
+                  styles.pasteButton,
+                  pressed && styles.audiencePressed,
+                ]}
+              >
+                <SymbolView
+                  name="doc.on.clipboard"
+                  size={14}
+                  weight="regular"
+                  tintColor={t.color.inkMuted}
+                  fallback={
+                    <Text style={styles.pasteGlyph} accessibilityElementsHidden>
+                      ⎘
+                    </Text>
+                  }
+                />
+                <Text style={styles.pasteLabel}>Paste</Text>
+              </Pressable>
               <PrimaryButton
                 label="Add"
                 onPress={commitOmniText}
@@ -732,27 +799,30 @@ export default function ComposerScreen() {
                 style={styles.omniAdd}
               />
             </View>
-            {/* Attachment area — two primary "hero" rows (Photos, Audio) plus a
-                compact chip row for the rest. Handlers unchanged. */}
+            {/* Attachment area — Photos + Audio as two calm side-by-side tiles
+                (the primary pair), then a compact chip row for the rest.
+                Handlers unchanged. */}
             <Eyebrow>Add media</Eyebrow>
-            <MediaHero
-              label="Add photos"
-              sublabel="Take one or pick from your library"
-              symbol="photo.on.rectangle"
-              glyph="▦"
-              disabled={busy}
-              accessibilityHint="Take a photo or pick from your library"
-              onPress={() => setMediaSheet("photo")}
-            />
-            <MediaHero
-              label="Record audio"
-              sublabel="Capture a voice memo"
-              symbol="waveform"
-              glyph="🎙"
-              disabled={busy}
-              accessibilityHint="Record a voice memo or pick an audio file"
-              onPress={() => setAudioSheetOpen(true)}
-            />
+            <View style={styles.mediaTiles}>
+              <MediaTile
+                label="Add photos"
+                sublabel="Take one or pick"
+                symbol="photo.on.rectangle"
+                glyph="▦"
+                disabled={busy}
+                accessibilityHint="Take a photo or pick from your library"
+                onPress={() => setMediaSheet("photo")}
+              />
+              <MediaTile
+                label="Record audio"
+                sublabel="Capture a voice memo"
+                symbol="waveform"
+                glyph="🎙"
+                disabled={busy}
+                accessibilityHint="Record a voice memo or pick an audio file"
+                onPress={() => setAudioSheetOpen(true)}
+              />
+            </View>
             <View style={styles.chipRow}>
               <MediaChip
                 label="Video"
@@ -1028,16 +1098,29 @@ export default function ComposerScreen() {
         onRequestClose={() => setReviewStep(null)}
       >
         <Screen>
-          <View style={styles.wizHeader}>
+          <View style={[styles.wizHeader, { paddingTop: insets.top + t.space.sm }]}>
             <Pressable
               onPress={() =>
                 reviewStep === 2 ? setReviewStep(1) : setReviewStep(null)
               }
-              hitSlop={10}
+              hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel={reviewStep === 2 ? "Back" : "Close"}
+              style={({ pressed }) => [
+                styles.wizBack,
+                pressed && styles.audiencePressed,
+              ]}
             >
-              <Text style={styles.wizBack}>‹</Text>
+              <SymbolView
+                name={reviewStep === 2 ? "chevron.left" : "xmark"}
+                size={20}
+                tintColor={t.color.ink}
+                fallback={
+                  <Text style={styles.wizBackGlyph}>
+                    {reviewStep === 2 ? "‹" : "✕"}
+                  </Text>
+                }
+              />
             </Pressable>
             <View style={styles.wizStep}>
               <Text style={styles.wizStepText}>Step {reviewStep} / 2</Text>
@@ -1057,6 +1140,9 @@ export default function ComposerScreen() {
                 <Title accent="." accessibilityRole="header">
                   Who can see this
                 </Title>
+                <Text style={styles.wizHelper}>
+                  You can change this anytime from the post.
+                </Text>
                 {(["PRIVATE", "FRIENDS", "PUBLIC"] as const).map((v) => {
                   const meta = AUDIENCE_META[v];
                   const selected = audience.visibility === v;
@@ -1114,101 +1200,150 @@ export default function ComposerScreen() {
                 <Title accent="." accessibilityRole="header">
                   File it under
                 </Title>
-                {projects.length > 0 ? (
-                  <View style={styles.picker}>
-                    <Eyebrow>Focus</Eyebrow>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.pickerScroll}
-                    >
-                      {[{ id: null, title: "Auto" }, ...projects].map((p) => (
-                        <Pressable
-                          key={p.id ?? "__none__"}
-                          style={({ pressed }) => [
-                            styles.chip,
-                            projectId === p.id && styles.chipActive,
-                            pressed && styles.chipPressed,
-                          ]}
-                          onPress={() => setProjectId(p.id)}
-                          accessibilityRole="button"
-                          accessibilityLabel={
-                            p.id === null
-                              ? "Focus: Auto. Sirius picks the best focus for you; tap another to override."
-                              : `Focus: ${p.title}`
-                          }
-                        >
-                          <Text
-                            style={[
-                              styles.chipText,
-                              projectId === p.id && styles.chipTextActive,
-                            ]}
-                          >
-                            {p.title}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                    <Text style={styles.shareHint}>
-                      {projectId === null
-                        ? "On Auto, Sirius files this under the best focus for you. Tap one to choose it yourself."
-                        : "You picked the focus. Tap Auto to let Sirius choose instead."}
-                    </Text>
-                    <TextLink
-                      label="Manage focus →"
-                      tone={t.color.accent}
-                      onPress={() => router.push("/focus")}
-                    />
-                  </View>
-                ) : (
-                  <View style={styles.pickerEmpty}>
-                    <Eyebrow>Focus</Eyebrow>
-                    <Text style={styles.pickerEmptyText}>
-                      No focus areas yet — Sirius will file this automatically.
-                    </Text>
-                    <TextLink
-                      label="Create your first focus area →"
-                      tone={t.color.accent}
-                      onPress={() => router.push("/focus")}
-                    />
-                  </View>
-                )}
+                <Text style={styles.wizHelper}>
+                  Pick a focus, or let Sirius file it automatically.
+                </Text>
 
-                {ON_DEVICE_AI_ENABLED && llmReadyData === true ? (
-                  <View style={styles.curationRow}>
-                    <View style={styles.curationCopy}>
-                      <Text style={styles.curationLabel}>Draft on device</Text>
-                      <Text style={styles.curationHint}>
-                        Notes are written privately by the local model.
+                {/* Search box doubles as the new-focus title. */}
+                <View style={styles.focusSearch}>
+                  <SymbolView
+                    name="magnifyingglass"
+                    size={16}
+                    tintColor={t.color.inkMuted}
+                    fallback={<Text style={styles.focusSearchGlyph}>⌕</Text>}
+                  />
+                  <TextInput
+                    ref={focusSearchRef}
+                    style={styles.focusSearchInput}
+                    value={focusQuery}
+                    onChangeText={(text) => {
+                      setFocusQuery(text);
+                      if (focusError) setFocusError(null);
+                    }}
+                    placeholder="Search or create a focus…"
+                    placeholderTextColor={t.color.inkSubtle}
+                    selectionColor={t.color.accent}
+                    autoCapitalize="sentences"
+                    autoCorrect={false}
+                    returnKeyType="search"
+                    accessibilityLabel="Search or create a focus"
+                  />
+                  {focusQuery.length > 0 ? (
+                    <Pressable
+                      onPress={() => setFocusQuery("")}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear search"
+                    >
+                      <Text style={styles.focusSearchClear}>✕</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+
+                {/* Auto — the recommended default. */}
+                {showAutoRow ? (
+                  <Pressable
+                    onPress={() => setProjectId(null)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: projectId === null }}
+                    accessibilityLabel="Auto. Sirius picks the best focus for you. Recommended."
+                    style={({ pressed }) => [
+                      styles.audRow,
+                      pressed && styles.audiencePressed,
+                    ]}
+                  >
+                    <View style={styles.audText}>
+                      <View style={styles.focusAutoHead}>
+                        <Text style={styles.audLabel}>Auto</Text>
+                        <Text style={styles.focusRecTag}>RECOMMENDED</Text>
+                      </View>
+                      <Text style={styles.audSub}>
+                        Sirius picks the best focus for you
                       </Text>
                     </View>
-                    <Switch
-                      value={curationOn}
-                      onValueChange={(v) => void toggleCuration(v)}
-                      trackColor={{ true: t.color.ink }}
-                      accessibilityLabel="Draft on device"
+                    <View
+                      style={[styles.radio, projectId === null && styles.radioOn]}
                     />
-                  </View>
-                ) : ON_DEVICE_AI_ENABLED && llmReadyIsSuccess ? (
-                  <View style={styles.curationRow}>
-                    <View style={styles.curationCopy}>
-                      <Text style={styles.curationLabel}>On-device AI</Text>
-                      <Text style={styles.curationHint}>
-                        Download a model to draft privately.
-                      </Text>
-                      <TextLink
-                        label="Get the model →"
-                        tone={t.color.accent}
-                        onPress={() => router.push("/llm")}
-                      />
-                    </View>
-                  </View>
+                  </Pressable>
                 ) : null}
+
+                {/* Existing focus areas, filtered by the search box. */}
+                {filteredProjects.map((p) => (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => setProjectId(p.id)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: projectId === p.id }}
+                    accessibilityLabel={`Focus: ${p.title}`}
+                    style={({ pressed }) => [
+                      styles.audRow,
+                      pressed && styles.audiencePressed,
+                    ]}
+                  >
+                    <View style={styles.audText}>
+                      <Text style={styles.audLabel}>{p.title}</Text>
+                    </View>
+                    <View
+                      style={[styles.radio, projectId === p.id && styles.radioOn]}
+                    />
+                  </Pressable>
+                ))}
+
+                {!showAutoRow && filteredProjects.length === 0 && !showCreateRow ? (
+                  <Text style={styles.pickerEmptyText}>No matches.</Text>
+                ) : null}
+
+                {/* Create a new focus inline (POSTs to /api/app/projects). */}
+                {showCreateRow ? (
+                  <Pressable
+                    onPress={() => {
+                      if (focusQ.length > 0) void createFocus(focusQuery);
+                      else focusSearchRef.current?.focus();
+                    }}
+                    disabled={creatingFocus}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      focusQ.length > 0
+                        ? `Create focus ${focusQ}`
+                        : "Create a new focus"
+                    }
+                    style={({ pressed }) => [
+                      styles.focusCreateRow,
+                      pressed && styles.audiencePressed,
+                    ]}
+                  >
+                    <Text style={styles.focusCreatePlus}>＋</Text>
+                    <Text style={styles.focusCreateLabel}>
+                      {creatingFocus
+                        ? "Creating…"
+                        : focusQ.length > 0
+                          ? `Create “${focusQ}”`
+                          : "Create a new focus"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+
+                {focusError ? (
+                  <Text style={styles.repoError} accessibilityRole="alert">
+                    {focusError}
+                  </Text>
+                ) : null}
+
+                <TextLink
+                  label="Manage focus →"
+                  tone={t.color.accent}
+                  onPress={() => router.push("/focus")}
+                />
               </>
             )}
           </ScrollView>
 
-          <View style={styles.wizFooter}>
+          <View
+            style={[
+              styles.wizFooter,
+              { paddingBottom: insets.bottom + t.space.md },
+            ]}
+          >
             {reviewStep === 1 ? (
               <PrimaryButton
                 label="Next →"
@@ -1268,13 +1403,14 @@ function pluralKind(kind: IngestKind, n: number): string {
 // A wide, short "hero" attachment action: framed/plain icon on the left, a serif
 // title + muted subtitle to its right. `primary` paints the border with the
 // accent (the standout action); `framed` boxes the icon in an accent outline.
-function MediaHero({
+// A primary attachment tile: icon over a serif label + a tiny mono sub-caption,
+// hairline border. Photos + Audio sit as an equal-width pair — calmer than the
+// old full-width hero rows but still the top tier above the secondary chips.
+function MediaTile({
   label,
   sublabel,
   symbol,
   glyph,
-  framed,
-  primary,
   disabled,
   accessibilityHint,
   onPress,
@@ -1283,8 +1419,6 @@ function MediaHero({
   sublabel: string;
   symbol: SFSymbol;
   glyph: string;
-  framed?: boolean;
-  primary?: boolean;
   disabled?: boolean;
   accessibilityHint?: string;
   onPress?: () => void;
@@ -1298,29 +1432,21 @@ function MediaHero({
       accessibilityHint={accessibilityHint}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.hero,
-        primary && styles.heroPrimary,
-        pressed && styles.heroPressed,
-      ]}
+      style={({ pressed }) => [styles.mediaTile, pressed && styles.heroPressed]}
     >
-      <View style={[styles.heroIcon, framed && styles.heroIconFramed]}>
-        <SymbolView
-          name={symbol}
-          size={26}
-          weight="regular"
-          tintColor={primary ? t.color.accent : t.color.ink}
-          fallback={
-            <Text style={styles.heroGlyph} accessibilityElementsHidden>
-              {glyph}
-            </Text>
-          }
-        />
-      </View>
-      <View style={styles.heroText}>
-        <Text style={styles.heroTitle}>{label}</Text>
-        <Text style={styles.heroSub}>{sublabel}</Text>
-      </View>
+      <SymbolView
+        name={symbol}
+        size={24}
+        weight="regular"
+        tintColor={t.color.ink}
+        fallback={
+          <Text style={styles.mediaTileGlyph} accessibilityElementsHidden>
+            {glyph}
+          </Text>
+        }
+      />
+      <Text style={styles.mediaTileLabel}>{label}</Text>
+      <Text style={styles.mediaTileSub}>{sublabel}</Text>
     </Pressable>
   );
 }
@@ -1518,42 +1644,57 @@ function makeStyles(t: Theme) {
       paddingTop: 12,
       backgroundColor: t.color.paper,
     },
-    omniActions: { flexDirection: "row", justifyContent: "flex-end" },
-    omniAdd: { paddingHorizontal: t.space.xl },
-
-    // Attachment hero rows (Photos, Audio) + the secondary chip row.
-    hero: {
+    omniActions: {
       flexDirection: "row",
       alignItems: "center",
+      justifyContent: "flex-end",
       gap: t.space.lg,
+    },
+    omniAdd: { paddingHorizontal: t.space.xl },
+    pasteButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.xs,
+      paddingVertical: t.space.xs,
+    },
+    pasteGlyph: { fontSize: 14, color: t.color.inkMuted },
+    pasteLabel: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkMuted,
+    },
+
+    // Attachment tiles (Photos, Audio) — the primary pair — + secondary chips.
+    heroPressed: { backgroundColor: t.color.paperSunken },
+    mediaTiles: { flexDirection: "row", gap: t.space.md },
+    mediaTile: {
+      flex: 1,
+      minHeight: 104,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: t.space.xs,
       borderWidth: 1,
       borderColor: t.color.rule,
       backgroundColor: t.color.paperRaised,
       paddingVertical: t.space.lg,
-      paddingHorizontal: t.space.lg,
+      paddingHorizontal: t.space.sm,
     },
-    heroPrimary: { borderColor: t.color.accent },
-    heroPressed: { backgroundColor: t.color.paperSunken },
-    heroIcon: {
-      width: 46,
-      height: 46,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    heroIconFramed: { borderWidth: 1, borderColor: t.color.accent },
-    heroGlyph: { fontSize: 24, color: t.color.ink, fontFamily: t.font.serif },
-    heroText: { flex: 1, gap: 2 },
-    heroTitle: {
+    mediaTileGlyph: { fontSize: 22, color: t.color.ink, fontFamily: t.font.serif },
+    mediaTileLabel: {
       fontFamily: t.font.serif,
-      fontSize: 24,
-      lineHeight: 30,
+      fontSize: 18,
       color: t.color.ink,
+      marginTop: t.space.xs,
     },
-    heroSub: {
-      fontFamily: t.font.serif,
-      fontSize: 15,
-      lineHeight: 20,
+    mediaTileSub: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1,
+      textTransform: "uppercase",
       color: t.color.inkMuted,
+      textAlign: "center",
     },
     chipRow: { flexDirection: "row", gap: t.space.md },
     mediaChip: {
@@ -1587,49 +1728,17 @@ function makeStyles(t: Theme) {
     },
 
     // Pickers
-    picker: { gap: t.space.sm },
-    pickerScroll: { flexDirection: "row" },
-    pickerEmpty: { gap: t.space.sm },
     pickerEmptyText: {
       fontFamily: t.font.serif,
       fontSize: 15,
       fontStyle: "italic",
       color: t.color.inkMuted,
     },
-    chip: {
-      paddingHorizontal: t.space.md,
-      paddingVertical: t.space.xs,
-      borderWidth: 1,
-      borderColor: t.color.rule,
-      marginRight: t.space.sm,
-    },
-    chipActive: { borderColor: t.color.accent, backgroundColor: t.color.accent },
-    chipPressed: { opacity: 0.6 },
-    chipText: {
-      fontFamily: t.font.serif,
-      fontSize: 13,
-      color: t.color.inkMuted,
-    },
-    chipTextActive: { color: t.color.paper },
 
     audiencePressed: { opacity: 0.6 },
 
     // Tray
     trayList: { gap: t.space.sm },
-
-    // Curation toggle
-    curationRow: {
-      alignItems: "center",
-      backgroundColor: t.color.paperRaised,
-      borderRadius: 10,
-      flexDirection: "row",
-      gap: t.space.md,
-      justifyContent: "space-between",
-      padding: t.space.md,
-    },
-    curationCopy: { flex: 1, gap: t.space.xs },
-    curationLabel: { color: t.color.ink, fontFamily: t.font.serif, fontSize: 16 },
-    curationHint: { color: t.color.inkMuted, fontSize: 13 },
 
     // Tray bar (sticky entry into the review flow)
     trayBar: {
@@ -1691,10 +1800,31 @@ function makeStyles(t: Theme) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingTop: t.space.sm,
+      paddingHorizontal: t.space.xl,
       paddingBottom: t.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: t.color.rule,
     },
-    wizBack: { fontFamily: t.font.serif, fontSize: 34, color: t.color.ink },
+    wizBack: {
+      width: 36,
+      height: 36,
+      marginLeft: -t.space.sm,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    wizBackGlyph: {
+      fontFamily: t.font.serif,
+      fontSize: 30,
+      lineHeight: 32,
+      color: t.color.ink,
+    },
+    wizHelper: {
+      fontFamily: t.font.serif,
+      fontSize: 15,
+      lineHeight: 20,
+      color: t.color.inkMuted,
+      marginTop: -t.space.sm,
+    },
     wizStep: { flexDirection: "row", alignItems: "center", gap: t.space.sm },
     wizStepText: {
       fontFamily: t.font.mono,
@@ -1711,12 +1841,76 @@ function makeStyles(t: Theme) {
       borderColor: t.color.rule,
     },
     dotOn: { backgroundColor: t.color.accent, borderColor: t.color.accent },
-    wizBody: { gap: t.space.lg, paddingBottom: t.space.xl },
+    wizBody: {
+      gap: t.space.lg,
+      paddingHorizontal: t.space.xl,
+      paddingTop: t.space.xl,
+      paddingBottom: t.space.xl,
+    },
     wizFooter: {
       gap: t.space.sm,
+      paddingHorizontal: t.space.xl,
       paddingTop: t.space.md,
       borderTopWidth: 1,
       borderColor: t.color.rule,
+    },
+
+    // Step 2 — focus search + create
+    focusSearch: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.sm,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: t.color.paperRaised,
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.sm,
+    },
+    focusSearchGlyph: { fontSize: 16, color: t.color.inkMuted },
+    focusSearchInput: {
+      flex: 1,
+      fontFamily: t.font.serif,
+      fontSize: 17,
+      color: t.color.ink,
+      padding: 0,
+    },
+    focusSearchClear: {
+      fontFamily: t.font.mono,
+      fontSize: 13,
+      color: t.color.inkMuted,
+    },
+    focusAutoHead: { flexDirection: "row", alignItems: "center", gap: t.space.sm },
+    focusRecTag: {
+      fontFamily: t.font.mono,
+      fontSize: 9,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      color: t.color.accent,
+      borderWidth: 1,
+      borderColor: t.color.accent,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+    },
+    focusCreateRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.md,
+      paddingVertical: t.space.lg,
+      borderLeftWidth: 2,
+      borderLeftColor: t.color.accent,
+      paddingLeft: t.space.md,
+    },
+    focusCreatePlus: {
+      fontFamily: t.font.serif,
+      fontSize: 22,
+      lineHeight: 24,
+      color: t.color.accent,
+    },
+    focusCreateLabel: {
+      fontFamily: t.font.serif,
+      fontSize: 18,
+      color: t.color.ink,
+      flexShrink: 1,
     },
     audRow: {
       flexDirection: "row",
