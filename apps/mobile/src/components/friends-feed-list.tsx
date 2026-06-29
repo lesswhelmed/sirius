@@ -33,11 +33,72 @@ const TYPE_LABEL: Record<string, string> = {
   SOCIAL: "Social",
 };
 
-type FeedPost = Post & {
-  submittedBy: { id: string; name: string; handle: string | null } | null;
+// The viewer's own sharing choice for a post, attached by listVisibleToViewer
+// only to rows the viewer authored (owner-only — peer rows carry null, so the
+// badge never leaks a friend's group). `groups` is non-empty IFF GROUP.
+type OwnAudience = {
+  visibility: "PRIVATE" | "FRIENDS" | "PUBLIC" | "GROUP";
+  groups: { id: string; name: string }[];
 };
 
-export function FriendsFeedList({ header }: { header: ReactNode }) {
+type FeedPost = Post & {
+  submittedBy: { id: string; name: string; handle: string | null } | null;
+  ownAudience?: OwnAudience | null;
+};
+
+// The owner-facing audience mark: shows whom *you* shared this with. Driven by
+// ownAudience (peer rows are null → nothing renders; PRIVATE is silent). FRIENDS
+// and PUBLIC are static pills; GROUP shows the first group name (+N more) and
+// taps through to the groups manager with that group pre-selected. Mirrors the
+// MatchBadges pill styling in corpus-search.tsx.
+function AudienceBadge({
+  audience,
+}: {
+  audience: OwnAudience | null | undefined;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  if (!audience || audience.visibility === "PRIVATE") return null;
+  if (audience.visibility === "FRIENDS") {
+    return (
+      <View style={[styles.badge, styles.badgeFriends]}>
+        <Text style={[styles.badgeText, styles.badgeFriendsText]}>FRIENDS</Text>
+      </View>
+    );
+  }
+  if (audience.visibility === "PUBLIC") {
+    return (
+      <View style={[styles.badge, styles.badgePublic]}>
+        <Text style={[styles.badgeText, styles.badgePublicText]}>PUBLIC</Text>
+      </View>
+    );
+  }
+  // GROUP
+  const [first, ...rest] = audience.groups;
+  if (!first) return null;
+  const extra = rest.length > 0 ? ` +${rest.length}` : "";
+  return (
+    <Pressable
+      onPress={() =>
+        router.push(`/groups?group=${encodeURIComponent(first.id)}`)
+      }
+      accessibilityRole="button"
+      accessibilityLabel={`Shared with ${first.name}${extra} — manage group`}
+      hitSlop={6}
+      style={({ pressed }) => [
+        styles.badge,
+        styles.badgeGroup,
+        pressed && styles.badgePressed,
+      ]}
+    >
+      <Text style={[styles.badgeText, styles.badgeGroupText]} numberOfLines={1}>
+        ▣ {first.name}
+        {extra}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function FriendsFeedList({ header }: { header?: ReactNode }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTheme();
   const postTypeTone = usePostTypeTone();
@@ -55,7 +116,9 @@ export function FriendsFeedList({ header }: { header: ReactNode }) {
       ItemSeparatorComponent={Sep}
       onRefresh={refetch}
       refreshing={isRefetching}
-      ListHeaderComponent={<View style={styles.header}>{header}</View>}
+      ListHeaderComponent={
+        header ? <View style={styles.header}>{header}</View> : null
+      }
       renderItem={({ item }) => {
         const tone = postTypeTone[item.type] ?? t.color.inkMuted;
         const imageUri = resolveMediaUrl(item.imageUrl);
@@ -77,7 +140,12 @@ export function FriendsFeedList({ header }: { header: ReactNode }) {
               </View>
             )}
             <View style={styles.rowText}>
-              <KindLabel tone={tone}>{TYPE_LABEL[item.type] ?? item.type}</KindLabel>
+              <View style={styles.rowMeta}>
+                <KindLabel tone={tone}>
+                  {TYPE_LABEL[item.type] ?? item.type}
+                </KindLabel>
+                <AudienceBadge audience={item.ownAudience} />
+              </View>
               <Text style={styles.rowTitle} numberOfLines={2}>
                 {item.title}
               </Text>
@@ -151,6 +219,27 @@ function makeStyles(t: Theme) {
     thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
     thumbPlaceholderText: { fontFamily: t.font.serif, fontSize: 24 },
     rowText: { flex: 1, justifyContent: "center", gap: t.space.xs },
+    rowMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: t.space.sm,
+    },
+    // Audience pills — bordered, mono micro-caps; mirrors corpus-search badges.
+    badge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderWidth: t.rule.hairline,
+      maxWidth: 180,
+    },
+    badgeText: { fontFamily: t.font.mono, fontSize: 8, letterSpacing: 1.2 },
+    badgeFriends: { borderColor: t.color.sage },
+    badgeFriendsText: { color: t.color.sage },
+    badgePublic: { borderColor: t.color.accent },
+    badgePublicText: { color: t.color.accent },
+    badgeGroup: { borderColor: t.color.markText },
+    badgeGroupText: { color: t.color.markText },
+    badgePressed: { opacity: 0.6 },
     rowTitle: {
       fontFamily: t.font.serif,
       fontSize: 20,

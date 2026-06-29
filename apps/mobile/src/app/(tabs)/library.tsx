@@ -21,8 +21,6 @@ import {
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { CorpusSearchResults } from "@/components/corpus-search";
-import { FriendsFeedList } from "@/components/friends-feed-list";
-import { Segment, SegmentedControl } from "@/components/segmented";
 import { KindLabel, PageHeader, Screen, StatusPip, TextLink } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import {
@@ -229,9 +227,6 @@ export default function LibraryScreen() {
   // no extra query. Available facets + counts are derived from the loaded rows.
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeTags, setActiveTags] = useState<string[]>([]);
-  // Mine = the offline mirror (own posts); Friends = the networked feed of
-  // posts friends shared with you (online-only, never mirrored).
-  const [scope, setScope] = useState<"mine" | "friends">("mine");
   // Networked curated search (full-text + embedding). When non-empty it takes
   // over the list below the field; the local offline browse is the default.
   const [searchQuery, setSearchQuery] = useState("");
@@ -421,23 +416,6 @@ export default function LibraryScreen() {
     return rowInner;
   }, [postTypeTone, t, styles]);
 
-  const scopeToggle = (
-    <SegmentedControl value={scope} onChange={setScope}>
-      <Segment value="mine" label="Mine" />
-      <Segment value="friends" label="Friends" />
-    </SegmentedControl>
-  );
-
-  // Friends scope is networked + online-only — it has its own list component and
-  // does not touch the offline mirror.
-  if (scope === "friends") {
-    return (
-      <Screen>
-        <FriendsFeedList header={scopeToggle} />
-      </Screen>
-    );
-  }
-
   // The live query surfaces a query error only if SQLite itself fails (the
   // tables are migrated before first paint, so this is rare).
   if (error) {
@@ -489,7 +467,6 @@ export default function LibraryScreen() {
         }
         ListHeaderComponent={
           <View style={styles.header}>
-            <View style={styles.scopeBar}>{scopeToggle}</View>
             {/* In-flight section (folded in from the retired Queue tab). Shown
                 only when something is pending/processing/failed on the server or
                 stuck in the local outbox; otherwise the whole block is hidden. */}
@@ -861,7 +838,6 @@ function makeStyles(t: Theme) {
     paddingBottom: 120,
   },
   header: { marginBottom: t.space.lg },
-  scopeBar: { marginBottom: t.space.lg },
 
   // Curated search field — bracketed by ink rules, editorial mono label + serif
   // italic input, aligned with the list's horizontal padding.

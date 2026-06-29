@@ -4,8 +4,8 @@
 // FlatList of rows over an online-only react-query read, with the always-present
 // "New group" entry in the header. Groups are never written to the offline mirror.
 import { useQueryClient } from "@tanstack/react-query";
-import { router, Stack } from "expo-router";
-import { useState } from "react";
+import { router, Stack, useLocalSearchParams } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -35,6 +35,28 @@ export default function GroupsScreen() {
   const { data, isLoading } = useGroups();
   const groups = data?.groups ?? [];
 
+  // Deep-link target: tapping a group's audience badge on the Friends feed lands
+  // here as `/groups?group=<id>`. Pre-select that group (highlighted row) and
+  // best-effort scroll it into view. No-op if absent or the group was deleted.
+  const { group: groupParam } = useLocalSearchParams<{ group?: string }>();
+  const selectedId = typeof groupParam === "string" ? groupParam : undefined;
+  const listRef = useRef<FlatList<Group>>(null);
+  useEffect(() => {
+    const list = data?.groups;
+    if (!selectedId || !list || list.length === 0) return;
+    const index = list.findIndex((g) => g.id === selectedId);
+    if (index < 0) return;
+    // Defer until the rows have laid out so scrollToIndex can resolve them.
+    const id = setTimeout(() => {
+      listRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.25,
+      });
+    }, 350);
+    return () => clearTimeout(id);
+  }, [selectedId, data]);
+
   return (
     <Screen>
       <Stack.Screen options={{ title: "Groups" }} />
@@ -58,11 +80,17 @@ export default function GroupsScreen() {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={groups}
           keyExtractor={(g) => g.id}
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={Sep}
-          renderItem={({ item }) => <GroupRow group={item} />}
+          renderItem={({ item }) => (
+            <GroupRow group={item} selected={item.id === selectedId} />
+          )}
+          // scrollToIndex can fire before rows are measured; swallow the failure
+          // (the highlight already conveys the selection).
+          onScrollToIndexFailed={() => {}}
           ListEmptyComponent={
             <Empty line="No groups yet. Create one to share with a chosen set of friends." />
           }
@@ -83,15 +111,26 @@ export default function GroupsScreen() {
   );
 }
 
-function GroupRow({ group }: { group: Group }) {
+function GroupRow({
+  group,
+  selected,
+}: {
+  group: Group;
+  selected?: boolean;
+}) {
   const styles = useThemedStyles(makeStyles);
   const count = group.memberCount;
   return (
     <Pressable
       onPress={() => router.push(`/group/${group.id}`)}
       accessibilityRole="button"
+      accessibilityState={{ selected }}
       accessibilityLabel={`${group.name}, ${count} member${count === 1 ? "" : "s"}, ${privacyLabel(group.visibility)}`}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      style={({ pressed }) => [
+        styles.row,
+        selected && styles.rowSelected,
+        pressed && styles.rowPressed,
+      ]}
     >
       <View style={styles.rowText}>
         <Text style={styles.name}>{group.name}</Text>
@@ -141,6 +180,14 @@ function makeStyles(t: Theme) {
       minHeight: 44,
     },
     rowPressed: { opacity: 0.6 },
+    // Deep-link pre-selected group: a tinted ground + oxblood edge marker.
+    rowSelected: {
+      backgroundColor: t.color.accentSoft,
+      borderLeftWidth: 2,
+      borderLeftColor: t.color.accent,
+      paddingLeft: t.space.md,
+      marginLeft: -t.space.md,
+    },
     rowText: { flexShrink: 1, gap: 3 },
     name: { fontFamily: t.font.serif, fontSize: 18, color: t.color.ink },
     meta: {

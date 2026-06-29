@@ -61,6 +61,15 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Catalog</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="books.vertical" md="library_books" />
       </NativeTabs.Trigger>
+      {/* Friends: the merged shared-posts feed (own shared posts interleaved
+          with friends'/public posts). Route file is `feed` — NOT `friends` —
+          because the off-tab People-management screen (`app/friends.tsx`,
+          pushed from Account) already owns the `/friends` URL; a `(tabs)/friends`
+          route would collide with it. The UI label still reads "Friends". */}
+      <NativeTabs.Trigger name="feed">
+        <NativeTabs.Trigger.Label>Friends</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="person.2.fill" md="people" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="tree">
         <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
