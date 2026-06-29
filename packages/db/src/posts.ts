@@ -53,6 +53,12 @@ export interface PostFilters {
   // Filter to the single primary category (matched by Category.slug). A post has
   // exactly one category in the shipped data model, so this is an equality narrow.
   category?: string;
+  // Narrow to one (or several) visibility tiers. The public catalog/storefront
+  // composition helpers set this to PUBLIC so a PUBLISHED-but-PRIVATE/FRIENDS/GROUP
+  // post can never leak through a public list — the surface-level kill-switch
+  // (PUBLIC_CATALOG_ENABLED) gates WHETHER the list renders, this gates WHICH posts
+  // are eligible. Owner-scoped lists omit it (the owner sees all their own tiers).
+  visibility?: PostVisibility | PostVisibility[];
 }
 
 // Shared filter semantics for listPosts / listPostsPage / countPosts so the
@@ -96,6 +102,11 @@ function buildPostWhere(opts: PostFilters): Prisma.PostWhereInput {
   }
   if (opts.category && opts.category.trim().length > 0) {
     where.categories = { some: { slug: opts.category.trim() } };
+  }
+  if (opts.visibility) {
+    where.visibility = Array.isArray(opts.visibility)
+      ? { in: opts.visibility }
+      : opts.visibility;
   }
   return where;
 }
@@ -692,6 +703,10 @@ export function listCatalogPosts(
   return listPosts({
     type: PostType.SOCIAL,
     status: PostStatus.PUBLISHED,
+    // Only PUBLIC posts are eligible for the public catalog — a PUBLISHED post at
+    // any other tier (PRIVATE is the default) must never appear here regardless of
+    // PUBLIC_CATALOG_ENABLED. Mirrors canReadPost's PUBLIC tier.
+    visibility: PostVisibility.PUBLIC,
     includeSubmitter: true,
     q: opts.q,
     limit: opts.limit,
@@ -722,6 +737,9 @@ export async function listUserStorefront(
   const posts = await listPosts({
     submittedById: user.id,
     status: PostStatus.PUBLISHED,
+    // A public storefront shows only the owner's PUBLIC posts — never their
+    // PRIVATE/FRIENDS/GROUP rows. Mirrors canReadPost's PUBLIC tier.
+    visibility: PostVisibility.PUBLIC,
     includeSubmitter: false,
     limit: opts.limit,
     cursor: opts.cursor,

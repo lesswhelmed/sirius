@@ -33,11 +33,18 @@ export interface GoldenQuery {
   query: string;
   viewerKey: FixtureUser["key"];
   scope: "all" | "mine";
+  // Mirrors the surface PUBLIC_CATALOG_ENABLED flag the web route threads into
+  // searchCorpus. Defaults undefined => false, so cross-user PUBLIC posts are only
+  // eligible when a case opts in. Lets the matrix prove search honors the same
+  // PUBLIC kill-switch as canReadPost.
+  publicCatalogEnabled?: boolean;
   mode: AssertMode; // fts-only => harness injects a throwing embedder (isolate FTS)
   // Tier 1: relational invariants — every `above` slug must outrank its `below`.
   rankedAbove?: [above: string, below: string][];
   // Tier 1: hard visibility — these slugs must NEVER appear.
   mustNotContain?: string[];
+  // Tier 1: these slugs MUST appear (presence only, order unconstrained).
+  mustContain?: string[];
   // Tier 2: these slugs appear, in this relative order.
   orderedSubset?: string[];
   // Tier 3: exact full ordering of the first page.
@@ -123,9 +130,21 @@ export const GOLDEN_QUERIES: GoldenQuery[] = [
     mustNotContain: ["stranger-private", "friend-friends-draft"],
   },
   {
-    name: "friend FRIENDS + stranger PUBLIC are visible (scope=all)",
+    // Public catalog ON: a friend's FRIENDS post AND a stranger's PUBLIC post are
+    // both searchable. The PUBLIC leg is admitted because the flag is set.
+    name: "friend FRIENDS + stranger PUBLIC visible when catalog ON (scope=all)",
     query: "zephyrium", viewerKey: "viewer", scope: "all", mode: "fts-only",
-    orderedSubset: ["friend-friends-pub"],
+    publicCatalogEnabled: true,
+    mustContain: ["friend-friends-pub", "stranger-public"],
+  },
+  {
+    // Public catalog OFF (default): friends'-shared stays searchable, but a
+    // stranger's PUBLIC post must NOT surface — search honors the same kill-switch
+    // as canReadPost, which refuses the PUBLIC tier while the catalog is disabled.
+    name: "stranger PUBLIC hidden when catalog OFF (scope=all)",
+    query: "zephyrium", viewerKey: "viewer", scope: "all", mode: "fts-only",
+    mustContain: ["friend-friends-pub"],
+    mustNotContain: ["stranger-public"],
   },
   {
     name: "owner finds own draft (scope=mine)",

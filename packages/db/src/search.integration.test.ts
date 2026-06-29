@@ -29,6 +29,7 @@ suite("searchCorpus integration (golden matrix)", () => {
       const page = await searchCorpus(userId(g.viewerKey), g.query, {
         scope: g.scope,
         limit: 50,
+        publicCatalogEnabled: g.publicCatalogEnabled,
         embedder: g.mode === "fts-only" ? throwingEmbedder : fixtureEmbedder,
       });
       const slugs = page.items.map((i) => i.slug);
@@ -43,6 +44,9 @@ suite("searchCorpus integration (golden matrix)", () => {
       }
       for (const s of g.mustNotContain ?? []) {
         expect(slugs).not.toContain(s);
+      }
+      for (const s of g.mustContain ?? []) {
+        expect(slugs).toContain(s);
       }
       if (g.orderedSubset) {
         const idx = g.orderedSubset.map((s) => slugs.indexOf(s));

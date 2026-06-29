@@ -1,4 +1,5 @@
 import { searchCorpus } from "@repo/db";
+import { PUBLIC_CATALOG_ENABLED } from "../../../../lib/features";
 import { getSessionOrNull } from "../../../../lib/session";
 
 // Curated corpus search (full-text + embedding, RRF-fused) — the UI counterpart
@@ -29,7 +30,14 @@ export async function GET(request: Request) {
   }
 
   try {
-    const page = await searchCorpus(session.user.id, q, { scope, cursor, limit });
+    const page = await searchCorpus(session.user.id, q, {
+      scope,
+      cursor,
+      limit,
+      // Honor the same PUBLIC kill-switch canReadPost uses, so search can't surface
+      // other users' PUBLIC posts while the cross-user catalog is disabled.
+      publicCatalogEnabled: PUBLIC_CATALOG_ENABLED,
+    });
     return Response.json(page);
   } catch (err) {
     const message = err instanceof Error ? err.message : "search failed";

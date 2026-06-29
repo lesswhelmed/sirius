@@ -207,6 +207,12 @@ export async function searchCorpus(
     limit?: number;
     cursor?: string;
     embedder?: QueryEmbedder;
+    // Whether OTHER users' PUBLIC posts are eligible. Mirrors the surface-level
+    // PUBLIC_CATALOG_ENABLED that gates canReadPost's PUBLIC tier. @repo/db can't
+    // read the web-only feature flag, so the caller threads it in. Defaults FALSE
+    // (secure default): own posts + friends'-shared are always searchable, but the
+    // cross-user public leg is opt-in. `scope: "mine"` ignores it entirely.
+    publicCatalogEnabled?: boolean;
   } = {},
 ): Promise<SearchPage> {
   const q = query.trim();
@@ -219,7 +225,10 @@ export async function searchCorpus(
   const scopeAll = (opts.scope ?? "all") === "all";
 
   const friendIds = scopeAll ? await friendIdsOf(viewerId) : [];
-  const includePublic = scopeAll;
+  // Cross-user PUBLIC posts are admitted only under scope=all AND when the public
+  // catalog is enabled — otherwise search would return strangers' PUBLIC posts the
+  // catalog/canReadPost would refuse, diverging from the one read policy.
+  const includePublic = scopeAll && (opts.publicCatalogEnabled ?? false);
 
   const embedder = opts.embedder ?? defaultQueryEmbedder;
   const [ftSlugs, semSlugs] = await Promise.all([

@@ -1,4 +1,4 @@
-import { listCommentsForPost, PostStatus } from "@repo/db";
+import { listCommentsForPost, PostStatus, PostVisibility } from "@repo/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Streamdown } from "streamdown";
@@ -42,8 +42,15 @@ export default async function ListingPage({
   // later). The public, published-for-anyone path only opens when the public
   // catalog is enabled; otherwise non-owners are redirected.
   const viewerId = (await getSessionOrNull())?.user.id ?? null;
+  // The anonymous/public fast-path may ONLY surface a post the owner deliberately
+  // marked PUBLIC — status === PUBLISHED is not enough (the default tier is
+  // PRIVATE). Without the visibility check, flipping PUBLIC_CATALOG_ENABLED would
+  // expose every published PRIVATE/FRIENDS/GROUP post to anyone with the slug.
+  // Signed-in tiered reads (own / friends / group) still flow through canReadPost.
   const publicOk =
-    PUBLIC_CATALOG_ENABLED && post.status === PostStatus.PUBLISHED;
+    PUBLIC_CATALOG_ENABLED &&
+    post.status === PostStatus.PUBLISHED &&
+    post.visibility === PostVisibility.PUBLIC;
   if (!publicOk && !(await canReadPost(post, viewerId))) {
     denyCatalogAccess(viewerId, `/listing/${slug}`);
   }
