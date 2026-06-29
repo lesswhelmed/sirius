@@ -28,13 +28,22 @@ drill links and existing deep links keep resolving). `siriusapp://explore` →
 | -------------- | ------------------ | --------------------- |
 | Capture        | `composer`         | `siriusapp://composer`|
 | Catalog        | `library`          | `siriusapp://library` |
+| Friends        | `feed`             | `siriusapp://feed`    |
 | Explore        | `tree`             | `siriusapp://tree`    |
 | Account        | `settings`         | `siriusapp://settings`|
 
-There are **4 tabs**. Every label is renamed in the layout
+There are **5 tabs**. Every label is renamed in the layout
 (`(tabs)/_layout.tsx` via `NativeTabs.Trigger.Label`) — none matches its route
 name. The signed-in entry point (`/`) redirects to `/(tabs)/library` (the Catalog
 tab).
+
+**The Friends tab is `feed`, NOT `friends`.** The route is named `feed` because
+`app/friends.tsx` already owns the `/friends` URL (the People manager, pushed from
+Account); a `(tabs)/friends` route would collapse to the same href and error. The
+Friends tab (`feed.tsx`) hosts the merged shared-posts feed (own shared posts +
+friends'/public), pulled out of the Catalog tab. Deep link: `siriusapp://feed`.
+Own posts in the feed carry an audience badge (Friends/Public/group); the group
+pill deep-links to `/groups?group=<id>` with that group pre-selected.
 
 **Queue is no longer a tab.** Its "in flight" status board folded into the
 Catalog tab — `library.tsx` now renders pending/processing/failed submissions
@@ -60,7 +69,7 @@ link `siriusapp://queue` still resolves (back-compat) via the top-level
 | `/llm`                 | `llm.tsx`                   | `siriusapp://llm`. On-device model download + chat. Hidden unless `EXPO_PUBLIC_ON_DEVICE_AI=true`. |
 | `/llm-test`            | `llm-test.tsx`              | `siriusapp://llm-test?run=all` (or `?run=ask`). Dev-only draft/ask bench.          |
 | `/u/[handle]`          | `u/[handle]/index.tsx`      | Friend invite / profile landing. `siriusapp://u/<handle>` (normalized in `+native-intent.ts`). Index route — `u/[handle]` is a folder, not a file, so it can host the sibling `catalog` route below. When already friends it shows a "View catalog" button. |
-| `/u/[handle]/catalog`  | `u/[handle]/catalog.tsx`    | A friend's catalog (their PUBLISHED + FRIENDS/PUBLIC posts). `siriusapp://u/<handle>/catalog`. Reached from a friend row on `/friends`, the author `@handle` chip in the Library "Friends" feed, or the profile's "View catalog" button. 404 (not friends / no user) → neutral "not available". |
+| `/u/[handle]/catalog`  | `u/[handle]/catalog.tsx`    | A friend's catalog (their PUBLISHED + FRIENDS/PUBLIC posts). `siriusapp://u/<handle>/catalog`. Reached from a friend row on `/friends`, the author `@handle` chip in the Friends tab (`feed`), or the profile's "View catalog" button. 404 (not friends / no user) → neutral "not available". |
 | `/tree/[...node]`      | `tree/[...node].tsx`        | Explore drill-in. `siriusapp://tree/<node>/<child>…`                               |
 | `/post/[slug]`         | `post/[slug]/index.tsx`     | `siriusapp://post/<slug>`                                                          |
 | `/post/[slug]/edit`    | `post/[slug]/edit.tsx`      | `siriusapp://post/<slug>/edit`                                                     |
