@@ -82,7 +82,7 @@ import {
   type RnAsset,
   toMaterialPairs,
 } from "@/lib/omni-ingest";
-import { discardStagedCopy, stageBinaryCopy } from "@/lib/outbox";
+import { discardStagedCopy, isStagedPath, stageBinaryCopy } from "@/lib/outbox";
 import { presentPaywall } from "@/lib/purchases";
 import { useAiUsage } from "@/lib/purchases/use-usage";
 import { kickSync } from "@/lib/sync/engine";
@@ -283,11 +283,22 @@ export default function ComposerScreen() {
     if (assets.length === 0) return;
     const classified: ClassifiedItem[] = [];
     const staged: [string, RnAsset][] = [];
+    let stageFailures = 0;
     for (const asset of assets) {
       // Copy bytes into the durable outbox so the uri survives; rewrite the
-      // asset's uri to the durable path before registering.
-      const uri = await stageBinaryCopy(asset.uri, asset.name);
-      const durable: RnAsset = { ...asset, uri };
+      // asset's uri to the durable path before registering. If the durable copy
+      // throws (disk pressure, an evicted picker uri, an aborted copy of a big
+      // video), KEEP the capture anyway with its ORIGINAL uri instead of letting
+      // the whole add reject — a dropped capture with no feedback is the bug.
+      // submit() re-stages kept items while the picker uri is still alive.
+      let durable: RnAsset;
+      try {
+        const uri = await stageBinaryCopy(asset.uri, asset.name);
+        durable = { ...asset, uri };
+      } catch {
+        durable = asset;
+        stageFailures += 1;
+      }
       const item = classifyFile(descriptorFromAsset(durable));
       staged.push([item.id, durable]);
       classified.push(item);
@@ -304,6 +315,14 @@ export default function ComposerScreen() {
       ([k, n]) => `${n} ${pluralKind(k, n)}`,
     );
     appendItems(classified, `Added ${parts.join(" and ")}.`);
+    if (stageFailures > 0) {
+      Alert.alert(
+        "Added — securing in the background",
+        `${stageFailures} file${stageFailures === 1 ? "" : "s"} couldn't be copied to durable storage yet. ${
+          stageFailures === 1 ? "It's" : "They're"
+        } still in your tray and we'll try again when you submit.`,
+      );
+    }
   }
 
   // Override a card's kind via the shared overrideKind (re-derives tag/platform
@@ -665,9 +684,24 @@ export default function ComposerScreen() {
         queryClient.invalidateQueries({ queryKey: ["ai-usage"] });
       }
     }
+    // Best-effort: give any capture we kept with its ORIGINAL (un-staged) picker
+    // uri a durable outbox copy now, while that uri is still alive (it may be
+    // evicted later). A failure here is non-fatal — the enqueue still produces a
+    // recoverable In-flight row. Already-staged assets are skipped (no double copy).
+    const restaged = new Map(registry);
+    for (const [id, asset] of registry) {
+      if (isStagedPath(asset.uri)) continue;
+      try {
+        const uri = await stageBinaryCopy(asset.uri, asset.name);
+        restaged.set(id, { ...asset, uri });
+      } catch {
+        // Leave the original uri in place; submission stays recoverable.
+      }
+    }
+    setRegistry(restaged);
     // Pair each Material with its source card id so a per-item failure (matched
     // by Material reference) maps back to the exact card to keep staged.
-    const pairs = toMaterialPairs(items, registry, notesById);
+    const pairs = toMaterialPairs(items, restaged, notesById);
     const result = await runSubmit(
       pairs.map((p) => p.material),
       false,

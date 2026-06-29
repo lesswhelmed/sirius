@@ -546,29 +546,35 @@ const imageHandler: MaterialHandler<"image"> = {
     let queued = 0;
     for (let i = 0; i < inputs.length; i++) {
       const img = inputs[i]!;
-      const result = await enqueueAndSendBinary({
-        transport: "ingest-image",
-        localId,
-        localFilePath: img.uri,
-        fieldName: "image",
-        mimeType: img.type,
-        parameters: {
+      try {
+        const result = await enqueueAndSendBinary({
+          transport: "ingest-image",
+          localId,
+          localFilePath: img.uri,
+          fieldName: "image",
+          mimeType: img.type,
+          parameters: {
+            batchId,
+            imageIndex: String(i),
+            totalCount: String(inputs.length),
+            notes,
+            ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+            ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
+            ...shareGroupParam(ctx),
+            ...(draftJson ? { draft: draftJson } : {}),
+          },
           batchId,
-          imageIndex: String(i),
-          totalCount: String(inputs.length),
-          notes,
-          ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
-          ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
-          ...shareGroupParam(ctx),
-          ...(draftJson ? { draft: draftJson } : {}),
-        },
-        batchId,
-        imageIndex: i,
-        totalCount: inputs.length,
-      });
-      if (result === "sent") submitted++;
-      else if (result === "deferred") queued++;
-      else errors.push(`Image ${i + 1} failed — retry from the Queue.`);
+          imageIndex: i,
+          totalCount: inputs.length,
+        });
+        if (result === "sent") submitted++;
+        else if (result === "deferred") queued++;
+        else errors.push(`Image ${i + 1} failed — retry from the Queue.`);
+      } catch {
+        // Surface the throw instead of crashing the whole submit; the batch's
+        // optimistic post stays pending until any landed rows reconcile.
+        errors.push(`Image ${i + 1} couldn't be saved — retry from the Queue.`);
+      }
     }
     // failed:[] — binary failures live as `failed` outbox rows (Requeue), never
     // re-staged in the tray.
@@ -583,28 +589,39 @@ const videoHandler: MaterialHandler<"video"> = {
   kind: "video",
   async submit(materials, ctx) {
     const errors: string[] = [];
+    const failed: VideoMaterial[] = [];
     let submitted = 0;
     let queued = 0;
     for (const [i, m] of materials.entries()) {
-      const result = await enqueueAndSendBinary({
-        transport: "ingest-file",
-        localId: Crypto.randomUUID(),
-        localFilePath: m.uri,
-        fieldName: "file",
-        mimeType: m.type,
-        parameters: {
-          kind: "video",
-          notes: m.notes ?? "",
-          ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
-          ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
-          ...shareGroupParam(ctx),
-        },
-      });
-      if (result === "sent") submitted++;
-      else if (result === "deferred") queued++;
-      else errors.push(`Video ${i + 1} failed — retry from the Queue.`);
+      try {
+        const result = await enqueueAndSendBinary({
+          transport: "ingest-file",
+          localId: Crypto.randomUUID(),
+          localFilePath: m.uri,
+          fieldName: "file",
+          mimeType: m.type,
+          parameters: {
+            kind: "video",
+            notes: m.notes ?? "",
+            ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+            ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
+            ...shareGroupParam(ctx),
+          },
+        });
+        if (result === "sent") submitted++;
+        else if (result === "deferred") queued++;
+        else errors.push(`Video ${i + 1} failed — retry from the Queue.`);
+      } catch {
+        // The durable outbox row was never created (the insert or a pre-upload
+        // step threw). Keep this capture in the tray WITH feedback instead of a
+        // silent short-circuit that drops it with no record and no retry path.
+        failed.push(m);
+        errors.push(
+          `Video ${i + 1} couldn't be saved — kept in your tray so you can try again.`,
+        );
+      }
     }
-    return { submitted, errors, failed: [], queued };
+    return { submitted, errors, failed, queued };
   },
 };
 
@@ -612,6 +629,7 @@ const audioHandler: MaterialHandler<"audio"> = {
   kind: "audio",
   async submit(materials, ctx) {
     const errors: string[] = [];
+    const failed: AudioMaterial[] = [];
     let submitted = 0;
     let queued = 0;
     // With curation on and Apple SpeechAnalyzer available (iOS 26+), audio is
@@ -678,25 +696,33 @@ const audioHandler: MaterialHandler<"audio"> = {
           }
         }
       }
-      const result = await enqueueAndSendBinary({
-        transport: "ingest-file",
-        localId: Crypto.randomUUID(),
-        localFilePath: m.uri,
-        fieldName: "file",
-        mimeType: m.type,
-        parameters: {
-          kind: "audio",
-          notes: m.notes ?? "",
-          ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
-          ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
-          ...shareGroupParam(ctx),
-        },
-      });
-      if (result === "sent") submitted++;
-      else if (result === "deferred") queued++;
-      else errors.push(`${label} failed — retry from the Queue.`);
+      try {
+        const result = await enqueueAndSendBinary({
+          transport: "ingest-file",
+          localId: Crypto.randomUUID(),
+          localFilePath: m.uri,
+          fieldName: "file",
+          mimeType: m.type,
+          parameters: {
+            kind: "audio",
+            notes: m.notes ?? "",
+            ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+            ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
+            ...shareGroupParam(ctx),
+          },
+        });
+        if (result === "sent") submitted++;
+        else if (result === "deferred") queued++;
+        else errors.push(`${label} failed — retry from the Queue.`);
+      } catch {
+        // No durable outbox row was created — keep the capture with feedback.
+        failed.push(m);
+        errors.push(
+          `${label} couldn't be saved — kept in your tray so you can try again.`,
+        );
+      }
     }
-    return { submitted, errors, failed: [], queued };
+    return { submitted, errors, failed, queued };
   },
 };
 
@@ -704,28 +730,37 @@ const documentHandler: MaterialHandler<"document"> = {
   kind: "document",
   async submit(materials, ctx) {
     const errors: string[] = [];
+    const failed: DocumentMaterial[] = [];
     let submitted = 0;
     let queued = 0;
     for (const [i, m] of materials.entries()) {
-      const result = await enqueueAndSendBinary({
-        transport: "ingest-file",
-        localId: Crypto.randomUUID(),
-        localFilePath: m.uri,
-        fieldName: "file",
-        mimeType: m.type,
-        parameters: {
-          kind: "document",
-          notes: m.notes ?? "",
-          ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
-          ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
-          ...shareGroupParam(ctx),
-        },
-      });
-      if (result === "sent") submitted++;
-      else if (result === "deferred") queued++;
-      else errors.push(`Document ${i + 1} failed — retry from the Queue.`);
+      try {
+        const result = await enqueueAndSendBinary({
+          transport: "ingest-file",
+          localId: Crypto.randomUUID(),
+          localFilePath: m.uri,
+          fieldName: "file",
+          mimeType: m.type,
+          parameters: {
+            kind: "document",
+            notes: m.notes ?? "",
+            ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+            ...(ctx.visibility ? { visibility: ctx.visibility } : {}),
+            ...shareGroupParam(ctx),
+          },
+        });
+        if (result === "sent") submitted++;
+        else if (result === "deferred") queued++;
+        else errors.push(`Document ${i + 1} failed — retry from the Queue.`);
+      } catch {
+        // No durable outbox row was created — keep the capture with feedback.
+        failed.push(m);
+        errors.push(
+          `Document ${i + 1} couldn't be saved — kept in your tray so you can try again.`,
+        );
+      }
     }
-    return { submitted, errors, failed: [], queued };
+    return { submitted, errors, failed, queued };
   },
 };
 

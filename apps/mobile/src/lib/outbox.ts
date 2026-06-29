@@ -99,6 +99,13 @@ export async function stageBinaryCopy(
   return dest;
 }
 
+// True when a path is one of our durable outbox copies (vs a raw picker/camera
+// temp uri). Lets the composer skip re-staging an already-durable asset and
+// avoid a double copy. Mirrors discardStagedCopy's prefix guard.
+export function isStagedPath(path: string | null | undefined): boolean {
+  return !!path && path.startsWith(`${OUTBOX_DIR}/`);
+}
+
 // Delete a staged copy (its whole `outbox/<id>/` dir). Safe to call with a
 // non-outbox path (e.g. a raw picker uri) — it no-ops unless the path is ours.
 export async function discardStagedCopy(
