@@ -4,6 +4,10 @@ import { authBaseURL, authClient, getSession, signOut } from "./auth-client";
 import { clearAuthStorage, inspectStoredCookie } from "./auth-recovery";
 import { syncCaptureCredentials } from "./capture-credentials";
 
+// Re-exported for callers (e.g. the chat stream client) that already import
+// their auth base URL / cookie from "@/lib/api" alongside apiGet/apiPostJson.
+export { authBaseURL };
+
 type Json = string | number | boolean | null | { [k: string]: Json } | Json[];
 
 export class ApiError extends Error {
@@ -247,6 +251,18 @@ export function resolveMediaUrl(
   if (src.startsWith("http://") || src.startsWith("https://")) return src;
   if (src.startsWith("/")) return `${authBaseURL}${src}`;
   return src;
+}
+
+// The session cookie header for callers that can't route through
+// `authClient.$fetch` (expo/fetch, EventSource, uploadAsync — none of them run
+// the expo plugin's fetch hooks). `authClient.getCookie()` is the SAME getter
+// those paths already use (see uploadFile() below and sync/sse.ts's EventSource
+// connection) — it reads the stored cookie through the configured
+// storagePrefix/SecureStore adapter, so this can never diverge into a stale/
+// wrong-jar cookie.
+export function sessionCookieHeader(): Record<string, string> {
+  const cookie = authClient.getCookie();
+  return cookie ? { Cookie: cookie } : {};
 }
 
 // All app API calls route through `authClient.$fetch` so the @better-auth/expo plugin's
