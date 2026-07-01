@@ -9,7 +9,7 @@
 
 - **Owner:** Sirius team
 - **Created:** 2026-07-01
-- **Last validated:** 2026-07-01 (steady ✓×5) — all 15 anchors MATCH, no drift. Server-chat v1 shipped+hardened. USER-PENDING: curl + /llm sim.
+- **Last validated:** 2026-07-01 (steady ✓×6) — 16 anchors MATCH (server-chat v1 shipped+hardened + /llm-test bench card A16). No drift. USER-PENDING: curl + /llm sim.
 - **Related docs:** `docs/HANDOFF-on-device-ai.md`, `docs/search-ranking.md`,
   `docs/friends-feed.md`, `packages/research-agent/`, `apps/mcp/`
 
@@ -226,6 +226,7 @@ exist until the migration lands (its appearance = progress, update status).
 | A14 | Mobile chat stream client | `rg -n "apiChatStream" apps/mobile/src/lib/research/chat-stream.ts` | `[LIVE]` present (9a457bf) |
 | A15 | SSE frame protocol shared | `rg -n "parseSseChunk" apps/mobile/src/lib/research/sse-parse.ts` | `[LIVE]` present (9a457bf) |
 | A16 | Server-chat dev bench card | `rg -n "runServerChatTest" apps/mobile/src/lib/llm/test-bench.ts` | `[LIVE]` present (c10c934) — deep-link `siriusapp://llm-test?run=serverchat` |
+| A17 | Catalog → chat entry point | `rg -n 'pushOnce\("/llm"\)' apps/mobile/src/app/\(tabs\)/library.tsx` | `[LIVE]` present (9e25b80) — "Ask your library" CTA on Catalog; the sole prod entry to `/llm` |
 
 **Validation loop procedure (every 4 min):** run the checks above; for each mismatch,
 note it under §6 with a timestamp and reconcile the doc. Update **Last validated** at the
