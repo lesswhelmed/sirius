@@ -9,6 +9,7 @@
 // glow, overflow-clip); `fallbackStyle` is applied ONLY in the plain-View branch
 // (the opaque bordered card that matches today's look).
 import {
+  type GlassColorScheme,
   GlassContainer,
   GlassView,
   isGlassEffectAPIAvailable,
@@ -45,6 +46,13 @@ export type GlassSurfaceProps = ViewProps & {
   /** Enables the interactive (touch-reactive) liquid effect. */
   isInteractive?: boolean;
   tintColor?: string;
+  /**
+   * Forces the glass material's appearance ('light' | 'dark' | 'auto'). Use
+   * 'dark' for chrome floating over an always-dark surface (e.g. the Explore
+   * constellation canvas) so the material stays legible in BOTH app themes.
+   * Applied only to the native glass; the plain-View fallback ignores it.
+   */
+  colorScheme?: GlassColorScheme;
   /** Applied only when the native glass renders (radius, glow, clip). */
   glassStyle?: StyleProp<ViewStyle>;
   /** Applied only in the plain-View fallback (opaque editorial card). */
@@ -55,6 +63,7 @@ export function GlassSurface({
   glass = "regular",
   isInteractive = false,
   tintColor,
+  colorScheme,
   glassStyle,
   fallbackStyle,
   style,
@@ -67,6 +76,7 @@ export function GlassSurface({
         glassEffectStyle={glass}
         isInteractive={isInteractive}
         tintColor={tintColor}
+        colorScheme={colorScheme}
         style={[style, glassStyle]}
         {...rest}
       >

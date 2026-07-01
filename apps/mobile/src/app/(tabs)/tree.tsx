@@ -34,6 +34,7 @@ import {
 import Animated, { FadeIn } from "react-native-reanimated";
 import { MapView } from "@/components/explore/map-view";
 import { Rediscover } from "@/components/explore/rediscover";
+import { GlassSurface } from "@/components/glass-surface";
 import { Segment, SegmentedControl } from "@/components/segmented";
 import { Eyebrow, PrimaryButton, Screen } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
@@ -193,11 +194,27 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
           every mode, so switching never shifts the top. */}
       <View style={styles.head}>
         <Eyebrow accessibilityRole="header">Section V — The Observatory</Eyebrow>
-        <SegmentedControl value={tab} onChange={setTab}>
-          <Segment value="map" label="Map" />
-          <Segment value="categories" label="Categories" count={categoryCount} />
-          <Segment value="focus" label="Focus" count={projects.length} />
-        </SegmentedControl>
+        {/* The toggle floats in a glass tray. It sits over the app's PAPER (above
+            the viewport, never over the dark constellation canvas), so this uses
+            AUTO colorScheme — the material + the control's own ink tokens follow
+            the app theme and stay legible. Off glass it falls back to today's flat
+            ruled track (fallbackStyle is a no-op). */}
+        <GlassSurface
+          glass="clear"
+          style={styles.toggleWrap}
+          glassStyle={styles.toggleGlass}
+          fallbackStyle={styles.toggleFallback}
+        >
+          <SegmentedControl value={tab} onChange={setTab}>
+            <Segment value="map" label="Map" />
+            <Segment
+              value="categories"
+              label="Categories"
+              count={categoryCount}
+            />
+            <Segment value="focus" label="Focus" count={projects.length} />
+          </SegmentedControl>
+        </GlassSurface>
         {tab !== "map" ? (
           <SearchField value={query} onChange={setQuery} />
         ) : null}
@@ -668,6 +685,17 @@ function makeStyles(t: Theme) {
     gap: t.space.md,
   },
   viewport: { flex: 1 },
+  // Glass tray for the Map/Categories/Focus toggle. Layout is a no-op wrapper so
+  // the fallback is pixel-identical to today's bare track; the rounded glass +
+  // hairline apply only when the native material renders.
+  toggleWrap: {},
+  toggleGlass: {
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: t.color.rule,
+  },
+  toggleFallback: {},
   section: { marginBottom: t.space.xl },
   sectionHead: {
     flexDirection: "row",

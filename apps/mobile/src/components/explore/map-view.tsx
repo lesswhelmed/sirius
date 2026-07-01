@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConstellationHero } from "@/components/explore/constellation-scene";
 import type { ConstellationHeroHandle } from "@/components/explore/constellation-scene";
 import { useExploreFocus } from "@/components/explore/explore-focus";
+import { GlassSurface } from "@/components/glass-surface";
 import { Eyebrow, KindLabel, TextLink } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import { BottomTabInset } from "@/constants/theme";
@@ -208,15 +209,19 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
           clear. The dot-key legend was dropped (the bottom hint already explains
           interaction); just the eyebrow + focused path remain. */}
       {focused ? (
-        <View
-          style={[styles.legend, { top: insets.top + t.space.sm }]}
+        <GlassSurface
+          glass="clear"
+          colorScheme="dark"
           pointerEvents="none"
+          style={[styles.legend, { top: insets.top + t.space.sm }]}
+          glassStyle={styles.legendGlass}
+          fallbackStyle={styles.legendFallback}
         >
-          <Eyebrow>You are here</Eyebrow>
+          <Eyebrow style={styles.legendEyebrow}>You are here</Eyebrow>
           <Text style={styles.legendPath} numberOfLines={2}>
             {(focused.path ?? focused.label).split("/").join(" / ")}
           </Text>
-        </View>
+        </GlassSurface>
       ) : null}
 
       {!focused ? (
@@ -228,6 +233,24 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
         </View>
       ) : (
         <Animated.View style={[styles.sheet, sheetStyle]}>
+          {/* The sheet MATERIAL: a forced-dark liquid-glass slab pinned to the
+              Animated.View's animating bounds (absoluteFill re-lays-out to each
+              height frame — no opacity animation, which would disable the glass).
+              pointerEvents="none" so the pan gesture + every Pressable above it
+              stay interactive. The canvas is always night-sky dark, so forcing
+              colorScheme="dark" + the scene light-on-dark text tokens below keeps
+              the chrome legible in BOTH app themes. Off glass it falls back to an
+              opaque dark scene.panel card (never a light panel, which would hide
+              the light text). */}
+          <GlassSurface
+            glass="regular"
+            colorScheme="dark"
+            tintColor="rgba(11,15,23,0.35)"
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+            glassStyle={styles.sheetGlass}
+            fallbackStyle={styles.sheetFallback}
+          />
           {snap === "collapsed" ? (
             <Pressable
               onPress={() => setSnap("peek")}
@@ -298,12 +321,18 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                       hitSlop={10}
                       accessibilityRole="button"
                       accessibilityLabel="Frame this node in the map"
-                      style={({ pressed }) => [
-                        styles.frameBtn,
-                        pressed && styles.pressed,
-                      ]}
+                      style={({ pressed }) => [pressed && styles.pressed]}
                     >
-                      <Text style={styles.frameBtnText}>Frame</Text>
+                      <GlassSurface
+                        glass="clear"
+                        isInteractive
+                        colorScheme="dark"
+                        style={styles.frameBtn}
+                        glassStyle={styles.frameBtnGlass}
+                        fallbackStyle={styles.frameBtnFallback}
+                      >
+                        <Text style={styles.frameBtnText}>Frame</Text>
+                      </GlassSurface>
                     </Pressable>
                   </View>
 
@@ -355,8 +384,15 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
 
                   {/* Tapped-post preview — what this dot is, with a quick Open. */}
                   {previewPost ? (
-                    <View style={styles.previewCard}>
-                      <KindLabel tone={t.color.accent}>Post</KindLabel>
+                    <GlassSurface
+                      glass="clear"
+                      colorScheme="dark"
+                      tintColor="rgba(11,15,23,0.35)"
+                      style={styles.previewCard}
+                      glassStyle={styles.previewCardGlass}
+                      fallbackStyle={styles.previewCardFallback}
+                    >
+                      <KindLabel tone={t.color.scene.accent}>Post</KindLabel>
                       <Text style={styles.previewTitle} numberOfLines={2}>
                         {previewPost.label}
                       </Text>
@@ -364,6 +400,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                         {previewPost.slug ? (
                           <TextLink
                             label="Open →"
+                            tone={t.color.scene.accent}
                             onPress={() => {
                               if (previewPost.slug)
                                 openPost(previewPost.slug, "Explore");
@@ -374,7 +411,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                         )}
                         <TextLink
                           label="Dismiss"
-                          tone={t.color.inkSubtle}
+                          tone={t.color.scene.textDim}
                           onPress={() => setPreviewNode(null)}
                         />
                       </View>
@@ -403,7 +440,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                           ))}
                         </View>
                       ) : null}
-                    </View>
+                    </GlassSurface>
                   ) : null}
                 </View>
               </GestureDetector>
@@ -519,6 +556,7 @@ function makeStyles(t: Theme) {
     },
     // Slim "you are here" strip flush against the left screen edge — kept
     // narrow with no left margin so it never reaches the central cluster.
+    // Layout only; the glass hairline / opaque-dark fallback split out below.
     legend: {
       position: "absolute",
       left: 0,
@@ -527,29 +565,57 @@ function makeStyles(t: Theme) {
       paddingLeft: t.space.sm,
       paddingRight: t.space.sm,
       paddingVertical: t.space.xs,
-      backgroundColor: t.color.paperRaised,
+    },
+    // A slim clear-glass strip hugging the left edge over the dark canvas.
+    legendGlass: {
+      borderTopRightRadius: 12,
+      borderBottomRightRadius: 12,
+      overflow: "hidden",
       borderWidth: 1,
       borderLeftWidth: 0,
-      borderColor: t.color.rule,
-      opacity: 0.94,
+      borderColor: t.color.scene.separator,
     },
+    // Off glass: an opaque DARK panel (scene.panel) — never light paper, which
+    // would hide the scene light-on-dark text below.
+    legendFallback: {
+      backgroundColor: t.color.scene.panel,
+      borderWidth: 1,
+      borderLeftWidth: 0,
+      borderColor: t.color.scene.separator,
+    },
+    legendEyebrow: { color: t.color.scene.textDim },
     legendPath: {
       fontFamily: t.font.mono,
       fontSize: 10,
       letterSpacing: 1.2,
       textTransform: "uppercase",
-      color: t.color.inkMuted,
+      color: t.color.scene.textDim,
     },
-    // Floating sheet pinned to the bottom, layered over the canvas.
+    // Floating sheet pinned to the bottom, layered over the canvas. The frame is
+    // now TRANSPARENT — the Animated.View only owns the height tween; the actual
+    // surface is the absoluteFill GlassSurface material (sheetGlass/sheetFallback).
     sheet: {
       position: "absolute",
       left: 0,
       right: 0,
       bottom: 0,
       overflow: "hidden",
+    },
+    // The glass material's own rounded top + hairline (clips itself; the square
+    // parent frame stays square so content padding covers the corners).
+    sheetGlass: {
+      borderTopLeftRadius: 22,
+      borderTopRightRadius: 22,
+      overflow: "hidden",
       borderTopWidth: 1,
-      borderColor: t.color.rule,
-      backgroundColor: t.color.paperRaised,
+      borderColor: t.color.scene.separator,
+    },
+    // Off glass: an opaque DARK panel matching the scene (not light paper) so the
+    // scene light-on-dark chrome text stays legible in both app themes.
+    sheetFallback: {
+      backgroundColor: t.color.scene.panel,
+      borderTopWidth: 1,
+      borderColor: t.color.scene.separator,
     },
     collapsedBar: {
       alignItems: "center",
@@ -560,7 +626,7 @@ function makeStyles(t: Theme) {
     collapsedTitle: {
       fontFamily: t.font.serif,
       fontSize: 16,
-      color: t.color.ink,
+      color: t.color.scene.textBright,
     },
     header: {
       paddingHorizontal: PAD,
@@ -576,7 +642,7 @@ function makeStyles(t: Theme) {
     handle: {
       width: 44,
       height: 3,
-      backgroundColor: t.color.ruleStrong,
+      backgroundColor: t.color.scene.textDim,
     },
     contextRow: {
       flexDirection: "row",
@@ -595,32 +661,44 @@ function makeStyles(t: Theme) {
       fontSize: 10,
       letterSpacing: 1.6,
       textTransform: "uppercase",
-      color: t.color.inkSubtle,
+      color: t.color.scene.textDim,
     },
     breadcrumbUp: {
       fontFamily: t.font.mono,
       fontSize: 12,
-      color: t.color.inkSubtle,
+      color: t.color.scene.textDim,
     },
     position: {
       fontFamily: t.font.mono,
       fontSize: 10,
       letterSpacing: 1.4,
-      color: t.color.inkSubtle,
+      color: t.color.scene.textDim,
       fontVariant: ["tabular-nums"],
     },
+    // Layout only — the touch-reactive clear-glass pill / bordered fallback split
+    // out below so the "control-panel button" reads as liquid on iOS 26+.
     frameBtn: {
-      borderWidth: 1,
-      borderColor: t.color.ruleStrong,
+      alignItems: "center",
+      justifyContent: "center",
       paddingHorizontal: t.space.sm,
       paddingVertical: 3,
+    },
+    frameBtnGlass: {
+      borderRadius: 10,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.scene.separator,
+    },
+    frameBtnFallback: {
+      borderWidth: 1,
+      borderColor: t.color.scene.separator,
     },
     frameBtnText: {
       fontFamily: t.font.mono,
       fontSize: 9,
       letterSpacing: 1.6,
       textTransform: "uppercase",
-      color: t.color.accent,
+      color: t.color.scene.accent,
     },
     titleRow: {
       flexDirection: "row",
@@ -631,9 +709,9 @@ function makeStyles(t: Theme) {
     chevGlyph: {
       fontFamily: t.font.serif,
       fontSize: 22,
-      color: t.color.inkSubtle,
+      color: t.color.scene.textDim,
     },
-    chevDisabled: { color: t.color.inkFaint },
+    chevDisabled: { color: t.color.scene.textMuted },
     pressed: { opacity: 0.55 },
     title: {
       flex: 1,
@@ -641,22 +719,33 @@ function makeStyles(t: Theme) {
       fontFamily: t.font.serif,
       fontSize: 26,
       lineHeight: 30,
-      color: t.color.ink,
+      color: t.color.scene.textBright,
     },
+    // A brighter clear-glass lens nested over the sheet's regular material —
+    // reads as an inset detail card floating within the control panel. Layout
+    // only; glass/opaque-dark fallback split below.
     previewCard: {
       marginTop: t.space.xs,
-      borderWidth: 1,
-      borderColor: t.color.accentRing,
-      backgroundColor: t.color.paper,
       paddingHorizontal: t.space.md,
       paddingVertical: t.space.sm,
       gap: t.space.xs,
+    },
+    previewCardGlass: {
+      borderRadius: 16,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.scene.separator,
+    },
+    previewCardFallback: {
+      borderWidth: 1,
+      borderColor: t.color.scene.separator,
+      backgroundColor: t.color.scene.bg,
     },
     previewTitle: {
       fontFamily: t.font.serif,
       fontSize: 16,
       lineHeight: 20,
-      color: t.color.ink,
+      color: t.color.scene.textBright,
     },
     previewActions: {
       flexDirection: "row",
@@ -668,12 +757,12 @@ function makeStyles(t: Theme) {
       fontSize: 11,
       letterSpacing: 1,
       textTransform: "uppercase",
-      color: t.color.inkSubtle,
+      color: t.color.scene.textDim,
     },
     related: {
       marginTop: t.space.xs,
       borderTopWidth: 1,
-      borderColor: t.color.rule,
+      borderColor: t.color.scene.separator,
       paddingTop: t.space.xs,
       gap: 2,
     },
@@ -682,7 +771,7 @@ function makeStyles(t: Theme) {
       fontSize: 9,
       letterSpacing: 1.6,
       textTransform: "uppercase",
-      color: t.color.inkFaint,
+      color: t.color.scene.textMuted,
       marginBottom: 2,
     },
     relatedRow: {
@@ -694,13 +783,13 @@ function makeStyles(t: Theme) {
     relatedArrow: {
       fontFamily: t.font.mono,
       fontSize: 12,
-      color: t.color.mark,
+      color: t.color.scene.accent,
     },
     relatedItem: {
       flex: 1,
       fontFamily: t.font.serif,
       fontSize: 14,
-      color: t.color.ink,
+      color: t.color.scene.textBright,
     },
     chips: {
       gap: t.space.xs,
@@ -712,25 +801,25 @@ function makeStyles(t: Theme) {
       fontSize: 9,
       letterSpacing: 1.6,
       textTransform: "uppercase",
-      color: t.color.inkFaint,
+      color: t.color.scene.textMuted,
     },
     chipRow: { flexDirection: "row", flexWrap: "wrap", gap: t.space.sm },
     chip: {
       borderWidth: 1,
-      borderColor: t.color.ruleStrong,
+      borderColor: t.color.scene.separator,
       paddingHorizontal: t.space.md,
       paddingVertical: 5,
     },
-    chipPressed: { backgroundColor: t.color.accentSoft },
+    chipPressed: { backgroundColor: "rgba(207,212,176,0.14)" },
     chipText: {
       fontFamily: t.font.serif,
       fontSize: 14,
-      color: t.color.inkMuted,
+      color: t.color.scene.textDim,
       maxWidth: 180,
     },
     divider: {
       height: 1,
-      backgroundColor: t.color.rule,
+      backgroundColor: t.color.scene.separator,
       marginHorizontal: PAD,
     },
     postScroll: { flex: 1 },
@@ -740,25 +829,25 @@ function makeStyles(t: Theme) {
       alignItems: "baseline",
       gap: t.space.sm,
       borderBottomWidth: 1,
-      borderColor: t.color.rule,
+      borderColor: t.color.scene.separator,
       paddingVertical: t.space.sm,
     },
     postNum: {
       fontFamily: t.font.mono,
       fontSize: 10,
-      color: t.color.inkSubtle,
+      color: t.color.scene.textDim,
       fontVariant: ["tabular-nums"],
     },
     postLabel: {
       flex: 1,
       fontFamily: t.font.serif,
       fontSize: 15,
-      color: t.color.ink,
+      color: t.color.scene.textBright,
     },
     postScore: {
       fontFamily: t.font.mono,
       fontSize: 10,
-      color: t.color.accent,
+      color: t.color.scene.accent,
       fontVariant: ["tabular-nums"],
     },
     postOpen: {
@@ -766,7 +855,7 @@ function makeStyles(t: Theme) {
       fontSize: 9,
       letterSpacing: 1.6,
       textTransform: "uppercase",
-      color: t.color.accent,
+      color: t.color.scene.accent,
     },
     hint: {
       marginTop: t.space.lg,
@@ -775,13 +864,15 @@ function makeStyles(t: Theme) {
       fontSize: 9,
       letterSpacing: 1.4,
       textTransform: "uppercase",
-      color: t.color.inkFaint,
+      color: t.color.scene.textMuted,
     },
+    // Used both over the bare dark canvas (no glass) and inside the sheet glass —
+    // both dark contexts, so the scene light tone reads in both.
     empty: {
       fontFamily: t.font.serif,
       fontSize: 16,
       fontStyle: "italic",
-      color: t.color.inkMuted,
+      color: t.color.scene.textDim,
       paddingVertical: t.space.sm,
       textAlign: "center",
     },
