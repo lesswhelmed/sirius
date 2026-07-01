@@ -29,8 +29,11 @@ import {
 import { ApiError, apiPostJson, uploadFile } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { type PendingRow, pendingSubmissions } from "@/lib/db/schema";
-import type { SubmitOk } from "@/lib/ingest-submit";
+import type { SubmitOk, Visibility } from "@/lib/ingest-submit";
+import { shouldPersist } from "@/lib/progress-throttle";
+import { nextStatusFromResult } from "@/lib/submit-result";
 import { linkSubmission, markPostFailedByLocalId } from "@/lib/sync/writes";
+import { clearProgress, emitProgress } from "@/lib/upload-progress";
 
 // App-private root for staged binary copies. One subdir per staged/queued file
 // (`outbox/<id>/<filename>`), so deleting the subdir removes the whole copy.
@@ -42,12 +45,16 @@ function endpointFor(t: BinaryTransport): string {
   return t === "ingest-image" ? "/api/app/ingest-images" : "/api/app/ingest-file";
 }
 
-// Exact JSON body for POST /api/app/ingest.
+// Exact JSON body for POST /api/app/ingest. Mirrors noteIngestBody's return
+// shape (ingest-submit.ts) — visibility/shareGroupIds already flow through at
+// runtime (materials.ts), this just makes the stored-row type honest.
 export type OutboxBody = {
   urls: string[];
   notes: string;
   force: boolean;
   projectId?: string;
+  visibility?: Visibility;
+  shareGroupIds?: string[];
   draft?: unknown;
 };
 
@@ -148,6 +155,7 @@ async function enqueueBinary(input: EnqueueBinaryInput): Promise<PendingRow> {
     imageIndex: input.imageIndex ?? null,
     totalCount: input.totalCount ?? null,
     localFilePath: input.localFilePath,
+    serverSubmissionId: null,
     attempts: 0,
     status: "queued",
     lastError: null,
@@ -170,15 +178,33 @@ type BinaryRequest = {
   parameters?: Record<string, string>;
 };
 
+// A row's server counterpart is confirmed "already there" — the server has the
+// post, so the local copy/progress can go. Kept UNLINKED (no serverSubmissionId,
+// no linkSubmission) so the delta-pull reconcile can never absorb this terminal
+// into the optimistic post card — it stays the "Already saved" state until the
+// user Dismisses/Process-agains it (Task 12).
+async function markRowDeduped(row: PendingRow): Promise<void> {
+  await discardStagedCopy(row.localFilePath);
+  clearProgress(row.id);
+  await db
+    .update(pendingSubmissions)
+    .set({ status: "deduped" })
+    .where(eq(pendingSubmissions.id, row.id));
+}
+
 // Upload one binary row. Marks it in_flight for the UI while uploading, then:
-//   sent     → bytes reached the server; row + on-disk copy deleted.
+//   sent     → bytes accepted by the server; row kept as `sent` (staged bytes
+//              kept too) until reconcileSentRows sees the server's own queue
+//              row and drops it — or sweepStuckSentRows self-heals after 2min.
+//   deduped  → server already has this post ("Already saved"); row kept
+//              unlinked as a terminal `deduped` row (staged bytes discarded).
 //   failed   → terminal rejection (4xx) or missing file; row kept as `failed`
 //              (file kept) so the user can Requeue/Discard from the Queue tab.
 //   deferred → offline / 5xx; row reset to `queued` so it auto-resumes on the
 //              next lifecycle trigger. Re-sends are idempotent (server contentHash).
 async function sendBinaryRow(
   row: PendingRow,
-): Promise<"sent" | "failed" | "deferred"> {
+): Promise<"sent" | "deduped" | "failed" | "deferred"> {
   const req = row.requestJson as BinaryRequest;
   const path = row.localFilePath ?? req.fileUri;
 
@@ -196,8 +222,14 @@ async function sendBinaryRow(
     .set({ status: "in_flight" })
     .where(eq(pendingSubmissions.id, row.id));
 
+  // Durable progress writes are throttled (shouldPersist) — the in-memory
+  // upload-progress store gets EVERY tick (for the live in-flight card), but
+  // SQLite (and thus useLiveQuery's board re-render) only sees milestones.
+  let prevPct = 0;
+  let prevAt = 0;
+
   try {
-    await uploadFile<SubmitOk>(
+    const res = await uploadFile<SubmitOk>(
       endpointFor(row.transport as BinaryTransport),
       path,
       {
@@ -205,9 +237,36 @@ async function sendBinaryRow(
         mimeType: req.mimeType,
         parameters: req.parameters,
       },
+      ({ pct, sent, total }) => {
+        emitProgress(row.id, { pct, sent, total });
+        const now = Date.now();
+        if (shouldPersist(prevPct, pct, prevAt, now)) {
+          prevPct = pct;
+          prevAt = now;
+          void db
+            .update(pendingSubmissions)
+            .set({ progressPct: pct, progressBytes: sent, progressTotal: total })
+            .where(eq(pendingSubmissions.id, row.id));
+        }
+      },
     );
-    await discardStagedCopy(row.localFilePath);
-    await db.delete(pendingSubmissions).where(eq(pendingSubmissions.id, row.id));
+    const next = nextStatusFromResult({
+      ok: true,
+      status: 200,
+      deduped: res.deduped,
+      retried: res.retried,
+    });
+    if (next === "deduped") {
+      await markRowDeduped(row);
+      return "deduped";
+    }
+    // "sent": keep the staged bytes + row until reconcileSentRows observes the
+    // server's own submission/queue row (or sweepStuckSentRows self-heals).
+    await db
+      .update(pendingSubmissions)
+      .set({ status: "sent", progressPct: 100, serverSubmissionId: res.id })
+      .where(eq(pendingSubmissions.id, row.id));
+    await linkSubmission(row.localId, res.id);
     return "sent";
   } catch (err) {
     if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
@@ -219,6 +278,7 @@ async function sendBinaryRow(
           lastError: `rejected (${err.status})`,
         })
         .where(eq(pendingSubmissions.id, row.id));
+      clearProgress(row.id);
       return "failed";
     }
     await db
@@ -236,10 +296,10 @@ async function sendBinaryRow(
 
 // Enqueue a durable row AND send it now (the Submit path). The row persists
 // throughout the upload, so a kill mid-upload is recoverable; the return value
-// lets the caller tally sent / deferred(queued) / failed.
+// lets the caller tally sent / deduped / deferred(queued) / failed.
 export async function enqueueAndSendBinary(
   input: EnqueueBinaryInput,
-): Promise<"sent" | "failed" | "deferred"> {
+): Promise<"sent" | "deduped" | "failed" | "deferred"> {
   const row = await enqueueBinary(input);
   return sendBinaryRow(row);
 }
@@ -341,12 +401,12 @@ async function importLegacyOutboxOnce(): Promise<void> {
 
 let flushing: Promise<{ sent: number; remaining: number }> | null = null;
 
-// Sends all queued items FIFO (notes/URLs and binaries). A 4xx response on an
-// ingest row means the item can never succeed — it's dropped. For binaries, 4xx
-// marks the row `failed` (visible in Queue tab for Requeue/Discard). A network
-// failure or 5xx stops the flush; the item stays queued for the next trigger
-// (app start, connectivity change, next successful submit). Serialized so
-// overlapping triggers don't double-send.
+// Sends all queued items FIFO (notes/URLs and binaries). A 4xx response — on
+// EITHER transport — now surfaces as a terminal `failed` row (Queue tab
+// Requeue/Discard) instead of being silently dropped. A network failure or 5xx
+// stops the flush; the item stays queued for the next trigger (app start,
+// connectivity change, next successful submit). Serialized so overlapping
+// triggers don't double-send.
 export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
   if (flushing) {
     return flushing;
@@ -360,6 +420,10 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
       .where(eq(pendingSubmissions.status, "in_flight"));
     await sweepOrphanUploadsOnce();
     await importLegacyOutboxOnce();
+    // Self-heal: a `sent` row the delta-pull poll never reconciled (e.g. a
+    // stale-cookie 401 stranding it) is safe to drop after a TTL — its bytes
+    // are already server-side.
+    await sweepStuckSentRows(Date.now());
     let sent = 0;
     // Re-read the head each iteration so newly enqueued items are picked up and
     // deletions are reflected without juggling an in-memory copy.
@@ -380,22 +444,36 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
             // can't see through the stored `unknown`.
             row.requestJson as Parameters<typeof apiPostJson>[1],
           );
-          // Link the optimistic post row (if this submission came from an
-          // on-device draft) to its server submission, so the canonical post
-          // reconciles back into the same card. No-op for standalone enqueues.
-          await linkSubmission(row.localId, ok.id);
-          sent++;
-          await db
-            .delete(pendingSubmissions)
-            .where(eq(pendingSubmissions.id, row.id));
+          const next = nextStatusFromResult({
+            ok: true,
+            status: 200,
+            deduped: ok.deduped,
+            retried: ok.retried,
+          });
+          if (next === "deduped") {
+            await markRowDeduped(row);
+          } else {
+            // "sent": keep the row (and link the optimistic post) until
+            // reconcileSentRows observes the server's own submission row.
+            await db
+              .update(pendingSubmissions)
+              .set({ status: "sent", serverSubmissionId: ok.id })
+              .where(eq(pendingSubmissions.id, row.id));
+            await linkSubmission(row.localId, ok.id);
+            sent++;
+          }
         } catch (err) {
           if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
-            // Permanent rejection — retrying forever won't heal a 4xx.
-            console.warn(
-              `[outbox] dropping rejected item (${err.status}): ${err.message}`,
-            );
+            // Permanent rejection — retrying forever won't heal a 4xx. Kept
+            // in-board as `failed` (Requeue/Discard from the Queue tab), no
+            // longer silently dropped.
             await db
-              .delete(pendingSubmissions)
+              .update(pendingSubmissions)
+              .set({
+                status: "failed",
+                attempts: row.attempts + 1,
+                lastError: `rejected (${err.status})`,
+              })
               .where(eq(pendingSubmissions.id, row.id));
             continue;
           }
@@ -416,7 +494,7 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
         // Binary row (ingest-image / ingest-file).
         const result = await sendBinaryRow(row);
         if (result === "sent") sent++;
-        // "failed" → row is now `failed` (skipped by the queued query) → continue.
+        // "failed"/"deduped" → row left the `queued` status → loop continues.
         if (result === "deferred") break; // offline — stop, resume on next trigger.
       }
     }
@@ -426,4 +504,42 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
     flushing = null;
   });
   return flushing;
+}
+
+// Delete local rows already handed off to the server (any server-observed
+// state) — called by the delta-pull sync once it has the set of submission
+// ids it just saw. Bytes are already server-side, so this is a pure cleanup.
+export async function reconcileSentRows(
+  serverSubmissionIds: Set<string>,
+): Promise<void> {
+  const sentRows = await db
+    .select()
+    .from(pendingSubmissions)
+    .where(eq(pendingSubmissions.status, "sent"));
+  for (const row of sentRows) {
+    if (row.serverSubmissionId && serverSubmissionIds.has(row.serverSubmissionId)) {
+      await discardStagedCopy(row.localFilePath);
+      clearProgress(row.id);
+      await db.delete(pendingSubmissions).where(eq(pendingSubmissions.id, row.id));
+    }
+  }
+}
+
+// Bounded fallback so a stale-cookie 401 on the queue poll (or any other
+// reconcile miss) can't strand a `sent` row forever — its bytes already
+// reached the server, so dropping the local row after this TTL loses nothing.
+const SENT_TTL_MS = 2 * 60 * 1000;
+
+export async function sweepStuckSentRows(nowMs: number): Promise<void> {
+  const sentRows = await db
+    .select()
+    .from(pendingSubmissions)
+    .where(eq(pendingSubmissions.status, "sent"));
+  for (const row of sentRows) {
+    if (nowMs - row.createdAt.getTime() > SENT_TTL_MS) {
+      await discardStagedCopy(row.localFilePath);
+      clearProgress(row.id);
+      await db.delete(pendingSubmissions).where(eq(pendingSubmissions.id, row.id));
+    }
+  }
 }

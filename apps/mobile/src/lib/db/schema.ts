@@ -153,6 +153,13 @@ export const pendingSubmissions = sqliteTable(
     // Deleted when the row succeeds or is discarded.
     localFilePath: text("local_file_path"),
 
+    // Server-side submission id once the row reaches "sent" (SubmitOk.id, from
+    // either the JSON /api/app/ingest response or a binary upload response —
+    // both share the SubmitResultBody shape). Null until then. Used by
+    // reconcileSentRows to match a sent row against the delta-pull's observed
+    // submission ids and drop it once the server's own queue/post row exists.
+    serverSubmissionId: text("server_submission_id"),
+
     attempts: integer("attempts").notNull().default(0),
     status: text("status").$type<PendingStatus>().notNull().default("queued"),
     lastError: text("last_error"),
