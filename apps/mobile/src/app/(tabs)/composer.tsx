@@ -59,9 +59,10 @@ import {
 } from "@/components/sirius";
 import { SmartCard, TrayErrorSummary } from "@/components/omni-tray";
 import { AudienceSheet } from "@/components/audience-sheet";
+import { GlassRow, GlassSurface, glassAvailable } from "@/components/glass-surface";
 
 import { BottomTabInset, type Theme } from "@/constants/theme";
-import { useTheme, useThemedStyles } from "@/constants/theme-context";
+import { useIsDark, useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
 import {
   type AudienceValue,
@@ -101,6 +102,7 @@ function nextCaptureName(prefix: string, ext: string): string {
 export default function ComposerScreen() {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const isDark = useIsDark();
   const queryClient = useQueryClient();
 
   // The tray is now ClassifiedItem[] (from the shared package) + a registry that
@@ -776,12 +778,20 @@ export default function ComposerScreen() {
 
   return (
     <Screen>
+      {/* Luminous "void" behind the liquid-glass surfaces — dark theme only,
+          where the midnight-navy ground reads as deep space. On paper it's
+          omitted so the glow never muddies the warm light theme. */}
+      {isDark && glassAvailable ? <VoidBackdrop /> : null}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={styles.container}
+          style={styles.flex}
+          contentContainerStyle={[
+            styles.container,
+            items.length > 0 && styles.containerTrayPad,
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
@@ -795,79 +805,17 @@ export default function ComposerScreen() {
             style={styles.omni}
             accessibilityLabel="Omni input. Paste links, type a note, or attach a file."
           >
-            <Field
-              style={styles.omniInput}
-              placeholder={
-                "Paste a link or write a note…\nMultiple links split into separate cards."
-              }
-              multiline
-              autoCapitalize="sentences"
-              autoCorrect
-              value={omniText}
-              onChangeText={setOmniText}
-              accessibilityLabel="Paste links or type a note"
+            {/* Read-only orientation sits up top, out of the thumb zone. */}
+            <Text style={styles.shareHint}>
+              Tip: share anything to Sirius from another app&apos;s share sheet.
+            </Text>
+            <TextLink
+              label="How it works →"
+              tone={t.color.accent}
+              onPress={() => pushOnce("/help")}
             />
-            {/* iOS multiline TextInputs trap the keyboard (no return dismiss, no
-                inputAccessoryView) — this shows only while the keyboard is up and
-                dismisses it so a long note never hides behind it. */}
-            <KeyboardDoneButton style={styles.keyboardDone} />
-            <View style={styles.omniActions}>
-              <Pressable
-                onPress={() => void pasteFromClipboard()}
-                disabled={busy}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Paste from clipboard"
-                accessibilityHint="Adds your copied text or link to the input"
-                style={({ pressed }) => [
-                  styles.pasteButton,
-                  pressed && styles.audiencePressed,
-                ]}
-              >
-                <SymbolView
-                  name="doc.on.clipboard"
-                  size={14}
-                  weight="regular"
-                  tintColor={t.color.inkMuted}
-                  fallback={
-                    <Text style={styles.pasteGlyph} accessibilityElementsHidden>
-                      ⎘
-                    </Text>
-                  }
-                />
-                <Text style={styles.pasteLabel}>Paste</Text>
-              </Pressable>
-              <PrimaryButton
-                label="Add"
-                onPress={commitOmniText}
-                disabled={busy || omniText.trim().length === 0}
-                style={styles.omniAdd}
-              />
-            </View>
-            {/* Attachment area — Photos + Audio as two calm side-by-side tiles
-                (the primary pair), then a compact chip row for the rest.
-                Handlers unchanged. */}
-            <Eyebrow>Add media</Eyebrow>
-            <View style={styles.mediaTiles}>
-              <MediaTile
-                label="Add photos"
-                sublabel="Take one or pick"
-                symbol="photo.on.rectangle"
-                glyph="▦"
-                disabled={busy}
-                accessibilityHint="Take a photo or pick from your library"
-                onPress={() => setMediaSheet("photo")}
-              />
-              <MediaTile
-                label="Record audio"
-                sublabel="Capture a voice memo"
-                symbol="waveform"
-                glyph="🎙"
-                disabled={busy}
-                accessibilityHint="Record a voice memo or pick an audio file"
-                onPress={() => setAudioSheetOpen(true)}
-              />
-            </View>
+            {/* Secondary capture kinds — Video / Files / Repo. */}
+            <Eyebrow>Attach</Eyebrow>
             <View style={styles.chipRow}>
               <MediaChip
                 label="Video"
@@ -899,16 +847,70 @@ export default function ComposerScreen() {
                 }}
               />
             </View>
-            <Text style={styles.shareHint}>
-              Tip: share anything to Sirius from another app&apos;s share sheet.
-            </Text>
-            <TextLink
-              label="How it works →"
-              tone={t.color.accent}
-              onPress={() => pushOnce("/help")}
-            />
+            {/* The omni well — a single luminous liquid-glass slab holding the
+                input; the "event horizon" everything is pulled into. Falls back
+                to the bordered paper field off-glass. The Paste/Add actions now
+                live in the reachable FrontAddBar footer below. */}
+            <GlassSurface
+              glass="regular"
+              style={styles.omniWell}
+              glassStyle={styles.omniWellGlass}
+              fallbackStyle={styles.omniWellFallback}
+            >
+              <Field
+                style={[styles.omniInput, glassAvailable && styles.omniInputGlass]}
+                placeholder={
+                  "Paste a link or write a note…\nMultiple links split into separate cards."
+                }
+                multiline
+                autoCapitalize="sentences"
+                autoCorrect
+                value={omniText}
+                onChangeText={setOmniText}
+                accessibilityLabel="Paste links or type a note"
+              />
+              {/* iOS multiline TextInputs trap the keyboard (no return dismiss, no
+                  inputAccessoryView) — this shows only while the keyboard is up and
+                  dismisses it so a long note never hides behind it. */}
+              <KeyboardDoneButton style={styles.keyboardDone} />
+            </GlassSurface>
+            {/* Attachment area — Photos + Audio as two calm side-by-side tiles
+                (the primary pair), the reachable bottom band. Handlers unchanged. */}
+            <Eyebrow>Add media</Eyebrow>
+            <GlassRow spacing={t.space.xl} style={styles.mediaTiles}>
+              <MediaTile
+                label="Add photos"
+                sublabel="Take one or pick"
+                symbol="photo.on.rectangle"
+                glyph="▦"
+                disabled={busy}
+                accessibilityHint="Take a photo or pick from your library"
+                onPress={() => setMediaSheet("photo")}
+              />
+              <MediaTile
+                label="Record audio"
+                sublabel="Capture a voice memo"
+                symbol="waveform"
+                glyph="🎙"
+                disabled={busy}
+                accessibilityHint="Record a voice memo or pick an audio file"
+                onPress={() => setAudioSheetOpen(true)}
+              />
+            </GlassRow>
           </View>
         </ScrollView>
+        {/* FrontAddBar — the front-screen commit footer (items.length === 0).
+            A flow footer INSIDE the KeyboardAvoidingView so it rides above the
+            keyboard automatically; swaps with the absolute TrayBar once items
+            are staged (mutually exclusive, never co-rendered). */}
+        {items.length === 0 ? (
+          <FrontAddBar
+            busy={busy}
+            omniText={omniText}
+            onAdd={commitOmniText}
+            onPaste={() => void pasteFromClipboard()}
+          />
+        ) : null}
       </KeyboardAvoidingView>
 
       {/* ── Tray bar: the ONLY thing that appears once items are staged.
@@ -1075,7 +1077,13 @@ export default function ComposerScreen() {
                 // Inline edit row (replaces the card). Same kind-derived Field as
                 // the old edit sheet; url/text re-validate, file kinds write the
                 // per-card note. confirmEdit clears editingId → back to the card.
-                <View key={item.id} style={styles.trayEditRow}>
+                <GlassSurface
+                  key={item.id}
+                  glass="regular"
+                  style={styles.trayEditRow}
+                  glassStyle={styles.trayEditRowGlass}
+                  fallbackStyle={styles.trayEditRowFallback}
+                >
                   <Field
                     label={
                       item.kind === "url"
@@ -1122,7 +1130,7 @@ export default function ComposerScreen() {
                       }
                     />
                   </View>
-                </View>
+                </GlassSurface>
               ) : (
                 <SmartCard
                   key={item.id}
@@ -1200,7 +1208,13 @@ export default function ComposerScreen() {
                 <Text style={styles.wizHelper}>
                   You can change this anytime from the post.
                 </Text>
-                {(["PRIVATE", "FRIENDS", "PUBLIC"] as const).map((v) => {
+                <GlassSurface
+                  glass="regular"
+                  style={styles.audCard}
+                  glassStyle={styles.audCardGlass}
+                  fallbackStyle={styles.audCardFallback}
+                >
+                  {(["PRIVATE", "FRIENDS", "PUBLIC"] as const).map((v) => {
                   const meta = AUDIENCE_META[v];
                   const selected = audience.visibility === v;
                   return (
@@ -1251,11 +1265,17 @@ export default function ComposerScreen() {
                     ]}
                   />
                 </Pressable>
+                </GlassSurface>
               </>
             ) : (
               <>
                 {/* [ FOCUS | NOTE ] — two whole-submission decisions, one screen. */}
-                <View style={styles.segmented}>
+                <GlassSurface
+                  glass="clear"
+                  style={styles.segmented}
+                  glassStyle={styles.segmentedGlass}
+                  fallbackStyle={styles.segmentedFallback}
+                >
                   {(["focus", "note"] as const).map((tab) => (
                     <Pressable
                       key={tab}
@@ -1265,6 +1285,7 @@ export default function ComposerScreen() {
                       accessibilityLabel={tab === "focus" ? "Focus" : "Note"}
                       style={[
                         styles.segment,
+                        glassAvailable && styles.segmentGlass,
                         refineTab === tab && styles.segmentOn,
                       ]}
                     >
@@ -1278,7 +1299,7 @@ export default function ComposerScreen() {
                       </Text>
                     </Pressable>
                   ))}
-                </View>
+                </GlassSurface>
 
                 {refineTab === "note" ? (
                   <>
@@ -1290,18 +1311,25 @@ export default function ComposerScreen() {
                       eye, why it matters. A per-card note overrides it.
                       Optional.
                     </Text>
-                    <TextInput
-                      style={styles.noteArea}
-                      value={submissionNote}
-                      onChangeText={setSubmissionNote}
-                      placeholder="What interests you about this…"
-                      placeholderTextColor={t.color.inkSubtle}
-                      selectionColor={t.color.accent}
-                      multiline
-                      textAlignVertical="top"
-                      autoCapitalize="sentences"
-                      accessibilityLabel="Note for this submission"
-                    />
+                    <GlassSurface
+                      glass="regular"
+                      style={styles.noteWell}
+                      glassStyle={styles.noteWellGlass}
+                      fallbackStyle={styles.noteWellFallback}
+                    >
+                      <TextInput
+                        style={styles.noteArea}
+                        value={submissionNote}
+                        onChangeText={setSubmissionNote}
+                        placeholder="What interests you about this…"
+                        placeholderTextColor={t.color.inkSubtle}
+                        selectionColor={t.color.accent}
+                        multiline
+                        textAlignVertical="top"
+                        autoCapitalize="sentences"
+                        accessibilityLabel="Note for this submission"
+                      />
+                    </GlassSurface>
                     <KeyboardDoneButton style={styles.keyboardDone} />
                   </>
                 ) : null}
@@ -1316,7 +1344,12 @@ export default function ComposerScreen() {
                     </Text>
 
                     {/* Search box doubles as the new-focus title. */}
-                    <View style={styles.focusSearch}>
+                    <GlassSurface
+                      glass="clear"
+                      style={styles.focusSearch}
+                      glassStyle={styles.focusSearchGlass}
+                      fallbackStyle={styles.focusSearchFallback}
+                    >
                       <SymbolView
                         name="magnifyingglass"
                         size={16}
@@ -1351,7 +1384,7 @@ export default function ComposerScreen() {
                           <Text style={styles.focusSearchClear}>✕</Text>
                         </Pressable>
                       ) : null}
-                    </View>
+                    </GlassSurface>
 
                     {/* Auto — the recommended default. */}
                     {showAutoRow ? (
@@ -1523,6 +1556,24 @@ function pluralKind(kind: IngestKind, n: number): string {
   return n === 1 ? one : many;
 }
 
+// The luminous "void" painted behind the liquid-glass surfaces (dark theme +
+// glass only). No gradient/blur libs are installed, so each bloom is a stack of
+// concentric low-alpha circles that fake a soft radial falloff — a sage-gold
+// orb high (behind the omni well) and a cooler steel orb low. pointerEvents off
+// so it never intercepts touches meant for the content above it.
+function VoidBackdrop() {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View pointerEvents="none" style={styles.voidWrap} accessibilityElementsHidden>
+      <View style={[styles.bloom, styles.bloomSageOuter]} />
+      <View style={[styles.bloom, styles.bloomSageMid]} />
+      <View style={[styles.bloom, styles.bloomSageCore]} />
+      <View style={[styles.bloom, styles.bloomSteelOuter]} />
+      <View style={[styles.bloom, styles.bloomSteelCore]} />
+    </View>
+  );
+}
+
 // A wide, short "hero" attachment action: framed/plain icon on the left, a serif
 // title + muted subtitle to its right. `primary` paints the border with the
 // accent (the standout action); `framed` boxes the icon in an accent outline.
@@ -1549,28 +1600,39 @@ function MediaTile({
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint={accessibilityHint}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.mediaTile, pressed && styles.heroPressed]}
+    <GlassSurface
+      glass="regular"
+      isInteractive
+      style={styles.mediaTile}
+      glassStyle={styles.mediaTileGlass}
+      fallbackStyle={styles.mediaTileFallback}
     >
-      <SymbolView
-        name={symbol}
-        size={24}
-        weight="regular"
-        tintColor={t.color.ink}
-        fallback={
-          <Text style={styles.mediaTileGlyph} accessibilityElementsHidden>
-            {glyph}
-          </Text>
-        }
-      />
-      <Text style={styles.mediaTileLabel}>{label}</Text>
-      <Text style={styles.mediaTileSub}>{sublabel}</Text>
-    </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={accessibilityHint}
+        disabled={disabled}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.mediaTilePress,
+          pressed && (glassAvailable ? styles.glassPressed : styles.heroPressed),
+        ]}
+      >
+        <SymbolView
+          name={symbol}
+          size={24}
+          weight="regular"
+          tintColor={t.color.ink}
+          fallback={
+            <Text style={styles.mediaTileGlyph} accessibilityElementsHidden>
+              {glyph}
+            </Text>
+          }
+        />
+        <Text style={styles.mediaTileLabel}>{label}</Text>
+        <Text style={styles.mediaTileSub}>{sublabel}</Text>
+      </Pressable>
+    </GlassSurface>
   );
 }
 
@@ -1594,27 +1656,38 @@ function MediaChip({
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint={accessibilityHint}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.mediaChip, pressed && styles.heroPressed]}
+    <GlassSurface
+      glass="clear"
+      isInteractive
+      style={styles.mediaChip}
+      glassStyle={styles.mediaChipGlass}
+      fallbackStyle={styles.mediaChipFallback}
     >
-      <SymbolView
-        name={symbol}
-        size={16}
-        weight="regular"
-        tintColor={t.color.ink}
-        fallback={
-          <Text style={styles.mediaChipGlyph} accessibilityElementsHidden>
-            {glyph}
-          </Text>
-        }
-      />
-      <Text style={styles.mediaChipLabel}>{label}</Text>
-    </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={accessibilityHint}
+        disabled={disabled}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.mediaChipPress,
+          pressed && (glassAvailable ? styles.glassPressed : styles.heroPressed),
+        ]}
+      >
+        <SymbolView
+          name={symbol}
+          size={16}
+          weight="regular"
+          tintColor={t.color.ink}
+          fallback={
+            <Text style={styles.mediaChipGlyph} accessibilityElementsHidden>
+              {glyph}
+            </Text>
+          }
+        />
+        <Text style={styles.mediaChipLabel}>{label}</Text>
+      </Pressable>
+    </GlassSurface>
   );
 }
 
@@ -1646,11 +1719,14 @@ function TrayBar({
   const insets = useSafeAreaInsets();
   const t = useTheme();
   return (
-    <View
+    <GlassSurface
+      glass="clear"
       style={[
         styles.trayBar,
         { paddingBottom: BottomTabInset + insets.bottom + t.space.md },
       ]}
+      glassStyle={styles.trayBarGlass}
+      fallbackStyle={styles.trayBarFallback}
     >
       <Pressable
         onPress={onReview}
@@ -1658,7 +1734,7 @@ function TrayBar({
         accessibilityLabel={`${count} item${count === 1 ? "" : "s"} in tray. Tap to review.`}
         style={({ pressed }) => [
           styles.trayBarItem,
-          pressed && styles.heroPressed,
+          pressed && (glassAvailable ? styles.glassPressed : styles.heroPressed),
         ]}
       >
         <View style={styles.trayThumb}>
@@ -1689,7 +1765,72 @@ function TrayBar({
       >
         <Text style={styles.trayBarSendText}>Review &amp; send →</Text>
       </Pressable>
-    </View>
+    </GlassSurface>
+  );
+}
+
+// The front-screen commit footer — shown only while the tray is empty
+// (items.length === 0), mutually exclusive with the sticky TrayBar. Mirrors
+// TrayBar's clear-glass shell but flows in the column (non-absolute) so it
+// rides above the keyboard. Holds Paste (secondary, left) + the coral Add
+// PrimaryButton (right). Every Paste/Add prop is copied verbatim from the old
+// in-well omniActions block; the coral Add stays the single solid action.
+function FrontAddBar({
+  busy,
+  omniText,
+  onAdd,
+  onPaste,
+}: {
+  busy: boolean;
+  omniText: string;
+  onAdd: () => void;
+  onPaste: () => void;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const insets = useSafeAreaInsets();
+  const t = useTheme();
+  return (
+    <GlassSurface
+      glass="clear"
+      style={[
+        styles.frontBar,
+        { paddingBottom: BottomTabInset + insets.bottom + t.space.md },
+      ]}
+      glassStyle={styles.frontBarGlass}
+      fallbackStyle={styles.frontBarFallback}
+    >
+      <Pressable
+        onPress={onPaste}
+        disabled={busy}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Paste from clipboard"
+        accessibilityHint="Adds your copied text or link to the input"
+        style={({ pressed }) => [
+          styles.pasteButton,
+          pressed && styles.audiencePressed,
+        ]}
+      >
+        <SymbolView
+          name="doc.on.clipboard"
+          size={14}
+          weight="regular"
+          tintColor={t.color.inkMuted}
+          fallback={
+            <Text style={styles.pasteGlyph} accessibilityElementsHidden>
+              ⎘
+            </Text>
+          }
+        />
+        <Text style={styles.pasteLabel}>Paste</Text>
+      </Pressable>
+      <PrimaryButton
+        label="Add"
+        onPress={onAdd}
+        disabled={busy || omniText.trim().length === 0}
+        style={styles.omniAdd}
+      />
+    </GlassSurface>
   );
 }
 
@@ -1702,7 +1843,12 @@ function RepoPreviewCard({ preview }: { preview: RepoPreview }) {
     preview.license,
   ].filter(Boolean) as string[];
   return (
-    <View style={styles.repoCard}>
+    <GlassSurface
+      glass="regular"
+      style={styles.repoCard}
+      glassStyle={styles.repoCardGlass}
+      fallbackStyle={styles.repoCardFallback}
+    >
       <View style={styles.repoCardHead}>
         {preview.ownerAvatarUrl ? (
           <Image
@@ -1738,7 +1884,7 @@ function RepoPreviewCard({ preview }: { preview: RepoPreview }) {
           {preview.keyFilePaths.join(", ")}
         </Text>
       ) : null}
-    </View>
+    </GlassSurface>
   );
 }
 
@@ -1755,20 +1901,94 @@ function makeStyles(t: Theme) {
     container: {
       padding: t.space.xl,
       paddingTop: 64,
-      paddingBottom: 220,
+      paddingBottom: t.space.xxl,
       gap: t.space.lg,
     },
+    // Only the absolute TrayBar (items > 0) needs the bottom reservation; the
+    // FrontAddBar flow footer reserves its own space in the column.
+    containerTrayPad: { paddingBottom: 220 },
     header: { gap: t.space.lg, marginBottom: t.space.xs },
+
+    // "Void" backdrop — soft luminous orbs faked from concentric low-alpha
+    // circles (no blur/gradient libs available). Absolutely filled, clipped,
+    // and behind the scrolling content.
+    voidWrap: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      overflow: "hidden",
+    },
+    bloom: { position: "absolute", borderRadius: 999 },
+    bloomSageOuter: {
+      width: 460,
+      height: 460,
+      top: -70,
+      left: "50%",
+      marginLeft: -230,
+      backgroundColor: "rgba(207,212,176,0.05)",
+    },
+    bloomSageMid: {
+      width: 300,
+      height: 300,
+      top: 10,
+      left: "50%",
+      marginLeft: -150,
+      backgroundColor: "rgba(207,212,176,0.07)",
+    },
+    bloomSageCore: {
+      width: 170,
+      height: 170,
+      top: 70,
+      left: "50%",
+      marginLeft: -85,
+      backgroundColor: "rgba(207,212,176,0.10)",
+    },
+    bloomSteelOuter: {
+      width: 380,
+      height: 380,
+      top: 320,
+      left: -120,
+      backgroundColor: "rgba(125,153,196,0.05)",
+    },
+    bloomSteelCore: {
+      width: 200,
+      height: 200,
+      top: 380,
+      left: -40,
+      backgroundColor: "rgba(125,153,196,0.08)",
+    },
 
     // OmniInput — no box around the whole section; just stacked, plain.
     omni: {
       gap: t.space.md,
     },
+    // The omni "well": on glass it's a padded, radiused liquid slab with a
+    // hairline sage glow; off glass it's a bare wrapper (gap only) so the Field
+    // keeps its own paper border and the section reads exactly as before.
+    omniWell: {
+      gap: t.space.md,
+    },
+    omniWellGlass: {
+      padding: t.space.md,
+      borderRadius: 28,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.markSoft,
+    },
+    omniWellFallback: {},
     omniInput: {
       minHeight: 96,
       textAlignVertical: "top",
       paddingTop: 12,
       backgroundColor: t.color.paper,
+    },
+    // Over glass the field drops its own paper fill + border so the material
+    // shows through; the well supplies the frame.
+    omniInputGlass: {
+      backgroundColor: "transparent",
+      borderWidth: 0,
     },
     omniActions: {
       flexDirection: "row",
@@ -1794,16 +2014,33 @@ function makeStyles(t: Theme) {
 
     // Attachment tiles (Photos, Audio) — the primary pair — + secondary chips.
     heroPressed: { backgroundColor: t.color.paperSunken },
+    // On liquid glass, feedback is a gentle dim (a background swap would paint
+    // over the material and kill the refraction).
+    glassPressed: { opacity: 0.55 },
     mediaTiles: { flexDirection: "row", gap: t.space.md },
+    // Surface = shell sizing (shared); Glass = radius + hairline sage glow;
+    // Fallback = the opaque bordered paper card of today; Press = the inner
+    // tappable content box (centering + padding) so the whole tile reacts.
     mediaTile: {
       flex: 1,
       minHeight: 104,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: t.space.xs,
+    },
+    mediaTileGlass: {
+      borderRadius: 24,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.markSoft,
+    },
+    mediaTileFallback: {
       borderWidth: 1,
       borderColor: t.color.rule,
       backgroundColor: t.color.paperRaised,
+    },
+    mediaTilePress: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: t.space.xs,
       paddingVertical: t.space.lg,
       paddingHorizontal: t.space.sm,
     },
@@ -1829,12 +2066,24 @@ function makeStyles(t: Theme) {
     chipRow: { flexDirection: "row", gap: t.space.md },
     mediaChip: {
       flex: 1,
+      minHeight: 46,
+    },
+    mediaChipGlass: {
+      borderRadius: 999,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.steelSoft,
+    },
+    mediaChipFallback: {
+      borderWidth: 1,
+      borderColor: t.color.rule,
+    },
+    mediaChipPress: {
+      flex: 1,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: t.space.sm,
-      borderWidth: 1,
-      borderColor: t.color.rule,
       paddingVertical: t.space.md,
     },
     mediaChipGlyph: {
@@ -1871,10 +2120,20 @@ function makeStyles(t: Theme) {
     trayList: { gap: t.space.sm },
     trayEditRow: {
       gap: t.space.sm,
+      padding: t.space.md,
+    },
+    // Glass = radiused accent-edged card; Fallback = today's opaque
+    // accent-bordered paperRaised card.
+    trayEditRowGlass: {
+      borderRadius: 18,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.accent,
+    },
+    trayEditRowFallback: {
       borderWidth: 1,
       borderColor: t.color.accent,
       backgroundColor: t.color.paperRaised,
-      padding: t.space.md,
     },
     trayEditActions: {
       flexDirection: "row",
@@ -1883,7 +2142,9 @@ function makeStyles(t: Theme) {
       gap: t.space.md,
     },
 
-    // Tray bar (sticky entry into the review flow)
+    // Tray bar (sticky entry into the review flow). On glass it floats as an
+    // inset clear-glass bar; off glass it's the full-width opaque paper bar with
+    // a top rule (fallbackStyle) — today's look.
     trayBar: {
       position: "absolute",
       left: 0,
@@ -1892,11 +2153,47 @@ function makeStyles(t: Theme) {
       flexDirection: "row",
       alignItems: "center",
       gap: t.space.md,
+      paddingHorizontal: t.space.xl,
+      paddingTop: t.space.md,
+    },
+    trayBarGlass: {
+      left: t.space.md,
+      right: t.space.md,
+      borderRadius: 26,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.markSoft,
+      paddingHorizontal: t.space.lg,
+    },
+    trayBarFallback: {
       backgroundColor: t.color.paper,
       borderTopWidth: 1,
       borderColor: t.color.ruleStrong,
+    },
+
+    // Front-screen commit footer (items === 0). Mirrors trayBar* but flows in
+    // the column (non-absolute) so it rides above the keyboard: no position/
+    // left/right/bottom, a horizontal float margin, and Paste↔Add spread apart.
+    frontBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: t.space.md,
       paddingHorizontal: t.space.xl,
       paddingTop: t.space.md,
+      marginHorizontal: t.space.md,
+    },
+    frontBarGlass: {
+      borderRadius: 26,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.markSoft,
+      paddingHorizontal: t.space.lg,
+    },
+    frontBarFallback: {
+      backgroundColor: t.color.paper,
+      borderTopWidth: 1,
+      borderColor: t.color.ruleStrong,
     },
     trayBarItem: {
       flex: 1,
@@ -2001,6 +2298,14 @@ function makeStyles(t: Theme) {
     // Step 2 — [ FOCUS | NOTE ] segmented control + whole-submission note area
     segmented: {
       flexDirection: "row",
+    },
+    segmentedGlass: {
+      borderRadius: 14,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.markSoft,
+    },
+    segmentedFallback: {
       borderWidth: 1,
       borderColor: t.color.rule,
     },
@@ -2010,6 +2315,9 @@ function makeStyles(t: Theme) {
       paddingVertical: t.space.sm,
       backgroundColor: t.color.paper,
     },
+    // Over glass the unselected segment drops its paper fill so the material
+    // shows through; the selected segment (segmentOn) stays solid accent.
+    segmentGlass: { backgroundColor: "transparent" },
     segmentOn: { backgroundColor: t.color.accent },
     segmentText: {
       fontFamily: t.font.mono,
@@ -2019,11 +2327,22 @@ function makeStyles(t: Theme) {
       color: t.color.inkMuted,
     },
     segmentTextOn: { color: t.color.onAccent },
-    noteArea: {
-      minHeight: 140,
+    // The note area is wrapped in a glass well; the input itself is transparent
+    // in both modes and the well owns the frame (glass glow, or opaque fallback).
+    noteWell: {},
+    noteWellGlass: {
+      borderRadius: 20,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.markSoft,
+    },
+    noteWellFallback: {
       borderWidth: 1,
       borderColor: t.color.rule,
       backgroundColor: t.color.paperRaised,
+    },
+    noteArea: {
+      minHeight: 140,
       padding: t.space.md,
       fontFamily: t.font.serif,
       fontSize: 17,
@@ -2032,16 +2351,25 @@ function makeStyles(t: Theme) {
       textAlignVertical: "top",
     },
 
-    // Step 2 — focus search + create
+    // Step 2 — focus search + create. The row is a glass well; the inner
+    // TextInput is already transparent so it reads through the material.
     focusSearch: {
       flexDirection: "row",
       alignItems: "center",
       gap: t.space.sm,
+      paddingHorizontal: t.space.md,
+      paddingVertical: t.space.sm,
+    },
+    focusSearchGlass: {
+      borderRadius: 14,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.steelSoft,
+    },
+    focusSearchFallback: {
       borderWidth: 1,
       borderColor: t.color.rule,
       backgroundColor: t.color.paperRaised,
-      paddingHorizontal: t.space.md,
-      paddingVertical: t.space.sm,
     },
     focusSearchGlyph: { fontSize: 16, color: t.color.inkMuted },
     focusSearchInput: {
@@ -2093,6 +2421,22 @@ function makeStyles(t: Theme) {
       color: t.color.ink,
       flexShrink: 1,
     },
+    // The audience option rows grouped as one card. Glass = radiused clear
+    // slab; Fallback = opaque paperRaised card. Rows keep their own dividers.
+    audCard: {},
+    audCardGlass: {
+      borderRadius: 20,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.markSoft,
+      paddingHorizontal: t.space.md,
+    },
+    audCardFallback: {
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      backgroundColor: t.color.paperRaised,
+      paddingHorizontal: t.space.md,
+    },
     audRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -2117,13 +2461,23 @@ function makeStyles(t: Theme) {
     keyboardDone: { alignSelf: "flex-end" },
     sheetCancel: { alignItems: "center" },
     sheetSecondaryButton: { marginTop: t.space.sm },
-    repoError: { color: t.color.error, fontFamily: t.font.mono, fontSize: 12 },
+    // errorText is the legible-as-text error variant (clears WCAG-AA in both
+    // themes); the raw `error` fill hue is too low-contrast as body text on dark.
+    repoError: { color: t.color.errorText, fontFamily: t.font.mono, fontSize: 12 },
     repoCard: {
+      padding: t.space.md,
+      gap: t.space.sm,
+    },
+    repoCardGlass: {
+      borderRadius: 20,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: t.color.markSoft,
+    },
+    repoCardFallback: {
       borderWidth: 1,
       borderColor: t.color.rule,
       backgroundColor: t.color.paperRaised,
-      padding: t.space.md,
-      gap: t.space.sm,
     },
     repoCardHead: { flexDirection: "row", gap: t.space.md },
     repoAvatar: {

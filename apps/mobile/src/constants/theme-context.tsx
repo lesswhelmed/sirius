@@ -42,6 +42,15 @@ export function useTheme(): Theme {
 }
 
 /**
+ * Whether the active appearance is the dark (midnight-navy) theme. Screens use
+ * this for dark-only affordances that would misread on warm paper — e.g. the
+ * Capture screen's luminous "void" blooms behind its liquid-glass surfaces.
+ */
+export function useIsDark(): boolean {
+  return useColorScheme() === "dark";
+}
+
+/**
  * Build a StyleSheet from the active theme, rebuilt only when the theme changes.
  * Pass a module-level factory so its identity is stable:
  *
