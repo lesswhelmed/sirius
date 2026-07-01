@@ -13,7 +13,11 @@
 // Demo FRIENDS are seeded through the LIVE friend-request endpoints over HTTP —
 // NOT by writing friendship rows directly — so the data is exactly what a real
 // user-to-user request+accept produces (same validation, same sendFriendRequest /
-// acceptFriendRequest helpers, same ordered-pair + acceptedAt). >5 are seeded so
+// acceptFriendRequest helpers, same ordered-pair + acceptedAt). Each demo friend
+// also gets their OWN posts (FRIEND_CORPORA) seeded through the SAME per-user
+// seeder the reviewer uses (seedUserWorld) — their FRIENDS posts populate the
+// reviewer's Friends feed + cross-account search, so the reviewer sees a real
+// shared stream, not an empty feed. >5 friends are seeded so
 // the reviewer's Friends list shows its search + sort toolbar (gated at
 // friends.length > 5 in apps/web/app/(app)/friends/friends-list.tsx), with a mix
 // of avatar-image and image-less identities so both the <Image> avatar and the
@@ -195,6 +199,12 @@ Env fallbacks: REVIEWER_EMAIL, REVIEWER_PASSWORD, REVIEWER_HANDLE, REVIEWER_NAME
 }
 
 type PostType = "BLOG" | "FINDING" | "SIGHT";
+// Mirrors the PostVisibility enum in packages/db/prisma/schema.prisma. Demo posts
+// default to PRIVATE (owner-only, catalog-only). FRIENDS is what actually lights
+// up the reviewer's Friends feed + curated search across accounts; PUBLIC only
+// surfaces once PUBLIC_CATALOG_ENABLED is flipped on (apps/web/lib/features.ts),
+// so we lean on FRIENDS for the live demo and keep PUBLIC for schema coverage.
+type PostVisibility = "PRIVATE" | "FRIENDS" | "GROUP" | "PUBLIC";
 
 interface DemoPost {
   slug: string;
@@ -206,6 +216,24 @@ interface DemoPost {
   categories: { name: string; displayName: string }[];
   originalUrl?: string;
   imageUrl?: string;
+  // Omitted → PRIVATE (owner-only). Set FRIENDS on a post to put it in the feed.
+  visibility?: PostVisibility;
+}
+
+interface FocusArea {
+  title: string;
+  description: string;
+  slugs: string[];
+}
+
+// The full set of demo content for one user: the posts, their focus-area grouping
+// (for the Tree/Observatory), and the aspiration they hang under. The reviewer
+// and every demo friend are each seeded from one of these through the SINGLE
+// per-user seeder (seedUserWorld), so there is no parallel post-creation path.
+interface DemoCorpus {
+  posts: DemoPost[];
+  focusAreas: FocusArea[];
+  aspirationTitle: string;
 }
 
 // Safe-for-work catalog: everyday hobby/productivity content that reads like a
@@ -224,6 +252,7 @@ Grind a touch coarser than table salt. Bloom with twice the coffee's weight in w
 Ratio I keep coming back to: 18g coffee, 300g water, water just off the boil.`,
     tags: ["coffee", "morning", "ritual"],
     categories: [{ name: "coffee", displayName: "Coffee" }],
+    visibility: "PUBLIC",
   },
   {
     slug: "ridge-trail-day-hike",
@@ -236,6 +265,7 @@ Ratio I keep coming back to: 18g coffee, 300g water, water just off the boil.`,
 Wildflowers were out in patches and the valley haze burned off by mid-morning. Packed light: water, a windbreaker, and a sandwich.`,
     tags: ["hiking", "outdoors", "trail"],
     categories: [{ name: "outdoors", displayName: "Outdoors" }],
+    visibility: "FRIENDS",
   },
   {
     slug: "deep-work-reading-note",
@@ -326,6 +356,7 @@ What went well? What stalled? What's the one thing for next week? Anything to ha
 Kept it easy: five miles at a conversational pace, no watch-staring. The bridge at the turnaround is the reward, the whole skyline catching the first light.`,
     tags: ["running", "fitness", "morning"],
     categories: [{ name: "fitness", displayName: "Fitness" }],
+    visibility: "FRIENDS",
   },
   {
     slug: "learning-spanish-daily",
@@ -361,6 +392,7 @@ Got the scans back today. Half are throwaways, but a few have a quality digital 
 Side after side of mid-century hard bop — some forgettable, a few that stopped me mid-sentence. There's a warmth to vinyl that's easy to romanticize and also just true: the small ritual of cleaning the record, dropping the needle, and sitting still for a whole side.`,
     tags: ["music", "jazz", "vinyl"],
     categories: [{ name: "music", displayName: "Music" }],
+    visibility: "PUBLIC",
   },
   {
     slug: "budget-envelope-method",
@@ -555,7 +587,11 @@ async function ensureFriendUser(
       },
     });
   }
-  return { userId: user.id, email: user.email, handle: user.handle ?? friend.handle };
+  return {
+    userId: user.id,
+    email: user.email,
+    handle: user.handle ?? friend.handle,
+  };
 }
 
 // Sign in over HTTP and return a Cookie header carrying the session. Origin is
@@ -610,11 +646,14 @@ async function httpAcceptRequest(
   cookie: string,
   requesterUserId: string,
 ): Promise<"accepted" | "noop"> {
-  const res = await fetch(`${webUrl}/api/app/friends/requests/${requesterUserId}`, {
-    method: "POST",
-    headers: { "content-type": "application/json", origin: webUrl, cookie },
-    body: JSON.stringify({ action: "accept" }),
-  });
+  const res = await fetch(
+    `${webUrl}/api/app/friends/requests/${requesterUserId}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: webUrl, cookie },
+      body: JSON.stringify({ action: "accept" }),
+    },
+  );
   if (res.ok) return "accepted";
   if (res.status === 404) return "noop";
   throw new Error(
@@ -630,6 +669,7 @@ async function httpAcceptRequest(
 async function seedFriends(
   reviewer: { userId: string; email: string; password: string | null },
   webUrl: string,
+  scene: boolean,
 ): Promise<void> {
   if (!reviewer.password) {
     console.warn(
@@ -643,7 +683,11 @@ async function seedFriends(
   // Fail fast with a clear message if the web app isn't reachable.
   let reviewerCookie: string;
   try {
-    reviewerCookie = await httpSignIn(webUrl, reviewer.email, reviewer.password);
+    reviewerCookie = await httpSignIn(
+      webUrl,
+      reviewer.email,
+      reviewer.password,
+    );
   } catch (err) {
     console.warn(
       `\nFriends step skipped: could not sign in at ${webUrl} ` +
@@ -654,6 +698,7 @@ async function seedFriends(
   }
 
   let accepted = 0;
+  let posts = 0;
   for (const friend of DEMO_FRIENDS) {
     const fu = await ensureFriendUser(friend, reviewer.password);
     const sent = await httpSendRequest(webUrl, reviewerCookie, fu.handle);
@@ -664,13 +709,24 @@ async function seedFriends(
       reviewer.userId,
     );
     if (result === "accepted" || sent === "exists") accepted++;
+    // Seed this friend's OWN posts through the same per-user seeder the reviewer
+    // uses. Their FRIENDS posts populate the reviewer's Friends feed + search;
+    // scene (embeddings/categories) runs when enabled — same GEMINI gate.
+    const corpus = FRIEND_CORPORA[friend.handle];
+    let seededCount = 0;
+    if (corpus) {
+      const seeded = await seedUserWorld(fu.userId, corpus, { scene });
+      seededCount = seeded.length;
+      posts += seededCount;
+    }
     console.log(
-      `  • @${fu.handle} (${friend.image ? "avatar" : "monogram"}): request ${sent}, accept ${result}`,
+      `  • @${fu.handle} (${friend.image ? "avatar" : "monogram"}): request ${sent}, accept ${result}, ${seededCount} post(s)`,
     );
   }
   console.log(
     `Friends seeded: ${DEMO_FRIENDS.length} demo friend(s) via ${webUrl} ` +
-      `(${accepted} accepted/confirmed).`,
+      `(${accepted} accepted/confirmed, ${posts} friend post(s)` +
+      `${scene ? " + scene" : ""}).`,
   );
 }
 
@@ -685,9 +741,10 @@ type SeededItem = {
 
 async function seedDemoContent(
   userId: string,
-  count: number,
+  posts: DemoPost[],
+  count?: number,
 ): Promise<SeededItem[]> {
-  const selected = DEMO_POSTS.slice(0, count);
+  const selected = count == null ? posts : posts.slice(0, count);
   const now = Date.now();
   const items: SeededItem[] = [];
 
@@ -720,6 +777,9 @@ async function seedDemoContent(
       type: post.type,
       status: "PUBLISHED" as const,
       published: true,
+      // Default PRIVATE (owner-only catalog). FRIENDS/PUBLIC surface the post in
+      // the feed/search per visibilityWhereForViewer (packages/db/src/posts.ts).
+      visibility: post.visibility ?? "PRIVATE",
       filePath: `db://demo/${post.slug}`,
       fileHash,
       originalUrl: post.originalUrl ?? null,
@@ -788,7 +848,7 @@ async function seedDemoContent(
 // Curated focus areas (Projects) grouping the demo posts, so the reviewer's Tree
 // shows a few populated areas instead of one project per post. Any focus area
 // with at least one seeded post this run is created.
-const FOCUS_AREAS: { title: string; description: string; slugs: string[] }[] = [
+const FOCUS_AREAS: FocusArea[] = [
   {
     title: "Home & Kitchen",
     description:
@@ -838,6 +898,293 @@ const FOCUS_AREAS: { title: string; description: string; slugs: string[] }[] = [
   },
 ];
 
+// The reviewer's own world: the full demo library above, grouped into the focus
+// areas above, under a single "Personal" aspiration. Fed to the same per-user
+// seeder every demo friend uses (seedUserWorld) — one source of truth.
+const REVIEWER_CORPUS: DemoCorpus = {
+  posts: DEMO_POSTS,
+  focusAreas: FOCUS_AREAS,
+  aspirationTitle: "Personal",
+};
+
+// Each demo friend's own small world, keyed by the friend handle in DEMO_FRIENDS.
+// Every friend has at least one FRIENDS post so the reviewer's Friends feed +
+// cross-account search are populated for real; a couple carry a PUBLIC post for
+// schema coverage (invisible until PUBLIC_CATALOG_ENABLED flips — see the
+// PostVisibility note above). Slugs are handle-prefixed so they never collide
+// with the reviewer's or each other's (Post.slug is globally unique). Safe-for-
+// work personal-hobby content that reads like a real acquaintance's library.
+const FRIEND_CORPORA: Record<string, DemoCorpus> = {
+  "ava-rivers": {
+    aspirationTitle: "Personal",
+    focusAreas: [
+      {
+        title: "On the Water",
+        description: "Early paddles and the kit that makes them easy.",
+        slugs: ["ava-rivers-dawn-paddle", "ava-rivers-paddling-kit"],
+      },
+    ],
+    posts: [
+      {
+        slug: "ava-rivers-dawn-paddle",
+        title: "Dawn Paddle on the Lake",
+        type: "SIGHT",
+        visibility: "FRIENDS",
+        excerpt:
+          "Glassy water, no wind, and the whole lake to myself before seven.",
+        content: `Put in just before sunrise. The lake was dead calm — that rare glassy morning where the paddle barely leaves a ripple.
+
+Kept to the shoreline, watching mist lift off the coves. A heron stood so still I nearly drifted into it. Back at the dock by the time the first motorboats woke up.`,
+        tags: ["paddling", "kayak", "outdoors"],
+        categories: [{ name: "paddling", displayName: "Paddling" }],
+      },
+      {
+        slug: "ava-rivers-paddling-kit",
+        title: "Reading Note: A Minimal Paddling Kit",
+        type: "FINDING",
+        visibility: "PUBLIC",
+        excerpt:
+          "The short list of gear that actually earns its place in the boat.",
+        content: `Saved a guide on packing light for day trips and trimmed it to what I actually carry.
+
+Dry bag, water, a windbreaker, a whistle, and a small first-aid kit. Everything else is optional. The lesson that stuck: a lighter boat is a safer boat because you paddle it better.`,
+        tags: ["gear", "kayak", "outdoors"],
+        categories: [{ name: "outdoors", displayName: "Outdoors" }],
+        originalUrl: "https://example.com/guides/minimal-paddling-kit",
+      },
+    ],
+  },
+  "noah-fields": {
+    aspirationTitle: "Personal",
+    focusAreas: [
+      {
+        title: "The Home Kitchen",
+        description: "Bread on a weeknight and the small skills behind it.",
+        slugs: ["noah-fields-weeknight-focaccia", "noah-fields-knife-skills"],
+      },
+    ],
+    posts: [
+      {
+        slug: "noah-fields-weeknight-focaccia",
+        title: "Weeknight Focaccia",
+        type: "BLOG",
+        visibility: "FRIENDS",
+        excerpt:
+          "A no-knead focaccia you can start after work and bake before bed.",
+        content: `Mixed the dough in five minutes, let it do the work in the fridge overnight, and baked it the next evening.
+
+Dimple it hard with oiled fingers, a good glug of olive oil, flaky salt, and rosemary from the balcony. Twenty minutes later the whole flat smells like a bakery. No kneading, no stand mixer, no fuss.`,
+        tags: ["baking", "bread", "kitchen"],
+        categories: [{ name: "cooking", displayName: "Cooking" }],
+      },
+      {
+        slug: "noah-fields-knife-skills",
+        title: "Reading Note: Better Knife Skills",
+        type: "FINDING",
+        visibility: "FRIENDS",
+        excerpt: "Two small fixes that made prep faster and a lot less scary.",
+        content: `Watched a walkthrough on knife technique and kept the two things that mattered.
+
+First: the claw grip — curl your fingertips under so the blade rides your knuckles. Second: let the knife do the cutting, don't force it. Ten minutes of practice on an onion and chopping stopped feeling like a chore.`,
+        tags: ["cooking", "technique", "kitchen"],
+        categories: [{ name: "cooking", displayName: "Cooking" }],
+        originalUrl: "https://example.com/guides/better-knife-skills",
+      },
+    ],
+  },
+  "mira-quinn": {
+    aspirationTitle: "Personal",
+    focusAreas: [
+      {
+        title: "Frames & Places",
+        description: "Travel photos and traveling light.",
+        slugs: ["mira-quinn-blue-hour", "mira-quinn-one-lens-trip"],
+      },
+    ],
+    posts: [
+      {
+        slug: "mira-quinn-blue-hour",
+        title: "Blue Hour in the Old Town",
+        type: "SIGHT",
+        visibility: "FRIENDS",
+        excerpt:
+          "The ten minutes after sunset when the streetlights and the sky match.",
+        content: `Stayed out past sunset in the old town and caught the blue hour — that short window when the sky goes deep cobalt and the warm streetlights balance it perfectly.
+
+Rested the camera on a railing for a long exposure. Cobblestones still wet from an earlier shower, one lit café, almost nobody around. The best frame of the whole trip and it took thirty seconds of standing still.`,
+        tags: ["photography", "travel", "city"],
+        categories: [{ name: "photography", displayName: "Photography" }],
+      },
+      {
+        slug: "mira-quinn-one-lens-trip",
+        title: "One Lens for a Whole Trip",
+        type: "BLOG",
+        visibility: "PUBLIC",
+        excerpt:
+          "Why I left the zoom at home and shot a week on a single prime.",
+        content: `Packed one small 35mm prime and nothing else for a week away.
+
+The constraint turned out to be the point. Instead of fiddling with focal length I moved my feet, and the photos got more deliberate. Lighter bag, fewer decisions, better pictures. I don't think I'll travel with a zoom again.`,
+        tags: ["photography", "travel", "minimal"],
+        categories: [{ name: "photography", displayName: "Photography" }],
+      },
+    ],
+  },
+  "leo-marsh": {
+    aspirationTitle: "Personal",
+    focusAreas: [
+      {
+        title: "Miles & Motion",
+        description: "Training the hills and turning the commute into it.",
+        slugs: ["leo-marsh-hill-repeats", "leo-marsh-commute-swap"],
+      },
+    ],
+    posts: [
+      {
+        slug: "leo-marsh-hill-repeats",
+        title: "Learning to Love Hill Repeats",
+        type: "BLOG",
+        visibility: "FRIENDS",
+        excerpt: "The workout I dreaded became the one I look forward to.",
+        content: `Started doing hill repeats once a week on the climb behind the house.
+
+The trick was going easier than my ego wanted — steady effort up, spin gently down, repeat six times. Six weeks in and climbs that used to wreck me feel routine. Turns out the workout I dreaded is the one that actually moved the needle.`,
+        tags: ["cycling", "fitness", "training"],
+        categories: [{ name: "fitness", displayName: "Fitness" }],
+      },
+      {
+        slug: "leo-marsh-commute-swap",
+        title: "Reading Note: Bike-Commuting the Easy Way",
+        type: "FINDING",
+        visibility: "FRIENDS",
+        excerpt:
+          "How to swap the car for the bike without it feeling like a project.",
+        content: `Read a piece on making bike-commuting stick and it reframed the whole thing for me.
+
+The advice that landed: don't try to replace every trip, just the easy ones. Leave a set of clothes at work, keep the bike ready by the door, and start with the days the weather is on your side. Momentum does the rest.`,
+        tags: ["cycling", "commute", "habits"],
+        categories: [{ name: "fitness", displayName: "Fitness" }],
+        originalUrl: "https://example.com/articles/easy-bike-commuting",
+      },
+    ],
+  },
+  "sana-okafor": {
+    aspirationTitle: "Personal",
+    focusAreas: [
+      {
+        title: "The Reading Life",
+        description: "Reading more, and getting the books for free.",
+        slugs: ["sana-okafor-two-books-week", "sana-okafor-library-holds"],
+      },
+    ],
+    posts: [
+      {
+        slug: "sana-okafor-two-books-week",
+        title: "How I Finally Read Two Books a Week",
+        type: "BLOG",
+        visibility: "FRIENDS",
+        excerpt:
+          "Not speed-reading — just carving out the same twenty minutes daily.",
+        content: `For years I said I had no time to read. What changed wasn't speed, it was a slot: twenty minutes before bed, phone in the other room.
+
+Two books a week now, mostly because the habit is boringly consistent. Some nights it's five pages, some nights fifty. The streak is what keeps it alive.`,
+        tags: ["reading", "books", "habits"],
+        categories: [{ name: "reading", displayName: "Reading" }],
+      },
+      {
+        slug: "sana-okafor-library-holds",
+        title: "Reading Note: The Art of Library Holds",
+        type: "FINDING",
+        visibility: "FRIENDS",
+        excerpt:
+          "Queue the new releases early and they arrive spread out, for free.",
+        content: `Came across a tip on using library hold queues and it changed how I get books.
+
+Place holds on new releases the moment they're announced. By the time your turn comes they trickle in a few weeks apart — a steady, free reading list with no impulse buys. My to-read shelf has never been healthier or cheaper.`,
+        tags: ["reading", "library", "books"],
+        categories: [{ name: "reading", displayName: "Reading" }],
+        originalUrl: "https://example.com/notes/library-hold-strategy",
+      },
+    ],
+  },
+  "theo-lindqvist": {
+    aspirationTitle: "Personal",
+    focusAreas: [
+      {
+        title: "Shop Notes",
+        description: "Joinery attempts and keeping the tools sharp.",
+        slugs: ["theo-lindqvist-first-dovetails", "theo-lindqvist-sharpening"],
+      },
+    ],
+    posts: [
+      {
+        slug: "theo-lindqvist-first-dovetails",
+        title: "My First Hand-Cut Dovetails",
+        type: "SIGHT",
+        visibility: "FRIENDS",
+        excerpt:
+          "Wonky, gappy, and completely satisfying — my first real joint.",
+        content: `Cut my first set of hand dovetails this weekend. They are, objectively, a mess — gaps I filled, one pin split, angles that wander.
+
+But they hold, and I made them with a saw and a chisel and a lot of patience. Framing the little test piece on the shop wall as a reminder of where the baseline was.`,
+        tags: ["woodworking", "diy", "craft"],
+        categories: [{ name: "woodworking", displayName: "Woodworking" }],
+      },
+      {
+        slug: "theo-lindqvist-sharpening",
+        title: "Reading Note: Keeping Chisels Sharp",
+        type: "FINDING",
+        visibility: "FRIENDS",
+        excerpt:
+          "The unglamorous skill that fixed half my woodworking problems.",
+        content: `Read a primer on sharpening and finally took it seriously. Turns out most of my bad cuts were dull tools, not bad technique.
+
+A cheap honing guide, two stones, and a strop. Five minutes at the start of each session. A sharp chisel goes through end grain like it isn't there — the difference is night and day.`,
+        tags: ["woodworking", "tools", "craft"],
+        categories: [{ name: "woodworking", displayName: "Woodworking" }],
+        originalUrl: "https://example.com/guides/sharpening-chisels",
+      },
+    ],
+  },
+  "iris-nakamura": {
+    aspirationTitle: "Personal",
+    focusAreas: [
+      {
+        title: "Green & Steeped",
+        description: "Growing the herbs and slowing down over the cup.",
+        slugs: ["iris-nakamura-windowsill-tea", "iris-nakamura-slow-cup"],
+      },
+    ],
+    posts: [
+      {
+        slug: "iris-nakamura-windowsill-tea",
+        title: "A Windowsill of Tea Herbs",
+        type: "BLOG",
+        visibility: "FRIENDS",
+        excerpt:
+          "Mint, lemon balm, and chamomile — a whole tea garden in three pots.",
+        content: `Turned the kitchen windowsill into a tiny tea garden: mint, lemon balm, and a little chamomile.
+
+Mint is the enthusiastic one, lemon balm the reliable one, chamomile the diva that sulks if it dries out. A handful of fresh leaves in hot water beats anything from a box, and the sill smells wonderful when the afternoon sun hits it.`,
+        tags: ["gardening", "tea", "herbs"],
+        categories: [{ name: "gardening", displayName: "Gardening" }],
+      },
+      {
+        slug: "iris-nakamura-slow-cup",
+        title: "The Slow Cup",
+        type: "BLOG",
+        visibility: "FRIENDS",
+        excerpt: "Making the afternoon tea into a small, deliberate pause.",
+        content: `Started treating the afternoon cup as a real break instead of something I drink at my desk.
+
+Boil the water, warm the pot, wait the full four minutes without reaching for my phone. It's a small ritual but it resets the day the way a walk does. The tea is better hot and unhurried, and so am I.`,
+        tags: ["tea", "ritual", "calm"],
+        categories: [{ name: "tea", displayName: "Tea" }],
+      },
+    ],
+  },
+};
+
 // Give the seeded posts real categories + focus areas by running each one
 // through the worker's actual auto-org stage (assignOrg). assignOrg embeds the
 // content, grows the dynamic topic taxonomy, and writes PostCategoryMatch rows;
@@ -845,10 +1192,14 @@ const FOCUS_AREAS: { title: string; description: string; slugs: string[] }[] = [
 // that focus area (mints nothing). Idempotent: aspiration/projects are
 // found-or-created by title, and every assignOrg write is an upsert/replace.
 // Needs GEMINI_API_KEY (embedding model). Mirrors a real signed-in ingest.
-async function seedScene(ownerId: string, items: SeededItem[]): Promise<void> {
+async function seedScene(
+  ownerId: string,
+  items: SeededItem[],
+  focusAreas: FocusArea[],
+  aspirationTitle: string,
+): Promise<void> {
   if (items.length === 0) return;
 
-  const aspirationTitle = "Personal";
   const aspiration =
     (await findAspirationByTitle(ownerId, aspirationTitle)) ??
     (await createAspiration({
@@ -862,7 +1213,7 @@ async function seedScene(ownerId: string, items: SeededItem[]): Promise<void> {
   const seededSlugs = new Set(items.map((i) => i.slug));
   const projectIdByTitle = new Map<string, string>();
   const projectTitleBySlug = new Map<string, string>();
-  for (const fa of FOCUS_AREAS) {
+  for (const fa of focusAreas) {
     const present = fa.slugs.filter((s) => seededSlugs.has(s));
     if (present.length === 0) continue;
     let projectId = (await findProjectByTitle(ownerId, fa.title))?.id;
@@ -930,6 +1281,23 @@ async function seedScene(ownerId: string, items: SeededItem[]): Promise<void> {
   );
 }
 
+// THE single per-user seeder. Given a user id and a corpus, it seeds that user's
+// posts + submissions and (when scene is on) runs them through the worker's real
+// auto-org stage for embeddings + categories + focus areas. The reviewer and
+// every demo friend go through this one path, so demo content is produced
+// identically for everyone — one source of truth. Idempotent (all upserts).
+async function seedUserWorld(
+  userId: string,
+  corpus: DemoCorpus,
+  opts: { scene: boolean; postLimit?: number },
+): Promise<SeededItem[]> {
+  const items = await seedDemoContent(userId, corpus.posts, opts.postLimit);
+  if (opts.scene) {
+    await seedScene(userId, items, corpus.focusAreas, corpus.aspirationTitle);
+  }
+  return items;
+}
+
 async function teardown(args: ParsedArgs): Promise<void> {
   const user = await prisma.user.findUnique({
     where: { email: args.email },
@@ -941,9 +1309,18 @@ async function teardown(args: ParsedArgs): Promise<void> {
     return;
   }
 
+  // Demo content lives under BOTH the reviewer and the @friend.demo users now, so
+  // clear content for all of them (not just the reviewer) even without
+  // --purge-user, matching what the seed step created.
+  const friendUsers = await prisma.user.findMany({
+    where: { email: { endsWith: `@${FRIEND_EMAIL_DOMAIN}` } },
+    select: { id: true },
+  });
+  const ownerIds = [user.id, ...friendUsers.map((f) => f.id)];
+
   const subs = await prisma.ingestSubmission.deleteMany({
     where: {
-      submittedById: user.id,
+      submittedById: { in: ownerIds },
       contentHash: { startsWith: DEMO_HASH_PREFIX },
     },
   });
@@ -952,17 +1329,18 @@ async function teardown(args: ParsedArgs): Promise<void> {
   // taxonomy nodes are global and left in place — with no matching posts they're
   // simply invisible in any scene.)
   const posts = await prisma.post.deleteMany({
-    where: { submittedById: user.id, providerId: DEMO_PROVIDER_ID },
+    where: { submittedById: { in: ownerIds }, providerId: DEMO_PROVIDER_ID },
   });
   const projects = await prisma.project.deleteMany({
-    where: { ownerId: user.id },
+    where: { ownerId: { in: ownerIds } },
   });
   const aspirations = await prisma.aspiration.deleteMany({
-    where: { ownerId: user.id },
+    where: { ownerId: { in: ownerIds } },
   });
   console.log(
     `Removed ${posts.count} demo post(s), ${subs.count} submission(s), ` +
-      `${projects.count} focus area(s), ${aspirations.count} aspiration(s).`,
+      `${projects.count} focus area(s), ${aspirations.count} aspiration(s) ` +
+      `across ${ownerIds.length} demo user(s).`,
   );
 
   if (args.purgeUser) {
@@ -988,8 +1366,10 @@ async function main(): Promise<void> {
   }
 
   const reviewer = await ensureReviewerUser(args);
-  const items = await seedDemoContent(reviewer.userId, args.posts);
 
+  // One Gemini-key gate for the whole run — the reviewer's scene AND each demo
+  // friend's scene use the same embedding model, so fail fast before any seeding
+  // if it's needed but missing.
   if (args.scene) {
     const key =
       process.env.GEMINI_API_KEY ||
@@ -1002,21 +1382,31 @@ async function main(): Promise<void> {
       );
       process.exit(1);
     }
-    console.log(
-      "\nSeeding categories + focus areas through the worker pipeline…",
-    );
-    await seedScene(reviewer.userId, items);
   }
+
+  console.log(
+    args.scene
+      ? "\nSeeding reviewer content + categories/focus areas through the worker pipeline…"
+      : "\nSeeding reviewer content…",
+  );
+  const items = await seedUserWorld(reviewer.userId, REVIEWER_CORPUS, {
+    scene: args.scene,
+    postLimit: args.posts,
+  });
 
   if (args.friends) {
     console.log(
-      `\nSeeding reviewer friends via the live endpoints at ${args.webUrl}…`,
+      `\nSeeding reviewer friends + their content via the live endpoints at ${args.webUrl}…`,
     );
     // ensureReviewerUser only surfaces a *generated* password (null when one was
     // supplied), but the account was set to args.password either way — so the
     // effective sign-in password is whichever is non-null.
     const signInPassword = reviewer.password ?? args.password ?? null;
-    await seedFriends({ ...reviewer, password: signInPassword }, args.webUrl);
+    await seedFriends(
+      { ...reviewer, password: signInPassword },
+      args.webUrl,
+      args.scene,
+    );
   }
 
   console.log("\nApp Store reviewer account ready:");
@@ -1032,7 +1422,7 @@ async function main(): Promise<void> {
     `  Categories + focus areas: ${args.scene ? "yes (via worker pipeline)" : "skipped (--no-scene)"}`,
   );
   console.log(
-    `  Demo friends: ${args.friends ? `seeded via ${args.webUrl} (real friend-request flow)` : "skipped (--no-friends)"}`,
+    `  Demo friends: ${args.friends ? `${DEMO_FRIENDS.length} seeded via ${args.webUrl} (real friend-request flow), each with their own FRIENDS posts in the feed` : "skipped (--no-friends)"}`,
   );
   console.log("--------------------------------------------------");
   if (reviewer.password) {
