@@ -44,7 +44,17 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (line: string) => controller.enqueue(encoder.encode(line));
+      // Guard enqueue: if the client disconnects mid-stream the controller is
+      // torn down, and a raw enqueue throws — which would escape the catch below
+      // (it also calls send) into an unhandled rejection. Swallow it and stop
+      // emitting (matches app/api/app/posts/stream/route.ts).
+      const send = (line: string) => {
+        try {
+          controller.enqueue(encoder.encode(line));
+        } catch {
+          // controller already closed/errored (client aborted) — drop the frame.
+        }
+      };
       try {
         const run = runChatTurn({
           viewerId,
@@ -66,7 +76,11 @@ export async function POST(request: Request) {
         const msg = err instanceof Error ? err.message : "chat failed";
         send(encodeFrame({ t: "error", v: msg }));
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // already closed (client aborted mid-stream) — nothing to do.
+        }
       }
     },
   });
