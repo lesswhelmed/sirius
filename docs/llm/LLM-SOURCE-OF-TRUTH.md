@@ -9,7 +9,7 @@
 
 - **Owner:** Sirius team
 - **Created:** 2026-07-01
-- **Last validated:** 2026-07-01 (steady ✓×6) — 16 anchors MATCH (server-chat v1 shipped+hardened + /llm-test bench card A16). No drift. USER-PENDING: curl + /llm sim.
+- **Last validated:** 2026-07-01 (steady ✓×7) — 17 anchors MATCH (server-chat v1 + bench card A16 + Catalog entry A17). No drift. USER-PENDING: curl + /llm sim.
 - **Related docs:** `docs/HANDOFF-on-device-ai.md`, `docs/search-ranking.md`,
   `docs/friends-feed.md`, `packages/research-agent/`, `apps/mcp/`
 
