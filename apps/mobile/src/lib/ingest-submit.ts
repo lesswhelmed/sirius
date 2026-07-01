@@ -33,7 +33,13 @@ export type ImageInput = {
   type: string;
 };
 
-export function submitUrl(
+// Builds the exact /api/app/ingest JSON body for a single URL. Shared between
+// the live submit below and the offline/optimistic outbox (materials.ts), so a
+// queued item replays the identical request (including any on-device draft).
+// Also used for `repo` materials — a repo is a URL submission (the worker's
+// github.com detection routes it to the dedicated structure+key-files path).
+// Mirrors noteIngestBody's shape/param order exactly.
+export function urlIngestBody(
   url: string,
   notes = "",
   force = false,
@@ -41,8 +47,16 @@ export function submitUrl(
   draft?: DraftEnvelope,
   visibility?: Visibility,
   shareGroupIds?: string[],
-): Promise<SubmitOk> {
-  return apiPostJson<SubmitOk>("/api/app/ingest", {
+): {
+  urls: string[];
+  notes: string;
+  force: boolean;
+  projectId?: string;
+  visibility?: Visibility;
+  shareGroupIds?: string[];
+  draft?: DraftEnvelope;
+} {
+  return {
     urls: [url],
     notes,
     force,
@@ -56,7 +70,30 @@ export function submitUrl(
     // Single-url submissions may carry an on-device draft built from the
     // /api/app/extract summary; the server only honors it for one URL.
     ...(draft ? { draft } : {}),
-  } as Parameters<typeof apiPostJson>[1]);
+  };
+}
+
+export function submitUrl(
+  url: string,
+  notes = "",
+  force = false,
+  projectId?: string,
+  draft?: DraftEnvelope,
+  visibility?: Visibility,
+  shareGroupIds?: string[],
+): Promise<SubmitOk> {
+  return apiPostJson<SubmitOk>(
+    "/api/app/ingest",
+    urlIngestBody(
+      url,
+      notes,
+      force,
+      projectId,
+      draft,
+      visibility,
+      shareGroupIds,
+    ) as Parameters<typeof apiPostJson>[1],
+  );
 }
 
 // Fetches the de-identified URL summary from the extraction endpoint. Null on

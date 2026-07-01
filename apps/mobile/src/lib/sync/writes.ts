@@ -115,6 +115,71 @@ export async function createLocalRawNote(text: string): Promise<string> {
 }
 
 /**
+ * Insert a minimal optimistic local_draft row for a URL/repo material with no
+ * on-device draft — the common case, since URL drafting needs the network
+ * extract step (materials.ts urlHandler) and repo materials never draft
+ * on-device at all. Title/body are the raw URL; tags/categories are filled in
+ * by the server's drafted FINDING post on reconcile (the worker forces both
+ * plain-URL and repo ingest to FINDING). Mirrors createLocalRawNote. Returns
+ * the localId to thread to the outbox row so replay links and reconciliation
+ * merges this row.
+ */
+export async function createLocalRawUrl(url: string): Promise<string> {
+  const localId = randomUUID();
+  const now = new Date();
+  await db.insert(posts).values({
+    localId,
+    syncState: "local_draft",
+    title: url,
+    body: url,
+    type: "FINDING",
+    tags: [],
+    categories: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  return localId;
+}
+
+/**
+ * Insert a minimal optimistic local_draft row for an image/video/audio/document
+ * material with no on-device draft (image batches only draft when curation is
+ * on; video/audio-fallback/document never draft on-device). `type` must match
+ * the worker's forced PostType for that kind (see gemini-runner.ts
+ * `forcedTypes`: image batch → SIGHT, video → SIGHT, audio → BLOG,
+ * document → FINDING) so the card doesn't visibly change type on reconcile.
+ * `imageUris` populates the optimistic gallery for an image batch; omitted for
+ * the single-file kinds. Returns the localId to thread to the outbox row(s).
+ */
+export async function createLocalRawFile(
+  type: LocalDraftType,
+  fallbackTitle: string,
+  notes?: string,
+  imageUris?: string[],
+): Promise<string> {
+  const localId = randomUUID();
+  const now = new Date();
+  const images: PostImage[] | null = imageUris?.length
+    ? imageUris.map((url) => ({ url }))
+    : null;
+  const trimmedNotes = notes?.trim();
+  await db.insert(posts).values({
+    localId,
+    syncState: "local_draft",
+    title: trimmedNotes ? deriveNoteTitle(trimmedNotes) : fallbackTitle,
+    body: notes ?? "",
+    type,
+    tags: [],
+    categories: [],
+    imageUrl: images?.[0]?.url ?? null,
+    images,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return localId;
+}
+
+/**
  * Link an optimistic row to its server submission once a submit succeeds. The
  * submissionId is the SubmitOk.id (note/url) or "batch:<batchId>" (images) — the
  * key the worker stamps onto Post.sourceRecordId. Flips local_draft → pending.

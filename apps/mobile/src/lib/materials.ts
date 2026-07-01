@@ -14,7 +14,7 @@ import {
   type ImageInput,
   noteIngestBody,
   submitNote,
-  submitUrl,
+  urlIngestBody,
   type Visibility,
 } from "@/lib/ingest-submit";
 import {
@@ -25,14 +25,12 @@ import {
 } from "@/lib/llm/curate";
 import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
 import { canTranscribeOnDevice, transcribeAudio } from "@/lib/llm/transcribe";
-import {
-  discardStagedCopy,
-  enqueueAndSendBinary,
-  enqueueOutbox,
-} from "@/lib/outbox";
+import { discardStagedCopy, enqueueBinary, enqueueOutbox } from "@/lib/outbox";
 import {
   createLocalDraft,
+  createLocalRawFile,
   createLocalRawNote,
+  createLocalRawUrl,
   deleteLocalDraft,
   linkSubmission,
   markLocalFailed,
@@ -336,14 +334,16 @@ const urlHandler: MaterialHandler<"url"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     const failed: UrlMaterial[] = [];
-    const deduped: UrlMaterial[] = [];
-    let submitted = 0;
+    let queued = 0;
     // Extraction/generation split: with curation on and a model ready, fetch
     // the de-identified page summary from the server, draft the FINDING
     // locally, and attach the envelope so the worker skips its Gemini stage.
-    // Every step soft-fails to the plain submit (server drafts) — older
+    // Every step soft-fails to the plain enqueue (server drafts) — older
     // deploys without /api/app/extract, rate limits, Android model quirks,
     // or a bad extract can only ever cost the old behavior, never an error.
+    // This is the one remaining network await in this handler (the actual
+    // ingest submission below never touches the network directly anymore —
+    // it's queued for the background outbox flush, online or not).
     const draftLocally =
       ON_DEVICE_AI_ENABLED &&
       ctx.onDeviceCuration === true &&
@@ -357,42 +357,40 @@ const urlHandler: MaterialHandler<"url"> = {
           ? ((await draftUrlPost(summary, m.notes ?? "")) ?? undefined)
           : undefined;
       }
-      // With an on-device draft, show it immediately as an optimistic FINDING.
-      // (URL drafting needs the network extract, so this branch only runs
-      // online; a later submit failure is therefore a real server error.)
+      // Always create an optimistic card so a queued URL shows up immediately:
+      // an on-device draft renders a real FINDING preview; otherwise a raw-URL
+      // row (mirrors the note offline fallback) until the server's draft
+      // arrives on reconcile.
       const localId = draft
         ? await createLocalDraft({ type: "FINDING", envelope: draft })
-        : undefined;
+        : await createLocalRawUrl(m.url);
       try {
-        const ok = await submitUrl(
-          m.url,
-          m.notes ?? "",
-          ctx.force,
-          ctx.projectId,
-          draft,
-          ctx.visibility,
-          ctx.shareGroupIds,
+        await enqueueOutbox(
+          urlIngestBody(
+            m.url,
+            m.notes ?? "",
+            ctx.force,
+            ctx.projectId,
+            draft,
+            ctx.visibility,
+            ctx.shareGroupIds,
+          ),
+          localId,
         );
-        if (ok.deduped) {
-          // Server already had this exact content (content-hash dedup) — it
-          // created NO new submission. Drop the optimistic draft so we don't
-          // leave an orphaned card, and report it so the caller can offer a
-          // forced re-process instead of a misleading "queued" message.
-          if (localId) await deleteLocalDraft(localId);
-          deduped.push(m);
-        } else {
-          if (localId) await linkSubmission(localId, ok.id);
-          submitted++;
-        }
+        queued++;
       } catch (err) {
-        if (localId) await markLocalFailed(localId);
+        // The durable outbox row was never created (the local insert threw) —
+        // finalize the now-orphaned optimistic card as failed (same terminal
+        // state a real submit rejection used to leave) and keep the material
+        // in the tray so the composer can offer a retry.
+        await markLocalFailed(localId);
         const label = `URL ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
         failed.push(m);
       }
     }
-    return { submitted, errors, failed, deduped };
+    return { submitted: 0, errors, failed, deduped: [], queued };
   },
 };
 
@@ -401,34 +399,38 @@ const repoHandler: MaterialHandler<"repo"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     const failed: RepoMaterial[] = [];
-    const deduped: RepoMaterial[] = [];
-    let submitted = 0;
+    let queued = 0;
     // A repo is a URL submission — the worker's github.com detection routes it
     // to the dedicated structure+key-files path. No on-device drafting: per the
     // platform split, all GitHub processing happens server-side.
     for (const [i, m] of materials.entries()) {
+      // Always create an optimistic FINDING card (the worker forces repo
+      // ingest to FINDING, same as plain URLs) so a queued repo shows up
+      // immediately instead of waiting on the server draft.
+      const localId = await createLocalRawUrl(m.url);
       try {
-        const ok = await submitUrl(
-          m.url,
-          m.notes ?? "",
-          ctx.force,
-          ctx.projectId,
-          undefined,
-          ctx.visibility,
-          ctx.shareGroupIds,
+        await enqueueOutbox(
+          urlIngestBody(
+            m.url,
+            m.notes ?? "",
+            ctx.force,
+            ctx.projectId,
+            undefined,
+            ctx.visibility,
+            ctx.shareGroupIds,
+          ),
+          localId,
         );
-        // Server already had this repo (content-hash dedup) — nothing new was
-        // created; report it for an optional forced re-process.
-        if (ok.deduped) deduped.push(m);
-        else submitted++;
+        queued++;
       } catch (err) {
+        await markLocalFailed(localId);
         const label = `Repo ${i + 1}/${materials.length}`;
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
         failed.push(m);
       }
     }
-    return { submitted, errors, failed, deduped };
+    return { submitted: 0, errors, failed, deduped: [], queued };
   },
 };
 
@@ -437,8 +439,6 @@ const noteHandler: MaterialHandler<"note"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     const failed: NoteMaterial[] = [];
-    const deduped: NoteMaterial[] = [];
-    let submitted = 0;
     let queued = 0;
     // Resolve once per batch: model readiness doesn't change mid-submit.
     const draftLocally =
@@ -451,62 +451,40 @@ const noteHandler: MaterialHandler<"note"> = {
       const draft = draftLocally
         ? ((await draftNotePost(m.text)) ?? undefined)
         : undefined;
-      // With an on-device draft, render it instantly as an optimistic BLOG. The
-      // localId threads to the submission (or the offline outbox row) so the
-      // server post reconciles back into this same card.
+      // Always create an optimistic card so a queued note shows up immediately:
+      // an on-device draft renders a real BLOG preview; otherwise a raw-text
+      // row (the exact same "Saved offline"-style fallback this used to reserve
+      // for the offline case only) until the server's draft arrives on
+      // reconcile. The localId threads to the outbox row so replay links and
+      // reconciliation merge back into this same card.
       const localId = draft
         ? await createLocalDraft({ type: "BLOG", envelope: draft })
-        : undefined;
+        : await createLocalRawNote(m.text);
       try {
-        const ok = await submitNote(
-          m.text,
-          ctx.force,
-          ctx.projectId,
-          draft,
-          ctx.visibility,
-          ctx.shareGroupIds,
+        await enqueueOutbox(
+          noteIngestBody(
+            m.text,
+            ctx.force,
+            ctx.projectId,
+            draft,
+            ctx.visibility,
+            ctx.shareGroupIds,
+          ),
+          localId,
         );
-        if (ok.deduped) {
-          // Identical note already submitted (content-hash dedup) — no new row.
-          // Drop the optimistic draft and report it for an optional re-process.
-          if (localId) await deleteLocalDraft(localId);
-          deduped.push(m);
-        } else {
-          if (localId) await linkSubmission(localId, ok.id);
-          submitted++;
-        }
+        queued++;
       } catch (err) {
-        if (!(err instanceof ApiError)) {
-          // No server response — offline or unreachable. Park the exact request
-          // body in the outbox (tagged with localId so replay links the post);
-          // it flushes when connectivity returns and the server's contentHash
-          // dedup keeps retries idempotent. With an on-device draft the optimistic
-          // row already exists; without one (curation off / model not ready) we
-          // create a raw-note row from the text so the note still shows as
-          // "Saved offline" instead of vanishing into the outbox until sync.
-          const rowId = localId ?? (await createLocalRawNote(m.text));
-          await enqueueOutbox(
-            noteIngestBody(
-              m.text,
-              ctx.force,
-              ctx.projectId,
-              draft,
-              ctx.visibility,
-              ctx.shareGroupIds,
-            ),
-            rowId,
-          );
-          queued++;
-          continue;
-        }
-        if (localId) await markLocalFailed(localId);
+        // The durable outbox row was never created (the local insert threw) —
+        // finalize the now-orphaned optimistic card as failed and keep the
+        // material in the tray so the composer can offer a retry.
+        await markLocalFailed(localId);
         const label = materials.length > 1 ? `Note ${i + 1}` : "Note";
         ctx.onError?.(label, err);
         errors.push(formatError(err, label));
         failed.push(m);
       }
     }
-    return { submitted, errors, failed, deduped, queued };
+    return { submitted: 0, errors, failed, deduped: [], queued };
   },
 };
 
@@ -535,30 +513,38 @@ const imageHandler: MaterialHandler<"image"> = {
             notes,
           )
         : null;
+    // Always create an optimistic card so a queued batch shows up immediately:
+    // an on-device draft renders a real SIGHT preview with the images already
+    // in the gallery; otherwise a raw fallback card (same images, no copy yet)
+    // until the server's draft arrives on reconcile.
     const localId = sightDraft
       ? await createLocalDraft({
           type: "SIGHT",
           envelope: sightDraft,
           imageUris: inputs.map((i) => i.uri),
         })
-      : Crypto.randomUUID();
+      : await createLocalRawFile(
+          "SIGHT",
+          "Untitled sight",
+          notes,
+          inputs.map((i) => i.uri),
+        );
     const batchId = Crypto.randomUUID();
     const draftJson = sightDraft ? JSON.stringify(sightDraft) : undefined;
     // Link the optimistic post to the batch up front: the worker only writes the
     // post once every row lands, so it stays `pending` until the batch completes
     // (including after an auto-resume / requeue), then reconciles into this card.
-    if (sightDraft) await linkSubmission(localId, `batch:${batchId}`);
+    await linkSubmission(localId, `batch:${batchId}`);
 
-    let submitted = 0;
     let queued = 0;
     // Only ENQUEUE THROWS (no durable row created) land here, so the card can be
-    // kept for retry. A `result === "failed"` row DOES exist and lives in the
-    // In-flight section — that one is never re-staged (failed stays out of it).
+    // kept for retry — the actual upload is now driven entirely by the
+    // background flushOutbox(), never awaited here.
     const failed: ImageMaterial[] = [];
     for (let i = 0; i < inputs.length; i++) {
       const img = inputs[i]!;
       try {
-        const result = await enqueueAndSendBinary({
+        await enqueueBinary({
           transport: "ingest-image",
           localId,
           localFilePath: img.uri,
@@ -578,9 +564,7 @@ const imageHandler: MaterialHandler<"image"> = {
           imageIndex: i,
           totalCount: inputs.length,
         });
-        if (result === "sent") submitted++;
-        else if (result === "deferred") queued++;
-        else errors.push(`Image ${i + 1} failed — retry from the Queue.`);
+        queued++;
       } catch {
         // No durable outbox row was created (insert/pre-upload threw). Keep this
         // image as a tray card so it isn't lost — matching the single-file
@@ -591,9 +575,7 @@ const imageHandler: MaterialHandler<"image"> = {
         );
       }
     }
-    // `failed` holds ONLY enqueue-throw images (kept in the tray). Images that
-    // returned "failed" have a durable row and live in the In-flight section.
-    return { submitted, errors, failed, queued };
+    return { submitted: 0, errors, failed, deduped: [], queued };
   },
 };
 
@@ -605,13 +587,17 @@ const videoHandler: MaterialHandler<"video"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     const failed: VideoMaterial[] = [];
-    let submitted = 0;
     let queued = 0;
     for (const [i, m] of materials.entries()) {
+      // Always create an optimistic card so a queued video shows up
+      // immediately. The worker forces video ingest to SIGHT (gemini-runner.ts
+      // forcedTypes) — no on-device drafting for this kind, so it's always the
+      // raw fallback card until the server's draft arrives on reconcile.
+      const localId = await createLocalRawFile("SIGHT", m.name, m.notes);
       try {
-        const result = await enqueueAndSendBinary({
+        await enqueueBinary({
           transport: "ingest-file",
-          localId: Crypto.randomUUID(),
+          localId,
           localFilePath: m.uri,
           fieldName: "file",
           mimeType: m.type,
@@ -623,20 +609,20 @@ const videoHandler: MaterialHandler<"video"> = {
             ...shareGroupParam(ctx),
           },
         });
-        if (result === "sent") submitted++;
-        else if (result === "deferred") queued++;
-        else errors.push(`Video ${i + 1} failed — retry from the Queue.`);
+        queued++;
       } catch {
-        // The durable outbox row was never created (the insert or a pre-upload
-        // step threw). Keep this capture in the tray WITH feedback instead of a
-        // silent short-circuit that drops it with no record and no retry path.
+        // No durable outbox row was created (the insert or a pre-upload step
+        // threw) — finalize the now-orphaned optimistic card as failed and
+        // keep the capture in the tray WITH feedback instead of a silent
+        // short-circuit that drops it with no record and no retry path.
+        await markLocalFailed(localId);
         failed.push(m);
         errors.push(
           `Video ${i + 1} couldn't be saved — kept in your tray so you can try again.`,
         );
       }
     }
-    return { submitted, errors, failed, queued };
+    return { submitted: 0, errors, failed, deduped: [], queued };
   },
 };
 
@@ -645,6 +631,10 @@ const audioHandler: MaterialHandler<"audio"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     const failed: AudioMaterial[] = [];
+    // "submitted" only ever counts the on-device-transcribed-to-note branch
+    // below, which still awaits the network directly (out of this task's
+    // scope — see the Task 10 report). The upload-fallback branch never
+    // "submits" synchronously anymore; it only enqueues.
     let submitted = 0;
     let queued = 0;
     // With curation on and Apple SpeechAnalyzer available (iOS 26+), audio is
@@ -711,10 +701,15 @@ const audioHandler: MaterialHandler<"audio"> = {
           }
         }
       }
+      // Always create an optimistic card so a queued audio file shows up
+      // immediately. The worker forces audio ingest to BLOG (text-only —
+      // gemini-runner.ts forcedTypes), matching the on-device-transcribed
+      // branch above.
+      const localId = await createLocalRawFile("BLOG", m.name, m.notes);
       try {
-        const result = await enqueueAndSendBinary({
+        await enqueueBinary({
           transport: "ingest-file",
-          localId: Crypto.randomUUID(),
+          localId,
           localFilePath: m.uri,
           fieldName: "file",
           mimeType: m.type,
@@ -726,18 +721,18 @@ const audioHandler: MaterialHandler<"audio"> = {
             ...shareGroupParam(ctx),
           },
         });
-        if (result === "sent") submitted++;
-        else if (result === "deferred") queued++;
-        else errors.push(`${label} failed — retry from the Queue.`);
+        queued++;
       } catch {
-        // No durable outbox row was created — keep the capture with feedback.
+        // No durable outbox row was created — finalize the now-orphaned
+        // optimistic card as failed and keep the capture with feedback.
+        await markLocalFailed(localId);
         failed.push(m);
         errors.push(
           `${label} couldn't be saved — kept in your tray so you can try again.`,
         );
       }
     }
-    return { submitted, errors, failed, queued };
+    return { submitted, errors, failed, deduped: [], queued };
   },
 };
 
@@ -746,13 +741,16 @@ const documentHandler: MaterialHandler<"document"> = {
   async submit(materials, ctx) {
     const errors: string[] = [];
     const failed: DocumentMaterial[] = [];
-    let submitted = 0;
     let queued = 0;
     for (const [i, m] of materials.entries()) {
+      // Always create an optimistic card so a queued document shows up
+      // immediately. The worker forces document ingest to FINDING
+      // (gemini-runner.ts forcedTypes) — no on-device drafting for this kind.
+      const localId = await createLocalRawFile("FINDING", m.name, m.notes);
       try {
-        const result = await enqueueAndSendBinary({
+        await enqueueBinary({
           transport: "ingest-file",
-          localId: Crypto.randomUUID(),
+          localId,
           localFilePath: m.uri,
           fieldName: "file",
           mimeType: m.type,
@@ -764,18 +762,18 @@ const documentHandler: MaterialHandler<"document"> = {
             ...shareGroupParam(ctx),
           },
         });
-        if (result === "sent") submitted++;
-        else if (result === "deferred") queued++;
-        else errors.push(`Document ${i + 1} failed — retry from the Queue.`);
+        queued++;
       } catch {
-        // No durable outbox row was created — keep the capture with feedback.
+        // No durable outbox row was created — finalize the now-orphaned
+        // optimistic card as failed and keep the capture with feedback.
+        await markLocalFailed(localId);
         failed.push(m);
         errors.push(
           `Document ${i + 1} couldn't be saved — kept in your tray so you can try again.`,
         );
       }
     }
-    return { submitted, errors, failed, queued };
+    return { submitted: 0, errors, failed, deduped: [], queued };
   },
 };
 

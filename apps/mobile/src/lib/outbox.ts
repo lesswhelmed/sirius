@@ -140,7 +140,12 @@ export type EnqueueBinaryInput = {
 // Persist a binary upload as a durable queued row BEFORE the network call, so a
 // kill mid-upload leaves a recoverable row. requestJson mirrors uploadFile's args.
 // Returns the inserted row so the caller can send it immediately without a re-read.
-async function enqueueBinary(input: EnqueueBinaryInput): Promise<PendingRow> {
+// Exported directly (not just via enqueueAndSendBinary) so callers that want the
+// optimistic-ingestion enqueue-and-return shape (materials.ts) can insert the
+// durable row and let the background flushOutbox() drive the actual upload.
+export async function enqueueBinary(
+  input: EnqueueBinaryInput,
+): Promise<PendingRow> {
   const row: PendingRow = {
     id: randomUUID(),
     localId: input.localId,
