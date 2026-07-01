@@ -1,7 +1,7 @@
 import type { IngestSubmission } from "@repo/db";
 import { readRepoDigest } from "@repo/github-ingest/digest";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { asc, desc, inArray, ne } from "drizzle-orm";
+import { asc, desc, ne } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Image } from "expo-image";
 import type { ReactNode } from "react";
@@ -20,15 +20,20 @@ import {
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { CorpusSearchResults } from "@/components/corpus-search";
-import { KindLabel, PageHeader, Screen, StatusPip, TextLink } from "@/components/sirius";
-import type { Theme } from "@/constants/theme";
 import {
-  usePostTypeTone,
-  useStatusPip,
-  useTheme,
-  useThemedStyles,
-} from "@/constants/theme-context";
+  KindLabel,
+  PageHeader,
+  ProgressRow,
+  Screen,
+  StatusPip,
+  TextLink,
+  unifiedStatusColor,
+} from "@/components/sirius";
+import type { Theme } from "@/constants/theme";
+import { usePostTypeTone, useTheme, useThemedStyles } from "@/constants/theme-context";
+import { announcePolite } from "@/lib/a11y";
 import { apiDelete, apiGet, resolveMediaUrl } from "@/lib/api";
+import { rollupBatch } from "@/lib/batch-rollup";
 import { db } from "@/lib/db/client";
 import {
   type PendingRow,
@@ -37,12 +42,15 @@ import {
   posts,
   type SyncState,
 } from "@/lib/db/schema";
+import { type ServerRowLite, type UnifiedView, unifyStatus } from "@/lib/ingest-status";
 import { openLocalPost, openPost, pushOnce } from "@/lib/nav";
 import { SymbolView } from "expo-symbols";
 import { discardSubmission, requeueSubmission } from "@/lib/outbox";
 import { confirmAndDeletePost } from "@/lib/post-delete";
+import { coarseMilestone } from "@/lib/progress-throttle";
 import { kickSync } from "@/lib/sync/engine";
 import { reconcileRejectedSubmissions } from "@/lib/sync/rejected";
+import { subscribe } from "@/lib/upload-progress";
 
 type QueuePage = { items: IngestSubmission[]; nextCursor: string | null };
 
@@ -72,6 +80,73 @@ function describeOutboxStatus(head: PendingRow): string {
     parts.push(head.lastError);
   }
   return parts.join(" · ");
+}
+
+// Describe a LOCAL row that has no matching server submission yet (still
+// queued/uploading offline). Mirrors describeSubmission's fallback chain but
+// reads the outbox's own request shape instead of a server IngestSubmission.
+function describeLocalRow(row: PendingRow): string {
+  if (row.transport === "ingest-image") {
+    if (row.totalCount && row.totalCount > 1) {
+      return `Image ${(row.imageIndex ?? 0) + 1}/${row.totalCount}`;
+    }
+    return "Image";
+  }
+  if (row.transport === "ingest-file") return "File";
+  const body = row.requestJson as { urls?: string[] } | null;
+  if (body?.urls && body.urls.length > 0) return String(body.urls[0]);
+  return "Note";
+}
+
+// Board-row kind chip ("URL"/"NOTE"/"IMAGE"/"FILE") — prefers the server's own
+// `kind` once matched (authoritative), else infers from the local request shape.
+function kindLabelForRow(row: PendingRow, server?: IngestSubmission): string {
+  if (server) return server.kind.toUpperCase();
+  if (row.transport === "ingest-image") return "IMAGE";
+  if (row.transport === "ingest-file") return "FILE";
+  const body = row.requestJson as { urls?: string[] } | null;
+  return body?.urls && body.urls.length > 0 ? "URL" : "NOTE";
+}
+
+// Adapts a server IngestSubmission (queue poll) into the narrow shape
+// `unifyStatus` expects, so callers never pass the full DB row around.
+function toServerRowLite(s: IngestSubmission): ServerRowLite {
+  return {
+    status: s.status,
+    startedAt: s.startedAt ? String(s.startedAt) : null,
+    resultPostSlug: s.resultPostSlug ?? null,
+    errorMessage: s.errorMessage ?? null,
+  };
+}
+
+// Fires a polite screen-reader announcement once per coarse progress bucket
+// (0/25/50/75/100 — see progress-throttle.ts) while a row is uploading, never
+// per-tick. Subscribes directly to the upload-progress emitter (same source
+// ProgressRow uses) so it tracks the real byte-level cadence, independent of
+// the SQLite-backed board re-render cadence. `label` changes (the persisted
+// "uploading NN%" text) re-subscribe the listener but do NOT reset the
+// bucket guard below — `lastMilestoneRef` only resets when the row goes
+// inactive — so a bucket is still announced at most once regardless of how
+// often the label itself updates.
+function useMilestoneAnnouncer(
+  id: string | undefined,
+  active: boolean,
+  label: string,
+): void {
+  const lastMilestoneRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!active || !id) {
+      lastMilestoneRef.current = null;
+      return;
+    }
+    return subscribe(id, (snap) => {
+      const bucket = coarseMilestone(snap.pct);
+      if (bucket !== lastMilestoneRef.current) {
+        lastMilestoneRef.current = bucket;
+        announcePolite(label);
+      }
+    });
+  }, [id, active, label]);
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -107,12 +182,15 @@ export default function LibraryScreen() {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   const postTypeTone = usePostTypeTone();
-  const statusPip = useStatusPip();
-  // In-flight section data (folded in from the retired Queue tab). Two sources:
+  // In-flight section data (folded in from the retired Queue tab). Two sources,
+  // merged per-item through `unifyStatus` (Task 12a):
   //   1. Server queue — submissions the worker is drafting/has failed. Polled.
-  //   2. Local offline outbox — captures stuck on this device (no connection).
-  // Completed server submissions are intentionally NOT shown here; they arrive
-  // as synced posts in the mirror list below, already tappable.
+  //   2. Local offline outbox — captures on this device, incl. ones already
+  //      "sent"/"deduped" (Task 12b's reconcile hasn't landed yet, so a row
+  //      that has since synced can transiently linger here alongside its
+  //      server counterpart — acceptable per the brief, cleaned up in 12b).
+  // Completed+matched items still show a final "Done" beat here before 12b's
+  // reconcile removes them; they also already appear as synced posts below.
   const queryClient = useQueryClient();
   const { data: queueData } = useQuery({
     queryKey: ["queue"],
@@ -129,31 +207,6 @@ export default function LibraryScreen() {
       console.warn("[sync] rejected reconcile failed", err),
     );
   }, [queueData]);
-  const inFlightServer = useMemo(
-    () =>
-      (queueData?.items ?? []).filter(
-        (s) =>
-          s.status === "pending" ||
-          s.status === "processing" ||
-          s.status === "failed",
-      ),
-    [queueData],
-  );
-  // The server in-flight strip collapses by default — a single hairline summary
-  // row that, when tapped, reveals the individual pending/processing/failed
-  // rows below it.
-  const [serverExpanded, setServerExpanded] = useState(false);
-  const serverProcessing = useMemo(
-    () =>
-      inFlightServer.filter(
-        (s) => s.status === "pending" || s.status === "processing",
-      ).length,
-    [inFlightServer],
-  );
-  const serverFailed = useMemo(
-    () => inFlightServer.filter((s) => s.status === "failed"),
-    [inFlightServer],
-  );
   // Discard a single failed server submission via the DELETE endpoint, then
   // refetch the ["queue"] query so the row drops out of the in-flight set.
   const discardServer = useCallback(
@@ -167,47 +220,184 @@ export default function LibraryScreen() {
     },
     [queryClient],
   );
-  const discardAllServer = useCallback(() => {
-    void Promise.allSettled(
-      serverFailed.map((s) => apiDelete(`/api/app/queue/${s.id}`)),
-    ).then(() => queryClient.invalidateQueries({ queryKey: ["queue"] }));
-  }, [serverFailed, queryClient]);
-  // Terse mono summary: "1 processing · 2 failed" (omit zero segments).
-  const serverSummary = useMemo(() => {
-    const parts: string[] = [];
-    if (serverProcessing > 0) parts.push(`${serverProcessing} processing`);
-    if (serverFailed.length > 0) {
-      parts.push(
-        `${serverFailed.length} failed`,
-      );
-    }
-    return parts.join(" · ");
-  }, [serverProcessing, serverFailed]);
-  // Live view of the pending outbox (SQLite) — updates the instant a row is
-  // queued, retried, or sent without any polling.
+  // Live view of the ENTIRE pending outbox (SQLite, all statuses) — updates the
+  // instant a row is queued/retried/sent/deduped/failed without any polling.
+  // Widened from the old ["queued","in_flight","failed"] filter so "sent" and
+  // "deduped" rows surface too (needed to reach the continuum's Received /
+  // Already-saved stages below) — see Task 9's outbox.ts for why those two
+  // statuses previously had no board representation at all.
   const { data: pendingRows } = useLiveQuery(
-    db
-      .select()
-      .from(pendingSubmissions)
-      .where(
-        inArray(pendingSubmissions.status, ["queued", "in_flight", "failed"]),
-      )
-      .orderBy(asc(pendingSubmissions.createdAt)),
+    db.select().from(pendingSubmissions).orderBy(asc(pendingSubmissions.createdAt)),
   );
-  const outboxWaiting = useMemo(
-    () =>
-      (pendingRows ?? []).filter(
-        (r) => r.status === "queued" || r.status === "in_flight",
-      ),
-    [pendingRows],
-  );
-  const outboxFailed = useMemo(
-    () => (pendingRows ?? []).filter((r) => r.status === "failed"),
-    [pendingRows],
-  );
+  const allPendingRows = useMemo(() => pendingRows ?? [], [pendingRows]);
   const sendNow = useCallback(() => {
     kickSync("manual");
   }, []);
+  // One row per real-world item (url/note/single-file, or a whole image batch
+  // rolled up), each walking the unified local+server continuum (Task 12a,
+  // Steps 1/3/6). Step 4 (dedup Process again/Dismiss) and Step 5 (reconcile
+  // wiring) are explicitly deferred to Task 12b — duplicate local+server rows
+  // for the same submission are acceptable in the interim.
+  const boardItems = useMemo(() => {
+    const serverById = new Map<string, IngestSubmission>();
+    for (const s of queueData?.items ?? []) serverById.set(s.id, s);
+
+    type Item = {
+      key: string;
+      view: UnifiedView;
+      kindLabel: string;
+      title: string;
+      progressId?: string;
+      errorText?: string;
+      onRequeue?: () => void;
+      onDiscard?: () => void;
+    };
+    const out: Item[] = [];
+
+    const batches = new Map<string, PendingRow[]>();
+    const singles: PendingRow[] = [];
+    for (const row of allPendingRows) {
+      if (row.batchId) {
+        const list = batches.get(row.batchId) ?? [];
+        list.push(row);
+        batches.set(row.batchId, list);
+      } else {
+        singles.push(row);
+      }
+    }
+
+    // Single items: url/note/file rows.
+    for (const row of singles) {
+      const server = row.serverSubmissionId
+        ? serverById.get(row.serverSubmissionId)
+        : undefined;
+      const descriptor = server ? describeSubmission(server) : describeLocalRow(row);
+      const view = unifyStatus(
+        descriptor,
+        row,
+        server ? toServerRowLite(server) : undefined,
+      );
+      const localFailed = row.status === "failed";
+      const serverFailed = server?.status === "failed";
+      out.push({
+        key: `local:${row.id}`,
+        view,
+        kindLabel: kindLabelForRow(row, server),
+        title: descriptor,
+        progressId: row.id,
+        errorText: localFailed ? describeOutboxStatus(row) : view.errorMessage,
+        onRequeue: localFailed
+          ? () => void requeueSubmission(row.id).then(() => kickSync("manual"))
+          : undefined,
+        onDiscard: localFailed
+          ? () => void discardSubmission(row.id)
+          : serverFailed && server
+            ? () => discardServer(server.id)
+            : undefined,
+      });
+    }
+
+    // Image batches: N pending rows sharing a batchId roll up to ONE item via
+    // rollupBatch, with the live progress bar bound to the "bottleneck" slot
+    // (the still-uploading row with the lowest pct — matches rollupBatch's own
+    // weakest-slot-wins math) so it ticks in step with the real upload.
+    for (const [batchId, rows] of batches) {
+      const slots = rows.map((row) => {
+        const server = row.serverSubmissionId
+          ? serverById.get(row.serverSubmissionId)
+          : undefined;
+        const descriptor = server ? describeSubmission(server) : describeLocalRow(row);
+        const view = unifyStatus(
+          descriptor,
+          row,
+          server ? toServerRowLite(server) : undefined,
+        );
+        const pct =
+          view.a11yValue?.now ??
+          (view.status === "queued" || view.status === "failed" ? 0 : 100);
+        return { row, server, view, pct };
+      });
+      const totalCount = rows[0]?.totalCount ?? rows.length;
+      const rolled = rollupBatch(
+        totalCount,
+        slots.map((s) => ({ status: s.view.status, pct: s.pct })),
+      );
+      const batchView: UnifiedView = {
+        status: rolled.status,
+        label: rolled.label,
+        a11yLabel: rolled.label,
+        a11yValue:
+          rolled.status === "uploading"
+            ? { min: 0, max: 100, now: rolled.pct }
+            : undefined,
+      };
+      const bottleneck =
+        slots.find((s) => s.view.status === "uploading" && s.pct === rolled.pct) ??
+        slots[0];
+      const localFailedIds = slots
+        .filter((s) => s.row.status === "failed")
+        .map((s) => s.row.id);
+      const serverFailedIds = slots
+        .filter((s) => s.server?.status === "failed")
+        .map((s) => s.server?.id)
+        .filter((id): id is string => !!id);
+      out.push({
+        key: `batch:${batchId}`,
+        view: batchView,
+        kindLabel: "SIGHT",
+        title: `${totalCount} photo${totalCount === 1 ? "" : "s"}`,
+        progressId: bottleneck?.row.id,
+        errorText:
+          rolled.status === "failed"
+            ? `${localFailedIds.length + serverFailedIds.length} of ${totalCount} failed`
+            : undefined,
+        onRequeue:
+          rolled.status === "failed" && localFailedIds.length > 0
+            ? () => {
+                void Promise.allSettled(
+                  localFailedIds.map((id) => requeueSubmission(id)),
+                ).then(() => kickSync("manual"));
+              }
+            : undefined,
+        onDiscard:
+          rolled.status === "failed"
+            ? () => {
+                void Promise.allSettled([
+                  ...localFailedIds.map((id) => discardSubmission(id)),
+                  ...serverFailedIds.map((id) => discardServer(id)),
+                ]);
+              }
+            : undefined,
+      });
+    }
+
+    // Server-only items with no local counterpart yet (e.g. a bearer-token
+    // Shortcuts submission from this or another device) — still walk the same
+    // continuum so the board never silently drops a real in-flight item.
+    const localServerIds = new Set(
+      allPendingRows
+        .map((r) => r.serverSubmissionId)
+        .filter((id): id is string => !!id),
+    );
+    for (const s of queueData?.items ?? []) {
+      if (localServerIds.has(s.id)) continue;
+      if (s.status !== "pending" && s.status !== "processing" && s.status !== "failed") {
+        continue;
+      }
+      const descriptor = describeSubmission(s);
+      const view = unifyStatus(descriptor, undefined, toServerRowLite(s));
+      out.push({
+        key: `server:${s.id}`,
+        view,
+        kindLabel: s.kind.toUpperCase(),
+        title: descriptor,
+        errorText: view.errorMessage,
+        onDiscard: s.status === "failed" ? () => discardServer(s.id) : undefined,
+      });
+    }
+
+    return out;
+  }, [allPendingRows, queueData, discardServer]);
   // Live view of the local mirror: local drafts, in-flight submissions, and
   // synced server posts, newest first. Re-renders automatically on any row
   // change (sync pull, SSE reconcile, optimistic write).
@@ -503,154 +693,41 @@ export default function LibraryScreen() {
         }
         ListHeaderComponent={
           <View style={styles.header}>
-            {/* In-flight section (folded in from the retired Queue tab). Shown
-                only when something is pending/processing/failed on the server or
-                stuck in the local outbox; otherwise the whole block is hidden. */}
-            {inFlightServer.length > 0 ||
-            outboxWaiting.length > 0 ||
-            outboxFailed.length > 0 ? (
+            {/* In-flight section (folded in from the retired Queue tab): one row
+                per item, each walking the unified local+server continuum —
+                Queued → Uploading NN% → Received → Drafting… → Done, or
+                Failed / Already saved. Hidden entirely when nothing is
+                in flight. */}
+            {boardItems.length > 0 ? (
               <View style={styles.inFlight}>
                 <Text style={styles.inFlightEyebrow}>In flight</Text>
-                {outboxWaiting.length > 0 ? (
+                {allPendingRows.some((r) => r.status === "queued") ? (
                   <View style={styles.outboxBanner}>
                     <View style={styles.outboxRow}>
-                      <StatusPip
-                        label={
-                          outboxWaiting.some((r) => r.status === "in_flight")
-                            ? "uploading"
-                            : "queued on device"
-                        }
-                        color={t.color.inkSubtle}
-                      />
                       <Text style={styles.outboxText}>
-                        {outboxWaiting.length} item
-                        {outboxWaiting.length === 1 ? "" : "s"}{" "}
-                        {outboxWaiting.some((r) => r.status === "in_flight")
-                          ? "uploading…"
-                          : "waiting for a connection."}
+                        Some items are waiting for a connection.
                       </Text>
                       <TextLink label="Send now →" onPress={sendNow} />
                     </View>
-                    {outboxWaiting[0] && outboxWaiting[0].attempts > 0 ? (
-                      <Text style={styles.outboxStatus}>
-                        {describeOutboxStatus(outboxWaiting[0])}
-                      </Text>
-                    ) : null}
                   </View>
                 ) : null}
-                {outboxFailed.length > 0 ? (
-                  <View style={styles.failedBanner}>
-                    {outboxFailed.map((row) => (
-                      <View key={row.id} style={styles.failedRow}>
-                        <View style={styles.inFlightRowText}>
-                          <StatusPip label="failed" color={t.color.accent} />
-                          <Text style={styles.outboxStatus} numberOfLines={1}>
-                            {row.lastError ?? "upload failed"}
-                          </Text>
-                        </View>
-                        <TextLink
-                          label="Requeue →"
-                          onPress={() => {
-                            void requeueSubmission(row.id).then(() =>
-                              kickSync("manual"),
-                            );
-                          }}
-                        />
-                        <TextLink
-                          label="Discard"
-                          tone={t.color.inkMuted}
-                          onPress={() => void discardSubmission(row.id)}
-                        />
-                      </View>
+                <View style={styles.serverQueue}>
+                  <View style={styles.serverList}>
+                    {boardItems.map((item, i) => (
+                      <InFlightRow
+                        key={item.key}
+                        bordered={i > 0}
+                        view={item.view}
+                        progressId={item.progressId}
+                        kindLabel={item.kindLabel}
+                        title={item.title}
+                        errorText={item.errorText}
+                        onRequeue={item.onRequeue}
+                        onDiscard={item.onDiscard}
+                      />
                     ))}
                   </View>
-                ) : null}
-                {inFlightServer.length > 0 ? (
-                  <View style={styles.serverQueue}>
-                    {/* Collapsed-by-default summary strip: live dot + terse
-                        count + chevron. Tapping toggles the inline list. */}
-                    <Pressable
-                      onPress={() => setServerExpanded((v) => !v)}
-                      accessibilityRole="button"
-                      accessibilityState={{ expanded: serverExpanded }}
-                      accessibilityLabel={`In flight — ${serverSummary}`}
-                      style={({ pressed }) => [
-                        styles.serverSummaryRow,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <StatusPip
-                        label=""
-                        color={
-                          serverProcessing > 0
-                            ? t.color.inkSubtle
-                            : t.color.accent
-                        }
-                      />
-                      <Text style={styles.serverSummaryText} numberOfLines={1}>
-                        In flight — {serverSummary}
-                      </Text>
-                      <Text style={styles.serverChevron}>
-                        {serverExpanded ? "▴" : "▾"}
-                      </Text>
-                    </Pressable>
-                    {serverExpanded ? (
-                      <View style={styles.serverList}>
-                        {inFlightServer.map((item, i) => {
-                          const isFailed = item.status === "failed";
-                          const pip = isFailed
-                            ? t.color.accent
-                            : statusPip[item.status] ?? t.color.inkSubtle;
-                          return (
-                            <View
-                              key={item.id}
-                              style={[
-                                styles.queueRow,
-                                i > 0 && styles.queueRowBorder,
-                              ]}
-                            >
-                              <View style={styles.inFlightRowText}>
-                                <KindLabel>{item.kind.toUpperCase()}</KindLabel>
-                                <Text
-                                  style={styles.queueRowTitle}
-                                  numberOfLines={2}
-                                >
-                                  {describeSubmission(item)}
-                                </Text>
-                                {isFailed ? (
-                                  <Text
-                                    style={styles.queueRowError}
-                                    numberOfLines={3}
-                                  >
-                                    {item.errorMessage ?? "Processing failed."}
-                                  </Text>
-                                ) : null}
-                              </View>
-                              {isFailed ? (
-                                <TextLink
-                                  label="Discard"
-                                  tone={t.color.inkMuted}
-                                  onPress={() => discardServer(item.id)}
-                                />
-                              ) : (
-                                <StatusPip label={item.status} color={pip} />
-                              )}
-                            </View>
-                          );
-                        })}
-                        {serverFailed.length > 0 ? (
-                          <View style={styles.serverDiscardAllRow}>
-                            <TextLink
-                              label="Discard all"
-                              tone={t.color.inkMuted}
-                              onPress={discardAllServer}
-                            />
-                          </View>
-                        ) : null}
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
+                </View>
               </View>
             ) : null}
             <PageHeader
@@ -814,6 +891,65 @@ function Separator() {
   return <View style={styles.sep} />;
 }
 
+// One row of the unified "In flight" board (Task 12a, Steps 1/3/6). Always
+// renders the continuum label via StatusPip (colour + text — colour is never
+// the only signal), plus the live per-tick progress bar while uploading and
+// any Requeue/Discard controls the caller wired up. `already_saved` rows
+// (dedup) render label-only by construction — no caller passes onRequeue/
+// onDiscard for them yet; that's Task 12b's "Process again"/"Dismiss".
+function InFlightRow({
+  view,
+  progressId,
+  kindLabel,
+  title,
+  errorText,
+  onRequeue,
+  onDiscard,
+  bordered,
+}: {
+  view: UnifiedView;
+  progressId?: string;
+  kindLabel: string;
+  title: string;
+  errorText?: string;
+  onRequeue?: () => void;
+  onDiscard?: () => void;
+  bordered?: boolean;
+}) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  // Polite milestone announcements (Step 3) — subscribes to the same emitter
+  // as ProgressRow, independent of the board's SQLite-driven re-render cadence.
+  useMilestoneAnnouncer(progressId, view.status === "uploading", view.a11yLabel);
+  return (
+    <View style={[styles.queueRow, bordered && styles.queueRowBorder]}>
+      <View style={styles.inFlightRowText}>
+        <KindLabel>{kindLabel}</KindLabel>
+        <Text style={styles.queueRowTitle} numberOfLines={2}>
+          {title}
+        </Text>
+        <StatusPip label={view.label} color={unifiedStatusColor(t, view.status)} />
+        {view.status === "failed" && errorText ? (
+          <Text style={styles.queueRowError} numberOfLines={3}>
+            {errorText}
+          </Text>
+        ) : null}
+        {progressId && view.status === "uploading" ? (
+          <ProgressRow id={progressId} view={view} />
+        ) : null}
+      </View>
+      {onRequeue || onDiscard ? (
+        <View style={styles.boardRowActions}>
+          {onRequeue ? <TextLink label="Requeue →" onPress={onRequeue} /> : null}
+          {onDiscard ? (
+            <TextLink label="Discard" tone={t.color.inkMuted} onPress={onDiscard} />
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 // Wraps a synced catalog row so it can be swiped left to reveal a destructive
 // Delete action. Tapping Delete snaps the row closed, then confirms; on accept
 // the post is removed server-side and tombstoned locally, so the live query
@@ -958,58 +1094,12 @@ function makeStyles(t: Theme) {
     flex: 1,
     fontSize: 13,
   },
-  outboxStatus: {
-    color: t.color.inkSubtle,
-    fontSize: 12,
-  },
-  failedBanner: {
-    backgroundColor: t.color.paperRaised,
-    borderRadius: 8,
-    gap: t.space.sm,
-    paddingHorizontal: t.space.md,
-    paddingVertical: t.space.sm,
-  },
-  failedRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: t.space.sm,
-  },
   serverQueue: {
     backgroundColor: t.color.paperRaised,
     borderRadius: 8,
   },
-  // Collapsed summary strip: a single hairline row.
-  serverSummaryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: t.space.sm,
-    paddingHorizontal: t.space.md,
-    paddingVertical: t.space.sm,
-  },
-  serverSummaryText: {
-    flex: 1,
-    fontFamily: t.font.mono,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    color: t.color.inkMuted,
-  },
-  serverChevron: {
-    fontFamily: t.font.mono,
-    fontSize: 12,
-    color: t.color.inkSubtle,
-  },
   serverList: {
-    borderTopWidth: 1,
-    borderTopColor: t.color.rule,
     paddingHorizontal: t.space.md,
-  },
-  serverDiscardAllRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    borderTopWidth: 1,
-    borderTopColor: t.color.rule,
-    paddingVertical: t.space.sm,
   },
   queueRow: {
     flexDirection: "row",
@@ -1025,6 +1115,8 @@ function makeStyles(t: Theme) {
     color: t.color.ink,
   },
   queueRowError: { color: t.color.accent, fontSize: 12, lineHeight: 16 },
+  // Requeue/Discard action links, pinned to the trailing edge of a board row.
+  boardRowActions: { flexDirection: "row", alignItems: "center", gap: t.space.sm },
 
   // Category segmented bar.
   categoryBarScroll: {

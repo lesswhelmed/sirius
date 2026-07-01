@@ -45,6 +45,9 @@ import type { SFSymbol } from "sf-symbols-typescript";
 
 import { BottomTabInset, MaxContentWidth, type Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
+import { useReducedMotion } from "@/lib/a11y";
+import type { UnifiedStatus, UnifiedView } from "@/lib/ingest-status";
+import { getProgress, subscribe } from "@/lib/upload-progress";
 
 // A multiline TextInput grows with its content. Left uncapped it eventually
 // fills (and overruns) the screen, shoving the action buttons behind the
@@ -169,6 +172,70 @@ export function StatusPip({ label, color }: { label: string; color: string }) {
     <View style={styles.pipRow}>
       <View style={[styles.pipDot, { backgroundColor: color }]} />
       <Text style={styles.pipLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// Dot color for every stage of the mobile in-flight board's unified
+// local+server continuum (Task 12 Step 6 — see @/lib/ingest-status). Chosen to
+// echo `submissionStatusPip()`'s server-status palette (constants/theme.ts)
+// where a stage maps cleanly onto one of its keys — pending → received,
+// processing → drafting, completed → done, failed → failed, skipped →
+// already_saved — with sensible existing tokens for the two local-only
+// pre-handoff stages (queued, uploading) that have no server-status analogue.
+// Colour is never the only signal: StatusPip above always renders the text
+// label alongside the dot. Task 13 owns final WCAG-AA tuning of these tokens.
+export function unifiedStatusColor(t: Theme, status: UnifiedStatus): string {
+  switch (status) {
+    case "queued":
+      return t.color.inkFaint;
+    case "uploading":
+      return t.color.inkSubtle;
+    case "received":
+      return t.color.inkSubtle;
+    case "drafting":
+      return t.color.accent;
+    case "done":
+      return t.color.sage;
+    case "failed":
+      return t.color.danger;
+    case "already_saved":
+      return t.color.inkFaint;
+    default:
+      return t.color.inkMuted;
+  }
+}
+
+// Live per-tick upload progress bar for an in-flight board row (Task 12
+// Step 2). Subscribes DIRECTLY to the in-memory upload-progress emitter — not
+// the SQLite live query the board itself is driven by — so the fill animates
+// on every byte without re-running the board's per-item SELECT. Renders
+// nothing once the row has moved past "uploading" (received/drafting/done/
+// failed/already_saved all hide it). `reduced` (OS Reduce Motion) swaps the
+// fill to a flatter, non-pulsing treatment; RN's plain View already renders a
+// width change as an instant snap either way, so this is a style-only cue for
+// now rather than a separate animation being disabled.
+export function ProgressRow({ id, view }: { id: string; view: UnifiedView }) {
+  const styles = useThemedStyles(makeStyles);
+  const reduced = useReducedMotion();
+  const [pct, setPct] = useState(view.a11yValue?.now ?? getProgress(id)?.pct ?? 0);
+  useEffect(() => subscribe(id, (s) => setPct(s.pct)), [id]);
+  if (view.status !== "uploading") return null;
+  return (
+    <View
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: 100, now: pct }}
+      accessibilityLabel={view.a11yLabel}
+    >
+      <View style={styles.progressTrack}>
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${pct}%` },
+            reduced && styles.progressFillStatic,
+          ]}
+        />
+      </View>
     </View>
   );
 }
@@ -936,6 +1003,20 @@ function makeStyles(t: Theme) {
       textTransform: "uppercase",
       color: t.color.inkMuted,
     },
+    progressTrack: {
+      marginTop: 4,
+      height: 4,
+      width: "100%",
+      borderRadius: t.radius.pill,
+      backgroundColor: t.color.paperSunken,
+      overflow: "hidden",
+    },
+    progressFill: {
+      height: "100%",
+      borderRadius: t.radius.pill,
+      backgroundColor: t.color.accent,
+    },
+    progressFillStatic: { opacity: 0.85 },
     field: { gap: 6 },
     fieldLabel: {
       fontFamily: t.font.mono,
