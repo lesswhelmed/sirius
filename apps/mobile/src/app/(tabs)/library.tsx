@@ -318,25 +318,19 @@ export default function LibraryScreen() {
           : serverFailed && server
             ? () => discardServer(server.id)
             : undefined,
-        // "Already saved" (row.status === "deduped") — realistically url/note
-        // only (image/file dedup never reaches this local terminal, see
-        // markRowDeduped's callers in outbox.ts). Both controls end each
-        // deduped row exactly once: delete the old pending row FIRST so
-        // Process again never leaves two pending rows for one card.
+        // "Already saved" (row.status === "deduped") can happen for BOTH
+        // url/note (ingest) rows AND binary (video/audio/document) rows —
+        // sendBinaryRow calls markRowDeduped too, see outbox.ts. But only an
+        // ingest row's requestJson is a re-enqueueable OutboxBody; a deduped
+        // binary row already had its staged bytes discarded by
+        // markRowDeduped, so there's nothing left to resubmit. Only OFFER
+        // "Process again" for ingest transport — a deduped file row gets
+        // Dismiss only, no dead button. Both controls end each deduped row
+        // exactly once: delete the old pending row FIRST so Process again
+        // never leaves two pending rows for one card.
         onProcessAgain:
-          row.status === "deduped"
+          row.status === "deduped" && row.transport === "ingest"
             ? () => {
-                if (row.transport !== "ingest") {
-                  // Guard, not crash: by design a deduped row is always the
-                  // JSON ingest transport (url/note). A binary row here would
-                  // mean requestJson isn't an OutboxBody — bail rather than
-                  // enqueue garbage.
-                  console.warn(
-                    "[library] Process again skipped — deduped row isn't a url/note row",
-                    row.id,
-                  );
-                  return;
-                }
                 void discardSubmission(row.id)
                   .then(() =>
                     enqueueOutbox(

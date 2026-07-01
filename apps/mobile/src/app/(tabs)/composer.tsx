@@ -748,16 +748,6 @@ export default function ComposerScreen() {
     }
   }
 
-  // Force a fresh post for items the server deduped, then finish the flow.
-  async function forceReprocess(dupes: Material[]) {
-    const result = await runSubmit(dupes, true);
-    kickSync("submit");
-    if (result.errors.length > 0) {
-      Alert.alert("Some submissions failed", result.errors.join("\n\n"));
-    }
-    finishSubmit(result.queued);
-  }
-
   async function submit() {
     if (busy || items.length === 0 || submitBlocked) return;
     // Drafting is always server-side now, so the usage cap always applies.
@@ -800,7 +790,7 @@ export default function ComposerScreen() {
     // The server already had some (or all) of these — content-hash dedup
     // created nothing new, so they aren't queued. No blocking Alert here
     // anymore; the dedup/"Process again" state is surfaced in-board (Task 12)
-    // via forceReprocess, which stays the handler that control calls.
+    // via the In-flight board's own re-enqueue control, not a composer handler.
     finishSubmit(result.queued);
   }
 
