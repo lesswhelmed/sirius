@@ -161,6 +161,7 @@ async function enqueueBinary(input: EnqueueBinaryInput): Promise<PendingRow> {
     lastError: null,
     nextAttemptAt: null,
     createdAt: new Date(),
+    sentAt: null,
     progressPct: 0,
     progressBytes: null,
     progressTotal: null,
@@ -264,7 +265,12 @@ async function sendBinaryRow(
     // server's own submission/queue row (or sweepStuckSentRows self-heals).
     await db
       .update(pendingSubmissions)
-      .set({ status: "sent", progressPct: 100, serverSubmissionId: res.id })
+      .set({
+        status: "sent",
+        progressPct: 100,
+        serverSubmissionId: res.id,
+        sentAt: new Date(),
+      })
       .where(eq(pendingSubmissions.id, row.id));
     await linkSubmission(row.localId, res.id);
     return "sent";
@@ -457,7 +463,12 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
             // reconcileSentRows observes the server's own submission row.
             await db
               .update(pendingSubmissions)
-              .set({ status: "sent", serverSubmissionId: ok.id })
+              .set({
+                status: "sent",
+                progressPct: 100,
+                serverSubmissionId: ok.id,
+                sentAt: new Date(),
+              })
               .where(eq(pendingSubmissions.id, row.id));
             await linkSubmission(row.localId, ok.id);
             sent++;
@@ -536,7 +547,13 @@ export async function sweepStuckSentRows(nowMs: number): Promise<void> {
     .from(pendingSubmissions)
     .where(eq(pendingSubmissions.status, "sent"));
   for (const row of sentRows) {
-    if (nowMs - row.createdAt.getTime() > SENT_TTL_MS) {
+    // Key off sentAt (when the row actually reached "sent"), not createdAt (when
+    // it was queued) — a row that sat `queued` for a while offline/backoff and
+    // THEN succeeded must get its own fresh grace window, not be judged against
+    // its original queue time. Rows from before this column existed have no
+    // sentAt; fall back to createdAt so they still self-heal.
+    const referenceMs = (row.sentAt ?? row.createdAt).getTime();
+    if (nowMs - referenceMs > SENT_TTL_MS) {
       await discardStagedCopy(row.localFilePath);
       clearProgress(row.id);
       await db.delete(pendingSubmissions).where(eq(pendingSubmissions.id, row.id));

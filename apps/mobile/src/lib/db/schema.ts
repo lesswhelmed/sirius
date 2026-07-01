@@ -165,6 +165,12 @@ export const pendingSubmissions = sqliteTable(
     lastError: text("last_error"),
     nextAttemptAt: integer("next_attempt_at", { mode: "timestamp_ms" }), // backoff gate
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    // Set when the row transitions to status "sent" (both the binary and JSON
+    // paths in outbox.ts). sweepStuckSentRows keys its 2-min grace window off
+    // this (falling back to createdAt for pre-migration rows) — using createdAt
+    // alone stranded rows that sat `queued` for a while (offline/backoff) and
+    // THEN succeeded, sweeping them before reconcileSentRows could match them.
+    sentAt: integer("sent_at", { mode: "timestamp_ms" }),
 
     // Upload progress, surfaced by the optimistic-ingestion UI while a row is
     // "in_flight". progressPct is 0-100; progressBytes/progressTotal are the
