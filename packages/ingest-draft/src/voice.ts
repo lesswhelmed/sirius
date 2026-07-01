@@ -56,11 +56,10 @@ export function buildVoiceInstruction(
 // Shipped verbatim in web + mobile settings. The user pastes this into their
 // own chatbot (ChatGPT/Claude) and pastes the result back into "Your voice".
 export const VOICE_GENERATOR_PROMPT = [
-  "You're helping me capture my writing voice so an app can draft posts that",
-  "sound like me. Based on everything you know about how I write and talk,",
-  "describe my personal voice and personality in a vivid, enthusiastic way: my",
-  "tone, my favorite kinds of words and rhythms, my sense of humor, what I get",
-  "excited about, and any quirks. Write it as guidance addressed to another",
-  "writer who will imitate me — 2 to 3 short paragraphs. Don't include any",
-  "instructions about formatting, length, or structure; only describe the voice.",
+  "Coalesce everything you know about how I write and talk into my essence.",
+  "In 2–3 vivid paragraphs, hand another writer the core of my voice so they",
+  "could pass as me in a room full of strangers: the cultural roots under my",
+  "rhythms, the words I reach for and the ones I'd never touch, my humor, what",
+  "lights me up, my tells and quirks. Say nothing about formatting or structure —",
+  "just describe the person until they feel like they've met me.",
 ].join(" ");
