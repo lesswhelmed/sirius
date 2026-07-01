@@ -822,12 +822,14 @@ export async function submitMaterials(
   errors.push(...urlResult.errors);
   failed.push(...urlResult.failed);
   deduped.push(...(urlResult.deduped ?? []));
+  queued += urlResult.queued ?? 0;
 
   const repoResult = await HANDLERS.repo.submit(grouped.repo, ctx);
   submitted += repoResult.submitted;
   errors.push(...repoResult.errors);
   failed.push(...repoResult.failed);
   deduped.push(...(repoResult.deduped ?? []));
+  queued += repoResult.queued ?? 0;
 
   const noteResult = await HANDLERS.note.submit(grouped.note, ctx);
   submitted += noteResult.submitted;
