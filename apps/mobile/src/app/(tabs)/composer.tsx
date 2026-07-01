@@ -788,10 +788,7 @@ export default function ComposerScreen() {
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[
-            styles.container,
-            items.length > 0 && styles.containerTrayPad,
-          ]}
+          contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
@@ -849,8 +846,10 @@ export default function ComposerScreen() {
             </View>
             {/* The omni well — a single luminous liquid-glass slab holding the
                 input; the "event horizon" everything is pulled into. Falls back
-                to the bordered paper field off-glass. The Paste/Add actions now
-                live in the reachable FrontAddBar footer below. */}
+                to the bordered paper field off-glass. Paste + Add sit fixed
+                directly under the note field — ONE stable place, so nothing
+                shifts as items stage. Add commits the text and clears the field
+                (see commitOmniText) so the next note can be typed straight away. */}
             <GlassSurface
               glass="regular"
               style={styles.omniWell}
@@ -869,6 +868,18 @@ export default function ComposerScreen() {
                 onChangeText={setOmniText}
                 accessibilityLabel="Paste links or type a note"
               />
+              <View style={styles.omniActions}>
+                <BottomPaste
+                  busy={busy}
+                  onPaste={() => void pasteFromClipboard()}
+                />
+                <PrimaryButton
+                  label="Add"
+                  onPress={commitOmniText}
+                  disabled={busy || omniText.trim().length === 0}
+                  style={styles.omniAdd}
+                />
+              </View>
               {/* iOS multiline TextInputs trap the keyboard (no return dismiss, no
                   inputAccessoryView) — this shows only while the keyboard is up and
                   dismisses it so a long note never hides behind it. */}
@@ -899,38 +910,25 @@ export default function ComposerScreen() {
             </GlassRow>
           </View>
         </ScrollView>
-        {/* FrontAddBar — the front-screen commit footer (items.length === 0).
-            A flow footer INSIDE the KeyboardAvoidingView so it rides above the
-            keyboard automatically; swaps with the absolute TrayBar once items
-            are staged (mutually exclusive, never co-rendered). */}
-        {items.length === 0 ? (
-          <FrontAddBar
-            busy={busy}
-            omniText={omniText}
-            onAdd={commitOmniText}
-            onPaste={() => void pasteFromClipboard()}
+        {/* Review & send footer — appears ONLY once items are staged. The Add
+            action lives up next to the note field (not here), so it never moves
+            and the layout doesn't shift as items stage. */}
+        {items.length > 0 ? (
+          <CaptureReviewBar
+            count={items.length}
+            thumbUri={firstImageId ? registry.get(firstImageId)?.uri : undefined}
+            onReview={() => setItemsSheetOpen(true)}
+            onSend={() => {
+              // One-modal invariant: close the items sheet + any inline edit
+              // before presenting the wizard Modal (two RN Modals wedge iOS).
+              setEditingId(null);
+              setItemsSheetOpen(false);
+              setReviewStep(1);
+            }}
+            sendDisabled={trayErrors.hasCritical}
           />
         ) : null}
       </KeyboardAvoidingView>
-
-      {/* ── Tray bar: the ONLY thing that appears once items are staged.
-          Tapping the item area reviews/edits the cards; "Review & send"
-          opens the 2-step wizard. Replaces the old inline settings wall. ── */}
-      {items.length > 0 ? (
-        <TrayBar
-          count={items.length}
-          thumbUri={firstImageId ? registry.get(firstImageId)?.uri : undefined}
-          onReview={() => setItemsSheetOpen(true)}
-          onSend={() => {
-            // One-modal invariant: close the items sheet + any inline edit
-            // before presenting the wizard Modal (two RN Modals wedge iOS).
-            setEditingId(null);
-            setItemsSheetOpen(false);
-            setReviewStep(1);
-          }}
-          disabled={trayErrors.hasCritical}
-        />
-      ) : null}
 
       {/* ── Sheets ──────────────────────────────────────────────────────── */}
       <Sheet
@@ -1699,21 +1697,24 @@ const AUDIENCE_META = {
   PUBLIC: { label: "Public", sub: "Anyone signed in" },
 } as const;
 
-// The sticky tray bar — the single thing shown once items are staged. The left
-// (thumbnail + count) opens the items review; "Review & send →" opens the
-// 2-step wizard. Replaces the old always-on "Process N" bar + inline settings.
-function TrayBar({
+// The review footer — shown ONLY once items are staged (rendered under an
+// items.length > 0 gate). Left: a tappable thumbnail + count that opens the
+// items review; right: "Review & send →" opens the 2-step wizard. The Add
+// action lives up next to the note field, so this bar never holds it and the
+// layout never shifts as items stage. Reuses the clear-glass shell
+// (styles.frontBar) — a flow footer that rides above the keyboard.
+function CaptureReviewBar({
   count,
   thumbUri,
   onReview,
   onSend,
-  disabled,
+  sendDisabled,
 }: {
   count: number;
   thumbUri?: string;
   onReview: () => void;
   onSend: () => void;
-  disabled?: boolean;
+  sendDisabled?: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
@@ -1722,11 +1723,11 @@ function TrayBar({
     <GlassSurface
       glass="clear"
       style={[
-        styles.trayBar,
+        styles.frontBar,
         { paddingBottom: BottomTabInset + insets.bottom + t.space.md },
       ]}
-      glassStyle={styles.trayBarGlass}
-      fallbackStyle={styles.trayBarFallback}
+      glassStyle={styles.frontBarGlass}
+      fallbackStyle={styles.frontBarFallback}
     >
       <Pressable
         onPress={onReview}
@@ -1754,12 +1755,12 @@ function TrayBar({
       </Pressable>
       <Pressable
         onPress={onSend}
-        disabled={disabled}
+        disabled={sendDisabled}
         accessibilityRole="button"
         accessibilityLabel="Review and send"
         style={({ pressed }) => [
           styles.trayBarSend,
-          disabled && styles.trayBarSendOff,
+          sendDisabled && styles.trayBarSendOff,
           pressed && styles.heroPressed,
         ]}
       >
@@ -1769,68 +1770,37 @@ function TrayBar({
   );
 }
 
-// The front-screen commit footer — shown only while the tray is empty
-// (items.length === 0), mutually exclusive with the sticky TrayBar. Mirrors
-// TrayBar's clear-glass shell but flows in the column (non-absolute) so it
-// rides above the keyboard. Holds Paste (secondary, left) + the coral Add
-// PrimaryButton (right). Every Paste/Add prop is copied verbatim from the old
-// in-well omniActions block; the coral Add stays the single solid action.
-function FrontAddBar({
-  busy,
-  omniText,
-  onAdd,
-  onPaste,
-}: {
-  busy: boolean;
-  omniText: string;
-  onAdd: () => void;
-  onPaste: () => void;
-}) {
+// The Paste-from-clipboard chip used in the bottom bar's left slot. Props copied
+// verbatim from the old in-well omniActions block (role/label/hint + fallback).
+function BottomPaste({ busy, onPaste }: { busy: boolean; onPaste: () => void }) {
   const styles = useThemedStyles(makeStyles);
-  const insets = useSafeAreaInsets();
   const t = useTheme();
   return (
-    <GlassSurface
-      glass="clear"
-      style={[
-        styles.frontBar,
-        { paddingBottom: BottomTabInset + insets.bottom + t.space.md },
+    <Pressable
+      onPress={onPaste}
+      disabled={busy}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel="Paste from clipboard"
+      accessibilityHint="Adds your copied text or link to the input"
+      style={({ pressed }) => [
+        styles.pasteButton,
+        pressed && styles.audiencePressed,
       ]}
-      glassStyle={styles.frontBarGlass}
-      fallbackStyle={styles.frontBarFallback}
     >
-      <Pressable
-        onPress={onPaste}
-        disabled={busy}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel="Paste from clipboard"
-        accessibilityHint="Adds your copied text or link to the input"
-        style={({ pressed }) => [
-          styles.pasteButton,
-          pressed && styles.audiencePressed,
-        ]}
-      >
-        <SymbolView
-          name="doc.on.clipboard"
-          size={14}
-          weight="regular"
-          tintColor={t.color.inkMuted}
-          fallback={
-            <Text style={styles.pasteGlyph} accessibilityElementsHidden>
-              ⎘
-            </Text>
-          }
-        />
-        <Text style={styles.pasteLabel}>Paste</Text>
-      </Pressable>
-      <PrimaryButton
-        label="Add"
-        onPress={onAdd}
-        disabled={busy || omniText.trim().length === 0}
-        style={styles.omniAdd}
+      <SymbolView
+        name="doc.on.clipboard"
+        size={14}
+        weight="regular"
+        tintColor={t.color.inkMuted}
+        fallback={
+          <Text style={styles.pasteGlyph} accessibilityElementsHidden>
+            ⎘
+          </Text>
+        }
       />
-    </GlassSurface>
+      <Text style={styles.pasteLabel}>Paste</Text>
+    </Pressable>
   );
 }
 
@@ -1906,7 +1876,6 @@ function makeStyles(t: Theme) {
     },
     // Only the absolute TrayBar (items > 0) needs the bottom reservation; the
     // FrontAddBar flow footer reserves its own space in the column.
-    containerTrayPad: { paddingBottom: 220 },
     header: { gap: t.space.lg, marginBottom: t.space.xs },
 
     // "Void" backdrop — soft luminous orbs faked from concentric low-alpha
@@ -2142,38 +2111,9 @@ function makeStyles(t: Theme) {
       gap: t.space.md,
     },
 
-    // Tray bar (sticky entry into the review flow). On glass it floats as an
-    // inset clear-glass bar; off glass it's the full-width opaque paper bar with
-    // a top rule (fallbackStyle) — today's look.
-    trayBar: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: 0,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: t.space.md,
-      paddingHorizontal: t.space.xl,
-      paddingTop: t.space.md,
-    },
-    trayBarGlass: {
-      left: t.space.md,
-      right: t.space.md,
-      borderRadius: 26,
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: t.color.markSoft,
-      paddingHorizontal: t.space.lg,
-    },
-    trayBarFallback: {
-      backgroundColor: t.color.paper,
-      borderTopWidth: 1,
-      borderColor: t.color.ruleStrong,
-    },
-
-    // Front-screen commit footer (items === 0). Mirrors trayBar* but flows in
-    // the column (non-absolute) so it rides above the keyboard: no position/
-    // left/right/bottom, a horizontal float margin, and Paste↔Add spread apart.
+    // Adaptive commit footer (CaptureBottomBar). Clear-glass shell that flows in
+    // the column (non-absolute) so it rides above the keyboard: a horizontal
+    // float margin, slots spread apart. Off glass it's the opaque paper bar.
     frontBar: {
       flexDirection: "row",
       alignItems: "center",
