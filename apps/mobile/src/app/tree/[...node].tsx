@@ -17,7 +17,7 @@ import {
 } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useQuery } from "@tanstack/react-query";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { useMemo } from "react";
 import {
   ActivityIndicator,
@@ -37,7 +37,7 @@ import {
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiGet } from "@/lib/api";
-import { openPost } from "@/lib/nav";
+import { openPost, pushOnce } from "@/lib/nav";
 
 const QUERY_KEY = ["embedding-scene"] as const;
 
@@ -57,7 +57,6 @@ export default function TreeNodeScreen() {
       Array.isArray(params.node) ? params.node.join("/") : (params.node ?? ""),
     [params.node],
   );
-  const router = useRouter();
 
   const {
     data: scene,
@@ -142,7 +141,7 @@ export default function TreeNodeScreen() {
 
         {parent ? (
           <Pressable
-            onPress={() => router.push(`/tree/${parent.id}`)}
+            onPress={() => pushOnce(`/tree/${parent.id}`)}
             accessibilityRole="button"
             accessibilityLabel={`Up to ${parent.label}`}
             hitSlop={6}
@@ -193,7 +192,7 @@ export default function TreeNodeScreen() {
                 <ConnectedRow
                   key={rc.node.id}
                   related={rc}
-                  onOpen={() => router.push(`/tree/${rc.node.id}`)}
+                  onOpen={() => pushOnce(`/tree/${rc.node.id}`)}
                 />
               ))}
             </View>

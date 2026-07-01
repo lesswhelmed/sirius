@@ -4,13 +4,13 @@
 // posts interleaved with friends'/public posts, newest first — moved here out of
 // the Catalog tab's old Mine/Friends toggle. The People and Groups managers stay
 // off-tab; a header affordance links to them so the bottom nav stays feed-first.
-import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
 import { FriendsFeedList } from "@/components/friends-feed-list";
 import { PageHeader, Screen, TextLink } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import { useThemedStyles } from "@/constants/theme-context";
+import { pushOnce } from "@/lib/nav";
 
 export default function FeedScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -25,8 +25,8 @@ export default function FeedScreen() {
         subtitle="Posts you and your friends have shared."
       />
       <View style={styles.nav}>
-        <TextLink label="People →" onPress={() => router.push("/friends")} />
-        <TextLink label="Groups →" onPress={() => router.push("/groups")} />
+        <TextLink label="People →" onPress={() => pushOnce("/friends")} />
+        <TextLink label="Groups →" onPress={() => pushOnce("/groups")} />
       </View>
     </>
   );

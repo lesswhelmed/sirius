@@ -30,7 +30,6 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -75,6 +74,7 @@ import {
   submitMaterials,
   type SubmitMaterialsResult,
 } from "@/lib/materials";
+import { pushOnce } from "@/lib/nav";
 import {
   deriveTrayErrors,
   descriptorFromAsset,
@@ -677,7 +677,7 @@ export default function ComposerScreen() {
     setItemsSheetOpen(false);
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
-    router.push("/(tabs)/library");
+    pushOnce("/(tabs)/library");
   }
 
   // Force a fresh post for items the server deduped, then finish the flow.
@@ -905,7 +905,7 @@ export default function ComposerScreen() {
             <TextLink
               label="How it works →"
               tone={t.color.accent}
-              onPress={() => router.push("/help")}
+              onPress={() => pushOnce("/help")}
             />
           </View>
         </ScrollView>
@@ -1453,7 +1453,7 @@ export default function ComposerScreen() {
                     <TextLink
                       label="Manage focus →"
                       tone={t.color.accent}
-                      onPress={() => router.push("/focus")}
+                      onPress={() => pushOnce("/focus")}
                     />
                   </>
                 ) : null}

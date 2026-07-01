@@ -7,7 +7,7 @@ import type { ScoredPost } from "@repo/research-agent";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { asc, desc, eq } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -55,7 +55,7 @@ import {
   canTranscribeOnDevice,
   prepareTranscription,
 } from "@/lib/llm/transcribe";
-import { openPost } from "@/lib/nav";
+import { openPost, pushOnce } from "@/lib/nav";
 import { askMyPosts } from "@/lib/research/ask";
 
 type ChatMessage = {
@@ -592,7 +592,7 @@ function Chat({
                 {__DEV__ ? (
                   <TextLink
                     label="Draft test bench →"
-                    onPress={() => router.push("/llm-test")}
+                    onPress={() => pushOnce("/llm-test")}
                   />
                 ) : null}
               </View>

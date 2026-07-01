@@ -7,7 +7,6 @@
 // view, or just close + refresh). Errors render inline (accessibilityRole="alert")
 // — never Alert.alert, which would fight a host sheet.
 import { useQueryClient } from "@tanstack/react-query";
-import { router } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
@@ -24,6 +23,7 @@ import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError } from "@/lib/api";
 import { createGroup, type GroupPrivacy, useFriends } from "@/lib/groups";
+import { pushOnce } from "@/lib/nav";
 
 export function NewGroupForm({
   onCreated,
@@ -134,7 +134,7 @@ export function NewGroupForm({
             <TextLink
               label="Go to Friends →"
               tone={t.color.accent}
-              onPress={() => router.push("/friends")}
+              onPress={() => pushOnce("/friends")}
             />
           </View>
         ) : (

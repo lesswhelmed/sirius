@@ -28,6 +28,7 @@ import {
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet } from "@/lib/api";
+import { pushOnce } from "@/lib/nav";
 import {
   addGroupMember,
   deleteGroup,
@@ -242,7 +243,7 @@ export default function GroupEditorScreen() {
               <TextLink
                 label="Go to Friends →"
                 tone={t.color.accent}
-                onPress={() => router.push("/friends")}
+                onPress={() => pushOnce("/friends")}
               />
             </View>
           ) : (

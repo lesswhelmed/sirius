@@ -4,7 +4,7 @@
 // FlatList of rows over an online-only react-query read, with the always-present
 // "New group" entry in the header. Groups are never written to the offline mirror.
 import { useQueryClient } from "@tanstack/react-query";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -25,6 +25,7 @@ import {
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { type Group, privacyLabel, useGroups } from "@/lib/groups";
+import { pushOnce } from "@/lib/nav";
 
 export default function GroupsScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -122,7 +123,7 @@ function GroupRow({
   const count = group.memberCount;
   return (
     <Pressable
-      onPress={() => router.push(`/group/${group.id}`)}
+      onPress={() => pushOnce(`/group/${group.id}`)}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={`${group.name}, ${count} member${count === 1 ? "" : "s"}, ${privacyLabel(group.visibility)}`}

@@ -5,7 +5,6 @@
 import type { Post } from "@repo/db";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
-import { router } from "expo-router";
 import type { ReactNode } from "react";
 import {
   ActivityIndicator,
@@ -24,7 +23,7 @@ import {
   useThemedStyles,
 } from "@/constants/theme-context";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
-import { openPost } from "@/lib/nav";
+import { openPost, pushOnce } from "@/lib/nav";
 
 const TYPE_LABEL: Record<string, string> = {
   CONCRETE: "Concrete",
@@ -80,7 +79,7 @@ function AudienceBadge({
   return (
     <Pressable
       onPress={() =>
-        router.push(`/groups?group=${encodeURIComponent(first.id)}`)
+        pushOnce(`/groups?group=${encodeURIComponent(first.id)}`)
       }
       accessibilityRole="button"
       accessibilityLabel={`Shared with ${first.name}${extra} — manage group`}
@@ -156,7 +155,7 @@ export function FriendsFeedList({ header }: { header?: ReactNode }) {
                   // Pressable it captures the touch, so the surrounding row press
                   // (open the post) doesn't also fire.
                   <Pressable
-                    onPress={() => router.push(`/u/${author.handle}/catalog`)}
+                    onPress={() => pushOnce(`/u/${author.handle}/catalog`)}
                     accessibilityRole="button"
                     accessibilityLabel={`@${author.handle} — open catalog`}
                     hitSlop={6}

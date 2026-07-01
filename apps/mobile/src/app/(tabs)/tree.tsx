@@ -19,7 +19,6 @@ import {
 } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -41,6 +40,7 @@ import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiGet } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
+import { pushOnce } from "@/lib/nav";
 import { loadStringSet, saveStringSet } from "@/lib/persist";
 
 type Tab = "map" | "categories" | "focus";
@@ -97,7 +97,6 @@ export default function TreeScreen() {
 function LoadedTree({ scene }: { scene: EmbeddingScene }) {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const router = useRouter();
   const queryClient = useQueryClient();
   const { data: session } = useSession();
   const userId = session?.user.id ?? null;
@@ -167,7 +166,7 @@ function LoadedTree({ scene }: { scene: EmbeddingScene }) {
     [userId, defaultExpanded],
   );
 
-  const open = (id: string) => router.push(`/tree/${id}`);
+  const open = (id: string) => pushOnce(`/tree/${id}`);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

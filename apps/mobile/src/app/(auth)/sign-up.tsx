@@ -20,6 +20,7 @@ import {
 import type { Theme } from "@/constants/theme";
 import { useThemedStyles } from "@/constants/theme-context";
 import { signUp } from "@/lib/auth-client";
+import { pushOnce } from "@/lib/nav";
 
 export default function SignUpScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -112,7 +113,7 @@ export default function SignUpScreen() {
             <Text style={styles.muted}>Already have an account?</Text>
             <TextLink
               label="Sign in"
-              onPress={() => router.push("/(auth)/sign-in")}
+              onPress={() => pushOnce("/(auth)/sign-in")}
             />
           </View>
         </View>

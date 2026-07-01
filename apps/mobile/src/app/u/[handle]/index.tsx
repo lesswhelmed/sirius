@@ -6,7 +6,7 @@
 // state — and lets the viewer send a friend request. When already friends it
 // also offers a jump into that friend's catalog.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
@@ -20,6 +20,7 @@ import {
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { ApiError, apiGet, apiPostJson } from "@/lib/api";
+import { pushOnce } from "@/lib/nav";
 
 type SearchResult = {
   id: string;
@@ -39,7 +40,6 @@ const STATE_LABEL: Record<SearchResult["state"], string> = {
 export default function InviteScreen() {
   const styles = useThemedStyles(makeStyles);
   const t = useTheme();
-  const router = useRouter();
   const { handle: rawHandle } = useLocalSearchParams<{ handle: string }>();
   const handle = (rawHandle ?? "").replace(/^@/, "").trim();
   const qc = useQueryClient();
@@ -114,7 +114,7 @@ export default function InviteScreen() {
                   label="View catalog"
                   symbol="books.vertical"
                   onPress={() =>
-                    router.push(`/u/${result.handle}/catalog`)
+                    pushOnce(`/u/${result.handle}/catalog`)
                   }
                 />
               ) : null}

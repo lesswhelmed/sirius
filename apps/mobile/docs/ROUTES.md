@@ -404,6 +404,19 @@ flowchart TD
   `/llm` is parked (`(tabs)/composer.tsx:199`). Both routes remain registered +
   header-equipped and are still reachable by deep link
   (`siriusapp://space`, `siriusapp://llm`).
+
+  > **TODO (held — decision pending):** decide the fate of `/space` and `/llm`.
+  > Options for `/space`: (a) re-wire an in-app entry point (e.g. a "Map / Enter
+  > the space →" button from the Catalog or Explore tab — its `headerBackTitle`
+  > is already `"Catalog"`, implying a former Catalog entry), or (b) delete the
+  > route as superseded by the inline Explore `<MapView>`. For `/llm`: it's
+  > feature-flagged (`EXPO_PUBLIC_ON_DEVICE_AI`, default off) and mid-migration
+  > (on-device drafting parked; ask-my-posts chat being replaced by a planned
+  > server-side Gemini chat agent) — leave deep-link-only until that lands, then
+  > either wire an entry or remove. **Do NOT silently delete either — both are
+  > full, working feature screens; this is a product call.** Until resolved, the
+  > header-registration enforcement test treats deep-link-only registered routes
+  > as allowed (they are correctly header-equipped).
 - Everything else in the old doc held up: the `siriusapp://` scheme vs
   `dev.copt.sirius` bundle id, tab-label ≠ route-name, Friends-tab = `feed`, the
   no-`/explore`-route fact, the `/queue` → `/library` back-compat redirect, and

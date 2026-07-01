@@ -17,29 +17,37 @@ import { isDuplicateNavigation } from "./nav-dedupe";
 let lastHref: string | null = null;
 let lastAt = 0;
 
-function guardedPush(href: string): void {
+function keyOf(href: Href): string {
+  return typeof href === "string" ? href : JSON.stringify(href);
+}
+
+// The guarded, drop-in replacement for `router.push`. Use this INSTEAD of
+// `router.push` everywhere so a double/rapid tap can't stack two identical
+// entries. Handles both string hrefs and object hrefs ({ pathname, params }).
+// All pushes share ONE dedupe window, so tapping two different-but-fast targets
+// still works — only a byte-identical repeat within the window is dropped.
+export function pushOnce(href: Href): void {
+  const key = keyOf(href);
   const now = Date.now();
-  if (isDuplicateNavigation(href, lastHref, lastAt, now)) return;
-  lastHref = href;
+  if (isDuplicateNavigation(key, lastHref, lastAt, now)) return;
+  lastHref = key;
   lastAt = now;
-  // The open* builders only ever produce valid /post routes; the string form is
-  // what we dedupe on, so cast at the typed-routes boundary.
-  router.push(href as Href);
+  router.push(href);
 }
 
 // `from` is the originating surface label the post screen shows on the back
 // button (e.g. "Catalog"); omit it where the previous screen's own title is
 // already the right label.
 export function openPost(slug: string, from?: string): void {
-  guardedPush(from ? `/post/${slug}?from=${from}` : `/post/${slug}`);
+  pushOnce(from ? `/post/${slug}?from=${from}` : `/post/${slug}`);
 }
 
 export function openLocalPost(localId: string, from?: string): void {
-  guardedPush(
+  pushOnce(
     from ? `/post/local/${localId}?from=${from}` : `/post/local/${localId}`,
   );
 }
 
 export function openPostEdit(slug: string): void {
-  guardedPush(`/post/${slug}/edit`);
+  pushOnce(`/post/${slug}/edit`);
 }

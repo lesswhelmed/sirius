@@ -7,14 +7,13 @@
 
 import { resurfacing } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene } from "@repo/embedding-scene/types";
-import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Eyebrow } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import { useThemedStyles } from "@/constants/theme-context";
-import { openPost } from "@/lib/nav";
+import { openPost, pushOnce } from "@/lib/nav";
 
 // A day-stable integer (YYYYMMDD) so the rail changes once per day and is the
 // same for every render within that day. Device-local `Date` is fine here (this
@@ -26,7 +25,6 @@ function todaySeed(): number {
 
 export function Rediscover({ scene }: { scene: EmbeddingScene }) {
   const styles = useThemedStyles(makeStyles);
-  const router = useRouter();
   const picks = useMemo(() => resurfacing(scene, todaySeed()), [scene]);
 
   const { spotlight, connection, frontier } = picks;
@@ -51,7 +49,7 @@ export function Rediscover({ scene }: { scene: EmbeddingScene }) {
       {connection ? (
         <RailCard
           eyebrow="These connect"
-          onPress={() => router.push(`/tree/${connection.via.id}`)}
+          onPress={() => pushOnce(`/tree/${connection.via.id}`)}
           accessibilityLabel={`These connect via ${connection.via.label}: ${connection.a.label} and ${connection.b.label}`}
         >
           <Text style={styles.pairItem} numberOfLines={1}>
@@ -70,7 +68,7 @@ export function Rediscover({ scene }: { scene: EmbeddingScene }) {
       {frontier ? (
         <RailCard
           eyebrow="Unexplored corner"
-          onPress={() => router.push(`/tree/${frontier.id}`)}
+          onPress={() => pushOnce(`/tree/${frontier.id}`)}
           accessibilityLabel={`Unexplored corner: ${frontier.label}`}
         >
           <Text style={styles.headline} numberOfLines={2}>

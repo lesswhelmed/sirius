@@ -22,6 +22,7 @@ import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { signIn } from "@/lib/auth-client";
 import { clearAuthStorage, takeRecoveryBreadcrumb } from "@/lib/auth-recovery";
+import { pushOnce } from "@/lib/nav";
 import {
   type BiometricType,
   biometricLabel,
@@ -124,7 +125,7 @@ export default function SignInScreen() {
     if (error) {
       setBusy(false);
       if (error.code === "EMAIL_NOT_VERIFIED") {
-        router.push({ pathname: "/(auth)/verify-pending", params: { email } });
+        pushOnce({ pathname: "/(auth)/verify-pending", params: { email } });
         return;
       }
       // DIAGNOSTIC (see plans/auth-is-broken-on-swift-noodle.md): TestFlight/release
@@ -176,7 +177,7 @@ export default function SignInScreen() {
         return;
       }
       if (error.code === "EMAIL_NOT_VERIFIED") {
-        router.push({
+        pushOnce({
           pathname: "/(auth)/verify-pending",
           params: { email: creds.email },
         });
@@ -268,7 +269,7 @@ export default function SignInScreen() {
               <TextLink
                 label="Forgot password?"
                 tone={t.color.inkMuted}
-                onPress={() => router.push("/(auth)/forgot-password")}
+                onPress={() => pushOnce("/(auth)/forgot-password")}
               />
             </View>
             <PrimaryButton
@@ -283,7 +284,7 @@ export default function SignInScreen() {
             <Text style={styles.muted}>New here?</Text>
             <TextLink
               label="Create an account"
-              onPress={() => router.push("/(auth)/sign-up")}
+              onPress={() => pushOnce("/(auth)/sign-up")}
             />
           </View>
         </View>

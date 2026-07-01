@@ -30,6 +30,7 @@ import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { deleteUser, signIn, signOut, useSession } from "@/lib/auth-client";
 import { clearAuthStorage } from "@/lib/auth-recovery";
+import { pushOnce } from "@/lib/nav";
 import {
   type BiometricType,
   biometricLabel,
@@ -219,7 +220,7 @@ export default function SettingsScreen() {
           <SecondaryButton
             label="Friends"
             symbol="person.2"
-            onPress={() => router.push("/friends")}
+            onPress={() => pushOnce("/friends")}
           />
           {handle ? (
             <SecondaryButton
@@ -301,7 +302,7 @@ export default function SettingsScreen() {
           <SecondaryButton
             label="How Sirius works"
             symbol="questionmark.circle"
-            onPress={() => router.push("/help")}
+            onPress={() => pushOnce("/help")}
           />
         </View>
 

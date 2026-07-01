@@ -9,13 +9,13 @@
 //   - selectable: the whole row is an accessibilityRole="checkbox" toggling
 //     membership; catalog navigation is suppressed and an oxblood check marks the
 //     selected state.
-import { router } from "expo-router";
 import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import type { Friend } from "@/lib/groups";
+import { pushOnce } from "@/lib/nav";
 
 export type { Friend };
 
@@ -79,7 +79,7 @@ export function FriendRow({
   // pressing them never triggers navigation.
   const canOpen = Boolean(item.handle);
   const open = () => {
-    if (item.handle) router.push(`/u/${item.handle}/catalog`);
+    if (item.handle) pushOnce(`/u/${item.handle}/catalog`);
   };
   return (
     <View style={styles.row}>

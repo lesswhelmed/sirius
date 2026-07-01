@@ -3,7 +3,7 @@
 // Mutations refetch via react-query; the feed itself is online-only (friends'
 // content is never written to the offline mirror).
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -22,6 +22,7 @@ import { PageHeader, Screen, SecondaryButton } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiDelete, ApiError, apiGet, apiPostJson } from "@/lib/api";
+import { pushOnce } from "@/lib/nav";
 
 type Request = Friend & { direction: "incoming" | "outgoing" };
 
@@ -118,7 +119,7 @@ export default function FriendsScreen() {
         <SecondaryButton
           label="Manage groups"
           symbol="person.3"
-          onPress={() => router.push("/groups")}
+          onPress={() => pushOnce("/groups")}
         />
         <SegmentedControl value={tab} onChange={setTab}>
           <Segment value="friends" label="Friends" count={friends.length} />
