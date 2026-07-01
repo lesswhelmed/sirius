@@ -54,6 +54,23 @@ _Total ≈ 5 min. A 30-sec version is at the bottom._
 
 ---
 
+## ⭐ Power beat — the "Full analysis" (best with a video) — 45 sec
+_Use a **YouTube capture** for this — it's the "wow." Have one pre-drafted and ready._
+
+**Open a video post → expand the "Full analysis" section.**
+> "For a video, Sirius goes deeper. It doesn't just summarize — watch."
+
+**Scroll the blocks: Overview → Key claims → Tools & frameworks → Notable moments → Quotes → Entities.**
+> "An overview, the key claims, every tool it named, the notable moments, verbatim quotes, and all the people, places, and concepts — pulled out automatically."
+
+**Tap a timestamp on a Notable moment or Quote.**
+> "And every moment is a deep-link — one tap jumps me to that exact spot in the video."
+
+✅ *Scope it honestly: this six-block Full analysis is for **videos**. Don't imply every capture gets it.*
+✅ *If short on time, skip this beat — it's the upgrade, not the core loop.*
+
+---
+
 ## 4️⃣ It compounds — Catalog + the Tree — 60 sec
 **Open the Catalog.** Scroll the library.
 > "Every keeper lives here — my private library, organized automatically."
@@ -109,3 +126,4 @@ _Total ≈ 5 min. A 30-sec version is at the bottom._
 - Don't claim it **automates** or **"closes the loop today"** — that's roadmap.
 - Avoid *supercharge / seamless / revolutionary*. Use plain verbs: capture, draft, keep, map, find.
 - Don't show an empty corpus — always demo on the seeded account.
+- The six-block **Full analysis is for videos (YouTube)** — don't say "every capture gets a full analysis." (Instagram gets a different digest; links/notes/images get a clean summary.)

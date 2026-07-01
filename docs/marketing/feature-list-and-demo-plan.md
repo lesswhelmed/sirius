@@ -50,6 +50,31 @@ The single sentence: **"Capture anything. Get something worth keeping. On your t
 - **You review before anything is kept** — AI drafts; *you* decide. Nothing is ever
   published silently. "AI drafts it. You decide what's worth keeping."
 
+### B★. Deep video analysis — the "Full analysis" (the standout)
+> Share a **YouTube video** and Sirius doesn't just summarize it — it produces a full,
+> structured breakdown you can expand right inside the post. This is the "wow" feature.
+
+- **Full analysis** (a collapsible section on video posts) contains, automatically:
+  - **Overview** — a plain-prose summary of the whole video.
+  - **Key claims** — the discrete, checkable assertions the video makes, each with a
+    jump-to timestamp.
+  - **Tools & frameworks** — every product, method, or framework named, with a one-line
+    "what it's for."
+  - **Notable moments** — the demos, pivots, and conclusions worth jumping to, each a
+    tappable timestamp.
+  - **Quotes** — up to ~10 verbatim quotes that capture the video's voice, with speaker +
+    timestamp.
+  - **Entities** — the people, organizations, products, concepts, places, and works
+    mentioned, categorized.
+- **Timestamps are deep-links** — tap any moment/quote to jump straight to that point in
+  the source video.
+- Also kept, collapsed: the **raw evidence summary** and the **full transcript**.
+
+> **Honesty scope (say this accurately):** the multi-block **Full analysis is for videos
+> (YouTube)**. Instagram captures get a *different* structured digest (subjects, objects,
+> claims); links, notes, and images get a clean summarized draft — rich, but not the
+> six-block Full analysis. Don't claim "every capture gets a full analysis."
+
 ### C. Context that compounds — organize, map, find
 - **Catalog** — your whole private library in one place, draft → published, private by
   default. Your archive of everything worth keeping.
