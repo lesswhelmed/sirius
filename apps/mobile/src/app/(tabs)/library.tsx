@@ -37,7 +37,8 @@ import {
   posts,
   type SyncState,
 } from "@/lib/db/schema";
-import { openLocalPost, openPost } from "@/lib/nav";
+import { openLocalPost, openPost, pushOnce } from "@/lib/nav";
+import { SymbolView } from "expo-symbols";
 import { discardSubmission, requeueSubmission } from "@/lib/outbox";
 import { confirmAndDeletePost } from "@/lib/post-delete";
 import { kickSync } from "@/lib/sync/engine";
@@ -448,6 +449,41 @@ export default function LibraryScreen() {
           accessibilityLabel="Search your corpus"
         />
       </View>
+
+      {/* Ask entry — the conversational counterpart to keyword search. The /llm
+          chat streams a grounded, cited answer over the same corpus. This is the
+          only entry into the chat now that the on-device model UI is gone; keep
+          it here (Catalog = your posts). Hidden while actively searching to keep
+          the results list uncluttered. */}
+      {searching ? null : (
+        <Pressable
+          onPress={() => pushOnce("/llm")}
+          style={({ pressed }) => [styles.askRow, pressed && styles.askRowPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Ask your library — chat with your posts"
+        >
+          <SymbolView
+            name="sparkles"
+            size={22}
+            weight="regular"
+            tintColor={t.color.accent}
+            fallback={<Text style={styles.askGlyph}>✳</Text>}
+          />
+          <View style={styles.askText}>
+            <Text style={styles.askTitle}>Ask your library</Text>
+            <Text style={styles.askSub}>
+              Chat with your posts — answers cite your sources
+            </Text>
+          </View>
+          <SymbolView
+            name="chevron.right"
+            size={14}
+            weight="semibold"
+            tintColor={t.color.inkSubtle}
+            fallback={<Text style={styles.askChevron}>›</Text>}
+          />
+        </Pressable>
+      )}
 
       {searching ? (
         <CorpusSearchResults query={searchQuery} scope="all" />
@@ -865,6 +901,35 @@ function makeStyles(t: Theme) {
     color: t.color.ink,
     paddingVertical: t.space.xs,
   },
+
+  // "Ask your library" entry — the conversational counterpart to search, and the
+  // sole entry into the /llm chat. A raised card aligned to the list's padding.
+  askRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: t.space.md,
+    marginHorizontal: t.space.xl,
+    marginTop: t.space.md,
+    paddingVertical: t.space.md,
+    paddingHorizontal: t.space.lg,
+    borderRadius: 12,
+    backgroundColor: t.color.paperRaised,
+    borderWidth: 1,
+    borderColor: t.color.rule,
+  },
+  askRowPressed: { opacity: 0.6 },
+  askGlyph: { color: t.color.accent, fontSize: 20 },
+  askText: { flex: 1, gap: 2 },
+  askTitle: {
+    fontFamily: t.font.serif,
+    fontSize: 17,
+    color: t.color.ink,
+  },
+  askSub: {
+    fontSize: 12.5,
+    color: t.color.inkSubtle,
+  },
+  askChevron: { color: t.color.inkSubtle, fontSize: 18 },
 
   // In-flight section (folded in from the retired Queue tab).
   inFlight: { gap: t.space.sm, marginBottom: t.space.lg },
