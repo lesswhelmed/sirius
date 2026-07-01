@@ -19,6 +19,15 @@ export const PostSearchInputSchema = z.object({
     .max(20)
     .optional()
     .describe("How many posts to return (default 6)."),
+  includeFriends: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Set true ONLY when the user's question is about their friends' posts " +
+        "(e.g. 'what did my friends say about X'). Default false = search only " +
+        "the user's own posts.",
+    ),
 });
 
 export type PostSearchInput = z.infer<typeof PostSearchInputSchema>;

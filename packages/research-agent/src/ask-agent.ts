@@ -37,9 +37,12 @@ export interface Candidate {
 
 export interface AskAgentDeps {
   llm: LanguageModel;
-  // Host-side: embed the query + rank the local index → candidates. May return []
-  // (nothing matched, or the host swallowed an offline error).
-  search: (query: string) => Promise<Candidate[]>;
+  // Host-side: embed the query + rank the index → candidates. `includeFriends`
+  // widens the search to the user's friends' shared posts. May return [].
+  search: (
+    query: string,
+    opts?: { includeFriends?: boolean },
+  ) => Promise<Candidate[]>;
   // Host-side: read one post's full body + metadata, or null if it's gone.
   getPost: (id: string) => Promise<FullPost | null>;
 }
@@ -72,9 +75,9 @@ export function runAskAgent(args: AskAgentArgs): AskAgentRun {
       "candidates (id, title, excerpt, score). Call whenever answering needs the " +
       "user's library; pass a focused query.",
     inputSchema: PostSearchInputSchema,
-    execute: async ({ query }): Promise<{ posts: Candidate[] }> => {
+    execute: async ({ query, includeFriends }): Promise<{ posts: Candidate[] }> => {
       didSearch = true;
-      return { posts: await args.deps.search(query) };
+      return { posts: await args.deps.search(query, { includeFriends }) };
     },
   });
 
