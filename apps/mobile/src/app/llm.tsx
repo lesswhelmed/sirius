@@ -1,10 +1,11 @@
-// On-device LLM screen: download a local GGUF model, then chat with it fully
-// offline via llama.rn + the AI SDK. This is both the proof that local
-// inference works on this device and the place the curation model gets
-// downloaded/managed (the composer's "Draft on device" toggle points here).
+// Online chat screen: ask questions grounded in the user's own posts. The
+// server (`/api/app/chat`) embeds the query, retrieves the posts that matter,
+// and streams a grounded answer back over SSE — this screen just renders the
+// stream and persists the thread locally (chat history is local-only; see
+// `@/lib/db/chat`). The on-device engine (llama.rn) is parked — this screen no
+// longer downloads or manages a local model.
 
 import type { ScoredPost } from "@repo/research-agent";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { asc, desc, eq } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Stack } from "expo-router";
@@ -26,7 +27,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   KeyboardDoneButton,
   MetaText,
-  PrimaryButton,
   Screen,
   TextLink,
 } from "@/components/sirius";
@@ -40,328 +40,26 @@ import {
 } from "@/lib/db/chat";
 import { db } from "@/lib/db/client";
 import { chatConversations, chatMessages } from "@/lib/db/schema";
-import {
-  checkNativeBridge,
-  describeLlmError,
-  downloadModelById,
-  isModelReady,
-  modelBusyBy,
-  prewarm,
-} from "@/lib/llm/engine";
-import { ON_DEVICE_AI_ENABLED } from "@/lib/llm/flag";
-import { formatSize, modelSpec, textModels } from "@/lib/llm/models";
-import { getLlmSettings, updateLlmSettings } from "@/lib/llm/settings";
-import {
-  canTranscribeOnDevice,
-  prepareTranscription,
-} from "@/lib/llm/transcribe";
 import { openPost, pushOnce } from "@/lib/nav";
-import { askMyPosts } from "@/lib/research/ask";
+import { apiChatStream, ChatStreamError } from "@/lib/research/chat-stream";
 
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  // The posts the assistant chose to ground this answer in — tappable Sources.
+  // The posts the assistant grounded this answer in — tappable Sources.
   sources?: ScoredPost[];
 };
 
 export default function LlmScreen() {
-  const styles = useThemedStyles(makeStyles);
-  // Fully hidden when the on-device AI build flag is off: no nav entry points
-  // here (composer gates them), and a deep link lands on this neutral state
-  // instead of the download/chat UI. EXPO_PUBLIC_ON_DEVICE_AI is a build-time
-  // constant, so this early return runs before any hooks every render.
-  if (!ON_DEVICE_AI_ENABLED) {
-    return (
-      <Screen style={styles.container}>
-        <View style={styles.downloadCard}>
-          <MetaText style={styles.cardEyebrow}>Local model</MetaText>
-          <Text style={styles.modelName}>
-            On-device drafting isn&apos;t available.
-          </Text>
-          <Text style={styles.modelDetail}>
-            On-device AI is turned off in this build. Your captures are drafted
-            by the server instead.
-          </Text>
-        </View>
-      </Screen>
-    );
-  }
-  return <LlmScreenInner />;
+  return <Chat />;
 }
 
-function LlmScreenInner() {
-  const t = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  const queryClient = useQueryClient();
+// The server turn only has one busy phase: it's generating (searching +
+// answering happen server-side, invisible to this screen).
+type BusyState = "generating" | null;
 
-  const { data: settings } = useQuery({
-    queryKey: ["llm-settings"],
-    queryFn: getLlmSettings,
-  });
-  const modelId = settings?.modelId;
-  const spec = modelId ? modelSpec(modelId) : undefined;
-
-  const { data: ready } = useQuery({
-    queryKey: ["llm-model-ready", modelId],
-    queryFn: () => isModelReady(modelId!),
-    enabled: Boolean(modelId),
-  });
-
-  // Probe the native llama.rn bridge before offering anything: a binary missing
-  // it can never run inference, and we'd rather say so up front than after a
-  // multi-GB download. Retry is pointless (only a native rebuild fixes it), so
-  // the query never refetches on its own.
-  const { data: bridge } = useQuery({
-    queryKey: ["llm-native-bridge"],
-    queryFn: checkNativeBridge,
-    staleTime: Infinity,
-    retry: false,
-  });
-
-  const [downloadPct, setDownloadPct] = useState<number | null>(null);
-  const download = useMutation({
-    mutationFn: async () => {
-      setDownloadPct(0);
-      await downloadModelById(modelId!, (pct) =>
-        setDownloadPct(Math.round(pct)),
-      );
-    },
-    onSettled: () => {
-      setDownloadPct(null);
-      void queryClient.invalidateQueries({ queryKey: ["llm-model-ready"] });
-    },
-  });
-
-  if (
-    !settings ||
-    !spec ||
-    ready === undefined ||
-    bridge === undefined
-  ) {
-    return (
-      <Screen style={styles.center}>
-        <ActivityIndicator color={t.color.inkMuted} />
-      </Screen>
-    );
-  }
-
-  if (!bridge.ok) {
-    return (
-      <Screen style={styles.container}>
-        <View style={styles.downloadCard}>
-          <MetaText style={styles.cardEyebrow}>Local model</MetaText>
-          <Text style={styles.modelName}>On-device AI unavailable</Text>
-          <Text style={styles.modelDetail}>{bridge.reason}</Text>
-        </View>
-      </Screen>
-    );
-  }
-
-  if (!ready) {
-    return (
-      <Screen style={styles.container}>
-        <ScrollView contentContainerStyle={styles.cardStack}>
-          <View style={styles.downloadCard}>
-            <MetaText style={styles.cardEyebrow}>Local model</MetaText>
-            <Text style={styles.modelName}>{spec.label}</Text>
-            <Text style={styles.modelDetail}>
-              {formatSize(spec.sizeBytes)} download · runs entirely on this
-              device. Once downloaded, chat and on-device drafting work without
-              a connection.
-            </Text>
-            {download.isPending ? (
-              <View style={styles.progressWrap}>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${downloadPct ?? 0}%` },
-                    ]}
-                  />
-                </View>
-                <MetaText>{downloadPct ?? 0}%</MetaText>
-              </View>
-            ) : (
-              <PrimaryButton
-                label="Download model"
-                onPress={() => download.mutate()}
-              />
-            )}
-            {download.isError ? (
-              <Text style={styles.error}>
-                Download failed:{" "}
-                {download.error instanceof Error
-                  ? download.error.message
-                  : "unknown error"}
-              </Text>
-            ) : null}
-            <ModelPicker
-              currentId={spec.id}
-              onSelect={(id) => {
-                void updateLlmSettings({ modelId: id }).then(() => {
-                  void queryClient.invalidateQueries({
-                    queryKey: ["llm-settings"],
-                  });
-                  void queryClient.invalidateQueries({
-                    queryKey: ["llm-model-ready"],
-                  });
-                });
-              }}
-            />
-          </View>
-          <TranscriptionAssets />
-        </ScrollView>
-      </Screen>
-    );
-  }
-
-  return <Chat modelId={spec.id} modelLabel={spec.label} />;
-}
-
-function ModelPicker({
-  currentId,
-  onSelect,
-}: {
-  currentId: string;
-  onSelect: (id: string) => void;
-}) {
-  const styles = useThemedStyles(makeStyles);
-  const options = textModels();
-  if (options.length < 2) {
-    return null;
-  }
-  return (
-    <View style={styles.picker}>
-      <MetaText style={styles.cardEyebrow}>Or pick a size</MetaText>
-      {options.map((m) => (
-        <Pressable
-          key={m.id}
-          style={styles.pickerRow}
-          onPress={() => onSelect(m.id)}
-        >
-          <View
-            style={[
-              styles.radio,
-              m.id === currentId ? styles.radioActive : null,
-            ]}
-          />
-          <Text style={styles.pickerLabel}>
-            {m.label} · {formatSize(m.sizeBytes)}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-// On-device audio transcription assets (Apple SpeechAnalyzer, iOS 26+). This is
-// independent of the GGUF model above — it pre-downloads the language assets so
-// the composer's "voice memo → note" path transcribes instantly and offline. We
-// surface it here (the model page) un-gated, unlike the dev-only /llm-test bench
-// where it first lived. Hidden on Android/old iOS where SpeechAnalyzer is absent.
-// NOTE: the assets only exist on a physical iPhone — the iOS Simulator runtime
-// ships none, so isAvailable() stays false and prepare() can't succeed there.
-function TranscriptionAssets() {
-  const t = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  const queryClient = useQueryClient();
-
-  const { data: available } = useQuery({
-    queryKey: ["llm-transcribe-available"],
-    queryFn: canTranscribeOnDevice,
-    enabled: Platform.OS === "ios",
-  });
-
-  const prepare = useMutation({
-    mutationFn: async () => {
-      // prepareTranscription swallows the native error and returns false; turn
-      // that into a message that names the most common cause (running on sim).
-      const ok = await prepareTranscription();
-      if (!ok) {
-        throw new Error(
-          "Couldn't download assets. On the Simulator this is expected — SpeechAnalyzer assets only exist on a physical iPhone (iOS 26+).",
-        );
-      }
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["llm-transcribe-available"],
-      });
-    },
-  });
-
-  if (Platform.OS !== "ios") {
-    return null;
-  }
-
-  return (
-    <View style={styles.downloadCard}>
-      <MetaText style={styles.cardEyebrow}>
-        Audio transcription (Apple)
-      </MetaText>
-      <Text style={styles.modelName}>Offline voice notes</Text>
-      <Text style={styles.modelDetail}>
-        Apple SpeechAnalyzer turns voice memos into note text entirely on this
-        device (iOS 26+). Download the language assets once so the first
-        transcription is instant. Requires a physical iPhone — the Simulator
-        ships none.
-      </Text>
-      {available ? (
-        <MetaText style={styles.cardEyebrow}>Assets ready ✓</MetaText>
-      ) : prepare.isPending ? (
-        <View style={styles.progressWrap}>
-          <ActivityIndicator color={t.color.inkMuted} />
-          <MetaText>Downloading language assets…</MetaText>
-        </View>
-      ) : (
-        <PrimaryButton
-          label="Download transcription assets"
-          onPress={() => prepare.mutate()}
-        />
-      )}
-      {prepare.isError ? (
-        <Text style={styles.error}>
-          {prepare.error instanceof Error
-            ? prepare.error.message
-            : "Download failed"}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-type BusyState =
-  | "deciding"
-  | "waiting"
-  | "preparing"
-  | "generating"
-  | "searching"
-  | null;
-
-function busyPlaceholder(busy: BusyState): string {
-  switch (busy) {
-    case "deciding":
-      return "Reading your question…";
-    case "waiting":
-      return "Waiting for the post drafter…";
-    case "searching":
-      return "Searching your posts…";
-    case "preparing":
-      return "Loading model…";
-    default:
-      return "…";
-  }
-}
-
-function Chat({
-  modelId,
-  modelLabel,
-}: {
-  modelId: string;
-  modelLabel: string;
-}) {
+function Chat() {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   // The active thread; null = no conversation yet (empty state). A thread is
@@ -386,12 +84,11 @@ function Chat({
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 44;
 
-  // The assistant always grounds in the user's own posts when relevant: it
-  // searches the library, picks the posts that matter, and cites them — and just
-  // answers directly when the question doesn't need them. No mode to choose. The
-  // query is embedded server-side (same gemini space as the synced post vectors,
-  // see lib/research/ask), so the only requirement is the chat model the outer
-  // screen already gated on.
+  // The assistant always grounds in the user's own posts when relevant: the
+  // server embeds the query, searches the library, picks the posts that
+  // matter, and streams a grounded answer citing them — or just answers
+  // directly when the question doesn't need them. No mode to choose, no local
+  // model to manage — the server picks and runs the model.
 
   // Restore the most recent conversation once on mount.
   const restored = useRef(false);
@@ -403,16 +100,6 @@ function Chat({
       if (id) setConversationId(id);
     })();
   }, []);
-
-  // Warm the resident model on open so the first send streams without the
-  // cold-load pause. Best-effort; runs once. Skipped if a draft is mid-flight
-  // (it already holds/loads the model).
-  const warmed = useRef(false);
-  useEffect(() => {
-    if (warmed.current) return;
-    warmed.current = true;
-    if (modelBusyBy() === null) void prewarm(modelId);
-  }, [modelId]);
 
   // Messages for the active conversation — the source of truth, kept in sync
   // with the DB by useLiveQuery. An empty conversationId matches no rows.
@@ -484,29 +171,27 @@ function Chat({
     setStreamingText("");
 
     try {
-      // The assistant searches the library, picks the posts that matter, and
-      // streams a grounded answer citing them — or just answers when the question
-      // doesn't need them. The "waiting" phase means a draft currently holds the
-      // single model slot.
-      setBusy("deciding");
+      setBusy("generating");
       let assistant = "";
-      const { sources } = await askMyPosts({
-        chatModelId: modelId,
+      let sources: ScoredPost[] = [];
+      await apiChatStream({
         messages: modelMessages,
-        onPhase: (phase) =>
-          setBusy(
-            phase === "searching"
-              ? "searching"
-              : phase === "waiting"
-                ? "waiting"
-                : phase === "answering"
-                  ? "generating"
-                  : "deciding",
-          ),
         onDelta: (delta) => {
           assistant += delta;
-          setBusy("generating");
           setStreamingText(assistant);
+        },
+        onSources: (s) => {
+          // The server's ChatSourceDTO carries no relevance score (that was an
+          // on-device ranking artifact); the Sources card only renders
+          // title/excerpt/slug, so a stub score satisfies the shared
+          // ScoredPost persistence shape without meaning anything here.
+          sources = s.map((x) => ({
+            serverId: x.serverId,
+            slug: x.slug,
+            title: x.title,
+            excerpt: x.excerpt,
+            score: 0,
+          }));
         },
       });
       await appendMessage(convoId, {
@@ -515,7 +200,11 @@ function Chat({
         sources,
       });
     } catch (err) {
-      setError(describeLlmError(err));
+      setError(
+        err instanceof ChatStreamError
+          ? err.message
+          : "You appear to be offline. Chat needs a connection.",
+      );
     } finally {
       setBusy(null);
       setStreamingText(null);
@@ -583,12 +272,11 @@ function Chat({
           >
             {messages.length === 0 ? (
               <View style={styles.empty}>
-                <MetaText style={styles.cardEyebrow}>{modelLabel}</MetaText>
+                <MetaText style={styles.cardEyebrow}>Ask your posts</MetaText>
                 <Text style={styles.modelDetail}>
-                  Ask anything about your own posts. Answers are grounded in your
-                  library and link back to the sources — all on this device.
+                  Ask anything about your own posts. Answers are grounded in
+                  your library and link back to the sources.
                 </Text>
-                <TranscriptionAssets />
                 {__DEV__ ? (
                   <TextLink
                     label="Draft test bench →"
@@ -614,7 +302,7 @@ function Chat({
                           : styles.bubbleText
                       }
                     >
-                      {m.content || busyPlaceholder(busy)}
+                      {m.content || "Thinking…"}
                     </Text>
                   </View>
                   {m.sources && m.sources.length > 0 ? (
@@ -778,70 +466,11 @@ function Sources({ posts }: { posts: ScoredPost[] }) {
 function makeStyles(t: Theme) {
   return StyleSheet.create({
     flex: { flex: 1 },
-    center: { alignItems: "center", flex: 1, justifyContent: "center" },
     container: { flex: 1, padding: 16 },
-    downloadCard: {
-      backgroundColor: t.color.paperRaised,
-      borderRadius: 10,
-      gap: 12,
-      padding: 20,
-    },
     cardStack: { gap: 16, paddingBottom: 16 },
     cardEyebrow: { textTransform: "uppercase" },
-    modelName: {
-      color: t.color.ink,
-      fontSize: 20,
-      fontWeight: "600",
-    },
     modelDetail: { color: t.color.inkMuted, fontSize: 14, lineHeight: 20 },
-    progressWrap: { gap: 6 },
-    progressTrack: {
-      backgroundColor: t.color.paperSunken,
-      borderRadius: 4,
-      height: 8,
-      overflow: "hidden",
-    },
-    progressFill: {
-      backgroundColor: t.color.ink,
-      borderRadius: 4,
-      height: 8,
-    },
-    picker: { gap: 8, marginTop: 8 },
-    pickerRow: { alignItems: "center", flexDirection: "row", gap: 8 },
-    radio: {
-      borderColor: t.color.inkSubtle,
-      borderRadius: 7,
-      borderWidth: 1.5,
-      height: 14,
-      width: 14,
-    },
-    radioActive: {
-      backgroundColor: t.color.ink,
-      borderColor: t.color.ink,
-    },
-    pickerLabel: { color: t.color.inkMuted, fontSize: 14 },
     empty: { gap: 8, paddingTop: 32 },
-    // Mode toggle (Ask my posts | Chat).
-    toggle: {
-      backgroundColor: t.color.paperSunken,
-      borderRadius: 10,
-      flexDirection: "row",
-      marginBottom: 10,
-      padding: 3,
-    },
-    toggleBtn: {
-      alignItems: "center",
-      borderRadius: 8,
-      flex: 1,
-      paddingVertical: 8,
-    },
-    toggleBtnActive: { backgroundColor: t.color.paperRaised },
-    toggleLabel: {
-      color: t.color.inkMuted,
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    toggleLabelActive: { color: t.color.ink },
     msgGroup: { gap: 6 },
     // Cited sources under an answer.
     sources: {
