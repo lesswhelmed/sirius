@@ -325,6 +325,19 @@ export function postTypeTone(t: Theme): Record<string, string> {
 /**
  * Decorative status-pip color (the dot carries the hue; the label text stays
  * muted ink for contrast). Theme-derived.
+ *
+ * This maps the OLD 5-value server `IngestSubmission` enum
+ * (pending/processing/completed/failed/skipped) and currently has no live
+ * consumer (`useStatusPip` in theme-context.tsx is unused) — the mobile board
+ * pips are driven by `unifiedStatusColor()` in `components/sirius.tsx`, which
+ * covers the newer 7-value local+server `UnifiedStatus` continuum. Kept
+ * value-compatible with it (`skipped` ~ `already_saved`) in case this gets
+ * wired up again. Task 13 WCAG-AA pass: `skipped` was `inkFaint`, which
+ * measures only 1.74:1 (light) / 2.38:1 (dark) against `paperRaised` — under
+ * the 3:1 WCAG 1.4.11 non-text-contrast minimum for a status-conveying dot —
+ * so it's replaced with `warning` (a muted amber, already AA text-safe in
+ * both themes) to match `unifiedStatusColor`'s `already_saved`. See the
+ * fuller contrast table in that function's doc comment.
  */
 export function submissionStatusPip(t: Theme): Record<string, string> {
   return {
@@ -332,7 +345,7 @@ export function submissionStatusPip(t: Theme): Record<string, string> {
     processing: t.color.accent,
     completed: t.color.sage,
     failed: t.color.danger,
-    skipped: t.color.inkFaint,
+    skipped: t.color.warning,
   };
 }
 

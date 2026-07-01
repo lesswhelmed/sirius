@@ -177,18 +177,49 @@ export function StatusPip({ label, color }: { label: string; color: string }) {
 }
 
 // Dot color for every stage of the mobile in-flight board's unified
-// local+server continuum (Task 12 Step 6 — see @/lib/ingest-status). Chosen to
-// echo `submissionStatusPip()`'s server-status palette (constants/theme.ts)
-// where a stage maps cleanly onto one of its keys — pending → received,
-// processing → drafting, completed → done, failed → failed, skipped →
-// already_saved — with sensible existing tokens for the two local-only
-// pre-handoff stages (queued, uploading) that have no server-status analogue.
+// local+server continuum (Task 12 Step 6 — see @/lib/ingest-status). This is
+// the function that ACTUALLY drives the visible board pips: library.tsx's
+// `InFlightRow` calls `unifiedStatusColor` directly (`submissionStatusPip()`
+// in constants/theme.ts mirrors it for the legacy 5-value server enum but has
+// no live consumer — kept in sync for when/if it's wired up again).
+//
+// Task 13 WCAG-AA pass: `inkFaint` was dropped from this palette entirely —
+// measured against the row's actual surface (`serverQueue`'s
+// `t.color.paperRaised`, library.tsx) it comes in at only 1.74:1 (light) /
+// 2.38:1 (dark), well under the 3:1 WCAG 1.4.11 non-text-contrast minimum for
+// a dot that itself conveys status. (`inkFaint` is still fine for its
+// documented decorative-only uses elsewhere, e.g. sheet handles — it was
+// simply never AA-safe as a status *signal*.) That also fixed the original
+// `queued`/`already_saved` collision (both were `inkFaint` — indistinguishable
+// by color). `already_saved` now gets its own hue via the existing `warning`
+// token (a muted amber already present in the token set, already verified as
+// AA text-contrast-safe in both themes — see constants/theme.ts's ACCESSIBILITY
+// CONTRACT note — so it clears the lower 3:1 non-text bar easily) rather than
+// adding a new token, since `warning` already IS the "distinct muted amber"
+// the plan called for. `uploading`/`received` intentionally still share
+// `inkSubtle`: they're adjacent, sequential, transient pre-drafting stages,
+// and `uploading` alone additionally renders the live `ProgressRow` bar, so
+// the pair stays distinguishable without a 7th hue.
+//
+// Contrast ratios (dot vs `paperRaised` surface, WCAG 1.4.11 non-text ≥3:1):
+//   queued        inkSubtle  light 5.02:1 / dark 4.46:1
+//   uploading     inkSubtle  light 5.02:1 / dark 4.46:1
+//   received      inkSubtle  light 5.02:1 / dark 4.46:1
+//   drafting      accent     light 6.29:1 / dark 5.15:1
+//   done          sage       light 4.80:1 / dark 6.30:1
+//   failed        danger     light 5.56:1 / dark 5.42:1
+//   already_saved warning    light 4.27:1 / dark 7.32:1
+// Adjacent label text (StatusPip's `pipLabel`, always `t.color.inkMuted`, WCAG
+// 1.4.3 text ≥4.5:1) vs the same surface: light 6.02:1 / dark 7.10:1 — passes
+// for every status since the label color doesn't vary by status.
+// (paperRaised: light #eadfc6, dark #1b2230 — see constants/theme.ts.)
+//
 // Colour is never the only signal: StatusPip above always renders the text
-// label alongside the dot. Task 13 owns final WCAG-AA tuning of these tokens.
+// label alongside the dot.
 export function unifiedStatusColor(t: Theme, status: UnifiedStatus): string {
   switch (status) {
     case "queued":
-      return t.color.inkFaint;
+      return t.color.inkSubtle;
     case "uploading":
       return t.color.inkSubtle;
     case "received":
@@ -200,7 +231,7 @@ export function unifiedStatusColor(t: Theme, status: UnifiedStatus): string {
     case "failed":
       return t.color.danger;
     case "already_saved":
-      return t.color.inkFaint;
+      return t.color.warning;
     default:
       return t.color.inkMuted;
   }
