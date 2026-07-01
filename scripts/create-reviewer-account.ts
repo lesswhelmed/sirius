@@ -594,6 +594,17 @@ async function ensureFriendUser(
   };
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Better Auth applies a STRICTER built-in rate limit to auth paths like
+// /sign-in/email (a few requests per ~10s window) than the global 100/60s, and
+// it's enabled in production only. Seeding N friends means 1 reviewer sign-in +
+// N friend sign-ins in quick succession, which trips it against prod. So we
+// back off and retry on 429, honoring the server's Retry-After / X-Retry-After
+// (seconds) when present. Local dev has rate limiting off, so this is a no-op there.
+const SIGN_IN_MAX_ATTEMPTS = 6;
+const SIGN_IN_DEFAULT_BACKOFF_MS = 12_000;
+
 // Sign in over HTTP and return a Cookie header carrying the session. Origin is
 // set to the web base so better-auth's trusted-origin check passes (the default
 // http://localhost:3000 is a dev-trusted origin; pass --web-url for prod).
@@ -602,22 +613,42 @@ async function httpSignIn(
   email: string,
   password: string,
 ): Promise<string> {
-  const res = await fetch(`${webUrl}/api/auth/sign-in/email`, {
-    method: "POST",
-    headers: { "content-type": "application/json", origin: webUrl },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    throw new Error(
-      `sign-in failed for ${email}: ${res.status} ${(await res.text()).slice(0, 200)}`,
-    );
+  for (let attempt = 1; attempt <= SIGN_IN_MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(`${webUrl}/api/auth/sign-in/email`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: webUrl },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (res.status === 429 && attempt < SIGN_IN_MAX_ATTEMPTS) {
+      const retryHeader =
+        res.headers.get("x-retry-after") ?? res.headers.get("retry-after");
+      const retrySec = retryHeader ? Number.parseInt(retryHeader, 10) : NaN;
+      const waitMs = Number.isFinite(retrySec)
+        ? retrySec * 1000 + 1000
+        : SIGN_IN_DEFAULT_BACKOFF_MS;
+      console.log(
+        `    …rate-limited signing in ${email}; waiting ${Math.ceil(waitMs / 1000)}s (attempt ${attempt}/${SIGN_IN_MAX_ATTEMPTS - 1})`,
+      );
+      await sleep(waitMs);
+      continue;
+    }
+
+    if (!res.ok) {
+      throw new Error(
+        `sign-in failed for ${email}: ${res.status} ${(await res.text()).slice(0, 200)}`,
+      );
+    }
+    const setCookies = res.headers.getSetCookie();
+    if (setCookies.length === 0) {
+      throw new Error(`sign-in for ${email} returned no Set-Cookie`);
+    }
+    // Keep just the name=value pair of each cookie for the request Cookie header.
+    return setCookies.map((c) => c.split(";")[0]).join("; ");
   }
-  const setCookies = res.headers.getSetCookie();
-  if (setCookies.length === 0) {
-    throw new Error(`sign-in for ${email} returned no Set-Cookie`);
-  }
-  // Keep just the name=value pair of each cookie for the request Cookie header.
-  return setCookies.map((c) => c.split(";")[0]).join("; ");
+  throw new Error(
+    `sign-in for ${email} still rate-limited after ${SIGN_IN_MAX_ATTEMPTS} attempts`,
+  );
 }
 
 // POST the real "send friend request" endpoint. 201 = sent; 409 = already
