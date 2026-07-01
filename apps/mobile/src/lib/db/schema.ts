@@ -35,7 +35,14 @@ export type SyncState =
 export type Transport = "ingest" | "ingest-image" | "ingest-file";
 
 // pending_submissions.status
-export type PendingStatus = "queued" | "in_flight" | "failed";
+// "sent" = bytes accepted by the server, awaiting the /api/app/queue handoff row.
+// "deduped" = server reported an existing post ("Already saved").
+export type PendingStatus =
+  | "queued"
+  | "in_flight"
+  | "sent"
+  | "failed"
+  | "deduped";
 
 export type PostImage = { url: string; alt?: string };
 
@@ -151,6 +158,15 @@ export const pendingSubmissions = sqliteTable(
     lastError: text("last_error"),
     nextAttemptAt: integer("next_attempt_at", { mode: "timestamp_ms" }), // backoff gate
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+
+    // Upload progress, surfaced by the optimistic-ingestion UI while a row is
+    // "in_flight". progressPct is 0-100; progressBytes/progressTotal are the
+    // raw byte counters (image/file uploads only); phase is a short label
+    // ("uploading" | "processing" | ...) for rows without byte-level progress.
+    progressPct: integer("progress_pct").notNull().default(0),
+    progressBytes: integer("progress_bytes"),
+    progressTotal: integer("progress_total"),
+    phase: text("phase"),
   },
   (t) => [
     index("pending_local_id_idx").on(t.localId),

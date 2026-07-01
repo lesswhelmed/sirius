@@ -153,6 +153,10 @@ async function enqueueBinary(input: EnqueueBinaryInput): Promise<PendingRow> {
     lastError: null,
     nextAttemptAt: null,
     createdAt: new Date(),
+    progressPct: 0,
+    progressBytes: null,
+    progressTotal: null,
+    phase: null,
   };
   await db.insert(pendingSubmissions).values(row);
   return row;
