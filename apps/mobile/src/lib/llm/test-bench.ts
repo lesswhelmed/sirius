@@ -17,6 +17,11 @@ import { posts as postsTable } from "@/lib/db/schema";
 import type { ScoredPost } from "@repo/research-agent";
 
 import { askMyPosts, type AskPhase } from "@/lib/research/ask";
+import {
+  apiChatStream,
+  ChatStreamError,
+  type ChatSourceDTO,
+} from "@/lib/research/chat-stream";
 
 import { generateText, streamText, tool } from "ai";
 import { z } from "zod";
@@ -71,6 +76,87 @@ export type FixtureResult = {
   draft: DraftEnvelope | null;
   checks: DraftCheck[];
 };
+
+// The LIVE server chat (the /llm backend post-migration). Unlike every other
+// bench here it needs NO on-device model — just an authenticated session + a
+// connection. It exercises the whole online path end-to-end: apiChatStream →
+// POST /api/app/chat → Gemini Flash tool loop (searchCorpus + get_post) →
+// streamed answer + cited sources.
+export const SERVER_CHAT_FIXTURE = {
+  id: "serverchat",
+  label: "Server chat (Gemini Flash · online)",
+  question:
+    "Based on my posts, what have I been writing about lately? Answer in one or two sentences.",
+} as const;
+
+// Fires the canned question at the real server and asserts a non-empty answer
+// streamed back with no transport error. Sources are informational (a question
+// may legitimately match no posts). The full answer + a structured line print to
+// Metro ([llm-test] serverchat …) so an agent/host script can assert on it too.
+export async function runServerChatTest(): Promise<FixtureResult> {
+  const start = Date.now();
+  const checks: DraftCheck[] = [];
+  let answer = "";
+  let sources: ChatSourceDTO[] = [];
+  let transportError: string | null = null;
+  try {
+    await apiChatStream({
+      messages: [{ role: "user", content: SERVER_CHAT_FIXTURE.question }],
+      onDelta: (delta) => {
+        answer += delta;
+      },
+      onSources: (s) => {
+        sources = s;
+      },
+    });
+  } catch (e) {
+    transportError =
+      e instanceof ChatStreamError || e instanceof Error
+        ? e.message
+        : String(e);
+  }
+  const trimmed = answer.trim();
+  checks.push({
+    name: "no-transport-error",
+    pass: transportError === null,
+    detail: transportError ?? "streamed to completion (server reachable + authed)",
+  });
+  checks.push({
+    name: "answer-streamed",
+    pass: trimmed.length > 0,
+    detail: trimmed.length > 0 ? `${trimmed.length} chars` : "empty answer",
+  });
+  checks.push({
+    name: "answer-preview",
+    pass: trimmed.length > 0,
+    detail: trimmed.slice(0, 180) || "(none)",
+  });
+  checks.push({
+    name: "sources (informational)",
+    pass: true,
+    detail:
+      sources.length > 0
+        ? `${sources.length}: ${sources
+            .slice(0, 3)
+            .map((s) => s.title)
+            .join(", ")}`
+        : "0 (may be fine — no matching posts)",
+  });
+  const ok = transportError === null && trimmed.length > 0;
+  const ms = Date.now() - start;
+  console.log(
+    `[llm-test] ${JSON.stringify({
+      id: SERVER_CHAT_FIXTURE.id,
+      ok,
+      ms,
+      chars: trimmed.length,
+      sources: sources.length,
+      error: transportError,
+    })}`,
+  );
+  console.log(`[llm-test] serverchat answer: ${trimmed.slice(0, 400)}`);
+  return { id: SERVER_CHAT_FIXTURE.id, ok, ms, draft: null, checks };
+}
 
 // Hyphen-separated lowercase groups. Unicode-aware (\p{Ll}/\p{N}) so accented
 // lowercase tags like "café" pass — the wire schema accepts them and the worker

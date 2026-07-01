@@ -42,9 +42,11 @@ import {
   runAskFlowTest,
   runDraftFixture,
   runGenDiagnostic,
+  runServerChatTest,
   runToolProbe,
   runTranscriptDraft,
   runUrlDraft,
+  SERVER_CHAT_FIXTURE,
   URL_EXTRACT_FIXTURE,
 } from "@/lib/llm/test-bench";
 import {
@@ -60,15 +62,17 @@ const TOOL_PROBE_FIXTURE = {
 
 export default function LlmTestScreen() {
   const styles = useThemedStyles(makeStyles);
-  if (!__DEV__ || !ON_DEVICE_AI_ENABLED) {
+  if (!__DEV__) {
     return (
       <Screen style={styles.centered}>
         <Text style={styles.dim}>Dev builds only.</Text>
       </Screen>
     );
   }
-  // Hook rules are satisfied: __DEV__ and the on-device flag are both constant
-  // for the life of the bundle.
+  // Reachable in any dev build (NOT gated on ON_DEVICE_AI_ENABLED): the server
+  // chat bench below is online-only and needs no local model. The on-device
+  // draft/ask cards self-gate on model readiness. __DEV__ is constant for the
+  // life of the bundle, so the early return keeps hook order stable.
   return <Bench />;
 }
 
@@ -120,6 +124,19 @@ function Bench() {
     try {
       const result = await runAskFlowTest();
       setResults((prev) => ({ ...prev, [ASK_FLOW_FIXTURE.id]: result }));
+    } finally {
+      setRunningId(null);
+    }
+  }
+
+  async function runServerChat() {
+    if (runningId) {
+      return;
+    }
+    setRunningId(SERVER_CHAT_FIXTURE.id);
+    try {
+      const result = await runServerChatTest();
+      setResults((prev) => ({ ...prev, [SERVER_CHAT_FIXTURE.id]: result }));
     } finally {
       setRunningId(null);
     }
@@ -234,6 +251,13 @@ function Bench() {
       const t = setTimeout(() => void runAnswerQuality(), 0);
       return () => clearTimeout(t);
     }
+    // "serverchat" is online-only (no local model) — never wait on the
+    // canDraftOnDevice `ready` gate the on-device fixtures below need.
+    if (run === "serverchat") {
+      autoran.current = true;
+      const t = setTimeout(() => void runServerChat(), 0);
+      return () => clearTimeout(t);
+    }
     if (ready !== true) {
       return;
     }
@@ -260,6 +284,67 @@ function Bench() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.list}>
+        <MetaText style={styles.eyebrow}>
+          Server chat (online · Gemini Flash)
+        </MetaText>
+        <Text style={styles.dim}>
+          The LIVE /llm backend — no local model, just sign-in + a connection.
+          Fires a canned question at POST /api/app/chat and shows the streamed
+          answer + sources. Deep link: siriusapp://llm-test?run=serverchat
+        </Text>
+        <PrimaryButton
+          label={
+            runningId === SERVER_CHAT_FIXTURE.id
+              ? "Asking server…"
+              : "Run server chat"
+          }
+          onPress={() => void runServerChat()}
+          disabled={Boolean(runningId)}
+        />
+        <Pressable style={styles.card} onLongPress={() => void runServerChat()}>
+          <View style={styles.cardHeader}>
+            <StatusPip
+              label={
+                runningId === SERVER_CHAT_FIXTURE.id
+                  ? "running"
+                  : results[SERVER_CHAT_FIXTURE.id]
+                    ? results[SERVER_CHAT_FIXTURE.id]!.ok
+                      ? "pass"
+                      : "fail"
+                    : "idle"
+              }
+              color={
+                runningId === SERVER_CHAT_FIXTURE.id
+                  ? t.color.accent
+                  : results[SERVER_CHAT_FIXTURE.id]
+                    ? results[SERVER_CHAT_FIXTURE.id]!.ok
+                      ? t.color.success
+                      : t.color.danger
+                    : t.color.inkSubtle
+              }
+            />
+            <Text style={styles.cardTitle}>{SERVER_CHAT_FIXTURE.label}</Text>
+            {results[SERVER_CHAT_FIXTURE.id] ? (
+              <Text style={styles.dim}>
+                {(results[SERVER_CHAT_FIXTURE.id]!.ms / 1000).toFixed(1)}s
+              </Text>
+            ) : null}
+          </View>
+          {results[SERVER_CHAT_FIXTURE.id]?.checks.map((check) => (
+            <Text
+              key={check.name}
+              style={check.pass ? styles.checkPass : styles.checkFail}
+            >
+              {check.pass ? "✓" : "✗"} {check.name} — {check.detail}
+            </Text>
+          ))}
+        </Pressable>
+        {!ON_DEVICE_AI_ENABLED ? (
+          <Text style={styles.dim}>
+            On-device draft/ask cards below are inert — EXPO_PUBLIC_ON_DEVICE_AI
+            is off. The server chat above works regardless.
+          </Text>
+        ) : null}
         <MetaText style={styles.eyebrow}>Draft test bench</MetaText>
         {ready === false ? (
           <Text style={styles.warn}>
