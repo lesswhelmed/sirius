@@ -20,6 +20,7 @@
 		"mobile:build:dev:android": "bun --cwd=apps/mobile run build:dev:android",
 		"mobile:submit:ios": "bun --cwd=apps/mobile run submit:prod:ios",
 		"mobile:submit:android": "bun --cwd=apps/mobile run submit:prod:android",
+		"mobile:install:android": "bash .claude/skills/android-device-deploy/scripts/install-android-prod.sh",
 		"dev": "bash scripts/dev.sh",
 		"dev:stack": "turbo run dev",
 		"dev:proxy": "bash scripts/setup-dev-proxy.sh",
