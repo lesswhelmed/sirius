@@ -9,7 +9,7 @@
 
 - **Owner:** Sirius team
 - **Created:** 2026-07-01
-- **Last validated:** 2026-07-01 (post-migration) — Tasks 1-5 LANDED (4c9b797, d19024e, 7e07732, 9a457bf, e5dc196); anchors A8/A9/A10 now PRESENT and A12 flipped (askMyPosts→apiChatStream) as EXPECTED. Full §0/§5/§6 reconcile = Task 6 (in progress, do not treat as unexpected drift).
+- **Last validated:** 2026-07-01 (post-migration, RECONCILED) — server-chat v1 SHIPPED (Tasks 1–6, commits 4c9b797, d19024e, 7e07732, 9a457bf, e5dc196 + this doc). All 15 anchors now reflect the live state (A1–A7, A11 on-device/parked+infra; A8–A10, A12–A15 the shipped server chat). Steady state: future ticks should find everything matching — just bump this line. USER-PENDING: live curl `/api/app/chat` + `/llm` sim check.
 - **Related docs:** `docs/HANDOFF-on-device-ai.md`, `docs/search-ranking.md`,
   `docs/friends-feed.md`, `packages/research-agent/`, `apps/mcp/`
 
