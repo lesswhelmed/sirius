@@ -45,11 +45,18 @@ import {
 import { type ServerRowLite, type UnifiedView, unifyStatus } from "@/lib/ingest-status";
 import { openLocalPost, openPost, pushOnce } from "@/lib/nav";
 import { SymbolView } from "expo-symbols";
-import { discardSubmission, requeueSubmission } from "@/lib/outbox";
+import {
+  discardSubmission,
+  enqueueOutbox,
+  type OutboxBody,
+  reconcileSentRows,
+  requeueSubmission,
+} from "@/lib/outbox";
 import { confirmAndDeletePost } from "@/lib/post-delete";
 import { coarseMilestone } from "@/lib/progress-throttle";
 import { kickSync } from "@/lib/sync/engine";
 import { reconcileRejectedSubmissions } from "@/lib/sync/rejected";
+import { deleteLocalDraft } from "@/lib/sync/writes";
 import { subscribe } from "@/lib/upload-progress";
 
 type QueuePage = { items: IngestSubmission[]; nextCursor: string | null };
@@ -186,11 +193,12 @@ export default function LibraryScreen() {
   // merged per-item through `unifyStatus` (Task 12a):
   //   1. Server queue — submissions the worker is drafting/has failed. Polled.
   //   2. Local offline outbox — captures on this device, incl. ones already
-  //      "sent"/"deduped" (Task 12b's reconcile hasn't landed yet, so a row
-  //      that has since synced can transiently linger here alongside its
-  //      server counterpart — acceptable per the brief, cleaned up in 12b).
-  // Completed+matched items still show a final "Done" beat here before 12b's
-  // reconcile removes them; they also already appear as synced posts below.
+  //      "sent"/"deduped". A "sent" row lingers alongside its server
+  //      counterpart (a transient duplicate "Done" beat) until the reconcile
+  //      effect below observes the matching server queue row and drops it.
+  // Completed+matched items still show one final "Done" beat here before the
+  // reconcile below removes the local row; they also already appear as synced
+  // posts below.
   const queryClient = useQueryClient();
   const { data: queueData } = useQuery({
     queryKey: ["queue"],
@@ -205,6 +213,20 @@ export default function LibraryScreen() {
     if (!queueData?.items) return;
     void reconcileRejectedSubmissions(queueData.items).catch((err) =>
       console.warn("[sync] rejected reconcile failed", err),
+    );
+  }, [queueData]);
+  // Drive the "sent" row cleanup off the query's DATA, not react-query v5's
+  // (removed) onSuccess callback. Once a "sent" local row's serverSubmissionId
+  // shows up in a fresh poll, its bytes are confirmed server-side (the worker
+  // has claimed/is drafting it), so the local row — and its transient duplicate
+  // "Done" board entry — can go; `reconcileSentRows` handles the staged-copy +
+  // progress cleanup. `sweepStuckSentRows` already runs inside `flushOutbox`
+  // (a stale-cookie 401 self-heals after its TTL), so it isn't repeated here.
+  useEffect(() => {
+    if (!queueData) return;
+    const ids = new Set(queueData.items.map((i) => i.id));
+    void reconcileSentRows(ids).catch((err) =>
+      console.warn("[sync] sent-row reconcile failed", err),
     );
   }, [queueData]);
   // Discard a single failed server submission via the DELETE endpoint, then
@@ -235,9 +257,9 @@ export default function LibraryScreen() {
   }, []);
   // One row per real-world item (url/note/single-file, or a whole image batch
   // rolled up), each walking the unified local+server continuum (Task 12a,
-  // Steps 1/3/6). Step 4 (dedup Process again/Dismiss) and Step 5 (reconcile
-  // wiring) are explicitly deferred to Task 12b — duplicate local+server rows
-  // for the same submission are acceptable in the interim.
+  // Steps 1/3/6) plus Task 12b's in-board dedup controls (Step 4) — the
+  // "sent" → local-row cleanup (Step 5) lives in the reconcile effect above,
+  // not here.
   const boardItems = useMemo(() => {
     const serverById = new Map<string, IngestSubmission>();
     for (const s of queueData?.items ?? []) serverById.set(s.id, s);
@@ -251,6 +273,8 @@ export default function LibraryScreen() {
       errorText?: string;
       onRequeue?: () => void;
       onDiscard?: () => void;
+      onProcessAgain?: () => void;
+      onDismiss?: () => void;
     };
     const out: Item[] = [];
 
@@ -293,6 +317,43 @@ export default function LibraryScreen() {
           ? () => void discardSubmission(row.id)
           : serverFailed && server
             ? () => discardServer(server.id)
+            : undefined,
+        // "Already saved" (row.status === "deduped") — realistically url/note
+        // only (image/file dedup never reaches this local terminal, see
+        // markRowDeduped's callers in outbox.ts). Both controls end each
+        // deduped row exactly once: delete the old pending row FIRST so
+        // Process again never leaves two pending rows for one card.
+        onProcessAgain:
+          row.status === "deduped"
+            ? () => {
+                if (row.transport !== "ingest") {
+                  // Guard, not crash: by design a deduped row is always the
+                  // JSON ingest transport (url/note). A binary row here would
+                  // mean requestJson isn't an OutboxBody — bail rather than
+                  // enqueue garbage.
+                  console.warn(
+                    "[library] Process again skipped — deduped row isn't a url/note row",
+                    row.id,
+                  );
+                  return;
+                }
+                void discardSubmission(row.id)
+                  .then(() =>
+                    enqueueOutbox(
+                      { ...(row.requestJson as OutboxBody), force: true },
+                      row.localId,
+                    ),
+                  )
+                  .then(() => kickSync("process-again"));
+              }
+            : undefined,
+        onDismiss:
+          row.status === "deduped"
+            ? () => {
+                void discardSubmission(row.id).then(() =>
+                  deleteLocalDraft(row.localId),
+                );
+              }
             : undefined,
       });
     }
@@ -724,6 +785,8 @@ export default function LibraryScreen() {
                         errorText={item.errorText}
                         onRequeue={item.onRequeue}
                         onDiscard={item.onDiscard}
+                        onProcessAgain={item.onProcessAgain}
+                        onDismiss={item.onDismiss}
                       />
                     ))}
                   </View>
@@ -891,12 +954,13 @@ function Separator() {
   return <View style={styles.sep} />;
 }
 
-// One row of the unified "In flight" board (Task 12a, Steps 1/3/6). Always
-// renders the continuum label via StatusPip (colour + text — colour is never
-// the only signal), plus the live per-tick progress bar while uploading and
-// any Requeue/Discard controls the caller wired up. `already_saved` rows
-// (dedup) render label-only by construction — no caller passes onRequeue/
-// onDiscard for them yet; that's Task 12b's "Process again"/"Dismiss".
+// One row of the unified "In flight" board (Task 12a, Steps 1/3/6 + Task 12b
+// Step 4). Always renders the continuum label via StatusPip (colour + text —
+// colour is never the only signal), plus the live per-tick progress bar while
+// uploading and whichever action pair the caller wired up: Requeue/Discard for
+// a failed row, or Process again/Dismiss for an `already_saved` (dedup) row.
+// The two pairs are mutually exclusive per row (a row is either failed or
+// deduped, never both), so at most one pair renders.
 function InFlightRow({
   view,
   progressId,
@@ -905,6 +969,8 @@ function InFlightRow({
   errorText,
   onRequeue,
   onDiscard,
+  onProcessAgain,
+  onDismiss,
   bordered,
 }: {
   view: UnifiedView;
@@ -914,6 +980,8 @@ function InFlightRow({
   errorText?: string;
   onRequeue?: () => void;
   onDiscard?: () => void;
+  onProcessAgain?: () => void;
+  onDismiss?: () => void;
   bordered?: boolean;
 }) {
   const t = useTheme();
@@ -938,11 +1006,28 @@ function InFlightRow({
           <ProgressRow id={progressId} view={view} />
         ) : null}
       </View>
-      {onRequeue || onDiscard ? (
+      {onRequeue || onDiscard || onProcessAgain || onDismiss ? (
         <View style={styles.boardRowActions}>
           {onRequeue ? <TextLink label="Requeue →" onPress={onRequeue} /> : null}
           {onDiscard ? (
             <TextLink label="Discard" tone={t.color.inkMuted} onPress={onDiscard} />
+          ) : null}
+          {onProcessAgain ? (
+            <TextLink
+              label="Process again →"
+              onPress={onProcessAgain}
+              accessibilityLabel="Process again"
+              accessibilityHint={`Re-submits “${title}” as a fresh draft`}
+            />
+          ) : null}
+          {onDismiss ? (
+            <TextLink
+              label="Dismiss"
+              tone={t.color.inkMuted}
+              onPress={onDismiss}
+              accessibilityLabel="Dismiss"
+              accessibilityHint={`Removes “${title}” from the board — it stays saved`}
+            />
           ) : null}
         </View>
       ) : null}
