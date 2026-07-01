@@ -11,7 +11,7 @@
 import type { Post } from "@repo/db";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
@@ -29,6 +29,7 @@ import {
   useThemedStyles,
 } from "@/constants/theme-context";
 import { ApiError, apiGet, resolveMediaUrl } from "@/lib/api";
+import { openPost } from "@/lib/nav";
 
 const TYPE_LABEL: Record<string, string> = {
   CONCRETE: "Concrete",
@@ -159,7 +160,7 @@ export default function FriendCatalogScreen() {
           const imageUri = resolveMediaUrl(item.imageUrl);
           return (
             <Pressable
-              onPress={() => router.push(`/post/${item.slug}?from=Catalog`)}
+              onPress={() => openPost(item.slug, "Catalog")}
               accessibilityRole="button"
               accessibilityLabel={`${item.title} — ${TYPE_LABEL[item.type] ?? item.type}`}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}

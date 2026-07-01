@@ -11,6 +11,7 @@
 		"web": "expo start --web",
 		"lint": "expo lint",
 		"check-types": "tsc --noEmit",
+		"test": "bun test",
 		"verify:native-ai": "node ./scripts/verify-native-ai.mjs",
 		"eas-build-post-install": "bun run verify:native-ai",
 		"prebuild:clean": "expo prebuild --clean",

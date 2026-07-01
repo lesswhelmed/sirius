@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,6 +12,7 @@ import {
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiGet } from "@/lib/api";
+import { openPost } from "@/lib/nav";
 
 // Networked curated search over the viewer's corpus — the native counterpart of
 // the web /catalog CuratedSearch. Hits /api/app/search, which fuses Postgres
@@ -76,7 +76,7 @@ function SearchRow({ hit }: { hit: SearchHit }) {
   const tags = hit.tags.slice(0, 3);
   return (
     <Pressable
-      onPress={() => router.push(`/post/${hit.slug}?from=Search`)}
+      onPress={() => openPost(hit.slug, "Search")}
       accessibilityRole="button"
       accessibilityLabel={`${hit.type}: ${hit.title}`}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}

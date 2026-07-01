@@ -55,6 +55,7 @@ import {
   canTranscribeOnDevice,
   prepareTranscription,
 } from "@/lib/llm/transcribe";
+import { openPost } from "@/lib/nav";
 import { askMyPosts } from "@/lib/research/ask";
 
 type ChatMessage = {
@@ -756,7 +757,7 @@ function Sources({ posts }: { posts: ScoredPost[] }) {
         <Pressable
           key={p.serverId}
           style={styles.sourceCard}
-          onPress={() => router.push(`/post/${p.slug}?from=Chat`)}
+          onPress={() => openPost(p.slug, "Chat")}
           accessibilityRole="button"
           accessibilityLabel={`Open ${p.title}`}
         >

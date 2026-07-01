@@ -34,6 +34,7 @@ import {
 import { apiGet, resolveMediaUrl } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { type PostRow, posts } from "@/lib/db/schema";
+import { openPostEdit } from "@/lib/nav";
 import { confirmAndDeletePost } from "@/lib/post-delete";
 
 type PostDetail = Post & { tags: Tag[]; categories: Category[] };
@@ -246,7 +247,7 @@ export default function PostDetailScreen() {
             exactly like the visibility control above. */}
         {localRow ? (
           <Pressable
-            onPress={() => router.push(`/post/${slug}/edit`)}
+            onPress={() => openPostEdit(slug)}
             accessibilityRole="button"
             accessibilityLabel="Edit post"
             style={({ pressed }) => [styles.visRow, pressed && styles.visPressed]}

@@ -323,6 +323,26 @@ function RootContent() {
                       headerBackTitle: "Account",
                     }}
                   />
+                  <Stack.Screen
+                    name="groups"
+                    options={{
+                      headerShown: true,
+                      title: "Groups",
+                      // Reached from the Friends screen ("Manage groups").
+                      headerBackTitle: "Friends",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="group/[id]"
+                    options={{
+                      headerShown: true,
+                      // Screen sets the live title (group name) inline; this is
+                      // the fallback for the loading/not-found states.
+                      title: "Group",
+                      // Reached from the Groups list.
+                      headerBackTitle: "Groups",
+                    }}
+                  />
                   {/* Friend profile (/u/<handle>) + that friend's catalog
                       (/u/<handle>/catalog). Both need the native header so they
                       clear the status bar AND get a back button — they're pushed

@@ -24,6 +24,7 @@ import {
   useThemedStyles,
 } from "@/constants/theme-context";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
+import { openPost } from "@/lib/nav";
 
 const TYPE_LABEL: Record<string, string> = {
   CONCRETE: "Concrete",
@@ -125,7 +126,7 @@ export function FriendsFeedList({ header }: { header?: ReactNode }) {
         const author = item.submittedBy;
         return (
           <Pressable
-            onPress={() => router.push(`/post/${item.slug}?from=Friends`)}
+            onPress={() => openPost(item.slug, "Friends")}
             accessibilityRole="button"
             accessibilityLabel={`${item.title} — ${TYPE_LABEL[item.type] ?? item.type}`}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}

@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { asc, desc, inArray, ne } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { Image } from "expo-image";
-import { router } from "expo-router";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -38,6 +37,7 @@ import {
   posts,
   type SyncState,
 } from "@/lib/db/schema";
+import { openLocalPost, openPost } from "@/lib/nav";
 import { discardSubmission, requeueSubmission } from "@/lib/outbox";
 import { confirmAndDeletePost } from "@/lib/post-delete";
 import { kickSync } from "@/lib/sync/engine";
@@ -338,8 +338,8 @@ export default function LibraryScreen() {
     // "Catalog" rather than the "(tabs)" route-name fallback.
     const onPress = () =>
       item.slug
-        ? router.push(`/post/${item.slug}?from=Catalog`)
-        : router.push(`/post/local/${item.localId}?from=Catalog`);
+        ? openPost(item.slug, "Catalog")
+        : openLocalPost(item.localId, "Catalog");
     const rowInner = (
       <Pressable
         onPress={onPress}

@@ -37,6 +37,7 @@ import {
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiGet } from "@/lib/api";
+import { openPost } from "@/lib/nav";
 
 const QUERY_KEY = ["embedding-scene"] as const;
 
@@ -123,8 +124,8 @@ export default function TreeNodeScreen() {
     );
   }
 
-  const openPost = (slug?: string) => {
-    if (slug) router.push(`/post/${slug}`);
+  const openPostRow = (slug?: string) => {
+    if (slug) openPost(slug, "Explore");
   };
 
   return (
@@ -165,7 +166,7 @@ export default function TreeNodeScreen() {
                     key={entry.node.id}
                     entry={entry}
                     n={i + 1}
-                    onOpen={openPost}
+                    onOpen={openPostRow}
                   />
                 ))}
               </View>
@@ -178,7 +179,7 @@ export default function TreeNodeScreen() {
                 key={entry.node.id}
                 entry={entry}
                 n={i + 1}
-                onOpen={openPost}
+                onOpen={openPostRow}
               />
             ))}
           </View>

@@ -14,7 +14,6 @@ import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selecti
 import type { LinkedPost } from "@repo/embedding-scene/scene-queries";
 import { relatedPosts, subtreeIndex } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
-import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
@@ -39,6 +38,7 @@ import { Eyebrow, KindLabel, TextLink } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import { BottomTabInset } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
+import { openPost } from "@/lib/nav";
 
 // Horizontal travel (px) past which a release counts as a sibling swipe; vertical
 // past which it steps the sheet between snaps.
@@ -58,7 +58,6 @@ type SheetSnap = "collapsed" | "peek" | "expanded";
 export function MapView({ scene }: { scene: EmbeddingScene }) {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -365,11 +364,10 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                         {previewPost.slug ? (
                           <TextLink
                             label="Open →"
-                            onPress={() =>
-                              router.push(
-                                `/post/${previewPost.slug}?from=Explore`,
-                              )
-                            }
+                            onPress={() => {
+                              if (previewPost.slug)
+                                openPost(previewPost.slug, "Explore");
+                            }}
                           />
                         ) : (
                           <Text style={styles.previewNoOpen}>No page yet</Text>
@@ -457,9 +455,7 @@ export function MapView({ scene }: { scene: EmbeddingScene }) {
                       key={entry.node.id}
                       entry={entry}
                       n={i + 1}
-                      onOpen={(slug) =>
-                        slug && router.push(`/post/${slug}?from=Explore`)
-                      }
+                      onOpen={(slug) => slug && openPost(slug, "Explore")}
                     />
                   ))
                 )}

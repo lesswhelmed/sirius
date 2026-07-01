@@ -6,7 +6,7 @@
 // component is just presentation — it owns no selection logic, only the seed.
 
 import { resurfacing } from "@repo/embedding-scene/scene-queries";
-import type { EmbeddingScene, SceneNode } from "@repo/embedding-scene/types";
+import type { EmbeddingScene } from "@repo/embedding-scene/types";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -14,6 +14,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Eyebrow } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import { useThemedStyles } from "@/constants/theme-context";
+import { openPost } from "@/lib/nav";
 
 // A day-stable integer (YYYYMMDD) so the rail changes once per day and is the
 // same for every render within that day. Device-local `Date` is fine here (this
@@ -36,7 +37,9 @@ export function Rediscover({ scene }: { scene: EmbeddingScene }) {
       {spotlight ? (
         <RailCard
           eyebrow="Rediscover"
-          onPress={() => openPost(router, spotlight)}
+          onPress={() => {
+            if (spotlight.slug) openPost(spotlight.slug, "Explore");
+          }}
           accessibilityLabel={`Rediscover: ${spotlight.label}`}
         >
           <Text style={styles.headline} numberOfLines={2}>
@@ -78,13 +81,6 @@ export function Rediscover({ scene }: { scene: EmbeddingScene }) {
       ) : null}
     </View>
   );
-}
-
-function openPost(
-  router: ReturnType<typeof useRouter>,
-  post: SceneNode,
-): void {
-  if (post.slug) router.push(`/post/${post.slug}?from=Explore`);
 }
 
 function RailCard({

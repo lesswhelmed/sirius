@@ -8,7 +8,6 @@ import { SpaceScene } from "@repo/embedding-scene/react/space-scene";
 import { useSceneSelection } from "@repo/embedding-scene/react/use-scene-selection";
 import type { EmbeddingScene } from "@repo/embedding-scene/types";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
 import type { RefObject } from "react";
 import { useCallback, useRef } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -16,6 +15,7 @@ import { BackSide } from "three";
 
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
+import { openPost } from "@/lib/nav";
 
 // Share the Tree tab's scene query — SAME key + fetcher, so opening one screen
 // warms the other within staleTime (no duplicate fetch) and Tree's
@@ -95,7 +95,6 @@ function CameraRig({ target }: { target: RefObject<Orbit> }) {
 
 export default function SpaceScreen() {
   const styles = useThemedStyles(makeStyles);
-  const router = useRouter();
   const {
     data: scene,
     isLoading,
@@ -125,7 +124,7 @@ export default function SpaceScreen() {
   return (
     <LoadedSpace
       scene={scene}
-      onOpenPost={(slug) => router.push(`/post/${slug}`)}
+      onOpenPost={(slug) => openPost(slug, "Space")}
     />
   );
 }

@@ -9,7 +9,6 @@
 import { relatedPosts } from "@repo/embedding-scene/scene-queries";
 import type { EmbeddingScene } from "@repo/embedding-scene/types";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -17,10 +16,10 @@ import { Eyebrow } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import { useThemedStyles } from "@/constants/theme-context";
 import { apiGet } from "@/lib/api";
+import { openPost } from "@/lib/nav";
 
 export function RelatedPosts({ slug }: { slug: string }) {
   const styles = useThemedStyles(makeStyles);
-  const router = useRouter();
   // Same key + fetcher as the Explore tab and /space, so this reuses the warm
   // scene cache instead of issuing its own round-trip when one already exists.
   const { data: scene } = useQuery({
@@ -49,9 +48,7 @@ export function RelatedPosts({ slug }: { slug: string }) {
             <Pressable
               key={rp.node.id}
               onPress={() =>
-                rp.node.slug
-                  ? router.push(`/post/${rp.node.slug}?from=Related`)
-                  : undefined
+                rp.node.slug ? openPost(rp.node.slug, "Related") : undefined
               }
               disabled={!rp.node.slug}
               accessibilityRole="button"
