@@ -75,6 +75,7 @@ import {
   submitMaterials,
   type SubmitMaterialsResult,
 } from "@/lib/materials";
+import { announcePolite } from "@/lib/a11y";
 import { pushOnce } from "@/lib/nav";
 import {
   deriveTrayErrors,
@@ -113,6 +114,16 @@ export default function ComposerScreen() {
   const [items, setItems] = useState<ClassifiedItem[]>([]);
   const [registry, setRegistry] = useState<FileRegistry>(new Map());
   const [notesById, setNotesById] = useState<Map<string, string>>(new Map());
+  // File-kind cards now stage their durable outbox copy in the BACKGROUND as
+  // soon as they're added (stageAndAddAssets), not synchronously before the
+  // card appears. `stagingIds` marks a card non-submittable while its copy is
+  // in flight; `stagingErrors` holds a persistent inline message for a card
+  // whose staging permanently failed (kept in the tray, never enqueued — see
+  // isStagedPath's use in submit()). Both are cleared by removeItem.
+  const [stagingIds, setStagingIds] = useState<Set<string>>(new Set());
+  const [stagingErrors, setStagingErrors] = useState<Map<string, string>>(
+    new Map(),
+  );
 
   // Omni text field: paste/type URLs + notes. A multi-URL paste auto-splits into
   // one card per URL via classifyText (package) on commit.
@@ -213,6 +224,12 @@ export default function ComposerScreen() {
   // Derived tray error state from the SHARED validators (validateItem already
   // ran per item; deriveTrayErrors layers in-tray dedup + the §4 collapse).
   const trayErrors = useMemo(() => deriveTrayErrors(items), [items]);
+  // Submit is blocked by the shared critical-error set PLUS any card whose
+  // durable outbox copy is still staging or permanently failed to stage — same
+  // "any one bad card blocks the whole batch" semantics as trayErrors.hasCritical,
+  // just for the host-only staging concern the pure package never sees.
+  const submitBlocked =
+    trayErrors.hasCritical || stagingIds.size > 0 || stagingErrors.size > 0;
 
   // Photo cards are grouped as ONE SIGHT batch — badge only the first so the
   // group reads as a single SIGHT post even though each card is independent.
@@ -240,6 +257,18 @@ export default function ComposerScreen() {
       const asset = prev.get(id);
       if (!asset) return prev;
       void discardStagedCopy(asset.uri);
+      const copy = new Map(prev);
+      copy.delete(id);
+      return copy;
+    });
+    setStagingIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const copy = new Set(prev);
+      copy.delete(id);
+      return copy;
+    });
+    setStagingErrors((prev) => {
+      if (!prev.has(id)) return prev;
       const copy = new Map(prev);
       copy.delete(id);
       return copy;
@@ -285,35 +314,31 @@ export default function ComposerScreen() {
     }
   }
 
-  // Stage assets durably (outbox copy), register each, classify by descriptor
-  // (package), and append. One utterance summarizing the gesture.
+  // Add assets to the tray IMMEDIATELY (classify is pure/sync — no reason to
+  // make the user wait on a byte copy just to see the card), then stage each
+  // asset's durable outbox copy in the background. A card is non-submittable
+  // (`stagingIds`) until its copy resolves; on success the registry's uri is
+  // rewritten to the durable path (localFilePath = staged path). On failure
+  // the card STAYS in the tray with a persistent inline error and is never
+  // enqueued — staging at pick time (rather than retrying at submit time,
+  // once the picker's uri may already be evicted) is the data-loss fix here.
   async function stageAndAddAssets(assets: RnAsset[]) {
     if (assets.length === 0) return;
     const classified: ClassifiedItem[] = [];
-    const staged: [string, RnAsset][] = [];
-    let stageFailures = 0;
+    const originals: [string, RnAsset][] = [];
     for (const asset of assets) {
-      // Copy bytes into the durable outbox so the uri survives; rewrite the
-      // asset's uri to the durable path before registering. If the durable copy
-      // throws (disk pressure, an evicted picker uri, an aborted copy of a big
-      // video), KEEP the capture anyway with its ORIGINAL uri instead of letting
-      // the whole add reject — a dropped capture with no feedback is the bug.
-      // submit() re-stages kept items while the picker uri is still alive.
-      let durable: RnAsset;
-      try {
-        const uri = await stageBinaryCopy(asset.uri, asset.name);
-        durable = { ...asset, uri };
-      } catch {
-        durable = asset;
-        stageFailures += 1;
-      }
-      const item = classifyFile(descriptorFromAsset(durable));
-      staged.push([item.id, durable]);
+      const item = classifyFile(descriptorFromAsset(asset));
+      originals.push([item.id, asset]);
       classified.push(item);
     }
     setRegistry((prev) => {
       const copy = new Map(prev);
-      for (const [id, asset] of staged) copy.set(id, asset);
+      for (const [id, asset] of originals) copy.set(id, asset);
+      return copy;
+    });
+    setStagingIds((prev) => {
+      const copy = new Set(prev);
+      for (const [id] of originals) copy.add(id);
       return copy;
     });
     const byKind = new Map<IngestKind, number>();
@@ -323,13 +348,41 @@ export default function ComposerScreen() {
       ([k, n]) => `${n} ${pluralKind(k, n)}`,
     );
     appendItems(classified, `Added ${parts.join(" and ")}.`);
-    if (stageFailures > 0) {
-      Alert.alert(
-        "Added — securing in the background",
-        `${stageFailures} file${stageFailures === 1 ? "" : "s"} couldn't be copied to durable storage yet. ${
-          stageFailures === 1 ? "It's" : "They're"
-        } still in your tray and we'll try again when you submit.`,
-      );
+
+    for (const [id, asset] of originals) {
+      void (async () => {
+        try {
+          const stagedUri = await stageBinaryCopy(asset.uri, asset.name);
+          setRegistry((prev) => {
+            if (!prev.has(id)) return prev; // removed while staging
+            const copy = new Map(prev);
+            copy.set(id, { ...asset, uri: stagedUri });
+            return copy;
+          });
+          setStagingErrors((prev) => {
+            if (!prev.has(id)) return prev;
+            const copy = new Map(prev);
+            copy.delete(id);
+            return copy;
+          });
+        } catch {
+          setStagingErrors((prev) => {
+            const copy = new Map(prev);
+            copy.set(
+              id,
+              "Couldn't save this file yet. Remove it and try adding it again.",
+            );
+            return copy;
+          });
+        } finally {
+          setStagingIds((prev) => {
+            if (!prev.has(id)) return prev;
+            const copy = new Set(prev);
+            copy.delete(id);
+            return copy;
+          });
+        }
+      })();
     }
   }
 
@@ -659,14 +712,11 @@ export default function ComposerScreen() {
     }
   }
 
-  // Clear the tray + session pickers and route to the Catalog after a submit.
+  // Clear the tray + session pickers and route to the Catalog immediately after
+  // a submit — no blocking "Saved on this device" Alert (submitMaterials only
+  // does local/durable writes now, uploads finish in the background), just a
+  // polite screen-reader announcement so the outcome is still communicated.
   function finishSubmit(queued: number) {
-    if (queued > 0) {
-      Alert.alert(
-        "Saved on this device",
-        `${queued} item${queued === 1 ? "" : "s"} queued — they'll finish uploading automatically when you're back online.`,
-      );
-    }
     setItems([]);
     setNotesById(new Map());
     setSubmissionNote("");
@@ -680,6 +730,11 @@ export default function ComposerScreen() {
     queryClient.invalidateQueries({ queryKey: ["queue"] });
     queryClient.invalidateQueries({ queryKey: ["posts"] });
     pushOnce("/(tabs)/library");
+    if (queued > 0) {
+      announcePolite(
+        `Capture queued, ${queued} item${queued === 1 ? "" : "s"} uploading`,
+      );
+    }
   }
 
   // Force a fresh post for items the server deduped, then finish the flow.
@@ -693,7 +748,7 @@ export default function ComposerScreen() {
   }
 
   async function submit() {
-    if (busy || items.length === 0 || trayErrors.hasCritical) return;
+    if (busy || items.length === 0 || submitBlocked) return;
     // Drafting is always server-side now, so the usage cap always applies.
     if (usage && !usage.isPro && (usage.remaining ?? 0) <= 0) {
       const becamePro = await presentPaywall();
@@ -701,24 +756,19 @@ export default function ComposerScreen() {
         queryClient.invalidateQueries({ queryKey: ["ai-usage"] });
       }
     }
-    // Best-effort: give any capture we kept with its ORIGINAL (un-staged) picker
-    // uri a durable outbox copy now, while that uri is still alive (it may be
-    // evicted later). A failure here is non-fatal — the enqueue still produces a
-    // recoverable In-flight row. Already-staged assets are skipped (no double copy).
-    const restaged = new Map(registry);
-    for (const [id, asset] of registry) {
-      if (isStagedPath(asset.uri)) continue;
-      try {
-        const uri = await stageBinaryCopy(asset.uri, asset.name);
-        restaged.set(id, { ...asset, uri });
-      } catch {
-        // Leave the original uri in place; submission stays recoverable.
-      }
-    }
-    setRegistry(restaged);
-    // Pair each Material with its source card id so a per-item failure (matched
-    // by Material reference) maps back to the exact card to keep staged.
-    const pairs = toMaterialPairs(items, restaged, notesById, submissionNote);
+    // Every file-kind card's bytes were already staged durably at pick time
+    // (stageAndAddAssets) — submitBlocked keeps Process disabled while any card
+    // is still staging or failed to stage, so every registry entry reaching
+    // here is expected to be an outbox copy already. Pair each Material with
+    // its source card id so a per-item failure (matched by Material reference)
+    // maps back to the exact card to keep staged; the isStagedPath filter is a
+    // defensive backstop so a non-durable uri can never be enqueued.
+    const pairs = toMaterialPairs(
+      items,
+      registry,
+      notesById,
+      submissionNote,
+    ).filter((p) => !("uri" in p.material) || isStagedPath(p.material.uri));
     const result = await runSubmit(
       pairs.map((p) => p.material),
       false,
@@ -736,29 +786,10 @@ export default function ComposerScreen() {
       return;
     }
 
-    // The server already had some (or all) of these — content-hash dedup created
-    // nothing new, so they aren't queued. Offer a forced re-process rather than
-    // silently navigating away as if everything went through.
-    if (result.deduped.length > 0) {
-      const dupes = result.deduped;
-      const n = dupes.length;
-      Alert.alert(
-        "Already in your catalog",
-        `${n === 1 ? "1 item was" : `${n} items were`} already shared, so ${
-          n === 1 ? "it wasn't" : "they weren't"
-        } queued again. Process again to create a fresh post?`,
-        [
-          { text: "Process again", onPress: () => void forceReprocess(dupes) },
-          {
-            text: "Skip",
-            style: "cancel",
-            onPress: () => finishSubmit(result.queued),
-          },
-        ],
-      );
-      return;
-    }
-
+    // The server already had some (or all) of these — content-hash dedup
+    // created nothing new, so they aren't queued. No blocking Alert here
+    // anymore; the dedup/"Process again" state is surfaced in-board (Task 12)
+    // via forceReprocess, which stays the handler that control calls.
     finishSubmit(result.queued);
   }
 
@@ -925,7 +956,7 @@ export default function ComposerScreen() {
               setItemsSheetOpen(false);
               setReviewStep(1);
             }}
-            sendDisabled={trayErrors.hasCritical}
+            sendDisabled={submitBlocked}
           />
         ) : null}
       </KeyboardAvoidingView>
@@ -1130,22 +1161,44 @@ export default function ComposerScreen() {
                   </View>
                 </GlassSurface>
               ) : (
-                <SmartCard
-                  key={item.id}
-                  item={item}
-                  errors={trayErrors.byId.get(item.id) ?? []}
-                  collapsedCodes={trayErrors.collapsedCodes}
-                  thumbUri={
-                    item.kind === "image"
-                      ? registry.get(item.id)?.uri
-                      : undefined
-                  }
-                  sightBadge={item.kind === "image" && item.id === firstImageId}
-                  onEdit={() => openEdit(item.id)}
-                  onOverride={(to) => onOverride(item.id, to)}
-                  onRemove={() => removeItem(item.id)}
-                  disabled={busy}
-                />
+                <View key={item.id}>
+                  <SmartCard
+                    item={item}
+                    errors={trayErrors.byId.get(item.id) ?? []}
+                    collapsedCodes={trayErrors.collapsedCodes}
+                    thumbUri={
+                      item.kind === "image"
+                        ? registry.get(item.id)?.uri
+                        : undefined
+                    }
+                    sightBadge={
+                      item.kind === "image" && item.id === firstImageId
+                    }
+                    onEdit={() => openEdit(item.id)}
+                    onOverride={(to) => onOverride(item.id, to)}
+                    onRemove={() => removeItem(item.id)}
+                    disabled={busy}
+                  />
+                  {/* Host-only staging state (outbox copy, not tracked by the
+                      shared package's InlineError union) — a distinct row so
+                      it never gets miscounted into the §4 error collapse. */}
+                  {stagingIds.has(item.id) ? (
+                    <Text
+                      style={styles.stagingHint}
+                      accessibilityRole="alert"
+                      accessibilityLabel="Saving to your device"
+                    >
+                      Saving…
+                    </Text>
+                  ) : stagingErrors.has(item.id) ? (
+                    <Text
+                      style={styles.stagingError}
+                      accessibilityRole="alert"
+                    >
+                      {stagingErrors.get(item.id)}
+                    </Text>
+                  ) : null}
+                </View>
               ),
             )}
           </View>
@@ -1515,7 +1568,7 @@ export default function ComposerScreen() {
                   }
                   onPress={submit}
                   busy={busy}
-                  disabled={trayErrors.hasCritical}
+                  disabled={submitBlocked}
                   style={styles.submitButton}
                 />
               </>
@@ -2087,6 +2140,24 @@ function makeStyles(t: Theme) {
 
     // Tray
     trayList: { gap: t.space.sm },
+    // Host-only staging status/error rows, rendered directly under a SmartCard
+    // (not routed through the shared InlineError union — see stageAndAddAssets).
+    stagingHint: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 0.3,
+      color: t.color.inkMuted,
+      marginTop: 2,
+      marginLeft: t.space.sm,
+    },
+    stagingError: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 0.3,
+      color: t.color.errorText,
+      marginTop: 2,
+      marginLeft: t.space.sm,
+    },
     trayEditRow: {
       gap: t.space.sm,
       padding: t.space.md,
