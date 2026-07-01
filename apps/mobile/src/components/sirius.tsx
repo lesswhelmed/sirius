@@ -201,8 +201,15 @@ export function StatusPip({ label, color }: { label: string; color: string }) {
 // and `uploading` alone additionally renders the live `ProgressRow` bar, so
 // the pair stays distinguishable without a 7th hue.
 //
+// Review-fix: `queued` had been folded into that same `inkSubtle` bucket,
+// making it a 3-way collision with `uploading`/`received` (the binding
+// constraint is no MORE than a 2-way share, and only for that
+// progress-bar-differentiated pair). Moved `queued` to the existing `steel`
+// token (a cool blue, already in both palettes, visually distinct from every
+// other status hue in this switch) instead of adding a new token.
+//
 // Contrast ratios (dot vs `paperRaised` surface, WCAG 1.4.11 non-text ≥3:1):
-//   queued        inkSubtle  light 5.02:1 / dark 4.46:1
+//   queued        steel      light 5.61:1 / dark 5.48:1
 //   uploading     inkSubtle  light 5.02:1 / dark 4.46:1
 //   received      inkSubtle  light 5.02:1 / dark 4.46:1
 //   drafting      accent     light 6.29:1 / dark 5.15:1
@@ -219,7 +226,7 @@ export function StatusPip({ label, color }: { label: string; color: string }) {
 export function unifiedStatusColor(t: Theme, status: UnifiedStatus): string {
   switch (status) {
     case "queued":
-      return t.color.inkSubtle;
+      return t.color.steel;
     case "uploading":
       return t.color.inkSubtle;
     case "received":
