@@ -1,4 +1,7 @@
-import { FileSystemUploadType, uploadAsync } from "expo-file-system/legacy";
+import {
+  createUploadTask,
+  FileSystemUploadType,
+} from "expo-file-system/legacy";
 
 import { authBaseURL, authClient, getSession, signOut } from "./auth-client";
 import { clearAuthStorage, inspectStoredCookie } from "./auth-recovery";
@@ -353,14 +356,18 @@ export type UploadFileOptions = {
 };
 
 // Uploads a single local file as multipart/form-data via expo-file-system's
-// uploadAsync. This replaces the fragile fetch + RN FormData path: uploadAsync
-// reliably sets the multipart boundary, streams large files (video/audio), and
-// lets us attach the session cookie + metadata explicitly. The server's
-// parseMultipartImage path reads `fieldName` + `parameters` form fields.
+// createUploadTask. This replaces the fragile fetch + RN FormData path:
+// createUploadTask reliably sets the multipart boundary, streams large files
+// (video/audio), and lets us attach the session cookie + metadata explicitly.
+// The server's parseMultipartImage path reads `fieldName` + `parameters` form
+// fields. Unlike the older uploadAsync one-shot call, createUploadTask's
+// callback fires per tick with byte counters, so callers can surface LIVE
+// upload progress (e.g. the outbox's in-flight capture card).
 export async function uploadFile<T>(
   path: string,
   fileUri: string,
   { fieldName, mimeType, parameters }: UploadFileOptions,
+  onProgress?: (p: { pct: number; sent: number; total: number }) => void,
 ): Promise<T> {
   return runWithAuthRetry(async () => {
     // Rebuild headers each attempt so a refreshed cookie is picked up on retry.
@@ -369,14 +376,31 @@ export async function uploadFile<T>(
     if (cookie) {
       headers.Cookie = cookie;
     }
-    const result = await uploadAsync(toUrl(path), fileUri, {
-      httpMethod: "POST",
-      uploadType: FileSystemUploadType.MULTIPART,
-      fieldName,
-      mimeType,
-      parameters,
-      headers,
-    });
+    const task = createUploadTask(
+      toUrl(path),
+      fileUri,
+      {
+        httpMethod: "POST",
+        uploadType: FileSystemUploadType.MULTIPART,
+        fieldName,
+        mimeType,
+        parameters,
+        headers,
+      },
+      (data) => {
+        const total = data.totalBytesExpectedToSend;
+        const sent = data.totalBytesSent;
+        const pct = total > 0 ? Math.round((100 * sent) / total) : 0;
+        onProgress?.({ pct, sent, total });
+      },
+    );
+    const result = await task.uploadAsync();
+    // createUploadTask's uploadAsync() types the result as possibly
+    // undefined/null (the task-cancellation case) — we never call
+    // task.cancelAsync(), but strict mode still requires the guard.
+    if (!result) {
+      throw new Error("upload produced no response (task cancelled?)");
+    }
     return parseUploadResult<T>(result.status, result.body);
   });
 }
