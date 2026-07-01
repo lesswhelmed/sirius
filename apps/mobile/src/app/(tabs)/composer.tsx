@@ -124,6 +124,14 @@ export default function ComposerScreen() {
   const [stagingErrors, setStagingErrors] = useState<Map<string, string>>(
     new Map(),
   );
+  // Ids removeItem has evicted, so a late-arriving background staging FAILURE
+  // (the catch in stageAndAddAssets) can tell an id was removed mid-flight —
+  // mirrors the success path's `!registry.has(id)` guard, but the catch has no
+  // state map of its own to check membership against, so removeItem populates
+  // this ref directly. Without it a removed card's failed copy would add a
+  // phantom stagingErrors entry that nothing ever clears, permanently
+  // disabling submit.
+  const removedIdsRef = useRef<Set<string>>(new Set());
 
   // Omni text field: paste/type URLs + notes. A multi-URL paste auto-splits into
   // one card per URL via classifyText (package) on commit.
@@ -246,6 +254,7 @@ export default function ComposerScreen() {
   }
 
   function removeItem(id: string) {
+    removedIdsRef.current.add(id);
     setItems((prev) => prev.filter((i) => i.id !== id));
     setNotesById((prev) => {
       if (!prev.has(id)) return prev;
@@ -366,14 +375,16 @@ export default function ComposerScreen() {
             return copy;
           });
         } catch {
-          setStagingErrors((prev) => {
-            const copy = new Map(prev);
-            copy.set(
-              id,
-              "Couldn't save this file yet. Remove it and try adding it again.",
-            );
-            return copy;
-          });
+          if (!removedIdsRef.current.has(id)) {
+            setStagingErrors((prev) => {
+              const copy = new Map(prev);
+              copy.set(
+                id,
+                "Couldn't save this file yet. Remove it and try adding it again.",
+              );
+              return copy;
+            });
+          }
         } finally {
           setStagingIds((prev) => {
             if (!prev.has(id)) return prev;
