@@ -9,7 +9,7 @@
 
 - **Owner:** Sirius team
 - **Created:** 2026-07-01
-- **Last validated:** 2026-07-01 (post-migration, RECONCILED) — server-chat v1 SHIPPED (Tasks 1–6, commits 4c9b797, d19024e, 7e07732, 9a457bf, e5dc196 + this doc). All 15 anchors now reflect the live state (A1–A7, A11 on-device/parked+infra; A8–A10, A12–A15 the shipped server chat). Steady state: future ticks should find everything matching — just bump this line. USER-PENDING: live curl `/api/app/chat` + `/llm` sim check.
+- **Last validated:** 2026-07-01 (steady ✓×5) — all 15 anchors MATCH, no drift. Server-chat v1 shipped+hardened. USER-PENDING: curl + /llm sim.
 - **Related docs:** `docs/HANDOFF-on-device-ai.md`, `docs/search-ranking.md`,
   `docs/friends-feed.md`, `packages/research-agent/`, `apps/mcp/`
 
@@ -101,9 +101,14 @@ Expo-inlined). Master switch for on-device **drafting**. After the migration, **
 longer depends on it** (chat becomes always-online).
 
 ### 2.5 Dev bench — `apps/mobile/src/app/llm-test.tsx` + `apps/mobile/src/lib/llm/test-bench.ts`
-`__DEV__ && ON_DEVICE_AI_ENABLED`. Deep-link `siriusapp://llm-test?run=ask|answer|gen-diag|toolprobe|all`.
-Runners: `runAskFlowTest`, `runAnswerQualityTest`, `runGenDiagnostic`, `runToolProbe`,
-draft-fixture runners, iOS `AudioBench`.
+Gated **`__DEV__`** only (loosened from `__DEV__ && ON_DEVICE_AI_ENABLED` in `c10c934` so
+the online server-chat card is reachable regardless of the on-device flag; on-device cards
+self-gate on model readiness). Deep-link
+`siriusapp://llm-test?run=serverchat|ask|answer|gen-diag|toolprobe|all`.
+Runners: **`runServerChatTest`** (LIVE server chat — `apiChatStream` → `POST /api/app/chat`;
+asserts a non-empty streamed answer + logs answer/sources to Metro; needs auth+network, no
+local model — the FIRST/prominent card), `runAskFlowTest`, `runAnswerQualityTest`,
+`runGenDiagnostic`, `runToolProbe`, draft-fixture runners, iOS `AudioBench`.
 
 ---
 
@@ -220,6 +225,7 @@ exist until the migration lands (its appearance = progress, update status).
 | A13 | Server chat module | `rg -n "runChatTurn" apps/web/lib/chat/agent.ts` | `[LIVE]` present (d19024e) |
 | A14 | Mobile chat stream client | `rg -n "apiChatStream" apps/mobile/src/lib/research/chat-stream.ts` | `[LIVE]` present (9a457bf) |
 | A15 | SSE frame protocol shared | `rg -n "parseSseChunk" apps/mobile/src/lib/research/sse-parse.ts` | `[LIVE]` present (9a457bf) |
+| A16 | Server-chat dev bench card | `rg -n "runServerChatTest" apps/mobile/src/lib/llm/test-bench.ts` | `[LIVE]` present (c10c934) — deep-link `siriusapp://llm-test?run=serverchat` |
 
 **Validation loop procedure (every 4 min):** run the checks above; for each mismatch,
 note it under §6 with a timestamp and reconcile the doc. Update **Last validated** at the
