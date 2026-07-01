@@ -17,6 +17,11 @@ export type SubmitOk = {
   kind: string;
   status: string;
   deduped: boolean;
+  // Server re-queued a previously-failed row for reprocessing (mutually
+  // exclusive with `deduped`) — see apps/web/lib/ingest/submit.ts:114-146.
+  // Optional: older deploys / non-ingest responses (e.g. binary upload paths)
+  // may not set it.
+  retried?: boolean;
   batchId?: string | null;
   imageIndex?: number | null;
   totalCount?: number | null;
