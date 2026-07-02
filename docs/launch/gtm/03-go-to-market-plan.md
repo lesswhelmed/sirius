@@ -171,6 +171,8 @@ its own attribution so we know which loop actually compounds.
 | −2 | TestFlight → App Store submission (use the `ios-app-store-deploy` runbook). Build the invite/QR assets. Rehearse launch-day ops. |
 | −1 | Warm the list. Pre-write X thread + Show HN. Final QA: sign-up, capture, draft, keep, export, MCP key mint. Freeze the build. |
 
+> **The founder social drip for these weeks** — the day-by-day build-in-public posts that fill the waitlist — lives in [`05-prelaunch-social.md`](./05-prelaunch-social.md), with a posting calendar mapped to the weeks above.
+
 ### Launch week (day-by-day)
 | Day | Move |
 |---|---|

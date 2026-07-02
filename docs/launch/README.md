@@ -21,7 +21,7 @@ spine wins. Start with `brand/00-brand-strategy.md`, then read by need:
 - **Shipping marketing copy?** → `product/03-launch-copy.md` + `brand/01-messaging-framework.md`
 - **Building UI / assets?** → `brand/02-visual-identity.md` + `brand/03-naming-nomenclature.md`
 - **Pitching / fundraising?** → `product/01-one-pager.md` + `gtm/00-market-research.md` + `business/00-business-model-canvas.md`
-- **Launching?** → `gtm/03-go-to-market-plan.md` + `gtm/04-launch-announcement.md`
+- **Launching?** → `gtm/03-go-to-market-plan.md` + `gtm/04-launch-announcement.md` + `gtm/05-prelaunch-social.md`
 
 ## Index
 
@@ -41,6 +41,7 @@ spine wins. Start with `brand/00-brand-strategy.md`, then read by need:
 | [`02-positioning-and-icp.md`](gtm/02-positioning-and-icp.md) | Positioning statement, broad-prosumer strategy, three personas + JTBD |
 | [`03-go-to-market-plan.md`](gtm/03-go-to-market-plan.md) | Objectives & KPIs, funnel, channels, launch timeline, growth loops, risks |
 | [`04-launch-announcement.md`](gtm/04-launch-announcement.md) | Ready-to-ship Product Hunt / Show HN / social / email / App Store launch copy |
+| [`05-prelaunch-social.md`](gtm/05-prelaunch-social.md) | Founder-led prelaunch social drip (weeks −6→−1): the 12-post build-in-public campaign + posting calendar + GIF/preview asset map |
 
 ### `business/` — model, pricing, money
 | Doc | What it covers |
