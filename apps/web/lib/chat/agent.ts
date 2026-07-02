@@ -20,6 +20,8 @@ import {
 } from "@repo/research-agent";
 import type { ModelMessage } from "ai";
 
+import type { ChatSource } from "./ui-stream";
+
 const CHAT_MODEL_ID = "gemini-3.5-flash";
 // Enough candidates for the model to choose from without bloating the tool result.
 const SEARCH_LIMIT = 8;
@@ -46,7 +48,10 @@ export function postToFullPost(post: PostWithRelations): FullPost {
   };
 }
 
-export function buildChatDeps(viewerId: string): { deps: AskAgentDeps } {
+export function buildChatDeps(
+  viewerId: string,
+  onPostOpened?: (post: ChatSource) => void,
+): { deps: AskAgentDeps } {
   const google = createGoogleGenerativeAI({ apiKey: requireApiKey() });
   // A candidate is added here only after searchCorpus cleared it for this viewer;
   // get_post refuses any slug not in this set, so the model cannot open a post the
@@ -67,6 +72,12 @@ export function buildChatDeps(viewerId: string): { deps: AskAgentDeps } {
     if (!candidateBySlug.has(id)) return null; // not surfaced to this viewer
     const post = await findPostBySlug(id);
     if (!post) return null;
+    onPostOpened?.({
+      serverId: post.slug,
+      slug: post.slug,
+      title: post.title,
+      excerpt: post.excerpt,
+    });
     return postToFullPost(post);
   };
 
@@ -77,8 +88,9 @@ export function runChatTurn(args: {
   viewerId: string;
   messages: ModelMessage[];
   abortSignal?: AbortSignal;
+  onPostOpened?: (post: ChatSource) => void;
 }): AskAgentRun {
-  const { deps } = buildChatDeps(args.viewerId);
+  const { deps } = buildChatDeps(args.viewerId, args.onPostOpened);
   return runAskAgent({
     deps,
     messages: args.messages,
