@@ -20,12 +20,14 @@
 // The persisted record is surfaced on the NEXT launch (see <LastCrashBanner/>)
 // so a tester can read/report it even when they can't pull device logs.
 //
-// Persistence is best-effort: a fatal tears the JS thread down soon after, and
-// the only write API available is async (expo-file-system/legacy has no sync
-// write). In practice expo-updates' recovery runs for a beat before it aborts,
-// so the small write usually flushes — and render-phase errors (non-aborting)
-// always flush. We also keep the last record in a module variable as a
-// same-session fallback.
+// Persistence writes synchronously via `File.write` (expo-file-system's new
+// API) so the record hits disk BEFORE we hand control back to expo-updates'
+// ErrorRecovery — which re-throws the fatal and aborts the process moments
+// later. An async write can lose that race; the sync write closes it. We fall
+// back to the legacy async write if the sync path is unavailable, and keep the
+// last record in a module variable as a same-session fallback. (Render-phase
+// errors are non-aborting and would flush either way.)
+import { File } from "expo-file-system";
 import {
   deleteAsync,
   documentDirectory,
@@ -81,6 +83,28 @@ function safeStringify(value: unknown): string {
   }
 }
 
+// Synchronously writes the serialized record to CRASH_PATH so it survives the
+// abort that follows a fatal. Returns false (never throws) if the sync File API
+// is unavailable, so the caller can fall back to the async legacy write.
+function persistSync(payload: string): boolean {
+  try {
+    // `File.write` creates-or-overwrites; the extra create() is a guard for
+    // runtimes where a bare write on a missing file throws.
+    const file = new File(CRASH_PATH);
+    file.write(payload);
+    return true;
+  } catch {
+    try {
+      const file = new File(CRASH_PATH);
+      if (!file.exists) file.create();
+      file.write(payload);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 // Records an error: logs with a greppable tag, holds it in memory, and persists
 // it for next-launch surfacing. Never throws (a throw here would be ironic).
 export function recordCrash(
@@ -97,7 +121,12 @@ export function recordCrash(
       record.stack ?? "",
       record.componentStack ?? "",
     );
-    void writeAsStringAsync(CRASH_PATH, JSON.stringify(record)).catch(() => {});
+    // Sync write first (wins the race against the imminent abort); fall back to
+    // the async legacy write only if the sync path is unavailable.
+    const payload = JSON.stringify(record);
+    if (!persistSync(payload)) {
+      void writeAsStringAsync(CRASH_PATH, payload).catch(() => {});
+    }
   } catch {
     // Swallow — instrumentation must never make things worse.
   }

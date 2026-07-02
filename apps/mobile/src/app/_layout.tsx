@@ -1,3 +1,8 @@
+// MUST be first: arms the global JS-error + unhandled-rejection hooks before
+// any other import evaluates, so a throw during early module init is recorded
+// instead of surfacing only as expo-updates' opaque SIGABRT. See the module.
+import "@/lib/crash-capture-install";
+
 // Polyfills must load before anything that pulls in the AI SDK (`ai`).
 import "@/polyfills";
 
@@ -29,7 +34,6 @@ import {
   clearCaptureCredentials,
   syncCaptureCredentials,
 } from "@/lib/capture-credentials";
-import { installCrashCapture } from "@/lib/crash-log";
 import { runMigrations } from "@/lib/db/client";
 import { ensureLocalOwner } from "@/lib/db/owner";
 // Side-effect import: defines the background sync task at global scope so
@@ -42,11 +46,9 @@ import {
 } from "@/lib/purchases";
 import { startSync, stopSync } from "@/lib/sync/engine";
 
-// Hook the global JS error + unhandled-rejection channels at module scope,
-// BEFORE the React tree mounts, so a fatal during initial render/launch is
-// recorded. expo-updates' ErrorRecovery otherwise re-throws and aborts (SIGABRT)
-// with no trace of the original error in the native crash report.
-installCrashCapture();
+// Crash capture is armed by the first import above (`@/lib/crash-capture-install`)
+// so it precedes every other module's init — see that module for why the hook
+// can't just be called here in the body.
 
 const queryClient = new QueryClient({
   defaultOptions: {
