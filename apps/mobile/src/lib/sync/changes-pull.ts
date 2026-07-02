@@ -16,7 +16,12 @@ import { applyTombstone, reconcileUpsert } from "./reconcile";
 // index (the v2-era category retrieval ignored it). The bump resets the watermark
 // to EPOCH so every already-synced post re-pulls ONCE and back-fills its vector;
 // thereafter it's a normal incremental cursor.
-const SINCE_KEY = "posts.changes.since.v3";
+// Bumped to v4 to heal orphaned optimistic twins: the delta now carries
+// sourceSubmissionIds and reconcile sweeps any stranded "Saving…" row keyed to a
+// post's submission id(s) (Twitter/Instagram overrode sourceRecordId, so the old
+// key never matched). Resetting to EPOCH re-pulls every post ONCE so the sweep
+// clears twins already stuck on-device before this fix.
+const SINCE_KEY = "posts.changes.since.v4";
 const EPOCH = new Date(0).toISOString();
 
 async function getSince(): Promise<string> {

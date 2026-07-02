@@ -598,6 +598,13 @@ export type PostDelta = {
   tags: string[];
   categories: string[];
   sourceRecordId: string | null;
+  // The id(s) of the IngestSubmission(s) that produced this post (the worker's
+  // `resultPostId` back-relation). This is the STABLE reconcile key the device
+  // matches its optimistic row's `submissionId` against — decoupled from
+  // `sourceRecordId`, which a provider path (Twitter → tweetId, Instagram →
+  // shortcode) overrides to its native id and so cannot be relied on for the
+  // optimistic-row match. Empty for posts created without an ingest submission.
+  sourceSubmissionIds: string[];
   // Provider provenance + its structured digest, so the device can render the
   // repo chip (and any future provider badge) without re-fetching the source.
   providerId: string;
@@ -649,6 +656,10 @@ export async function listPostsChangedSince(opts: {
       embedding: {
         select: { embedding: true, modelVersion: true, dimensionality: true },
       },
+      // The originating submission(s) — the device reconciles its optimistic row
+      // by matching its stored `submissionId` against one of these ids (see
+      // PostDelta.sourceSubmissionIds).
+      sourceSubmissions: { select: { id: true } },
     },
   });
   const hasMore = rows.length > take;
@@ -672,6 +683,7 @@ export async function listPostsChangedSince(opts: {
             tags: p.tags.map((t) => t.name),
             categories: p.categories.map((c) => c.name),
             sourceRecordId: p.sourceRecordId,
+            sourceSubmissionIds: p.sourceSubmissions.map((s) => s.id),
             providerId: p.providerId,
             contentDigest: p.contentDigest,
             embedding: p.embedding?.embedding ?? null,

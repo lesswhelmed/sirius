@@ -18,6 +18,12 @@ export type PostDelta = {
   tags: string[];
   categories: string[];
   sourceRecordId: string | null;
+  // The originating IngestSubmission id(s). The reconcile match key for an
+  // optimistic row: `posts.submissionId` ∈ this set. Stable across provider
+  // paths that override `sourceRecordId` to a native id (Twitter tweetId,
+  // Instagram shortcode), which is why it — not `sourceRecordId` — is the
+  // reliable link for url/note captures. Empty for non-ingest posts.
+  sourceSubmissionIds: string[];
   // Provider provenance + structured digest (e.g. github repo stats), mirrored
   // so the catalog row can render the repo chip without re-fetching the source.
   providerId: string;

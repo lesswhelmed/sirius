@@ -4,7 +4,7 @@
 // duplicates). Shared by the delta pull and the SSE-triggered pull.
 
 import { contentHash } from "@repo/research-agent";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { randomUUID } from "expo-crypto";
 
 import { db } from "@/lib/db/client";
@@ -26,9 +26,15 @@ function normalizeImages(images: unknown): PostImage[] | null {
 // Find the local row this server post should merge into, in priority order:
 //   1. serverId  — already reconciled; this is an update.
 //   2. submissionId === sourceRecordId — FIRST reconciliation of an optimistic
-//      local draft (note/url: sourceRecordId == submission id; image batch:
-//      both are "batch:<batchId>").
-//   3. slug — defensive (e.g. a draft created on another device).
+//      local draft when sourceRecordId IS the submission id (plain url/note) or
+//      the batch key (image batch: both are "batch:<batchId>").
+//   3. submissionId ∈ sourceSubmissionIds — the reliable url/note match. A
+//      provider path (Twitter → tweetId, Instagram → shortcode) overrides the
+//      post's sourceRecordId to its native id, so key #2 misses; this matches on
+//      the originating submission id(s) instead, which the device stored as the
+//      optimistic row's submissionId. Without it the optimistic row is orphaned
+//      at "Saving…" and a duplicate synced row is inserted below.
+//   4. slug — defensive (e.g. a draft created on another device).
 async function findLocalRow(post: PostDelta): Promise<PostRow | null> {
   const [byServer] = await db
     .select()
@@ -44,6 +50,15 @@ async function findLocalRow(post: PostDelta): Promise<PostRow | null> {
       .where(eq(posts.submissionId, post.sourceRecordId))
       .limit(1);
     if (bySubmission) return bySubmission;
+  }
+
+  if (post.sourceSubmissionIds.length > 0) {
+    const [bySourceSubmission] = await db
+      .select()
+      .from(posts)
+      .where(inArray(posts.submissionId, post.sourceSubmissionIds))
+      .limit(1);
+    if (bySourceSubmission) return bySourceSubmission;
   }
 
   const [bySlug] = await db
@@ -84,6 +99,7 @@ export async function reconcileUpsert(post: PostDelta): Promise<void> {
     updatedAt: serverUpdatedAt,
   };
 
+  let targetLocalId: string;
   if (existing) {
     // Last-writer-wins: never clobber an already-synced row with an older,
     // out-of-order delivery. Optimistic (local_draft/pending) rows are always
@@ -95,18 +111,41 @@ export async function reconcileUpsert(post: PostDelta): Promise<void> {
     ) {
       return;
     }
+    targetLocalId = existing.localId;
     await db
       .update(posts)
       .set(mirrored)
       .where(eq(posts.localId, existing.localId));
   } else {
     // Brand-new post (created elsewhere, or pulled before any local draft).
+    targetLocalId = randomUUID();
     await db.insert(posts).values({
-      localId: randomUUID(),
+      localId: targetLocalId,
       submissionId: post.sourceRecordId ?? null,
       createdAt: new Date(post.createdAt),
       ...mirrored,
     });
+  }
+
+  // Self-heal any ORPHANED optimistic twin. When a provider path overrode
+  // sourceRecordId (Twitter/Instagram) an earlier pull couldn't match the
+  // optimistic row, so it inserted a duplicate synced row (matched above by
+  // serverId) and stranded the optimistic row at "Saving…" forever. Now that we
+  // know this post's true submission id(s), delete any other still-optimistic
+  // row keyed to them. (When key #3 above matched the twin directly, it IS the
+  // target row and the `ne` guard spares it — no duplicate was ever created.)
+  // Image batches are untouched: their optimistic submissionId is the batch key,
+  // never a raw submission id, so it's never in sourceSubmissionIds.
+  if (post.sourceSubmissionIds.length > 0) {
+    await db
+      .delete(posts)
+      .where(
+        and(
+          inArray(posts.submissionId, post.sourceSubmissionIds),
+          inArray(posts.syncState, ["local_draft", "pending"]),
+          ne(posts.localId, targetLocalId),
+        ),
+      );
   }
 
   // Mirror the post's retrieval vector now that the row is current.
