@@ -68,3 +68,6 @@ scripts/testing/.creds.local
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# Marketing GIF output (record-sim-gif.sh) — big binaries, regenerate on demand
+marketing-gifs/
