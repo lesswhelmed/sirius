@@ -79,11 +79,16 @@ export function searchVisibilityWhere(
 // Full-text leg: rank by ts_rank over the generated tsvector, visibility-gated
 // inline in raw SQL (the predicate mirrors searchVisibilityWhere). websearch_to_
 // tsquery gives users quote/OR/- syntax for free and never throws on bad input.
-// The friend clauses collapse to Prisma.empty when the viewer has no friends
-// (IN () is invalid SQL); includePublic toggles the PUBLIC clause the same way.
-// NOTE: never `= ANY(${array})` here — $queryRaw expands an array param into a
-// positional list (`ANY($6, $7)`), a 42601 syntax error for viewers with ≥2
-// friends. IN (${Prisma.join(...)}) is the correct form.
+//
+// EVERY interpolation below is a plain VALUE param — no Prisma.sql/Prisma.empty
+// fragments and no Prisma.join. Under the Next/Turbopack server runtime the
+// generated client's Sql class gets duplicated, the `instanceof` check inside
+// $queryRaw fails, and a composed fragment is serialized as a bare positional
+// parameter — producing `... = $3\n $4\n $5` and a Postgres 42601 "syntax error
+// at or near \"$4\"" (verified via the Postgres error log; the same code works
+// under bun, which is why the test suite alone can't catch a regression here).
+// `ANY(${array})` binds the array as ONE param ('{}' matches nothing when
+// empty); `${includePublic}` is a boolean param short-circuiting the PUBLIC arm.
 async function fullTextLeg(
   viewerId: string,
   query: string,
@@ -91,22 +96,6 @@ async function fullTextLeg(
   includePublic: boolean,
   limit: number,
 ): Promise<string[]> {
-  const publicClause = includePublic
-    ? Prisma.sql`OR (p."visibility" = 'PUBLIC' AND p."status" = 'PUBLISHED')`
-    : Prisma.empty;
-  const friendClauses =
-    friendIds.length > 0
-      ? Prisma.sql`
-        OR (p."visibility" = 'FRIENDS' AND p."status" = 'PUBLISHED'
-            AND p."submittedById" IN (${Prisma.join(friendIds)}))
-        OR (p."visibility" = 'GROUP' AND p."status" = 'PUBLISHED'
-            AND p."submittedById" IN (${Prisma.join(friendIds)})
-            AND EXISTS (
-              SELECT 1 FROM "PostShareGroup" psg
-              JOIN "ShareGroupMember" sgm ON sgm."groupId" = psg."groupId"
-              WHERE psg."postId" = p."id" AND sgm."userId" = ${viewerId}
-            ))`
-      : Prisma.empty;
   const rows = await prisma.$queryRaw<{ slug: string }[]>`
     SELECT p."slug" AS slug,
            ts_rank('{0.1,0.2,0.4,1.0}', p."searchVector", websearch_to_tsquery('english', ${query})) AS rank
@@ -114,8 +103,16 @@ async function fullTextLeg(
     WHERE p."searchVector" @@ websearch_to_tsquery('english', ${query})
       AND (
         p."submittedById" = ${viewerId}
-        ${friendClauses}
-        ${publicClause}
+        OR (p."visibility" = 'FRIENDS' AND p."status" = 'PUBLISHED'
+            AND p."submittedById" = ANY(${friendIds}))
+        OR (p."visibility" = 'GROUP' AND p."status" = 'PUBLISHED'
+            AND p."submittedById" = ANY(${friendIds})
+            AND EXISTS (
+              SELECT 1 FROM "PostShareGroup" psg
+              JOIN "ShareGroupMember" sgm ON sgm."groupId" = psg."groupId"
+              WHERE psg."postId" = p."id" AND sgm."userId" = ${viewerId}
+            ))
+        OR (${includePublic} AND p."visibility" = 'PUBLIC' AND p."status" = 'PUBLISHED')
       )
     ORDER BY rank DESC, p."createdAt" DESC
     LIMIT ${limit}
