@@ -1,5 +1,8 @@
 # record-sim-gif — live app walkthroughs → tweet-ready GIFs
 
+> Part of the marketing capture toolkit — start at **`scripts/marketing/README.md`** for
+> the full screen → GIF → App Store-preview flow, agent-device recipe, and shot list.
+
 Turn a **live interaction on the iOS Simulator** into a clean, looping GIF for
 social. Companion to `build-demo-video.sh` (which pans static screenshots into the
 `/product` hero video). This one captures real motion — Capture → draft, Ask your
