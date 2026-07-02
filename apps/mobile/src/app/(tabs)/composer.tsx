@@ -920,7 +920,11 @@ export default function ComposerScreen() {
             {/* Attachment area — Photos + Audio as two calm side-by-side tiles
                 (the primary pair), the reachable bottom band. Handlers unchanged. */}
             <Eyebrow>Add media</Eyebrow>
-            <GlassRow spacing={t.space.xl} style={styles.mediaTiles}>
+            {/* spacing=0: the tiles sit `mediaTiles.gap` (12px) apart, so any
+                merge threshold above that makes the liquid-glass renderer bridge
+                the two rounded corners into an ugly hourglass ridge. Keep it
+                below the gap so the cards stay cleanly separated. */}
+            <GlassRow spacing={0} style={styles.mediaTiles}>
               <MediaTile
                 label="Add photos"
                 sublabel="Take one or pick"
