@@ -364,6 +364,10 @@ export const chatMessages = sqliteTable(
     sourcesJson: text("sources_json", { mode: "json" }).$type<
       ScoredPost[] | null
     >(),
+    // Full UIMessage parts (AI SDK shape: text, tool-*, data-source-posts…),
+    // JSON. Null on rows written before the useChat migration — readers fall
+    // back to content + sourcesJson (see lib/chat/message-map.ts).
+    partsJson: text("parts_json", { mode: "json" }).$type<unknown[] | null>(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [

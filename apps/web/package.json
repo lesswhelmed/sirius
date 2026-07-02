@@ -29,7 +29,7 @@
 		"@repo/ingest-draft": "*",
 		"@repo/research-agent": "*",
 		"@repo/ui": "*",
-		"ai": "^6.0.182",
+		"ai": "^6.0.218",
 		"better-auth": "^1.6.20",
 		"heic-convert": "^2.1.0",
 		"next": "16.2.6",

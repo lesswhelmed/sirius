@@ -11,7 +11,7 @@
 	},
 	"dependencies": {
 		"@ai-sdk/google": "^3.0.73",
-		"ai": "^6.0.182"
+		"ai": "^6.0.218"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "*",

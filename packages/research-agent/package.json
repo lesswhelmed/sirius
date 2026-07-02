@@ -11,7 +11,7 @@
 		"check-types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"ai": "^6.0.182",
+		"ai": "^6.0.218",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {

@@ -28,7 +28,7 @@
 		"@repo/extraction": "*",
 		"@repo/github-ingest": "*",
 		"@repo/ingest-draft": "*",
-		"ai": "^6.0.182",
+		"ai": "^6.0.218",
 		"apify-client": "^2.23.3",
 		"archiver": "^7.0.1",
 		"gray-matter": "^4.0.3",
