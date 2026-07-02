@@ -129,7 +129,7 @@ _The founder-led social drip for the weeks BEFORE launch (GTM weeks −6→−1)
 | **Launch wk** | ⑫ (daily) + [`04`](./04-launch-announcement.md) | Countdown/social proof daily; launch-day thread + channels. |
 
 ## Asset inventory
-Produced (`marketing-gifs/`): `capture-share-to-catalog.gif`, `observatory-map.gif` (agent-device), `note-to-audience.gif`, `post-to-audience.gif`; App Store previews in `app-previews/` (886×1920) + `app-previews/native/` (1320×2868, 1290×2796). **Still to record:** `ask-library` (chat streaming), `search-meaning`, `on-device`. Recipe + shot list: [`scripts/marketing/README.md`](../../../scripts/marketing/README.md).
+Produced (`marketing-gifs/`): `capture-share-to-catalog.gif`, `observatory-map.gif` (agent-device), `note-to-audience.gif`, `post-to-audience.gif`, **`search-meaning.gif`** (agent-device; live "deep sea creatures" → exact/similar results, post-42601-fix); App Store previews in `app-previews/` (886×1920) + `app-previews/native/` (`post-to-audience` 1320×2868, `observatory-map` + `search-meaning` 1290×2796). **Still to record:** `ask-library` (blocked — /llm chat mid-`useChat`-refactor by GentleRiver; crashes to home on Send; capture once stable), `on-device` (parked — not a live flow). Recipe + shot list: [`scripts/marketing/README.md`](../../../scripts/marketing/README.md).
 
 ## Metrics to watch
 Waitlist signups per post (the only conversion metric that matters), demo-GIF view-through, profile-visits → follows. Kill formats that don't drive waitlist; double the ones that do. Rolls up to the GTM [funnel metrics](./03-go-to-market-plan.md#ii-metrics-north-star--funnel).
