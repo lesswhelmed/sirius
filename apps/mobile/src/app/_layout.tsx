@@ -371,10 +371,17 @@ function RootContent() {
                   <Stack.Screen
                     name="llm"
                     options={{
+                      // Presented as a modal so there are TWO obvious ways out:
+                      // native swipe-down-to-dismiss AND the headerLeft ✕ Close
+                      // button the screen supplies. Reached from the Catalog tab
+                      // ("Ask your library").
+                      presentation: "modal",
                       headerShown: true,
-                      title: "On-device AI",
-                      // Reached only from the Capture tab.
-                      headerBackTitle: "Capture",
+                      // "Personal Agent", not "On-device AI": this chat is an
+                      // ONLINE, server-grounded assistant (`/api/app/chat`) over
+                      // the user's own posts — the on-device llama.rn engine is
+                      // parked, so the old label was misleading.
+                      title: "Personal Agent",
                       // Themed header; the custom header buttons ("New"/"Chats")
                       // use the same `ink` tone so they stay legible in both
                       // light and dark.

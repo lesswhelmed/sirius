@@ -9,7 +9,7 @@ import {
   type LegendListRef,
 } from "@legendapp/list/react-native";
 import { randomUUID } from "expo-crypto";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -86,6 +86,26 @@ export default function LlmScreen() {
     <>
       <Stack.Screen
         options={{
+          // Explicit ✕ close so there is always an obvious, tappable way out
+          // (in addition to the modal's native swipe-down-to-dismiss).
+          // `router.back()` dismisses the modal, returning to the Catalog tab
+          // it was opened from (the "Ask your library" button).
+          headerLeft: () => (
+            <Pressable
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={8}
+            >
+              <SymbolView
+                name="xmark"
+                size={20}
+                weight="semibold"
+                tintColor={t.color.ink}
+                fallback={<Text style={styles.headerAction}>Close</Text>}
+              />
+            </Pressable>
+          ),
           headerRight: () => (
             <View style={styles.headerBtns}>
               {/* Icon buttons (not words) so the two actions read as distinct
