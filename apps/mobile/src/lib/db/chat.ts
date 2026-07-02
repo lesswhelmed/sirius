@@ -1,20 +1,19 @@
-// Persistence helpers for the on-device LLM chat (the `/llm` screen).
+// Persistence helpers for the `/llm` chat screen.
 //
 // These back the `chat_conversations` + `chat_messages` tables — LOCAL-ONLY
 // history so the screen restores where it was instead of resetting to empty on
 // navigation/restart. Nothing here ever talks to the server; the owner-scoped
 // wipe in owner.ts (clearLocalStore) is what isolates one account's chats from
-// another's. The UI reads these tables reactively via Drizzle's useLiveQuery —
-// these helpers are the write side + the "what to restore" read.
-import type { ScoredPost } from "@repo/research-agent";
-import { desc, eq } from "drizzle-orm";
-import { randomUUID } from "expo-crypto";
+// another's. Since the useChat migration the hook's in-memory messages are the
+// truth while a thread is mounted — these helpers are the restore read
+// (loadConversationMessages) and the write-behind mirror
+// (syncConversationMessages).
+import { asc, desc, eq } from "drizzle-orm";
 
+import { rowToUIMessage, textOf, uiMessageToRow } from "../chat/message-map";
+import type { ChatUIMessage } from "../chat/types";
 import { db } from "./client";
 import { chatConversations, chatMessages } from "./schema";
-
-export type ChatRole = "user" | "assistant";
-export type ChatMode = "ask" | "chat";
 
 // Conversation titles are derived from the first user message; keep them short
 // enough for a one-line thread-list row.
@@ -26,55 +25,67 @@ function deriveTitle(text: string): string {
   return `${trimmed.slice(0, TITLE_MAX - 1).trimEnd()}…`;
 }
 
-/**
- * Create a new (empty, untitled) conversation and return its id. The `mode`
- * column is retained at its "ask" default for back-compat with existing rows —
- * the chat is a single unified assistant now (no ask/chat toggle), so it's no
- * longer a user choice.
- */
-export async function createConversation(): Promise<string> {
-  const id = randomUUID();
-  const now = new Date();
-  await db
-    .insert(chatConversations)
-    .values({ id, title: null, mode: "ask", createdAt: now, updatedAt: now });
-  return id;
+/** All messages of a conversation, oldest first, as typed UIMessages. */
+export async function loadConversationMessages(
+  conversationId: string,
+): Promise<ChatUIMessage[]> {
+  const rows = await db
+    .select()
+    .from(chatMessages)
+    .where(eq(chatMessages.conversationId, conversationId))
+    .orderBy(asc(chatMessages.createdAt));
+  return rows.map(rowToUIMessage);
 }
 
 /**
- * Append a message to a conversation. Bumps the conversation's `updatedAt` (so
- * it sorts to the top of the thread list and is the one restored on return) and,
- * for the FIRST user message, sets the conversation title from it. Persist the
- * user message BEFORE generation starts so the question survives even if the app
- * is killed mid-stream; persist the assistant message once it completes.
+ * Write-behind persistence for a useChat thread: replace the conversation's
+ * rows with the hook's current messages. Replace-all (delete + insert) keeps
+ * regenerate/stop simple — the hook state is the truth, rows just mirror it.
+ * Creates the conversation row lazily on first write (so an untouched "new
+ * chat" never leaves an empty thread behind) and derives the title from the
+ * first user message. Row createdAt encodes array order (base + index) so the
+ * asc read restores the exact sequence.
  */
-export async function appendMessage(
+export async function syncConversationMessages(
   conversationId: string,
-  message: { role: ChatRole; content: string; sources?: ScoredPost[] | null },
+  messages: ChatUIMessage[],
 ): Promise<void> {
+  if (messages.length === 0) return;
   const now = new Date();
-  await db.insert(chatMessages).values({
-    id: randomUUID(),
-    conversationId,
-    role: message.role,
-    content: message.content,
-    sourcesJson: message.sources ?? null,
-    createdAt: now,
-  });
+  const firstUser = messages.find((m) => m.role === "user");
+  const title = firstUser ? deriveTitle(textOf(firstUser)) : null;
 
-  const update: { updatedAt: Date; title?: string } = { updatedAt: now };
-  if (message.role === "user") {
-    const [convo] = await db
-      .select({ title: chatConversations.title })
-      .from(chatConversations)
-      .where(eq(chatConversations.id, conversationId))
-      .limit(1);
-    if (convo && !convo.title) update.title = deriveTitle(message.content);
+  const [existing] = await db
+    .select({ id: chatConversations.id, title: chatConversations.title })
+    .from(chatConversations)
+    .where(eq(chatConversations.id, conversationId))
+    .limit(1);
+
+  if (!existing) {
+    await db.insert(chatConversations).values({
+      id: conversationId,
+      title,
+      mode: "ask",
+      createdAt: now,
+      updatedAt: now,
+    });
+  } else {
+    await db
+      .update(chatConversations)
+      .set({ updatedAt: now, ...(existing.title ? {} : { title }) })
+      .where(eq(chatConversations.id, conversationId));
   }
+
   await db
-    .update(chatConversations)
-    .set(update)
-    .where(eq(chatConversations.id, conversationId));
+    .delete(chatMessages)
+    .where(eq(chatMessages.conversationId, conversationId));
+  await db
+    .insert(chatMessages)
+    .values(
+      messages.map((m, i) =>
+        uiMessageToRow(m, conversationId, new Date(now.getTime() + i)),
+      ),
+    );
 }
 
 /** Delete a conversation and all its messages (manual cascade — FKs are off). */
