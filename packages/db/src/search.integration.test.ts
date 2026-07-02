@@ -9,6 +9,7 @@ import {
   truncateAll,
   userId,
 } from "../test/search-harness";
+import { prisma } from "./index";
 import { searchCorpus } from "./search";
 
 const suite = RUN_DB ? describe : describe.skip;
@@ -82,5 +83,40 @@ suite("searchCorpus integration (golden matrix)", () => {
 
     expect(new Set(paged).size).toBe(paged.length); // no dupes
     expect(paged).toEqual(fullSlugs.slice(0, paged.length)); // same prefix order
+  });
+
+  // Regression: a viewer with >= 2 friends must not crash the full-text leg.
+  // `= ANY(${array})` in prisma.$queryRaw expands the array into a positional
+  // list (`ANY($6, $7)`) → Postgres 42601 "syntax error at or near \"$7\"".
+  // The fixture viewer has exactly 1 friend, which is how the golden matrix
+  // missed it — so this test adds a second accepted friendship inline.
+  test("viewer with >=2 friends: full-text leg does not 42601 and friend posts stay visible", async () => {
+    await prisma.user.create({
+      data: {
+        id: "user-second-friend",
+        name: "Second Friend",
+        email: "second-friend@example.test",
+        emailVerified: true,
+        handle: "second-friend",
+      },
+    });
+    const [a, b] = [userId("viewer"), "user-second-friend"].sort();
+    await prisma.friendship.create({
+      data: { userAId: a, userBId: b, status: "ACCEPTED", requestedById: a, acceptedAt: new Date() },
+    });
+
+    // Crashes with 42601 before the Prisma.join fix; must resolve after.
+    const page = await searchCorpus(userId("viewer"), "zephyrium", {
+      scope: "all",
+      limit: 50,
+      embedder: throwingEmbedder,
+    });
+    const slugs = page.items.map((i) => i.slug);
+
+    // Semantics preserved: the original friend's FRIENDS/PUBLISHED post is
+    // still found, and the never-leak posts stay hidden.
+    expect(slugs).toContain("friend-friends-pub");
+    expect(slugs).not.toContain("stranger-private");
+    expect(slugs).not.toContain("friend-friends-draft");
   });
 });
