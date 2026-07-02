@@ -71,3 +71,7 @@ scripts/testing/.creds.local
 
 # Marketing GIF output (record-sim-gif.sh) — big binaries, regenerate on demand
 marketing-gifs/
+
+# App Store review guide — contains the live demo-account password (rotatable);
+# kept out of git. Read the credential from the local copy / .env PROD_LOGIN_PASSWORD.
+docs/launch/app-store-review-guide.md
