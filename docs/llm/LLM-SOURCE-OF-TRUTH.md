@@ -9,7 +9,7 @@
 
 - **Owner:** Sirius team
 - **Created:** 2026-07-01
-- **Last validated:** 2026-07-01 (steady ✓×8, pushed to origin/main) — 17 anchors MATCH. No drift.
+- **Last validated:** 2026-07-02 (chat-modernization landed; anchors A12/A14/A15 redefined — see drift log)
 - **Related docs:** `docs/HANDOFF-on-device-ai.md`, `docs/search-ranking.md`,
   `docs/friends-feed.md`, `packages/research-agent/`, `apps/mcp/`
 
@@ -25,7 +25,7 @@
 | **Server draft pipeline** | `apps/worker/src/pipeline/gemini-runner.ts` | server Gemini (Vercel AI SDK) | ✅ live; the real production drafter. |
 | **Curated search** (catalog bar) | `packages/db/src/search.ts` `searchCorpus` | server Postgres FTS + embedding RRF | ✅ live; the retrieval core the new chat will reuse. |
 | **MCP corpus server** | `apps/mcp/` | server, per-user apiKey | ✅ live; external-agent tool surface. |
-| **Server chat agent** (Gemini Flash, tool loop) | `apps/web/app/api/app/chat/route.ts` + `apps/web/lib/chat/agent.ts` | server Gemini Flash 3.5 | ✅ **LIVE (v1 shipped)** — the `/llm` chat backend. See §3. Live curl + sim verification are USER-PENDING. |
+| **Server chat agent** (Gemini Flash, tool loop) | `apps/web/app/api/app/chat/route.ts` + `apps/web/lib/chat/agent.ts` | server Gemini Flash 3.5 | ✅ **LIVE (v2 protocol)** — the `/llm` chat backend, now speaking the **AI SDK UI message stream** (`createUIMessageStream`); mobile consumes with `useChat`. See §3. Sim verification USER-PENDING. |
 
 ---
 
@@ -105,21 +105,27 @@ Gated **`__DEV__`** only (loosened from `__DEV__ && ON_DEVICE_AI_ENABLED` in `c1
 the online server-chat card is reachable regardless of the on-device flag; on-device cards
 self-gate on model readiness). Deep-link
 `siriusapp://llm-test?run=serverchat|ask|answer|gen-diag|toolprobe|all`.
-Runners: **`runServerChatTest`** (LIVE server chat — `apiChatStream` → `POST /api/app/chat`;
-asserts a non-empty streamed answer + logs answer/sources to Metro; needs auth+network, no
-local model — the FIRST/prominent card), `runAskFlowTest`, `runAnswerQualityTest`,
-`runGenDiagnostic`, `runToolProbe`, draft-fixture runners, iOS `AudioBench`.
+Runners: **`runServerChatTest`** (LIVE server chat — `streamChatTurn` (lib/chat/transport) →
+`POST /api/app/chat` UI message stream; asserts a non-empty streamed answer + logs
+answer/sources to Metro; needs auth+network, no local model — the FIRST/prominent card),
+`runAskFlowTest`, `runAnswerQualityTest`, `runGenDiagnostic`, `runToolProbe`,
+draft-fixture runners, iOS `AudioBench`.
 
 ---
 
 ## 3. SHIPPED (v1): server-side chat agent
 
-**Status:** LANDED on `main` (Tasks 1–5, commits below). Replaced the weak on-device chat
-with a server Gemini Flash 3.5 agent that drives retrieval via tools — reusing the catalog
-search core + the existing agent scaffolding. Web chat + generative UI + richer insights
-remain **later specs**. Remaining = USER-DRIVEN verification: curl the route (`§3.2`) and
-the `/llm` sim check. Commits: 4c9b797 (T1 friend-scope) · d19024e (T2 agent+deps) ·
-7e07732 (T3 SSE route) · 9a457bf (T4 mobile client) · e5dc196 (T5 `/llm` rewire).
+**Status:** LANDED (v1 2026-07-01, commits 4c9b797 · d19024e · 7e07732 · 9a457bf · e5dc196),
+then **modernized 2026-07-02 onto the AI SDK 6 standard stack** (spec
+`docs/superpowers/specs/2026-07-02-mobile-llm-chat-modernization-design.md`, plan in
+`docs/superpowers/plans/`): the route now emits the **UI message stream**
+(`createUIMessageStream`/`createUIMessageStreamResponse`), mobile consumes it with
+`@ai-sdk/react` **`useChat`** + `DefaultChatTransport` over `expo/fetch`, history persists
+full `UIMessage` parts in SQLite (`chat_messages.parts_json`, migration 0009), and the
+screen gained markdown rendering (chat-scale enriched-markdown), tool-activity lines,
+Stop/Retry, a LegendList message list, and corpus-grounded empty-state chips
+(`apps/mobile/src/components/chat/*`). Web chat + generative UI remain **later specs**.
+Remaining = USER-DRIVEN `/llm` sim verification.
 
 ### 3.1 Approach (chosen: A — in-process agent on a web route)
 New session-authed route **`POST /api/app/chat`** in `apps/web`. Builds a Gemini Flash
@@ -132,9 +138,10 @@ browse tools, deferred to v2. **C** (bespoke streamText loop) = drifts from shar
 
 ### 3.2 Data flow
 ```
-MOBILE /llm.tsx  send(messages) → apiChatStream() [expo/fetch streaming]
+MOBILE /llm.tsx  useChat<ChatUIMessage> + createChatTransport() [DefaultChatTransport, expo/fetch]
    ▼
 POST /api/app/chat   (session-authed getSessionOrNull, rate-limited)  viewerId = session.user.id
+   body = standard useChat { id, messages: UIMessage[] } → toModelMessages (text parts only)
    ▼
 runAskAgent({ llm, search, getPost, messages })          ← @repo/research-agent (reused, extended)
    llm = createGoogleGenerativeAI({apiKey})("gemini-3.5-flash")   ← @ai-sdk/google (added to apps/web, d19024e)
@@ -142,10 +149,12 @@ runAskAgent({ llm, search, getPost, messages })          ← @repo/research-agen
    │    └► searchCorpus(viewerId, query, { scope: includeFriends ? "all" : "mine" })  ← @repo/db
    │         SearchHit[] → Candidate[] {id,title,excerpt,score}
    └ tool get_post({ id })                                 ◄ Gemini opens what matters
-        └► visibility-gated post read (@repo/db)  → FullPost (→ run.opened = Sources)
+        └► visibility-gated post read (@repo/db)  → FullPost; onPostOpened → data-source-posts part
    ▼
-hand-rolled SSE ReadableStream → data:{t:"token",v} … data:{t:"sources",v:[…]} … data:{t:"done"}
-   ▼ mobile: expo/fetch stream → parseSseChunk (sse-parse.ts) → onDelta / onSources → Sources card
+createUIMessageStream → UIMessageChunks (text / tool-* / data-source-posts), get_post tool
+outputs TRIMMED off the wire (makeToolOutputTrimmer — bodies never reach the device)
+   ▼ mobile: useChat renders typed parts (markdown text, tool-activity lines, Sources card);
+     settled turns mirrored to SQLite via syncConversationMessages (parts_json)
 ```
 
 ### 3.3 Retrieval scope (friends nuance)
@@ -161,14 +170,22 @@ Extend `@repo/research-agent`: add optional `includeFriends` (or `scope`) to
 default (`mine`) so the parked mobile path is unaffected. Update `AGENT_SYSTEM_PROMPT`
 to explain when to include friends.
 
-### 3.5 Mobile `/llm` becomes a pure online AI chat
-- **Remove:** model download card, `ModelPicker`, transcription-assets prep, `checkNativeBridge`/
-  `isModelReady` gating, `prewarm`, "waiting for the drafter…" busy state.
-- **Keep:** conversation history (local sqlite `lib/db/chat`), Sources card, streaming render, composer.
-- **Swap:** `send()` → new `apiChatStream()` (POST → consume `expo/fetch` stream).
+### 3.5 Mobile `/llm` is a pure online AI chat (useChat-based since 2026-07-02)
+- **State/transport:** `useChat<ChatUIMessage>` (`@ai-sdk/react`) with
+  `createChatTransport()` (`lib/chat/transport.ts`) — abort/stop/regenerate/status come
+  from the hook. `lib/research/{chat-stream,sse-parse}.ts` are DELETED.
+- **UI:** decomposed into `components/chat/*` — `chat-markdown` (chat-scale
+  enriched-markdown), `message-bubble` (parts renderer: text/tool-activity/Sources),
+  `chat-composer` (editable while streaming, Send↔Stop), `chat-empty-state` (starter
+  chips from the local posts mirror), `chats-modal`, `sources-card`. Message list =
+  `@legendapp/list` (alignItemsAtEnd + maintainScrollAtEnd + jump-to-latest pill).
+- **History:** local sqlite `lib/db/chat` — `loadConversationMessages` restores full
+  `UIMessage`s (`parts_json`, legacy rows reconstructed from content+sourcesJson via
+  `lib/chat/message-map.ts`); `syncConversationMessages` mirrors settled turns
+  (replace-all, keyed off useChat status transitions).
 - **Leave parked & intact:** `engine.ts`, `curate.ts`, transcription, `models.ts`,
-  vector store + `mirrorPostVector`.
-- **Offline:** no offline chat — clean "you're offline" state.
+  vector store + `mirrorPostVector`, `research/ask.ts`.
+- **Offline:** no offline chat — friendly error row with Retry.
 
 ### 3.6 Cost guard (decided)
 Reuse `/api/app/extract`'s in-memory sliding-window limiter (per-user + global) — correct
@@ -176,9 +193,10 @@ for the single pm2 web process. Upgrade to DB-backed only when multi-instance.
 
 ### 3.7 Model / client
 `gemini-3.5-flash` (matches worker `DEFAULT_MODEL` in `apps/worker/src/lib/ai-config.ts`).
-`@ai-sdk/google ^3.0.73` + `ai ^6.0.182` — **added to `apps/web/package.json`** (d19024e;
-`bun.lock` needed only 3 new dep-list lines since both were already resolved elsewhere in
-the monorepo). Key via `requireApiKey()` from `@repo/db`.
+`@ai-sdk/google ^3.0.73` + `ai ^6.0.218` (workspace-wide range, bumped 2026-07-02 to
+dedupe the copy nested under `@ai-sdk/react`). Mobile adds `@ai-sdk/react ^3.0.220`
+(the ai@6-paired line — v4 depends on ai@7, do NOT bump) + `@legendapp/list ^3.3.0`.
+Key via `requireApiKey()` from `@repo/db`.
 
 ### 3.8 Sources
 `run.opened` already collects exactly the posts `get_post` touched (dedup'd). Emit as a
@@ -221,10 +239,10 @@ exist until the migration lands (its appearance = progress, update status).
 | A9 | Server chat route | test `apps/web/app/api/app/chat/route.ts` exists | `[LIVE]` exists (7e07732) |
 | A10 | Web AI deps added | `rg -n "@ai-sdk/google" apps/web/package.json` | `[LIVE]` present (d19024e) |
 | A11 | Worker Gemini model | `rg -n "gemini-3.5-flash" apps/worker/src/lib/ai-config.ts` | `[LIVE]` present |
-| A12 | Mobile `/llm` is ONLINE chat | `apps/mobile/src/app/llm.tsx`: `rg "apiChatStream"` PRESENT **and** `rg "askMyPosts\|prewarm"` ABSENT | `[LIVE]` migrated (e5dc196) |
+| A12 | Mobile `/llm` is ONLINE useChat chat | `apps/mobile/src/app/llm.tsx`: `rg "useChat"` PRESENT **and** `rg "askMyPosts\|apiChatStream\|prewarm"` ABSENT | `[LIVE]` modernized (2026-07-02) |
 | A13 | Server chat module | `rg -n "runChatTurn" apps/web/lib/chat/agent.ts` | `[LIVE]` present (d19024e) |
-| A14 | Mobile chat stream client | `rg -n "apiChatStream" apps/mobile/src/lib/research/chat-stream.ts` | `[LIVE]` present (9a457bf) |
-| A15 | SSE frame protocol shared | `rg -n "parseSseChunk" apps/mobile/src/lib/research/sse-parse.ts` | `[LIVE]` present (9a457bf) |
+| A14 | Mobile chat transport | `rg -n "createChatTransport" apps/mobile/src/lib/chat/transport.ts` | `[LIVE]` present (2026-07-02) — DefaultChatTransport/expo-fetch; `lib/research/{chat-stream,sse-parse}.ts` DELETED |
+| A15 | Route speaks UI message stream | `rg -n "createUIMessageStream" apps/web/app/api/app/chat/route.ts` | `[LIVE]` present (2026-07-02) — AI SDK UI message stream; hand-rolled chat SSE retired |
 | A16 | Server-chat dev bench card | `rg -n "runServerChatTest" apps/mobile/src/lib/llm/test-bench.ts` | `[LIVE]` present (c10c934) — deep-link `siriusapp://llm-test?run=serverchat` |
 | A17 | Catalog → chat entry point | `rg -n 'pushOnce\("/llm"\)' apps/mobile/src/app/\(tabs\)/library.tsx` | `[LIVE]` present (9e25b80) — "Ask your library" CTA on Catalog; the sole prod entry to `/llm` |
 
@@ -236,6 +254,16 @@ top. Keep it cheap — grep-level checks, not a full re-exploration.
 
 ## 6. Drift log (loop-maintained)
 
+- **2026-07-02 — chat modernization LANDED (AI SDK 6 stack), EXPECTED not drift.** Route
+  → UI message stream (`createUIMessageStream`, sources as `data-source-posts`, get_post
+  outputs trimmed); mobile → `useChat` + `createChatTransport`
+  (`lib/chat/{transport,types,message-map}.ts`, `components/chat/*`); history →
+  `parts_json` (migration 0009); `lib/research/{chat-stream,sse-parse}(.test)?.ts` +
+  `apps/web/lib/chat/sse(.test)?.ts` DELETED. Anchors A12/A14/A15 redefined above.
+  Spec `docs/superpowers/specs/2026-07-02-mobile-llm-chat-modernization-design.md`.
+  NOTE: commits from `ea9e627` onward temporarily rode branch
+  `fix/reconcile-social-source-record-id` (shared-tree branch switch by a coworker);
+  merge state tracked in agent-mail.
 - **2026-07-01 — server-chat migration LANDED (Tasks 1–5), EXPECTED not drift.** Anchors
   A8/A9/A10 flipped absent→present; A12 flipped from on-device (`askMyPosts`/`prewarm`) to
   online (`apiChatStream`); A4 re-scoped to "parked" (ask.ts retained, unreached); A13–A15
@@ -263,7 +291,12 @@ top. Keep it cheap — grep-level checks, not a full re-exploration.
   NOT `@better-auth/expo/client`'s `getCookie` (wrong signature).
   (3) `bun:test` files excluded from tsc in `research-agent`/web tsconfig (db/embedding-scene precedent).
   (4) Persisted chat sources keep `ScoredPost` with an inert `score:0` (avoids touching db/chat schema).
-- **Open (final-review triage):** route abort-robustness (guard `send`/`close` on torn-down
-  controller); redundant `frames as ChatFrame[]` cast (chat-stream.ts); `hit.snippet ?? hit.excerpt`
+- **2026-07-02 — protocol modernized (supersedes the hand-rolled-SSE deviation note):**
+  wire = AI SDK UI message stream end-to-end; client state = `useChat`; sources = a
+  `data-source-posts` part written via `runChatTurn`'s new `onPostOpened` hook; `get_post`
+  tool outputs trimmed off the wire (`makeToolOutputTrimmer`); history = UIMessage-shaped
+  local SQLite. The 2026-07-01 open items about `send`/`close` guards and the
+  `frames as ChatFrame[]` cast are RESOLVED by deletion (those files are gone).
+- **Open (final-review triage):** `hit.snippet ?? hit.excerpt`
   dead fallback (agent.ts); tool-level `description`/`AGENT_SYSTEM_PROMPT` preamble don't yet mention
   friend-scope (affects how reliably the model picks it).

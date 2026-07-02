@@ -16,12 +16,10 @@ import { db } from "@/lib/db/client";
 import { posts as postsTable } from "@/lib/db/schema";
 import type { ScoredPost } from "@repo/research-agent";
 
+import { textOf } from "@/lib/chat/message-map";
+import { streamChatTurn } from "@/lib/chat/transport";
+import type { SourcePost } from "@/lib/chat/types";
 import { askMyPosts, type AskPhase } from "@/lib/research/ask";
-import {
-  apiChatStream,
-  ChatStreamError,
-  type ChatSourceDTO,
-} from "@/lib/research/chat-stream";
 
 import { generateText, streamText, tool } from "ai";
 import { z } from "zod";
@@ -79,9 +77,10 @@ export type FixtureResult = {
 
 // The LIVE server chat (the /llm backend post-migration). Unlike every other
 // bench here it needs NO on-device model — just an authenticated session + a
-// connection. It exercises the whole online path end-to-end: apiChatStream →
-// POST /api/app/chat → Gemini Flash tool loop (searchCorpus + get_post) →
-// streamed answer + cited sources.
+// connection. It exercises the whole online path end-to-end: streamChatTurn
+// (DefaultChatTransport over expo/fetch) → POST /api/app/chat → Gemini Flash
+// tool loop (searchCorpus + get_post) → UI message stream (text parts +
+// data-source-posts).
 export const SERVER_CHAT_FIXTURE = {
   id: "serverchat",
   label: "Server chat (Gemini Flash · online)",
@@ -97,23 +96,25 @@ export async function runServerChatTest(): Promise<FixtureResult> {
   const start = Date.now();
   const checks: DraftCheck[] = [];
   let answer = "";
-  let sources: ChatSourceDTO[] = [];
+  let sources: SourcePost[] = [];
   let transportError: string | null = null;
   try {
-    await apiChatStream({
-      messages: [{ role: "user", content: SERVER_CHAT_FIXTURE.question }],
-      onDelta: (delta) => {
-        answer += delta;
-      },
-      onSources: (s) => {
-        sources = s;
-      },
+    const final = await streamChatTurn({
+      messages: [
+        {
+          id: "bench-user",
+          role: "user",
+          parts: [{ type: "text", text: SERVER_CHAT_FIXTURE.question }],
+        },
+      ],
     });
+    answer = textOf(final);
+    const sourcesPart = final.parts.find(
+      (p) => p.type === "data-source-posts",
+    );
+    if (sourcesPart && "data" in sourcesPart) sources = sourcesPart.data;
   } catch (e) {
-    transportError =
-      e instanceof ChatStreamError || e instanceof Error
-        ? e.message
-        : String(e);
+    transportError = e instanceof Error ? e.message : String(e);
   }
   const trimmed = answer.trim();
   checks.push({

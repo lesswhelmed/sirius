@@ -19,7 +19,7 @@
 		"check-types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@ai-sdk/google": "^3.0.73",
+		"@ai-sdk/google": "^3.0.88",
 		"@danielxceron/youtube-transcript": "^1.2.6",
 		"@google/genai": "^2.8.0",
 		"@repo/auth": "*",

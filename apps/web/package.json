@@ -17,7 +17,7 @@
 		"appPort": 3000
 	},
 	"dependencies": {
-		"@ai-sdk/google": "^3.0.73",
+		"@ai-sdk/google": "^3.0.88",
 		"@react-three/drei": "^10.7.0",
 		"@react-three/fiber": "^9.3.0",
 		"@repo/auth": "*",

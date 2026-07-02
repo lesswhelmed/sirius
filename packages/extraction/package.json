@@ -10,7 +10,7 @@
 		"check-types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@ai-sdk/google": "^3.0.73",
+		"@ai-sdk/google": "^3.0.88",
 		"ai": "^6.0.218"
 	},
 	"devDependencies": {
