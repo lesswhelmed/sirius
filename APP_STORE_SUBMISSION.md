@@ -183,9 +183,10 @@ an admin web UI can come later):
   rise above 4+ (e.g. 13+ under the updated rating system) — that's expected; accept it.
   The stale "answer No" guidance in the "Age rating questionnaire" section below has been
   corrected.
-- [ ] §7 listing copy: keep "Private by default", but stop implying no sharing exists —
-  the description's "PRIVATE BY DEFAULT" block and the App Review notes (§12) now
-  mention the Friends feed. Update the description's Terms link per Part A.4.
+- [x] §7 listing copy: DONE — description's block is now "PRIVATE BY DEFAULT, SHARED BY
+  CHOICE" (mentions the Friends feed + report/block + 24h review) and ends with the
+  /terms + /privacy links. Paste the updated §7 description into ASC with the age-rating
+  change.
 
 ### Part F — Evidence Apple asked for (reply + recording)
 
@@ -223,10 +224,10 @@ account so Apple hits the one-time acceptance gate on sign-in. Reply template is
 - [x] Part A: `/terms` page + sign-up checkboxes (mobile/web) + sign-in notices +
   `termsAcceptedAt` (stamped by a better-auth `user.create.after` hook; sign-up UIs gate on
   an explicit checkbox) + one-time acceptance gate (web `(app)/layout.tsx` TermsGate; mobile
-  `(tabs)/_layout.tsx` full-screen gate with cookie-cache-proof latch) — link swaps to
-  `/terms` done in the Settings subscription card copy? **NO — subscription-card
-  `TERMS_URL` + RevenueCat footer + App Description still point at Apple's std EULA;
-  swap when doing Part E** (decision 1)
+  `(tabs)/_layout.tsx` full-screen gate with cookie-cache-proof latch) — link swaps
+  (decision 1, recommended path): subscription-card `TERMS_URL` → `/terms` DONE, §7
+  App Description terms/privacy links DONE; **RevenueCat paywall footer Terms link
+  still needs the dashboard swap** (do with §0b's footer-links task)
 - [x] Part B: `ContentReport` + `POST /api/app/posts/[slug]/report` + admin alert email
   (`SAFETY_ALERT_EMAIL`) + report UI (web kebab/post-detail; mobile action sheets on feed,
   post detail, friend catalog). Re-reports REOPEN resolved reports.
@@ -647,10 +648,13 @@ KEEP IT ALL, FIND IT LATER
 • Queue — watch each capture move from pending to done.
 • Explore — map and browse everything by theme and topic.
 
-PRIVATE BY DEFAULT
-Your posts are private to you. Sirius does not use third-party advertising or cross-app tracking.
+PRIVATE BY DEFAULT, SHARED BY CHOICE
+Your posts are private to you unless you decide otherwise — share individual posts with friends and see theirs in a Friends feed. Community standards apply to everything shared: you can report any post and block any user, and reports are reviewed within 24 hours. Sirius does not use third-party advertising or cross-app tracking.
 
 Stop hoarding tabs and screenshots you'll never find again. Share it to Sirius, and let it get handled.
+
+Terms of Use: https://lesswhelmed.com/terms
+Privacy Policy: https://lesswhelmed.com/privacy
 ```
 
 **What's New** (≤4000) — for v1.0.0:

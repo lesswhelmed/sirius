@@ -19,8 +19,11 @@ import { type AiUsage, useAiUsage } from "@/lib/purchases/use-usage";
 
 // App Store Guideline 3.1.2(c): Privacy Policy + Terms of Use (EULA) must be
 // visible in the subscription surface, independent of the RevenueCat paywall.
+// Our /terms page carries the UGC zero-tolerance clause (Guideline 1.2) and
+// itself references Apple's standard EULA, so 3.1.2(c) stays satisfied with a
+// single link target everywhere (APP_STORE_SUBMISSION.md §0 decision 1).
 const PRIVACY_URL = "https://lesswhelmed.com/privacy";
-const TERMS_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+const TERMS_URL = "https://lesswhelmed.com/terms";
 
 async function openLegal(url: string) {
   try {
