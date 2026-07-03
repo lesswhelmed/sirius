@@ -78,10 +78,10 @@
 	"overrides": {
 		"llama.rn": "0.12.4",
 		"kysely": "0.28.17",
-		"expo": "56.0.12",
-		"expo-asset": "56.0.17",
-		"expo-constants": "56.0.18",
-		"expo-linking": "56.0.14",
+		"expo": "56.0.14",
+		"expo-asset": "56.0.18",
+		"expo-constants": "56.0.20",
+		"expo-linking": "56.0.15",
 		"react": "19.2.3",
 		"react-dom": "19.2.3"
 	}
