@@ -94,6 +94,10 @@ export default function SignInPage() {
             <span style={{ marginLeft: 4 }}>Create an account →</span>
           </Link>
         </div>
+        <div>
+          By signing in you agree to the{" "}
+          <Link href="/terms">Terms of Use</Link>.
+        </div>
       </div>
     </div>
   );

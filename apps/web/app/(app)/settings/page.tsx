@@ -3,12 +3,14 @@ import {
   getUserHandle,
   getVoiceProfile,
   listArchiveRequests,
+  listBlocks,
 } from "@repo/db";
 import Link from "next/link";
 import { AiUsageCard } from "../../_chrome/ai-usage-card";
 import { DateDisplay } from "../../../lib/date-display";
 import { requireSession } from "../../../lib/session";
 import { ApiKeysSection } from "./api-keys-section";
+import { BlockedUsersSection } from "./blocked-users-section";
 import { DeleteAccountButton } from "./delete-account-button";
 import { RequestArchiveButton } from "./request-archive-button";
 import { SettingsShell, type SettingsSection } from "./settings-shell";
@@ -41,12 +43,19 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
 
 export default async function SettingsPage() {
   const session = await requireSession("/settings");
-  const [requests, voiceProfile, handle, usage] = await Promise.all([
+  const [requests, voiceProfile, handle, usage, blocks] = await Promise.all([
     listArchiveRequests(session.user.id),
     getVoiceProfile(session.user.id),
     getUserHandle(session.user.id),
     getAiUsage(session.user.id),
+    listBlocks(session.user.id),
   ]);
+  const blockedItems = blocks.map((b) => ({
+    id: b.id,
+    name: b.name,
+    handle: b.handle,
+    blockedAt: b.blockedAt.toISOString(),
+  }));
   const now = Date.now();
 
   const sections: SettingsSection[] = [
@@ -218,9 +227,26 @@ export default async function SettingsPage() {
       ),
     },
     {
+      id: "blocked-users",
+      label: "Blocked Users",
+      folio: "vi",
+      blurb: "People you’ve blocked.",
+      content: (
+        <div className="space-y-7">
+          <SectionHeader eyebrow="Blocked Users" title="Blocked" />
+          <p className="max-w-[60ch] font-body text-[15px] leading-[1.7] text-[var(--fg-muted)]">
+            Blocked people can’t see your shared posts, and theirs never appear
+            in your feed. Blocking also removes you from each other’s friends
+            and groups. Unblocking doesn’t restore a friendship.
+          </p>
+          <BlockedUsersSection items={blockedItems} />
+        </div>
+      ),
+    },
+    {
       id: "danger-zone",
       label: "Delete Account",
-      folio: "vi",
+      folio: "vii",
       blurb: "Permanently delete your account and data.",
       content: (
         <div className="space-y-7">

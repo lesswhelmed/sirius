@@ -1,6 +1,7 @@
 import type { PostListItem, PostStatus, PostType } from "@repo/db";
 import Link from "next/link";
 import { DateDisplay } from "../../../lib/date-display";
+import { PostModerationMenu } from "../../(app)/friends/post-moderation-menu";
 import { PostImage } from "../../_chrome/post-image";
 import { RepoChip } from "../../_chrome/repo-chip";
 
@@ -207,14 +208,25 @@ export function CatalogCard({
               </span>
             ) : null}
           </span>
-          {post.providerId === "github" ? (
-            <RepoChip
-              providerId={post.providerId}
-              contentDigest={post.contentDigest}
-            />
-          ) : host ? (
-            <span className="truncate">{host}</span>
-          ) : null}
+          <span className="flex items-center gap-3">
+            {post.providerId === "github" ? (
+              <RepoChip
+                providerId={post.providerId}
+                contentDigest={post.contentDigest}
+              />
+            ) : host ? (
+              <span className="truncate">{host}</span>
+            ) : null}
+            {/* Report/Block overflow — peer posts only (showAuthor implies the
+                row belongs to another author; never rendered on own posts). */}
+            {showAuthor && author ? (
+              <PostModerationMenu
+                slug={post.slug}
+                authorId={author.id}
+                authorHandle={author.handle}
+              />
+            ) : null}
+          </span>
         </div>
 
         <TaxonomyFooter category={category} tags={tags} />

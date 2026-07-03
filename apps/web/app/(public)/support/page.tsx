@@ -69,6 +69,23 @@ export default function SupportPage() {
             your Catalog when ready.
           </Faq>
 
+          <Faq q="How do I report objectionable content or block someone?">
+            Every post shared with you has a report action, and every author has
+            a block action (in the post&rsquo;s{" "}
+            <span className="text-[var(--fg)]">&hellip;</span> menu on iOS, or on
+            the post page on the web). Blocking removes that person&rsquo;s
+            content from your feed immediately and notifies us. We review every
+            report and act within 24 hours — objectionable content is removed
+            and offending accounts are ejected, as our{" "}
+            <Link
+              className="text-[var(--color-accent)] underline underline-offset-2"
+              href="/terms"
+            >
+              Terms of Use
+            </Link>{" "}
+            make clear.
+          </Faq>
+
           <Faq q="How do I delete my account or data?">
             You can delete your account yourself, anytime. In the iOS app, go to
             the Account tab and tap{" "}
@@ -100,6 +117,13 @@ export default function SupportPage() {
               href="/privacy"
             >
               Privacy Policy
+            </Link>{" "}
+            and{" "}
+            <Link
+              className="text-[var(--color-accent)] underline underline-offset-2"
+              href="/terms"
+            >
+              Terms of Use
             </Link>{" "}
             or browse the{" "}
             <Link

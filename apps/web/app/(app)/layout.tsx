@@ -9,6 +9,7 @@ import { SiriusLogo } from "../_chrome/sirius-logo";
 import { SIGNED_IN_NAV, SiteNav, SiteNavFallback } from "../_chrome/site-nav";
 import { ThemeMenu } from "../_theme/theme-menu";
 import { SignOutLink } from "./_chrome/sign-out-link";
+import { TermsGate } from "./_chrome/terms-gate";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   // The masthead + nav are static and prerender instantly. The per-request
@@ -108,11 +109,20 @@ async function UserEmail() {
   );
 }
 
-// Gates the authenticated region: requires a session and a configured handle.
-// Children only render once both checks pass, preserving the previous behavior
-// where /setup-handle is enforced for the whole (app) group.
+// Gates the authenticated region: requires a session, agreement to the Terms
+// of Use, and a configured handle. Children only render once all checks pass,
+// preserving the previous behavior where /setup-handle is enforced for the
+// whole (app) group.
 async function AuthGate({ children }: { children: React.ReactNode }) {
   const session = await requireSession("/ingest");
+  // Terms-of-Use gate (App Store 1.2 Part A): accounts created before the
+  // sign-up agreement checkbox have no termsAcceptedAt — block the whole app
+  // with the acceptance panel until they agree (new sign-ups are stamped at
+  // registration, so they never see this). Checked before the handle redirect
+  // so agreement always comes first.
+  if (!session.user.termsAcceptedAt) {
+    return <TermsGate />;
+  }
   const handle = await getUserHandle(session.user.id);
   if (!handle) {
     redirect("/setup-handle");

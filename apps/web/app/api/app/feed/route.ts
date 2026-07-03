@@ -1,4 +1,9 @@
-import { listVisibleToViewer, type PostType, publicTierPolicy } from "@repo/db";
+import {
+  blockedIdsFor,
+  listVisibleToViewer,
+  type PostType,
+  publicTierPolicy,
+} from "@repo/db";
 import {
   ANONYMOUS_CATALOG_ENABLED,
   PUBLIC_CATALOG_ENABLED,
@@ -41,7 +46,13 @@ export async function GET(request: Request) {
   // shows only friends'/public posts. Default (absent) keeps owner-inclusive.
   const friendsOnly = Boolean(url.searchParams.get("friendsOnly"));
 
-  const friendIds = await getViewerFriendIds(session.user.id);
+  // Blocked-author exclusion (both directions) rides alongside the friend set —
+  // the db layer defaults blockedIds to [], so the feed MUST pass the real set
+  // for a block to actually remove posts (App Store 1.2 Part C).
+  const [friendIds, blockedIds] = await Promise.all([
+    getViewerFriendIds(session.user.id),
+    blockedIdsFor(session.user.id),
+  ]);
   // Signed-in surface: cross-user PUBLIC admission is the signed-in tier of the
   // shared PUBLIC policy (one source of truth across canReadPost + the DB legs).
   const { signedInPublic } = publicTierPolicy({
@@ -51,6 +62,7 @@ export async function GET(request: Request) {
   const page = await listVisibleToViewer({
     viewerId: session.user.id,
     friendIds,
+    blockedIds,
     includePublic: signedInPublic,
     friendsOnly,
     limit: Number.isFinite(limit) ? limit : undefined,

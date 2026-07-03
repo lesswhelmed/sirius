@@ -21,6 +21,7 @@ import { buildOriginalContent } from "../../../../lib/originals/original-content
 import { RelatedPosts } from "../../../(public)/listing/[slug]/related-posts";
 import { ColophonTabs } from "./colophon-tabs";
 import { OriginalContentSection } from "./original-content";
+import { ReportBlockControls } from "./report-block-controls";
 import { ViewBeacon } from "./view-beacon";
 
 const MARKDOWN_CLASS_NAME = [
@@ -159,7 +160,16 @@ export default async function PostDetailPage({
             Edit
             <span aria-hidden="true">↗</span>
           </Link>
-        ) : null}
+        ) : (
+          // A non-owner is reading someone else's shared post — give them the
+          // report/block controls (App Store 1.2). Block navigates to /friends
+          // since this page stops being readable the moment the author is blocked.
+          <ReportBlockControls
+            slug={post.slug}
+            authorId={post.submittedById}
+            authorHandle={post.submittedBy?.handle ?? null}
+          />
+        )}
       </div>
 
       <header className="mt-8">

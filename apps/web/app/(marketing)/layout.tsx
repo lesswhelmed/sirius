@@ -55,6 +55,9 @@ export default function MarketingLayout({
               >
                 Privacy
               </Link>
+              <Link href="/terms" className="hover:text-[var(--color-accent)]">
+                Terms
+              </Link>
               <Link
                 href="/support"
                 className="hover:text-[var(--color-accent)]"

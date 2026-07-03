@@ -1,4 +1,9 @@
-import { friendIdsOf, listVisibleToViewer, publicTierPolicy } from "@repo/db";
+import {
+  blockedIdsFor,
+  friendIdsOf,
+  listVisibleToViewer,
+  publicTierPolicy,
+} from "@repo/db";
 import Link from "next/link";
 import {
   ANONYMOUS_CATALOG_ENABLED,
@@ -12,7 +17,12 @@ const FEED_PAGE = 48;
 // friends'/public posts, newest first. Owner-inclusive (no friendsOnly) so the
 // owner sees their own shared work badged with its audience.
 export async function FriendsFeed({ userId }: { userId: string }) {
-  const friendIds = await friendIdsOf(userId);
+  // Blocked-author exclusion (both directions) — the db layer defaults
+  // blockedIds to [], so the feed must pass the real set (App Store 1.2 Part C).
+  const [friendIds, blockedIds] = await Promise.all([
+    friendIdsOf(userId),
+    blockedIdsFor(userId),
+  ]);
   // Signed-in surface: cross-user PUBLIC admission comes from the shared PUBLIC
   // policy (same signed-in tier as the feed route + canReadPost), not a raw flag.
   const { signedInPublic } = publicTierPolicy({
@@ -22,6 +32,7 @@ export async function FriendsFeed({ userId }: { userId: string }) {
   const { items } = await listVisibleToViewer({
     viewerId: userId,
     friendIds,
+    blockedIds,
     includePublic: signedInPublic,
     limit: FEED_PAGE,
   });

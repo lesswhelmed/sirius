@@ -12,11 +12,16 @@ export default function SignUpPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!agreed) {
+      setError("You must agree to the Terms of Use and Privacy Policy.");
+      return;
+    }
     setError(null);
     setLoading(true);
     const { error } = await signUp.email({
@@ -98,7 +103,29 @@ export default function SignUpPage() {
           />
         </div>
 
-        <button type="submit" className={styles.button} disabled={loading}>
+        <label className={styles.agree}>
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+          />
+          <span>
+            I agree to the{" "}
+            <Link href="/terms" target="_blank" rel="noopener noreferrer">
+              Terms of Use
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" target="_blank" rel="noopener noreferrer">
+              Privacy Policy
+            </Link>
+          </span>
+        </label>
+
+        <button
+          type="submit"
+          className={styles.button}
+          disabled={loading || !agreed}
+        >
           {loading ? "Filing…" : "Create account"}
         </button>
       </form>

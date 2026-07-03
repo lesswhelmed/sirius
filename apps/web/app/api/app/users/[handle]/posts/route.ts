@@ -61,6 +61,9 @@ export async function GET(
 
   const page = await listFriendCatalog({
     friendId: user.id,
+    // A UserBlock in either direction empties the page (defense-in-depth on
+    // top of the areFriends gate — blockUser severs the friendship anyway).
+    viewerId: session.user.id,
     limit: Number.isFinite(limit) ? limit : undefined,
     cursor,
     q,

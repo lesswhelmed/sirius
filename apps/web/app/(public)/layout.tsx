@@ -70,6 +70,21 @@ export default function PublicLayout({
               ⁂
             </span>
             <span className="nums-lining">
+              <Link
+                className="transition-colors hover:text-[var(--fg)]"
+                href="/privacy"
+              >
+                Privacy
+              </Link>
+              {" · "}
+              <Link
+                className="transition-colors hover:text-[var(--fg)]"
+                href="/terms"
+              >
+                Terms
+              </Link>
+            </span>
+            <span className="nums-lining">
               Sirius ·{" "}
               <Suspense fallback={<span aria-hidden="true">&nbsp;</span>}>
                 <TodayStamp />
