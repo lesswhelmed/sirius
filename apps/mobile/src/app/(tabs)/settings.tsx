@@ -24,6 +24,7 @@ import {
   TextLink,
   Title,
 } from "@/components/sirius";
+import { CrashDiagnostics } from "@/components/crash-diagnostics";
 import { InviteSheet } from "@/components/invite-sheet";
 import { SubscriptionSection } from "@/components/subscription-section";
 import { VoiceSection } from "@/components/voice-section";
@@ -388,6 +389,8 @@ export default function SettingsScreen() {
             onPress={handleDeleteAccount}
           />
         </View>
+
+        <CrashDiagnostics />
       </ScrollView>
 
       <Sheet
