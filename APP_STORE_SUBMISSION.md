@@ -240,9 +240,10 @@ account so Apple hits the one-time acceptance gate on sign-in. Reply template is
   + test DB; prod applies via deploy's `db:migrate:deploy`)
 - [x] Reviewer seed: re-seed nulls the reviewer's `termsAcceptedAt` by default
   (`--keep-terms` opts out) so App Review always sees the acceptance gate
-- [ ] `bun run deploy` (web + worker) so `/terms`, the report/block APIs, and enforcement
-  are live **before** the binary is reviewed
-- [ ] Re-seed the reviewer account + friends on prod; reset its `termsAcceptedAt`
+- [x] `bun run deploy` (web + worker) — done 2026-07-03: pm2 reloaded, `/terms` `/privacy`
+  `/support` all 200 on lesswhelmed.com, `ugc_moderation` migration applied to prod
+- [x] Re-seed the reviewer account on prod — done 2026-07-03 (16 posts, 7 friends via the
+  real request flow, password unchanged, **"Terms gate: armed"**)
 - [ ] ASC: Age Rating → **User-Generated Content: Yes** (Part E)
 - [ ] New iOS build + submit (`cd apps/mobile && bunx eas-cli build --profile production
   --platform ios` → `bunx eas-cli submit --profile production --platform ios --latest`)
