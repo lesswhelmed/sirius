@@ -38,6 +38,13 @@ import {
   submitMaterials,
   type SubmitMaterialsResult,
 } from "@/lib/materials";
+import { logShareEvent } from "@/lib/share-breadcrumbs";
+
+// How long an empty share context gets to populate before we show the
+// "Nothing shared" dead-end. The +native-intent redirect can land before the
+// native round-trip fills the share-intent context, so an immediate dead-end
+// would flash on perfectly good shares.
+const EMPTY_GRACE_MS = 2000;
 
 export default function ShareIntentScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -50,6 +57,28 @@ export default function ShareIntentScreen() {
   const [done, setDone] = useState(false);
   // One optional note applied to every shared item for the LLM to build on.
   const [note, setNote] = useState("");
+  // True once the empty-context grace window has elapsed (see EMPTY_GRACE_MS).
+  const [graceExpired, setGraceExpired] = useState(false);
+
+  // Breadcrumb the mount once (flags only — never payload content).
+  const loggedMount = useRef(false);
+  useEffect(() => {
+    if (loggedMount.current) return;
+    loggedMount.current = true;
+    logShareEvent("shareintent:mount", { hasShareIntent });
+  }, [hasShareIntent]);
+
+  // Grace timer: while the context is empty, hold the spinner for a beat
+  // instead of flashing "Nothing shared". Cancelled when the payload arrives
+  // (hasShareIntent flips true) or the screen unmounts.
+  useEffect(() => {
+    if (hasShareIntent) return;
+    const timer = setTimeout(() => {
+      setGraceExpired(true);
+      logShareEvent("shareintent:grace-expired-empty");
+    }, EMPTY_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [hasShareIntent]);
 
   const materials = useMemo<Material[]>(
     () => (hasShareIntent ? materialsFromShareIntent(shareIntent) : []),
@@ -84,9 +113,38 @@ export default function ShareIntentScreen() {
     let result: SubmitMaterialsResult;
     try {
       result = await submitMaterials(prepared, { force });
+    } catch (err) {
+      // submitMaterials can reject outside its per-item error handling (e.g.
+      // the optimistic SQLite insert throws before the outbox try/catch).
+      // Without this catch the rejection is unhandled — no Alert, no
+      // breadcrumb — i.e. exactly the silent lost-share this trail exists to
+      // capture. Error message only — never the shared payload.
+      logShareEvent("shareintent:submit-threw", {
+        force,
+        items: prepared.length,
+        message: (err instanceof Error ? err.message : String(err)).slice(
+          0,
+          200,
+        ),
+      });
+      Alert.alert(
+        "Couldn't queue this share",
+        "Something went wrong saving it on this device. Please try again.",
+      );
+      return;
     } finally {
       setBusy(false);
     }
+
+    // Counts only — never the shared content itself.
+    logShareEvent("shareintent:submit", {
+      force,
+      items: prepared.length,
+      submitted: result.submitted,
+      queued: result.queued,
+      deduped: result.deduped.length,
+      errors: result.errors.length,
+    });
 
     if (result.errors.length > 0) {
       Alert.alert("Some submissions failed", result.errors.join("\n\n"));
@@ -158,6 +216,17 @@ export default function ShareIntentScreen() {
           label="Sign in"
           onPress={() => router.replace("/(auth)/sign-in")}
         />
+      </Screen>
+    );
+  }
+
+  // Empty context inside the grace window: keep the spinner up — the payload
+  // may still be crossing the native bridge. A populated-but-unsupported share
+  // (hasShareIntent with zero materials) skips this and dead-ends immediately.
+  if (!hasShareIntent && !graceExpired) {
+    return (
+      <Screen style={styles.centered}>
+        <ActivityIndicator color={t.color.accent} />
       </Screen>
     );
   }

@@ -31,6 +31,7 @@ import { db } from "@/lib/db/client";
 import { type PendingRow, pendingSubmissions } from "@/lib/db/schema";
 import type { SubmitOk, Visibility } from "@/lib/ingest-submit";
 import { shouldPersist } from "@/lib/progress-throttle";
+import { logShareEvent } from "@/lib/share-breadcrumbs";
 import { nextStatusFromResult } from "@/lib/submit-result";
 import { linkSubmission, markPostFailedByLocalId } from "@/lib/sync/writes";
 import { clearProgress, emitProgress } from "@/lib/upload-progress";
@@ -204,10 +205,13 @@ async function markRowDeduped(row: PendingRow): Promise<void> {
 //              row and drops it — or sweepStuckSentRows self-heals after 2min.
 //   deduped  → server already has this post ("Already saved"); row kept
 //              unlinked as a terminal `deduped` row (staged bytes discarded).
-//   failed   → terminal rejection (4xx) or missing file; row kept as `failed`
-//              (file kept) so the user can Requeue/Discard from the Queue tab.
-//   deferred → offline / 5xx; row reset to `queued` so it auto-resumes on the
-//              next lifecycle trigger. Re-sends are idempotent (server contentHash).
+//   failed   → terminal rejection (4xx other than 401) or missing file; row
+//              kept as `failed` (file kept) so the user can Requeue/Discard
+//              from the Queue tab.
+//   deferred → offline / 5xx / 401; row reset to `queued` so it auto-resumes
+//              on the next lifecycle trigger (for a 401 that's the post-re-login
+//              replay — a dead session isn't a bad payload). Re-sends are
+//              idempotent (server contentHash).
 async function sendBinaryRow(
   row: PendingRow,
 ): Promise<"sent" | "deduped" | "failed" | "deferred"> {
@@ -280,7 +284,29 @@ async function sendBinaryRow(
     await linkSubmission(row.localId, res.id);
     return "sent";
   } catch (err) {
+    // 401 = the session is dead (stale cookie / signed out), not a bad payload.
+    // Keep the row queued so the post-re-login replay (SyncRunner →
+    // replayAndPull) sends it, instead of terminally failing a good capture.
+    if (err instanceof ApiError && err.status === 401) {
+      logShareEvent("outbox:auth-deferred", {
+        transport: row.transport,
+        status: 401,
+      });
+      await db
+        .update(pendingSubmissions)
+        .set({
+          status: "queued",
+          attempts: row.attempts + 1,
+          lastError: "needs sign-in",
+        })
+        .where(eq(pendingSubmissions.id, row.id));
+      return "deferred";
+    }
     if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+      logShareEvent("outbox:terminal-4xx", {
+        transport: row.transport,
+        status: err.status,
+      });
       await db
         .update(pendingSubmissions)
         .set({
@@ -413,11 +439,14 @@ async function importLegacyOutboxOnce(): Promise<void> {
 let flushing: Promise<{ sent: number; remaining: number }> | null = null;
 
 // Sends all queued items FIFO (notes/URLs and binaries). A 4xx response — on
-// EITHER transport — now surfaces as a terminal `failed` row (Queue tab
-// Requeue/Discard) instead of being silently dropped. A network failure or 5xx
-// stops the flush; the item stays queued for the next trigger (app start,
-// connectivity change, next successful submit). Serialized so overlapping
-// triggers don't double-send.
+// EITHER transport — surfaces as a terminal `failed` row (Queue tab
+// Requeue/Discard) instead of being silently dropped, EXCEPT 401: a dead
+// session isn't a bad payload, so the row stays `queued` ("needs sign-in") and
+// the flush stops — auth is global, every later row would 401 too. The
+// post-re-login replay picks it up. A network failure or 5xx also stops the
+// flush; the item stays queued for the next trigger (app start, connectivity
+// change, next successful submit). Serialized so overlapping triggers don't
+// double-send.
 export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
   if (flushing) {
     return flushing;
@@ -479,10 +508,30 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
             sent++;
           }
         } catch (err) {
+          // 401 = dead session, not a bad payload. Keep the row queued for the
+          // post-re-login replay and stop the flush — later rows would 401 too.
+          if (err instanceof ApiError && err.status === 401) {
+            logShareEvent("outbox:auth-deferred", {
+              transport: "ingest",
+              status: 401,
+            });
+            await db
+              .update(pendingSubmissions)
+              .set({
+                attempts: row.attempts + 1,
+                lastError: "needs sign-in",
+              })
+              .where(eq(pendingSubmissions.id, row.id));
+            break;
+          }
           if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
-            // Permanent rejection — retrying forever won't heal a 4xx. Kept
-            // in-board as `failed` (Requeue/Discard from the Queue tab), no
-            // longer silently dropped.
+            // Permanent rejection — retrying forever won't heal a non-auth 4xx.
+            // Kept in-board as `failed` (Requeue/Discard from the Queue tab),
+            // no longer silently dropped.
+            logShareEvent("outbox:terminal-4xx", {
+              transport: "ingest",
+              status: err.status,
+            });
             await db
               .update(pendingSubmissions)
               .set({

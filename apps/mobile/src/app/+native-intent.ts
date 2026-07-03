@@ -4,16 +4,25 @@
 // router has no matching route and renders "Unmatched Route". We detect that
 // share URL and send it to the /shareintent screen, which reads the payload
 // from the share-intent context.
-import { getShareExtensionKey } from "expo-share-intent";
+//
+// The match is a plain `dataUrl=` substring check — deliberately NOT
+// `dataUrl=${getShareExtensionKey()}`: only the share extension produces
+// `dataUrl=` URLs, and calling into expo-share-intent here would make share
+// routing depend on that native lookup not throwing (a throw used to eat the
+// share and silently land on "/").
+import { logShareEvent } from "@/lib/share-breadcrumbs";
 
 export function redirectSystemPath({
   path,
+  initial,
 }: {
   path: string;
   initial: boolean;
 }): string {
   try {
-    if (path.includes(`dataUrl=${getShareExtensionKey()}`)) {
+    if (path.includes("dataUrl=")) {
+      // Never log the path itself — flags only (see share-breadcrumbs.ts).
+      logShareEvent("native-intent:matched", { initial });
       return "/shareintent";
     }
     // App Intents (Shortcuts/Siri "Capture in Sirius") open the app on
@@ -35,8 +44,15 @@ export function redirectSystemPath({
       const rest = base.slice(2).replace(/^\/+/, "");
       if (rest) return `/u/${rest}`;
     }
+    logShareEvent("native-intent:passthrough", { initial });
     return path;
-  } catch {
+  } catch (err) {
+    // This used to return "/" with no trace — a thrown error here silently
+    // swallowed the deep link (and, for shares, the whole payload handoff).
+    logShareEvent("native-intent:error", {
+      initial,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return "/";
   }
 }

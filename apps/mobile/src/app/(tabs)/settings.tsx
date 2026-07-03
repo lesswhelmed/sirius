@@ -39,6 +39,10 @@ import {
   getBiometricCapability,
   isBiometricEnabled,
 } from "@/lib/biometric-auth";
+import {
+  type ShareBreadcrumb,
+  readShareBreadcrumbs,
+} from "@/lib/share-breadcrumbs";
 
 export default function SettingsScreen() {
   const t = useTheme();
@@ -68,6 +72,27 @@ export default function SettingsScreen() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const deletePasswordRef = useRef<AuthFieldHandle>(null);
+  // Share diagnostics (read-only, mirrors the LastCrashBanner philosophy):
+  // expands inline to show the share-breadcrumb trail so testers can report
+  // which layer fired/skipped. Breadcrumbs hold tags + coarse flags only —
+  // NEVER shared payload content (see share-breadcrumbs.ts). null = not loaded.
+  const [diagVisible, setDiagVisible] = useState(false);
+  const [breadcrumbs, setBreadcrumbs] = useState<ShareBreadcrumb[] | null>(
+    null,
+  );
+
+  function onToggleDiagnostics() {
+    if (diagVisible) {
+      setDiagVisible(false);
+      return;
+    }
+    setDiagVisible(true);
+    // Re-read on every open so a fresh share shows up without an app restart.
+    void readShareBreadcrumbs().then((entries) => {
+      // Trail is oldest-first on disk; testers want the latest event on top.
+      setBreadcrumbs(entries.slice().reverse());
+    });
+  }
 
   useEffect(() => {
     let active = true;
@@ -306,6 +331,37 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* Diagnostics — read-only share-breadcrumb trail for testers (which
+            share-handoff layer fired/skipped and why). Tags + flags only;
+            breadcrumbs never contain shared payload content. */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Diagnostics</Text>
+          <SecondaryButton
+            label={
+              diagVisible ? "Hide share diagnostics" : "Share diagnostics"
+            }
+            symbol="list.bullet.rectangle"
+            onPress={onToggleDiagnostics}
+          />
+          {diagVisible ? (
+            <View style={styles.card}>
+              {breadcrumbs === null ? (
+                <Text style={styles.toggleSub}>Loading…</Text>
+              ) : breadcrumbs.length === 0 ? (
+                <Text style={styles.toggleSub}>
+                  No share events recorded yet.
+                </Text>
+              ) : (
+                breadcrumbs.map((crumb, i) => (
+                  <Text key={`${crumb.at}-${i}`} style={styles.diagLine}>
+                    {formatBreadcrumb(crumb)}
+                  </Text>
+                ))
+              )}
+            </View>
+          ) : null}
+        </View>
+
         {/* Sign out */}
         <View style={styles.section}>
           <SecondaryButton label="Sign out" onPress={handleSignOut} />
@@ -458,6 +514,26 @@ async function handleSignOut() {
   router.replace("/(auth)/sign-in");
 }
 
+// One breadcrumb → one compact mono line: "<when>  <tag>  <detail-json>".
+// Pure — module scope. Detail is the coarse flag/count object logged by the
+// share layers, rendered as compact JSON (never payload content by contract).
+function formatBreadcrumb(crumb: ShareBreadcrumb): string {
+  const detail = crumb.detail ? `  ${JSON.stringify(crumb.detail)}` : "";
+  return `${formatEventTime(crumb.at)}  ${crumb.tag}${detail}`;
+}
+
+// Relative time for recent events (what testers report from memory), ISO
+// date+minute for older ones. Falls back to the raw string if unparseable.
+function formatEventTime(at: string): string {
+  const ts = Date.parse(at);
+  if (Number.isNaN(ts)) return at;
+  const age = Date.now() - ts;
+  if (age < 60_000) return "just now";
+  if (age < 3_600_000) return `${Math.floor(age / 60_000)}m ago`;
+  if (age < 86_400_000) return `${Math.floor(age / 3_600_000)}h ago`;
+  return at.slice(0, 16).replace("T", " ");
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   const styles = useThemedStyles(makeStyles);
   return (
@@ -530,6 +606,12 @@ function makeStyles(t: Theme) {
     fontFamily: t.font.sans,
     fontSize: 13,
     lineHeight: 18,
+    color: t.color.inkMuted,
+  },
+  diagLine: {
+    fontFamily: t.font.mono,
+    fontSize: 11,
+    lineHeight: 16,
     color: t.color.inkMuted,
   },
   sheetCopy: {
