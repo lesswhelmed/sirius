@@ -4,7 +4,7 @@
 // authorId null + agentName label). Writes live here; the delta feed mirrors
 // posts.ts:listPostsChangedSince so the mobile offline mirror reconciles comments
 // the same way it reconciles posts.
-import { type CommentAuthorKind } from "../generated/prisma";
+import { type CommentAuthorKind, Prisma } from "../generated/prisma";
 import { type Comment, prisma } from "./index";
 import type { PageResult } from "./ingest";
 
@@ -49,13 +49,29 @@ export async function createComment(input: {
 // Ascending (oldest-first) cursor list for a single post — the web reading view
 // renders a conversation, so chronological order reads naturally. Tombstoned
 // rows are excluded.
+//
+// Block-exclusion invariant: pass the viewer's blocked-id set (moderation
+// .blockedIdsFor — both directions) so comments authored by a blocked user are
+// hidden, mirroring how posts.visibilityWhereForViewer ANDs
+// blockedAuthorExclusion. Defaults empty so an owner-only / unauthenticated
+// caller with no viewer context sees the full thread unchanged. NULL-safe like
+// the Post arm: AGENT comments (authorId null) and comments whose human author
+// deleted their account (FK SetNull) must never be swallowed by someone's block.
 export async function listCommentsForPost(
   postId: string,
-  opts: { limit?: number; cursor?: string } = {},
+  opts: { limit?: number; cursor?: string; blockedIds?: string[] } = {},
 ): Promise<PageResult<CommentWithAuthor>> {
   const take = Math.min(MAX_PAGE, Math.max(1, opts.limit ?? DEFAULT_PAGE));
+  const blockedIds = opts.blockedIds ?? [];
+  const where: Prisma.CommentWhereInput = {
+    postId,
+    status: "active",
+    ...(blockedIds.length > 0
+      ? { OR: [{ authorId: null }, { authorId: { notIn: blockedIds } }] }
+      : {}),
+  };
   const items = await prisma.comment.findMany({
-    where: { postId, status: "active" },
+    where,
     take: take + 1,
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: { author: AUTHOR_SELECT },

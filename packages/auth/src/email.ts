@@ -11,6 +11,19 @@ export interface SendEmailParams {
   html: string;
 }
 
+// Escape user-controlled values before they are interpolated into email HTML
+// bodies (renderEmail inserts each body string verbatim into <p>…</p>). Lives
+// here beside renderEmail so callers escape at the render boundary. Mirrors the
+// escapeHtml in apps/web/lib/moderation/alert.ts.
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // Sirius editorial palette (paper-and-ink), kept in sync with the app theme.
 // Email clients strip <style>/external CSS and ignore CSS variables, so every
 // value here is inlined directly on the elements below.
@@ -96,6 +109,16 @@ export async function sendEmail({
   const isProduction = process.env.NODE_ENV === "production";
 
   if (!resend) {
+    // Fail closed in production: the email carries live single-use auth tokens
+    // (password-reset / email-verification URLs embedded in `html`). Logging
+    // them to stdout while returning success would leak the tokens to PM2 logs
+    // AND make Better Auth believe the send succeeded. Surface the
+    // misconfiguration instead of silently swallowing it.
+    if (isProduction) {
+      throw new Error(
+        `[email] RESEND_API_KEY not set in production — refusing to log auth tokens to stdout for ${to}`,
+      );
+    }
     console.warn(
       `[email] RESEND_API_KEY not set — logging instead of sending to ${to}`,
     );

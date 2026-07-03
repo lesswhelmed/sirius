@@ -8,7 +8,7 @@ import { admin } from "better-auth/plugins/admin";
 
 import { DEV_HOSTS } from "../dev-hosts.js";
 import { purgeUserFiles } from "./delete-user-files";
-import { renderEmail, sendEmail } from "./email";
+import { escapeHtml, renderEmail, sendEmail } from "./email";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -129,7 +129,7 @@ export const auth = betterAuth({
           eyebrow: "New key",
           heading: "Reset your password.",
           body: [
-            `Hi ${user.name ?? "there"},`,
+            `Hi ${escapeHtml(user.name ?? "there")},`,
             "We received a request to reset the password on your Sirius account. Use the button below to choose a new one.",
           ],
           cta: { label: "Set a new password", url },
@@ -153,7 +153,7 @@ export const auth = betterAuth({
           eyebrow: "Welcome",
           heading: "Verify your email.",
           body: [
-            `Welcome, ${user.name ?? "there"}!`,
+            `Welcome, ${escapeHtml(user.name ?? "there")}!`,
             "Confirm your email address to finish setting up your Sirius account.",
           ],
           cta: { label: "Verify email", url },

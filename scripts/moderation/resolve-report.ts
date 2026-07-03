@@ -428,6 +428,14 @@ async function cmdBan(
   const sessions = await prisma.session.deleteMany({
     where: { userId: user.id },
   });
+  // Also revoke every API key the user owns. The better-auth apiKey() plugin
+  // keys rows to the owning user via `referenceId` (delegate: prisma.apiKey,
+  // model ApiKey → table "apikey"); verifyApiKey never checks the owner's
+  // `banned` flag, so without this a banned user keeps authenticated access to
+  // the MCP corpus service. Delete (not disable) to fully revoke.
+  const apiKeys = await prisma.apiKey.deleteMany({
+    where: { referenceId: user.id },
+  });
 
   let privated = 0;
   if (privateAll) {
@@ -444,6 +452,10 @@ async function cmdBan(
   console.log(
     `  Sessions revoked:  ${sessions.count} (live sessions die now; sign-in is ` +
       `blocked by the better-auth admin plugin)`,
+  );
+  console.log(
+    `  API keys revoked:  ${apiKeys.count} (deleted; kills MCP/API bearer-key ` +
+      `access — verifyApiKey doesn't check the banned flag on its own)`,
   );
   console.log(
     privateAll

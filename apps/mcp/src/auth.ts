@@ -6,6 +6,7 @@
 // `referenceId`, NOT `userId`). Rate-limit / expiry / enabled checks are all
 // enforced inside verifyApiKey, so a throttled or expired key resolves to null.
 import { auth } from "@repo/auth";
+import { prisma } from "@repo/db";
 
 function extractBearer(request: Request): string | null {
   const header = request.headers.get("authorization");
@@ -38,6 +39,18 @@ export async function verifyKey(
     }
     const userId = result.key.referenceId;
     if (!userId) {
+      return null;
+    }
+    // verifyApiKey validates the key (existence/expiry/enabled/rate-limit) but
+    // NOT the owning user's moderation status. A banned user's key would still
+    // resolve, so reject if the owner is banned — moderation revokes keys on
+    // ban (scripts/moderation/resolve-report.ts), but this is the defense-in-
+    // depth gate for any key minted/left behind out of band.
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { banned: true },
+    });
+    if (!user || user.banned) {
       return null;
     }
     return { userId };

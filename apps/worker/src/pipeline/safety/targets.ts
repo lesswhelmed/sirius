@@ -7,6 +7,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { parseGitHubUrl } from "@repo/github-ingest";
+import {
+  DraftEnvelopeSchema,
+  SightDraftEnvelopeSchema,
+} from "@repo/ingest-draft";
 import { parseInstagramUrl } from "../../lib/instagram-url";
 import { parseTwitterUrl } from "../../lib/twitter-url";
 import { parseYouTubeUrl } from "../../lib/youtube-url";
@@ -60,6 +64,12 @@ function isThirdPartyLink(url: string): boolean {
 // True ⇒ the worker runs collectScanTargets (which may still yield nothing, e.g.
 // a url whose HEAD turns out non-PDF, in which case the gate allows).
 export function shouldScan(input: PipelineInput): boolean {
+  // A client-supplied draft is published VERBATIM (tryClientDraft skips Gemini),
+  // so it must ALWAYS be scanned — including the single non-PDF URL path that is
+  // otherwise out of scope. Without this a benign-notes + harmful-draft
+  // submission would skip the gate entirely.
+  if ("draft" in input && input.draft != null) return true;
+
   switch (input.kind) {
     case "note":
     case "image":
@@ -75,6 +85,42 @@ export function shouldScan(input: PipelineInput): boolean {
   }
 }
 
+// A valid client draft (on-device LLM) is honored by tryClientDraft and
+// post-writer emits its title/body/excerpt/image-alts VERBATIM, skipping Gemini.
+// That user-visible text is user-PRODUCED material and must be scanned as text —
+// otherwise an attacker pairs benign notes with a harmful draft body. Parsed
+// with the SAME schema tryClientDraft uses, so we scan exactly what would be
+// published; an invalid draft yields no targets here but is also ignored there
+// (falls back to the Gemini path), so nothing unscanned can slip through.
+function collectDraftTargets(input: PipelineInput): ScanTarget[] {
+  if (!("draft" in input) || input.draft == null) return [];
+
+  const targets: ScanTarget[] = [];
+  const push = (label: string, text: string | undefined) => {
+    const trimmed = text?.trim();
+    if (trimmed) targets.push({ kind: "text", label, text: trimmed });
+  };
+
+  if (input.kind === "image") {
+    const parsed = SightDraftEnvelopeSchema.safeParse(input.draft);
+    if (!parsed.success) return [];
+    const { post } = parsed.data;
+    push("draft title", post.title);
+    push("draft body", post.body);
+    push("draft excerpt", post.excerpt);
+    for (const alt of post.imageAlts) push("draft image alt", alt);
+    return targets;
+  }
+
+  // note + url both carry a PostDraftSchema envelope (DraftEnvelopeSchema).
+  const parsed = DraftEnvelopeSchema.safeParse(input.draft);
+  if (!parsed.success) return [];
+  const { post } = parsed.data;
+  push("draft title", post.title);
+  push("draft body", post.body);
+  return targets;
+}
+
 // Builds the actual parts handed to the guardrail. Async because the url path
 // may HEAD + download PDFs. Returns [] when there is nothing user-produced to
 // judge (e.g. a YouTube link with no notes) — the caller then allows.
@@ -87,6 +133,9 @@ export async function collectScanTargets(
   // Notes ride on every kind; always scan them as text.
   const notes = input.notes?.trim() ?? "";
   if (notes) targets.push({ kind: "text", label: "author notes", text: notes });
+
+  // A client-supplied draft is published verbatim (skips Gemini) — scan its text.
+  targets.push(...collectDraftTargets(input));
 
   switch (input.kind) {
     case "note":

@@ -79,7 +79,15 @@ export const urlIngestSchema = z
 export type UrlIngestInput = z.infer<typeof urlIngestSchema>;
 
 export const imageMetadataSchema = z.object({
-  batchId: z.string().trim().min(1, "batchId required"),
+  // batchId is a client-supplied crypto.randomUUID() (see materials.ts on both
+  // web + mobile). It reaches a filesystem path (post-writer copies the batch
+  // into <sightRoot>/<batchId>/) AND the served URL /sight/<batchId>/…, so it
+  // MUST be a single safe path segment — no "/", "..", "\0", or absolute prefix
+  // that could escape the sight docroot (path-traversal → arbitrary file write).
+  batchId: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_-]{1,64}$/, "batchId required"),
   imageIndex: z.coerce.number().int().min(0),
   totalCount: z.coerce.number().int().min(1),
   notes: z.string().optional().default(""),

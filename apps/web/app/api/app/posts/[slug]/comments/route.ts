@@ -1,4 +1,5 @@
 import {
+  blockedIdsFor,
   createComment,
   findPostAttributionBySlug,
   listCommentsForPost,
@@ -39,9 +40,14 @@ export async function GET(
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const limitParam = url.searchParams.get("limit");
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
+  // Block-exclusion invariant: on a FRIENDS/GROUP/PUBLIC post a commenter the
+  // viewer has blocked (either direction) must not surface in the thread. Thread
+  // the viewer's block set through the query like the feed does.
+  const blockedIds = await blockedIdsFor(session.user.id);
   const page = await listCommentsForPost(post.id, {
     cursor,
     limit: Number.isFinite(limit) ? limit : undefined,
+    blockedIds,
   });
   return Response.json(page);
 }

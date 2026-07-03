@@ -23,7 +23,17 @@ export async function stageBytes(
   submissionId: string,
   bytes: ArrayBuffer | Uint8Array,
   extension: string,
+  // Optional hard ceiling. submit{Image,File}Ingest already reject over-cap
+  // bodies with a 413 before staging, so this is defense-in-depth: it only trips
+  // on a programming error, and fails loudly rather than writing an unbounded
+  // file to the staging disk.
+  maxBytes?: number,
 ): Promise<string> {
+  if (maxBytes !== undefined && bytes.byteLength > maxBytes) {
+    throw new Error(
+      `staged payload ${bytes.byteLength} bytes exceeds the ${maxBytes}-byte cap`,
+    );
+  }
   const dir = ensureStagingDir();
   const filePath = join(dir, `${submissionId}.${extension}`);
   const buffer = Buffer.isBuffer(bytes)

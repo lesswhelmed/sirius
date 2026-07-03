@@ -124,9 +124,11 @@ export type SubmitResult =
   | { ok: true; status: 200 | 202; body: SubmitResultBody }
   | {
       ok: false;
-      // 400 = bad request (validation); 422 = a HEIC/HEIF upload we accepted but
-      // could not transcode to a servable JPEG (hard reject — see submitImageIngest).
-      status: 400 | 422;
+      // 400 = bad request (validation); 413 = payload too large (body exceeded the
+      // ingest size cap — see the "Request-body size caps" block below); 422 = a
+      // HEIC/HEIF upload we accepted but could not transcode to a servable JPEG
+      // (hard reject — see submitImageIngest).
+      status: 400 | 413 | 422;
       error: string;
       extra?: Record<string, unknown>;
     };
@@ -156,6 +158,86 @@ const SUBMIT_LOG_LABEL: Record<CreateSubmissionResult["status"], string> = {
   retried: "retried",
   deduped: "deduped",
 };
+
+// ── Request-body size caps (DoS guard) ────────────────────────────────────────
+// Next.js App Router route handlers impose NO default body-size limit, so an
+// unbounded request.arrayBuffer()/formData() read can OOM-kill the single
+// fork-mode `sirius-web` process (or fill the staging disk). These caps guard
+// BOTH the bearer (/api/ingest*) and session (/api/app/ingest*) parse paths,
+// which share these functions.
+//
+// Two layers:
+//   1. a Content-Length fast-path (contentLengthExceeds) that rejects BEFORE the
+//      body is buffered — the common honest-client case never allocates; and
+//   2. an authoritative check on the REAL bytes (in submit{Image,File}Ingest and
+//      the multipart File.size below), since Content-Length is attacker-
+//      controllable and can lie or be omitted.
+//
+// Over-limit is surfaced as HTTP 413 through the SubmitResult status channel
+// (submit* returns { status: 413 }, which the routes pass straight to jsonError).
+// The parse layer flags it with the `oversize` payload field rather than an
+// `{ error }` result, because the routes map generic parse `{ error }` results to
+// a hardcoded 400 and this module must not edit them.
+const INGEST_MB = 1024 * 1024;
+export const MAX_INGEST_IMAGE_BYTES = 25 * INGEST_MB; // images
+export const MAX_INGEST_FILE_BYTES = 500 * INGEST_MB; // video / audio / document
+
+const EMPTY_BYTES = new Uint8Array(0);
+
+// True when the request DECLARES a body larger than the cap. A hint only
+// (attacker-controllable), used to skip buffering the body in the common case.
+function contentLengthExceeds(request: Request, limit: number): boolean {
+  const header = request.headers.get("content-length");
+  if (!header) {
+    return false;
+  }
+  const declared = Number(header);
+  return Number.isFinite(declared) && declared > limit;
+}
+
+// Sentinel payload returned by the Content-Length fast-path in the multipart
+// parsers, where the real metadata isn't available yet (formData hasn't run).
+// submit{Image,File}Ingest checks `.oversize` first and returns 413 without ever
+// reading these placeholder fields or the (empty) bytes.
+function oversizeImagePayload(): ParsedImagePayload {
+  return {
+    bytes: EMPTY_BYTES,
+    contentType: "application/octet-stream",
+    oversize: true,
+    metadata: {
+      batchId: "oversize",
+      imageIndex: 0,
+      totalCount: 1,
+      notes: "",
+      projectId: "",
+      shareGroupIds: [],
+      draft: "",
+    },
+  };
+}
+
+function oversizeFilePayload(): ParsedFilePayload {
+  return {
+    bytes: EMPTY_BYTES,
+    contentType: "application/octet-stream",
+    fileName: "upload.bin",
+    oversize: true,
+    metadata: {
+      kind: "document",
+      notes: "",
+      projectId: "",
+      shareGroupIds: [],
+    },
+  };
+}
+
+function tooLargeResult(limit: number, label: string): SubmitResult {
+  return {
+    ok: false,
+    status: 413,
+    error: `payload too large: ${label} may not exceed ${Math.round(limit / INGEST_MB)} MB`,
+  };
+}
 
 export async function submitUrlIngest(
   raw: unknown,
@@ -253,6 +335,10 @@ export async function submitUrlIngest(
 export interface ParsedImagePayload {
   bytes: Uint8Array;
   contentType: string;
+  // Set by the parse layer when a size guard tripped (Content-Length fast-path,
+  // or the multipart File.size check). submitImageIngest turns it into a 413.
+  // When true, `bytes`/`metadata` are placeholders and must not be read.
+  oversize?: true;
   metadata: {
     batchId: string;
     imageIndex: number;
@@ -274,6 +360,10 @@ export interface ParsedImagePayload {
 export async function parseMultipartImage(
   request: Request,
 ): Promise<ParsedImagePayload | { error: string }> {
+  // Layer 1: reject before formData() buffers the whole multipart body.
+  if (contentLengthExceeds(request, MAX_INGEST_IMAGE_BYTES)) {
+    return oversizeImagePayload();
+  }
   const form = await request.formData();
   const image = form.get("image");
   if (!(image instanceof File)) {
@@ -292,6 +382,16 @@ export async function parseMultipartImage(
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
   }
+  // Layer 2: authoritative check on the real part size (Content-Length can lie or
+  // be absent). File.size is available without reading the bytes into memory.
+  if (image.size > MAX_INGEST_IMAGE_BYTES) {
+    return {
+      bytes: EMPTY_BYTES,
+      contentType: image.type || "application/octet-stream",
+      metadata: metaParsed.data,
+      oversize: true,
+    };
+  }
   const bytes = new Uint8Array(await image.arrayBuffer());
   return {
     bytes,
@@ -308,6 +408,10 @@ export async function parseRawImage(
     request.headers.get(`x-${key.toLowerCase()}`) ??
     url.searchParams.get(key) ??
     "";
+  // Layer 1: reject before arrayBuffer() buffers the whole body.
+  if (contentLengthExceeds(request, MAX_INGEST_IMAGE_BYTES)) {
+    return oversizeImagePayload();
+  }
   const metaParsed = imageMetadataSchema.safeParse({
     batchId: get("batchId"),
     imageIndex: get("imageIndex"),
@@ -325,6 +429,16 @@ export async function parseRawImage(
   if (buf.byteLength === 0) {
     return { error: "empty image body" };
   }
+  // Layer 2: authoritative check (Content-Length may have been spoofed/omitted).
+  if (buf.byteLength > MAX_INGEST_IMAGE_BYTES) {
+    return {
+      bytes: EMPTY_BYTES,
+      contentType:
+        request.headers.get("content-type") ?? "application/octet-stream",
+      metadata: metaParsed.data,
+      oversize: true,
+    };
+  }
   return {
     bytes: new Uint8Array(buf),
     contentType:
@@ -339,6 +453,17 @@ export async function submitImageIngest(
   submittedById: string | null = null,
   projectId: string | null = null,
 ): Promise<SubmitResult> {
+  // Authoritative size cap (413) — catches both the parse-layer `oversize` flag
+  // (Content-Length/File.size fast-paths) and any real over-cap bytes, BEFORE the
+  // HEIC transcode/staging/DB work. Both auth routes surface this status verbatim.
+  if (payload.oversize || payload.bytes.byteLength > MAX_INGEST_IMAGE_BYTES) {
+    log("warn", "payload-too-large", {
+      bytes: payload.bytes.byteLength,
+      limit: MAX_INGEST_IMAGE_BYTES,
+    });
+    return tooLargeResult(MAX_INGEST_IMAGE_BYTES, "images");
+  }
+
   const submissionId = randomUUID();
 
   // Dedup identity is the batch SLOT (batchId, imageIndex), not the raw bytes —
@@ -413,7 +538,12 @@ export async function submitImageIngest(
     };
   }
 
-  const stagedFilePath = await stageBytes(submissionId, bytes, ext);
+  const stagedFilePath = await stageBytes(
+    submissionId,
+    bytes,
+    ext,
+    MAX_INGEST_IMAGE_BYTES,
+  );
 
   // On-device SIGHT draft (JSON string form field). Soft-fail: an unparsable
   // or invalid draft is dropped with a warn — the image still ingests and the
@@ -519,11 +649,19 @@ export interface ParsedFilePayload {
   contentType: string;
   metadata: FileIngestMetadata;
   fileName: string;
+  // Set by the parse layer when a size guard tripped (Content-Length fast-path,
+  // or the multipart File.size check). submitFileIngest turns it into a 413.
+  // When true, `bytes`/`metadata`/`fileName` are placeholders and must not be read.
+  oversize?: true;
 }
 
 export async function parseMultipartFile(
   request: Request,
 ): Promise<ParsedFilePayload | { error: string }> {
+  // Layer 1: reject before formData() buffers the whole multipart body.
+  if (contentLengthExceeds(request, MAX_INGEST_FILE_BYTES)) {
+    return oversizeFilePayload();
+  }
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) {
@@ -538,6 +676,17 @@ export async function parseMultipartFile(
   });
   if (!metaParsed.success) {
     return { error: `metadata validation failed: ${metaParsed.error.message}` };
+  }
+  // Layer 2: authoritative check on the real part size (Content-Length can lie or
+  // be absent). File.size is available without reading the bytes into memory.
+  if (file.size > MAX_INGEST_FILE_BYTES) {
+    return {
+      bytes: EMPTY_BYTES,
+      contentType: file.type || "application/octet-stream",
+      metadata: metaParsed.data,
+      fileName: file.name,
+      oversize: true,
+    };
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (bytes.byteLength === 0) {
@@ -559,6 +708,10 @@ export async function parseRawFile(
     request.headers.get(`x-${key.toLowerCase()}`) ??
     url.searchParams.get(key) ??
     "";
+  // Layer 1: reject before arrayBuffer() buffers the whole body.
+  if (contentLengthExceeds(request, MAX_INGEST_FILE_BYTES)) {
+    return oversizeFilePayload();
+  }
   const metaParsed = fileMetadataSchema.safeParse({
     kind: get("kind"),
     notes: get("notes"),
@@ -572,6 +725,17 @@ export async function parseRawFile(
   const buf = await request.arrayBuffer();
   if (buf.byteLength === 0) {
     return { error: "empty file body" };
+  }
+  // Layer 2: authoritative check (Content-Length may have been spoofed/omitted).
+  if (buf.byteLength > MAX_INGEST_FILE_BYTES) {
+    return {
+      bytes: EMPTY_BYTES,
+      contentType:
+        request.headers.get("content-type") ?? "application/octet-stream",
+      metadata: metaParsed.data,
+      fileName: get("filename") || `upload.${get("kind") || "bin"}`,
+      oversize: true,
+    };
   }
   return {
     bytes: new Uint8Array(buf),
@@ -588,9 +752,25 @@ export async function submitFileIngest(
   submittedById: string | null = null,
   projectId: string | null = null,
 ): Promise<SubmitResult> {
+  // Authoritative size cap (413) — catches the parse-layer `oversize` flag
+  // (Content-Length/File.size fast-paths) and any real over-cap bytes, BEFORE
+  // staging/DB work. Both auth routes surface this status verbatim.
+  if (payload.oversize || payload.bytes.byteLength > MAX_INGEST_FILE_BYTES) {
+    log("warn", "payload-too-large", {
+      bytes: payload.bytes.byteLength,
+      limit: MAX_INGEST_FILE_BYTES,
+    });
+    return tooLargeResult(MAX_INGEST_FILE_BYTES, "files");
+  }
+
   const submissionId = randomUUID();
   const ext = extensionForFileMime(payload.contentType);
-  const stagedFilePath = await stageBytes(submissionId, payload.bytes, ext);
+  const stagedFilePath = await stageBytes(
+    submissionId,
+    payload.bytes,
+    ext,
+    MAX_INGEST_FILE_BYTES,
+  );
   const contentHash = contentHashForBytes(payload.bytes);
 
   // seam(intake): validate projectId ownership before persisting. Drop to null

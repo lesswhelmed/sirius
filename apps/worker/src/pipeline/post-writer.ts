@@ -7,7 +7,7 @@
 
 import { createHash } from "node:crypto";
 import { copyFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import {
   PostStatus,
   type PostType,
@@ -127,12 +127,23 @@ function copyImages(
   images: StagedImage[],
 ): { absolute: string[]; urls: string[] } {
   const sightRoot = resolveSightDir();
-  const absDir = join(sightRoot, batchId);
+  // Defense in depth: batchId is client-supplied and is already constrained to a
+  // safe single segment by imageMetadataSchema at submit time, but confine the
+  // destination to the sight docroot here too — mirror serve-media.ts so a bad
+  // id can never escape the root (path-traversal → arbitrary file write) even if
+  // it reaches the worker unvalidated.
+  const base = resolve(sightRoot);
+  const absDir = resolve(join(base, batchId));
+  if (absDir !== base && !absDir.startsWith(base + sep)) {
+    throw new Error(`copyImages: unsafe batchId escapes sight root: ${batchId}`);
+  }
   ensureDir(absDir);
   const absolute: string[] = [];
   const urls: string[] = [];
   for (const img of images) {
-    const filename = `${img.index + 1}.${img.extension}`;
+    // The filename is worker-derived (index + extension), but basename-guard it
+    // so no path separator could ever compose into `dest`.
+    const filename = basename(`${img.index + 1}.${img.extension}`);
     const dest = join(absDir, filename);
     ensureDir(dirname(dest));
     copyFileSync(img.stagedFilePath, dest);
