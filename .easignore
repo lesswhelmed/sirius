@@ -3,12 +3,20 @@
 # just bloat the project archive uploaded to EAS.
 
 # Store/marketing/doc assets
+# NOTE: `/docs/` must stay root-anchored — an unanchored `docs/` matches any
+# dir named docs at any depth, including the apps/docs workspace, which would
+# defeat the !apps/docs/package.json re-include below and break bun install.
 app-store-assets/
-docs/
-apps/docs/
+/docs/
 apps/web/public/product/
 .beads/
 plugins/
+
+# apps/docs is a bun workspace: its package.json MUST stay in the archive or
+# `bun install --frozen-lockfile` fails on EAS ("lockfile had changes") because
+# the workspace set no longer matches bun.lock. Exclude contents, keep manifest.
+apps/docs/*
+!apps/docs/package.json
 
 # Safety net: already gitignored, but .easignore takes precedence over
 # .gitignore when present, so re-list anything sensitive or heavy here.
