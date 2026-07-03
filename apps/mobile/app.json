@@ -16,6 +16,7 @@
 		"ios": {
 			"bundleIdentifier": "dev.copt.sirius",
 			"supportsTablet": true,
+			"associatedDomains": ["webcredentials:lesswhelmed.com"],
 			"infoPlist": {
 				"ITSAppUsesNonExemptEncryption": false,
 				"CFBundleSpokenName": "Sirius app",

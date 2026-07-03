@@ -89,12 +89,18 @@ export default function SignInScreen() {
   const emailRef = useRef<AuthFieldHandle>(null);
   const passwordRef = useRef<AuthFieldHandle>(null);
   const [busy, setBusy] = useState(false);
-  // Biometric state, resolved on mount. `enrolled` (sync) decides whether to
-  // render the Face ID button immediately; `bioType` labels it correctly once
-  // the async capability check returns.
+  // Biometric state. `enrolled` (sync, from SecureStore) ALONE decides whether
+  // the biometric block renders, so it's present from the first frame — no
+  // layout shift above the email/password form during the iOS autofill window.
+  // The async capability check then labels the button (Face ID vs Touch ID);
+  // until it resolves the button shows the generic label, disabled. If the
+  // check comes back unavailable (rare: enrolled flag set but biometrics gone
+  // from the device), the block hides — we accept that rare shift.
   const [enrolled] = useState(() => isBiometricEnabled());
   const [enrolledEmail] = useState(() => getEnrolledEmail());
-  const [bioType, setBioType] = useState<BiometricType>("none");
+  // null = capability check still in flight.
+  const [bioType, setBioType] = useState<BiometricType | null>(null);
+  const [bioUnavailable, setBioUnavailable] = useState(false);
   const [bioBusy, setBioBusy] = useState(false);
   // One-time confirmation: if the app auto-recovered from a corrupted stored
   // session (the "fetch failed" wedge), surface it here. Read once on mount.
@@ -105,7 +111,9 @@ export default function SignInScreen() {
     if (!enrolled) return;
     let active = true;
     void getBiometricCapability().then((cap) => {
-      if (active) setBioType(cap.available ? cap.type : "none");
+      if (!active) return;
+      if (cap.available) setBioType(cap.type);
+      else setBioUnavailable(true);
     });
     return () => {
       active = false;
@@ -193,8 +201,11 @@ export default function SignInScreen() {
     router.replace("/(tabs)/library");
   }
 
-  const showBiometric = enrolled && bioType !== "none";
-  const bioButtonLabel = `Sign in with ${biometricLabel(bioType)}`;
+  const showBiometric = enrolled && !bioUnavailable;
+  // Capability check still in flight → generic "biometrics" label, button
+  // disabled; it swaps to Face ID / Touch ID (enabled) once resolved.
+  const bioPending = bioType === null;
+  const bioButtonLabel = `Sign in with ${biometricLabel(bioType ?? "none")}`;
   // The SF Symbol matching the device modality, shown on the button (iOS only;
   // Android/web fall back to the label alone — see SecondaryButton).
   const bioSymbol = bioType === "touch" ? "touchid" : "faceid";
@@ -228,7 +239,7 @@ export default function SignInScreen() {
                 label={bioButtonLabel}
                 symbol={bioSymbol}
                 busy={bioBusy}
-                disabled={busy}
+                disabled={busy || bioPending}
                 onPress={handleBiometricSignIn}
               />
               {enrolledEmail ? (
