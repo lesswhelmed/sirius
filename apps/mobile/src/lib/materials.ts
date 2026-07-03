@@ -33,8 +33,11 @@ import {
   createLocalRawUrl,
   deleteLocalDraft,
   linkSubmission,
+  markdownLink,
   markLocalFailed,
+  updateLocalStubTitle,
 } from "@/lib/sync/writes";
+import { fetchPageTitle } from "@/lib/url-title";
 
 export type UrlMaterial = { kind: "url"; url: string; notes?: string };
 // A GitHub repository link. Submitted exactly like a URL (the worker detects the
@@ -364,6 +367,18 @@ const urlHandler: MaterialHandler<"url"> = {
       const localId = draft
         ? await createLocalDraft({ type: "FINDING", envelope: draft })
         : await createLocalRawUrl(m.url);
+      if (!draft) {
+        // Fire-and-forget title upgrade: never awaited (capture stays instant),
+        // never throws (fetchPageTitle resolves null on any failure, and the
+        // updater is guarded so a reconciled row is never clobbered).
+        void fetchPageTitle(m.url)
+          .then((t) =>
+            t
+              ? updateLocalStubTitle(localId, t, markdownLink(t, m.url))
+              : undefined,
+          )
+          .catch(() => {});
+      }
       try {
         await enqueueOutbox(
           urlIngestBody(
@@ -408,6 +423,15 @@ const repoHandler: MaterialHandler<"repo"> = {
       // ingest to FINDING, same as plain URLs) so a queued repo shows up
       // immediately instead of waiting on the server draft.
       const localId = await createLocalRawUrl(m.url);
+      // Fire-and-forget title upgrade, same as urlHandler: never awaited,
+      // never throws, guarded against clobbering a reconciled row.
+      void fetchPageTitle(m.url)
+        .then((t) =>
+          t
+            ? updateLocalStubTitle(localId, t, markdownLink(t, m.url))
+            : undefined,
+        )
+        .catch(() => {});
       try {
         await enqueueOutbox(
           urlIngestBody(

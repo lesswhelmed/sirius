@@ -86,7 +86,9 @@ function deriveNoteTitle(text: string): string {
     .find((l) => l.length > 0);
   if (!firstLine) return "Untitled note";
   const collapsed = firstLine.replace(/\s+/g, " ");
-  return collapsed.length > 80 ? `${collapsed.slice(0, 79).trimEnd()}…` : collapsed;
+  return collapsed.length > 80
+    ? `${collapsed.slice(0, 79).trimEnd()}…`
+    : collapsed;
 }
 
 /**
@@ -115,10 +117,40 @@ export async function createLocalRawNote(text: string): Promise<string> {
 }
 
 /**
+ * Hostname of a URL with the leading "www." stripped, or null when it doesn't
+ * parse. Mirrors the worker's manual-stub hostOf (manual-stub.ts) so the local
+ * stub card and the server's over-limit stub title identically.
+ */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build a markdown link whose label/destination can't break the link syntax:
+ * an unbalanced `[`/`]` in a fetched page title or `(`/`)` in a shared URL
+ * would otherwise render the stub body as literal broken markdown. Labels get
+ * backslash-escaped brackets; destinations use the CommonMark `<...>` form
+ * (md4c accepts it, and it neutralizes parens) with the only characters
+ * illegal inside it percent-encoded. Shared with materials.ts so the
+ * fire-and-forget title upgrade builds its body identically.
+ */
+export function markdownLink(label: string, url: string): string {
+  const safeLabel = label.replace(/([\\[\]])/g, "\\$1");
+  const safeUrl = url.replace(/[<>]/g, (c) => (c === "<" ? "%3C" : "%3E"));
+  return `[${safeLabel}](<${safeUrl}>)`;
+}
+
+/**
  * Insert a minimal optimistic local_draft row for a URL/repo material with no
  * on-device draft — the common case, since URL drafting needs the network
  * extract step (materials.ts urlHandler) and repo materials never draft
- * on-device at all. Title/body are the raw URL; tags/categories are filled in
+ * on-device at all. Title is "Link from {host}" (the exact server manual-stub
+ * strings, so an over-limit reconcile is a no-op visually) and the body is a
+ * tappable markdown link rather than a bare URL; tags/categories are filled in
  * by the server's drafted FINDING post on reconcile (the worker forces both
  * plain-URL and repo ingest to FINDING). Mirrors createLocalRawNote. Returns
  * the localId to thread to the outbox row so replay links and reconciliation
@@ -127,11 +159,12 @@ export async function createLocalRawNote(text: string): Promise<string> {
 export async function createLocalRawUrl(url: string): Promise<string> {
   const localId = randomUUID();
   const now = new Date();
+  const host = hostOf(url);
   await db.insert(posts).values({
     localId,
     syncState: "local_draft",
-    title: url,
-    body: url,
+    title: host ? `Link from ${host}` : "Saved link",
+    body: markdownLink(host ?? url, url),
     type: "FINDING",
     tags: [],
     categories: [],
@@ -139,6 +172,29 @@ export async function createLocalRawUrl(url: string): Promise<string> {
     updatedAt: now,
   });
   return localId;
+}
+
+/**
+ * Upgrade a raw-URL stub card with the fetched page title (and a body link
+ * labeled with it) once fetchPageTitle resolves. Guarded to local_draft|pending
+ * so the late fire-and-forget fetch never clobbers a row that already
+ * reconciled to the server's drafted post (same guard style as
+ * removeLocalBySubmissionId).
+ */
+export async function updateLocalStubTitle(
+  localId: string,
+  title: string,
+  body: string,
+): Promise<void> {
+  await db
+    .update(posts)
+    .set({ title, body, updatedAt: new Date() })
+    .where(
+      and(
+        eq(posts.localId, localId),
+        inArray(posts.syncState, ["local_draft", "pending"]),
+      ),
+    );
 }
 
 /**
