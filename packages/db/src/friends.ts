@@ -14,9 +14,29 @@ const UNIQUE_VIOLATION = "P2002";
 
 // Canonical pair ordering — the ONE place that decides (userAId, userBId). Every
 // read/write routes through this so the @@unique([userAId, userBId]) guard is a
-// real dedup constraint (no A→B + B→A pair can exist).
-function orderPair(x: string, y: string): { userAId: string; userBId: string } {
+// real dedup constraint (no A→B + B→A pair can exist). Exported for
+// moderation.ts (blockUser reuses the friendship cascade) — no caller builds
+// the pair by hand.
+export function orderPair(
+  x: string,
+  y: string,
+): { userAId: string; userBId: string } {
   return x < y ? { userAId: x, userBId: y } : { userAId: y, userBId: x };
+}
+
+// The share-group half of the unfriend cascade: each party leaves the OTHER's
+// groups (both directions). Returned un-awaited (a PrismaPromise) so callers
+// compose it into their own $transaction — removeFriend below, blockUser in
+// moderation.ts.
+export function shareGroupMemberPurgeOp(userId: string, otherId: string) {
+  return prisma.shareGroupMember.deleteMany({
+    where: {
+      OR: [
+        { userId: otherId, group: { ownerId: userId } },
+        { userId: userId, group: { ownerId: otherId } },
+      ],
+    },
+  });
 }
 
 // --- the read primitives --------------------------------------------------
@@ -84,6 +104,20 @@ export async function sendFriendRequest(
   targetId: string,
 ): Promise<FriendRequestResult> {
   if (requesterId === targetId) return { ok: false, reason: "self" };
+  // UserBlock veto — a block in EITHER direction refuses the request. Mirrors
+  // moderation.isBlockedEither, inlined (not imported) to keep friends.ts ↔
+  // moderation.ts acyclic: moderation.ts already imports this module's
+  // orderPair + shareGroupMemberPurgeOp for the block cascade.
+  const block = await prisma.userBlock.findFirst({
+    where: {
+      OR: [
+        { blockerId: requesterId, blockedId: targetId },
+        { blockerId: targetId, blockedId: requesterId },
+      ],
+    },
+    select: { id: true },
+  });
+  if (block) return { ok: false, reason: "blocked" };
   const pair = orderPair(requesterId, targetId);
   try {
     const existing = await prisma.friendship.findUnique({
@@ -183,14 +217,7 @@ export async function removeFriend(
         ],
       },
     }),
-    prisma.shareGroupMember.deleteMany({
-      where: {
-        OR: [
-          { userId: otherId, group: { ownerId: userId } },
-          { userId: userId, group: { ownerId: otherId } },
-        ],
-      },
-    }),
+    shareGroupMemberPurgeOp(userId, otherId),
   ]);
   return res.count > 0;
 }

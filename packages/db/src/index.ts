@@ -7,6 +7,8 @@ import {
   PostVisibility,
   Prisma,
   PrismaClient,
+  ReportReason,
+  ReportStatus,
   ShareGroupVisibility,
 } from "../generated/prisma";
 
@@ -18,6 +20,8 @@ export {
   PostVisibility,
   Prisma,
   PrismaClient,
+  ReportReason,
+  ReportStatus,
   ShareGroupVisibility,
 };
 
@@ -72,6 +76,10 @@ export type PostNeighbor = Prisma.PostNeighborGetPayload<
   Record<string, never>
 >;
 export type SceneLayout = Prisma.SceneLayoutGetPayload<Record<string, never>>;
+export type ContentReport = Prisma.ContentReportGetPayload<
+  Record<string, never>
+>;
+export type UserBlock = Prisma.UserBlockGetPayload<Record<string, never>>;
 export type SceneRecomputeRequest =
   Prisma.SceneRecomputeRequestGetPayload<Record<string, never>>;
 
@@ -86,6 +94,7 @@ export * from "./entitlement";
 export * from "./friends";
 export * from "./groups";
 export * from "./ingest";
+export * from "./moderation";
 export * from "./notify";
 export * from "./post-delete";
 export * from "./post-update";

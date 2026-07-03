@@ -9,6 +9,7 @@ import {
   type ProjectEmbedding,
   prisma,
 } from "./index";
+import { blockedAuthorExclusion } from "./moderation";
 
 export interface UpsertCategoryEmbeddingInput {
   path: string;
@@ -235,6 +236,9 @@ export async function listVisiblePostEmbeddings(
   viewerId: string,
   friendIds: string[],
   includePublic: boolean,
+  // Blocked-author exclusion (moderation.blockedIdsFor — both directions),
+  // threaded like friendIds; defaults empty so existing callers are unchanged.
+  blockedIds: string[] = [],
 ): Promise<VisiblePostEmbedding[]> {
   const or: Prisma.PostWhereInput[] = [{ submittedById: viewerId }];
   if (friendIds.length > 0) {
@@ -257,8 +261,14 @@ export async function listVisiblePostEmbeddings(
   if (includePublic) {
     or.push({ visibility: PostVisibility.PUBLIC, status: PostStatus.PUBLISHED });
   }
+  // Same block clamp as searchVisibilityWhere so the semantic and full-text
+  // legs can never disagree about a blocked author.
+  const postWhere: Prisma.PostWhereInput =
+    blockedIds.length === 0
+      ? { OR: or }
+      : { AND: [{ OR: or }, blockedAuthorExclusion(blockedIds)] };
   const rows = await prisma.postEmbedding.findMany({
-    where: { post: { OR: or } },
+    where: { post: postWhere },
     select: {
       embedding: true,
       retrievalText: true,

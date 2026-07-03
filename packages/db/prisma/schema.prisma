@@ -83,6 +83,10 @@ model Post {
   // visibility = GROUP). Cascades when the post or a group is deleted.
   shareGroups PostShareGroup[] @relation("PostShareGroups")
 
+  // UGC moderation: viewer flags on this post. Cascade — a deleted post's
+  // reports are moot (the content is gone).
+  reports ContentReport[] @relation("PostReports")
+
   // prevent cross-provider slug collisions
   @@unique([providerId, slug])
   // a post's true identity: re-processing the same source updates this row
@@ -604,6 +608,12 @@ model User {
   location     String?
   voiceProfile String?
 
+  // App Store 1.2 (UGC safety): when the user agreed to the Terms of Use.
+  // Null = pre-terms account → clients show the one-time acceptance gate.
+  // Surfaced on the session via better-auth user.additionalFields (input:
+  // false — written exclusively server-side at sign-up / accept-terms).
+  termsAcceptedAt DateTime?
+
   sessions        Session[]
   accounts        Account[]
   posts           Post[]                  @relation("UserPosts")
@@ -625,6 +635,12 @@ model User {
   // else's group). Both cascade on user delete.
   shareGroups           ShareGroup[]       @relation("UserShareGroups")
   shareGroupMemberships ShareGroupMember[] @relation("UserShareGroupMemberships")
+
+  // UGC moderation: reports this user filed, and directional blocks. A user
+  // appears as either side of a block, so two back-relations.
+  contentReports ContentReport[] @relation("UserContentReports")
+  blocksMade     UserBlock[]     @relation("UserBlocksMade")
+  blocksReceived UserBlock[]     @relation("UserBlocksReceived")
 
   // Freemium: RevenueCat-sourced "Sirius AI Pro" entitlement (1:1) + the ledger
   // of server (Gemini) AI generations this user has consumed (for the weekly cap).
@@ -719,7 +735,61 @@ enum FriendshipStatus {
   PENDING // requestedById asked the other; awaiting accept/decline
   ACCEPTED // mutual friends
   DECLINED // recipient declined; kept (not deleted) to throttle re-spam
-  BLOCKED // reserved for a future block feature; sendFriendRequest refuses it
+  BLOCKED // superseded by the directional UserBlock model; sendFriendRequest still refuses it
+}
+
+// ─── UGC moderation (App Store Guideline 1.2) ────────────────────────────────
+
+// A viewer's flag on another user's post. ONE row per (post, reporter) — a
+// re-report upserts the same row instead of stacking duplicates, so the unique
+// key is the idempotency guard. resolvedById is a plain string (NOT a FK) so
+// deleting an admin account never erases the audit trail (mirrors
+// ModerationEvent.reviewedById).
+model ContentReport {
+  id           String       @id @default(cuid())
+  postId       String
+  post         Post         @relation("PostReports", fields: [postId], references: [id], onDelete: Cascade)
+  reporterId   String
+  reporter     User         @relation("UserContentReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  reason       ReportReason
+  note         String?
+  status       ReportStatus @default(OPEN)
+  createdAt    DateTime     @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolution   String? // free text, e.g. "uphold" | "overturn"
+
+  @@unique([postId, reporterId])
+  @@index([status, createdAt])
+}
+
+enum ReportReason {
+  OBJECTIONABLE
+  ABUSE
+  SPAM
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+}
+
+// A DIRECTIONAL block: blocker no longer sees (or is seen by) blocked.
+// Deliberately separate from Friendship — that row is symmetric (one canonical
+// row per pair) and cannot express who blocked whom, which unblock needs
+// (only the blocker may lift it). Visibility exclusion is bidirectional:
+// moderation.blockedIdsFor() unions both directions.
+model UserBlock {
+  id        String   @id @default(cuid())
+  blockerId String
+  blocker   User     @relation("UserBlocksMade", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("UserBlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
 }
 
 // ─── Organization (lesswhelmed Aspiration Core) ─────────────────────────────

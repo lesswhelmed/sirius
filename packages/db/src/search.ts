@@ -12,6 +12,7 @@ import { cosineSimilarity, embedContent, queryPrefix } from "./embed-client";
 import { listVisiblePostEmbeddings } from "./embeddings";
 import { friendIdsOf } from "./friends";
 import { prisma } from "./index";
+import { blockedAuthorExclusion, blockedIdsFor } from "./moderation";
 import { listPostsBySlugsVisible, type SubmitterSummary } from "./posts";
 
 export type MatchReason = "exact" | "similar";
@@ -52,6 +53,9 @@ export function searchVisibilityWhere(
   viewerId: string,
   friendIds: string[],
   includePublic: boolean,
+  // Blocked-author exclusion (moderation.blockedIdsFor — both directions),
+  // threaded like friendIds; defaults empty so existing callers are unchanged.
+  blockedIds: string[] = [],
 ): Prisma.PostWhereInput {
   const or: Prisma.PostWhereInput[] = [{ submittedById: viewerId }];
   if (friendIds.length > 0) {
@@ -73,7 +77,10 @@ export function searchVisibilityWhere(
   if (includePublic) {
     or.push({ visibility: PostVisibility.PUBLIC, status: PostStatus.PUBLISHED });
   }
-  return { OR: or };
+  if (blockedIds.length === 0) {
+    return { OR: or };
+  }
+  return { AND: [{ OR: or }, blockedAuthorExclusion(blockedIds)] };
 }
 
 // Full-text leg: rank by ts_rank over the generated tsvector, visibility-gated
@@ -94,8 +101,15 @@ async function fullTextLeg(
   query: string,
   friendIds: string[],
   includePublic: boolean,
+  blockedIds: string[],
   limit: number,
 ): Promise<string[]> {
+  // Blocked-author arm (mirrors moderation.blockedAuthorExclusion): still plain
+  // value params only — a boolean "no blocks" short-circuit + ONE array param.
+  // The IS NULL arm keeps unattributed posts (bearer-token ingest) from being
+  // swallowed: `NULL = ANY(non-empty-array)` is SQL-NULL, and NOT NULL is NULL,
+  // which would silently drop the row.
+  const noBlocks = blockedIds.length === 0;
   const rows = await prisma.$queryRaw<{ slug: string }[]>`
     SELECT p."slug" AS slug,
            ts_rank('{0.1,0.2,0.4,1.0}', p."searchVector", websearch_to_tsquery('english', ${query})) AS rank
@@ -114,6 +128,9 @@ async function fullTextLeg(
             ))
         OR (${includePublic} AND p."visibility" = 'PUBLIC' AND p."status" = 'PUBLISHED')
       )
+      AND (${noBlocks}
+           OR p."submittedById" IS NULL
+           OR NOT (p."submittedById" = ANY(${blockedIds})))
     ORDER BY rank DESC, p."createdAt" DESC
     LIMIT ${limit}
   `;
@@ -148,6 +165,7 @@ async function semanticLeg(
   query: string,
   friendIds: string[],
   includePublic: boolean,
+  blockedIds: string[],
   limit: number,
   embedder: QueryEmbedder,
 ): Promise<string[] | null> {
@@ -161,6 +179,7 @@ async function semanticLeg(
     viewerId,
     friendIds,
     includePublic,
+    blockedIds,
   );
   return rankByCosine(queryVector, candidates, limit);
 }
@@ -229,7 +248,12 @@ export async function searchCorpus(
   const offset = Math.max(0, Number.parseInt(opts.cursor ?? "0", 10) || 0);
   const scopeAll = (opts.scope ?? "all") === "all";
 
-  const friendIds = scopeAll ? await friendIdsOf(viewerId) : [];
+  // Blocked authors are excluded from every cross-user leg. Looked up here
+  // (like friendIds) so both legs + the hydration gate share one set. scope
+  // "mine" only ever returns the viewer's own posts, so no lookup needed.
+  const [friendIds, blockedIds] = scopeAll
+    ? await Promise.all([friendIdsOf(viewerId), blockedIdsFor(viewerId)])
+    : [[], []];
   // Cross-user PUBLIC posts are admitted only under scope=all AND when the public
   // catalog is enabled — otherwise search would return strangers' PUBLIC posts the
   // catalog/canReadPost would refuse, diverging from the one read policy.
@@ -237,8 +261,8 @@ export async function searchCorpus(
 
   const embedder = opts.embedder ?? defaultQueryEmbedder;
   const [ftSlugs, semSlugs] = await Promise.all([
-    fullTextLeg(viewerId, q, friendIds, includePublic, FUSION_CANDIDATES),
-    semanticLeg(viewerId, q, friendIds, includePublic, FUSION_CANDIDATES, embedder),
+    fullTextLeg(viewerId, q, friendIds, includePublic, blockedIds, FUSION_CANDIDATES),
+    semanticLeg(viewerId, q, friendIds, includePublic, blockedIds, FUSION_CANDIDATES, embedder),
   ]);
   const partial = semSlugs === null;
   const fused = reciprocalRankFusion(ftSlugs, semSlugs ?? []);
@@ -250,7 +274,7 @@ export async function searchCorpus(
   // the viewer can't actually read is dropped (defense in depth).
   const full = await listPostsBySlugsVisible(
     pageRanked.map((r) => r.slug),
-    searchVisibilityWhere(viewerId, friendIds, includePublic),
+    searchVisibilityWhere(viewerId, friendIds, includePublic, blockedIds),
   );
   const bySlug = new Map(full.map((p) => [p.slug, p]));
 

@@ -51,6 +51,13 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       handle: { type: "string", required: false, input: false },
+      // App Store 1.2 (UGC): when the user agreed to the Terms of Use, so
+      // clients can gate on session.user.termsAcceptedAt (null → show the
+      // one-time acceptance screen). "date" is a supported DBFieldType
+      // (@better-auth/core maps it to Date on the session). `input: false`
+      // keeps it read-only through the auth API — it is stamped exclusively
+      // server-side (sign-up + POST /api/app/account/accept-terms via Prisma).
+      termsAcceptedAt: { type: "date", required: false, input: false },
     },
     // In-app account deletion (App Store Guideline 5.1.1(v)). Clients call
     // authClient.deleteUser({ password }); better-auth re-verifies the password
@@ -64,6 +71,25 @@ export const auth = betterAuth({
       enabled: true,
       beforeDelete: async (user) => {
         purgeUserFiles(user.id);
+      },
+    },
+  },
+  // Stamp Terms-of-Use acceptance at registration (App Store 1.2 Part A). Both
+  // sign-up UIs (web + mobile) require an explicit "I agree to the Terms of Use"
+  // checkbox before submitting, so creating an account IS agreement — recorded
+  // here server-side (termsAcceptedAt is input:false, unwritable via the auth
+  // API). Pre-existing accounts (termsAcceptedAt null) get the one-time in-app
+  // acceptance gate instead; the reviewer-account reset deliberately nulls this
+  // column so App Review always sees that gate on sign-in.
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { termsAcceptedAt: new Date() },
+          });
+        },
       },
     },
   },

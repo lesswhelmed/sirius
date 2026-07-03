@@ -8,6 +8,7 @@ import {
 } from "../generated/prisma";
 import { type Category, type Post, prisma, type Tag } from "./index";
 import type { PageResult } from "./ingest";
+import { blockedAuthorExclusion, isBlockedEither } from "./moderation";
 import { findUserByHandle } from "./users";
 
 const MAX_PAGE = 200;
@@ -180,6 +181,10 @@ export function visibilityWhereForViewer(
   friendIds: string[],
   includePublic: boolean,
   friendsOnly = false,
+  // Authors to exclude entirely (UserBlock, both directions — from
+  // moderation.blockedIdsFor). Threaded like friendIds; defaults empty so
+  // existing callers are unchanged.
+  blockedIds: string[] = [],
 ): Prisma.PostWhereInput {
   const or: Prisma.PostWhereInput[] = friendsOnly
     ? []
@@ -219,16 +224,23 @@ export function visibilityWhereForViewer(
     or.push({ visibility: PostVisibility.PUBLIC });
   }
   // No clauses (friendsOnly, no friends, no public) → match nothing explicitly.
-  if (or.length === 0) {
-    return { OR: [{ id: { equals: "__none__" } }] };
+  const base: Prisma.PostWhereInput =
+    or.length === 0 ? { OR: [{ id: { equals: "__none__" } }] } : { OR: or };
+  // Block exclusion clamps the WHOLE predicate (every OR tier — a blocked
+  // author's PUBLIC post is just as gone as their FRIENDS post).
+  if (blockedIds.length === 0) {
+    return base;
   }
-  return { OR: or };
+  return { AND: [base, blockedAuthorExclusion(blockedIds)] };
 }
 
 export interface ListVisibleOptions extends PostFilters {
   viewerId: string;
   friendIds: string[];
   includePublic: boolean;
+  // Blocked-author exclusion (moderation.blockedIdsFor — both directions).
+  // Optional so existing callers are unchanged; the feed routes MUST pass it.
+  blockedIds?: string[];
   // When true, exclude the viewer's OWN posts (show only friends'/public posts).
   // Defaults to false → identical to the historical owner-inclusive feed.
   friendsOnly?: boolean;
@@ -252,6 +264,7 @@ export async function listVisibleToViewer(
         opts.friendIds,
         opts.includePublic,
         opts.friendsOnly ?? false,
+        opts.blockedIds ?? [],
       ),
       { status: PostStatus.PUBLISHED },
     ],
@@ -316,6 +329,11 @@ export async function listVisibleToViewer(
 // ---------------------------------------------------------------------------
 export interface ListFriendCatalogOptions extends PostFilters {
   friendId: string;
+  // The session viewer. When present, a UserBlock in either direction between
+  // viewer and author short-circuits to an empty page — defense-in-depth on
+  // top of the route's areFriends() gate (blockUser deletes the friendship,
+  // but a block must hold even if that cascade is ever bypassed).
+  viewerId?: string;
   limit?: number;
   cursor?: string;
 }
@@ -323,6 +341,9 @@ export interface ListFriendCatalogOptions extends PostFilters {
 export async function listFriendCatalog(
   opts: ListFriendCatalogOptions,
 ): Promise<PageResult<PostWithSubmitter>> {
+  if (opts.viewerId && (await isBlockedEither(opts.viewerId, opts.friendId))) {
+    return { items: [], nextCursor: null };
+  }
   const take = Math.min(MAX_PAGE, Math.max(1, opts.limit ?? DEFAULT_PAGE));
   const where: Prisma.PostWhereInput = {
     AND: [
