@@ -1,0 +1,23 @@
+# EAS Build upload filter — applied on top of the committed tree when archiving.
+# None of these are build inputs (and none are native-fingerprint inputs), they
+# just bloat the project archive uploaded to EAS.
+
+# Store/marketing/doc assets
+app-store-assets/
+docs/
+apps/docs/
+apps/web/public/product/
+.beads/
+plugins/
+
+# Safety net: already gitignored, but .easignore takes precedence over
+# .gitignore when present, so re-list anything sensitive or heavy here.
+node_modules/
+.env
+.env.*
+!.env.example
+apps/mobile/ios/
+apps/mobile/android/
+apps/web/.next/
+apps/web/.next-builds/
+private-uploads/
