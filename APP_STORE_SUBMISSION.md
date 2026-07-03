@@ -929,9 +929,21 @@ Release."
 - **Shipping updates:**
   - *JS-only change* (no native deps changed) → **EAS Update** (OTA), no re-review:
     ```sh
-    cd apps/mobile && bunx eas-cli update --branch production
+    cd apps/mobile && bunx eas-cli update --branch production --environment production
     ```
     (Only reaches builds with a matching native fingerprint.)
+    **Check the fingerprint FIRST** — `app.json` edits count as native inputs (e.g. the
+    2026-07-03 `associatedDomains` addition moved the fingerprint from `b539e51b…`
+    (builds 72/73) to `9fd193bf…`, so no update published today can reach 72/73;
+    the first binary that can receive current-tree OTA is the one built at/after that
+    change). Verify before publishing:
+    ```sh
+    cd apps/mobile && bunx eas-cli fingerprint:compare <fingerprint-of-target-build>
+    # target build fingerprints: bunx eas-cli build:list --platform ios --limit 5
+    ```
+    If it prints "differs", an OTA will upload fine and reach ZERO devices — ship a new
+    binary instead. (Pipeline itself validated 2026-07-03 via a canary publish to an
+    unmapped branch; channel `production` ↔ branch `production` mapping confirmed.)
   - *Native change or App Store metadata change* → bump `version`, new
   `eas build --profile production --platform ios`, `eas submit`, new review.
 
