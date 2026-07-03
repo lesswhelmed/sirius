@@ -111,6 +111,7 @@ type ParsedArgs = {
   purgeUser: boolean;
   scene: boolean;
   friends: boolean;
+  resetTerms: boolean;
   webUrl: string;
 };
 
@@ -126,6 +127,10 @@ function parseArgs(argv: string[]): ParsedArgs {
   let purgeUser = false;
   let scene = true;
   let friends = true;
+  // App Store 1.2 (UGC): App Review must experience the one-time Terms
+  // acceptance gate on sign-in, so re-seeding nulls termsAcceptedAt by default
+  // (the sign-up databaseHook in packages/auth stamps it at creation).
+  let resetTerms = true;
   let webUrl = DEFAULT_WEB_URL;
 
   const takeValue = (
@@ -145,6 +150,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       scene = false;
     } else if (arg === "--no-friends") {
       friends = false;
+    } else if (arg === "--keep-terms") {
+      resetTerms = false;
     } else if (arg === "--web-url" || arg.startsWith("--web-url=")) {
       webUrl = takeValue(arg, "--web-url", () => argv[++i]) ?? webUrl;
     } else if (arg === "--password" || arg.startsWith("--password=")) {
@@ -174,6 +181,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     purgeUser,
     scene,
     friends,
+    resetTerms,
     webUrl: webUrl.replace(/\/+$/, ""),
   };
 }
@@ -189,6 +197,8 @@ function usage(): never {
   --posts <n>          number of demo posts to seed (default: all)
   --no-scene           skip categories + focus areas (no embeddings; no GEMINI_API_KEY needed)
   --no-friends         skip seeding the reviewer's demo friends
+  --keep-terms         don't null the reviewer's termsAcceptedAt (default: reset so
+                       App Review sees the one-time Terms acceptance gate)
   --web-url <url>      web origin for the friends step (default ${DEFAULT_WEB_URL})
   --teardown           remove demo posts + submissions + focus areas
   --purge-user         with --teardown, also delete the reviewer user + demo friends
@@ -490,6 +500,9 @@ async function ensureReviewerUser(args: ParsedArgs): Promise<{
       name: args.name,
       emailVerified: true,
       handle: args.handle,
+      // termsAcceptedAt is deliberately NOT touched here — the flag-gated
+      // reset at the end of the seed owns it (default on; --keep-terms opts
+      // out). Nulling it unconditionally in this upsert would defeat the flag.
     },
     select: { id: true, email: true, handle: true },
   });
@@ -1440,6 +1453,15 @@ async function main(): Promise<void> {
     );
   }
 
+  if (args.resetTerms) {
+    // Last step so nothing later re-stamps it. Demo friends keep their stamp —
+    // they never sign in.
+    await prisma.user.update({
+      where: { id: reviewer.userId },
+      data: { termsAcceptedAt: null },
+    });
+  }
+
   console.log("\nApp Store reviewer account ready:");
   console.log("--------------------------------------------------");
   console.log(`  Email:    ${reviewer.email}`);
@@ -1454,6 +1476,9 @@ async function main(): Promise<void> {
   );
   console.log(
     `  Demo friends: ${args.friends ? `${DEMO_FRIENDS.length} seeded via ${args.webUrl} (real friend-request flow), each with their own FRIENDS posts in the feed` : "skipped (--no-friends)"}`,
+  );
+  console.log(
+    `  Terms gate: ${args.resetTerms ? "armed — first sign-in shows the acceptance screen" : "kept (--keep-terms)"}`,
   );
   console.log("--------------------------------------------------");
   if (reviewer.password) {

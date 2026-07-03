@@ -13,9 +13,248 @@ execution. Versions are pinned to what's actually in this repo as of **2026-06-2
 
 ---
 
-## 0. Resubmission — rejection d1343e4d (2026-06-28) — subscriptions / IAP
+## 0. Resubmission — rejection 2c02b4c2 (2026-07-03) — UGC safety (1.2) + age rating (2.3.6)
 
-**Current blocker.** Submission `d1343e4d-28c1-4c29-9e0d-afde0c218059`, v1.0 (build 66),
+**Current blocker.** Submission `2c02b4c2-41ec-448f-9161-9aae12e12fbe`, v1.0 (**build 72**),
+reviewed 2026-07-03 on iPad Air 11" (M3), rejected for **two issues that share one root
+cause: the Friends feed shipped**, so Sirius now has user-generated content that other
+users can see. The subscription issues from §0b were **not raised again** — treat them as
+resolved, and don't disturb the paywall/links work that fixed them.
+
+> **Note:** build **73** already exists (FINISHED 2026-07-02, commit `948b191`) but contains
+> none of the fixes below — a **new build is required** after Parts A–D land.
+
+- **Guideline 1.2 — Safety, UGC.** Apps with UGC must have **all four**: (a) terms (EULA)
+  users must **agree to**, with explicit **zero tolerance** for objectionable content and
+  abusive users; (b) a mechanism to **flag objectionable content**; (c) a mechanism to
+  **block abusive users** — blocking must **notify the developer** and remove the blocked
+  user's content from the feed **instantly**; (d) the developer must **act on reports
+  within 24 hours** (remove the content, eject the offending user).
+- **Guideline 2.3.6 — Accurate metadata.** Age Rating must answer **"Yes"** to
+  **User-Generated Content** (App Store Connect config only, no code).
+
+**Why this happened.** The age-rating guidance further down this doc answered "No" to UGC
+because posts were private-per-account — true at build 58, false since the Friends hub +
+shared feed shipped (`docs/friends-feed.md`): friends' FRIENDS/GROUP/PUBLIC posts render
+cross-user in the Friends tab via `GET /api/app/feed`. Apple is right; the fix is to add
+the missing safety mechanics (and fix the rating answer), not to hide the feed.
+
+### What exists today (audited 2026-07-03 — reuse these seams)
+
+- **Proactive safety gate (cite it in the reply, it exceeds baseline):** the worker's
+  Gemini content gate (`docs/safety-guardrails.md`, `apps/worker/src/pipeline/safety/`)
+  scans every capture **before** a post exists; flagged material never becomes a post —
+  quarantine + `ModerationEvent` row + admin email via `@repo/auth/email` (Resend,
+  `SAFETY_ALERT_EMAIL` → `saleebmina@copt.dev`). Apple still requires the four *reactive*
+  mechanisms above — pre-moderation alone doesn't satisfy 1.2.
+- **better-auth `admin()` plugin is registered** (`packages/auth/src/index.ts`) and its
+  columns (`role`, `banned`, `banReason`, `banExpires`) already exist on `user` — but
+  nothing calls it. `banUser` (revokes sessions + blocks sign-in) is the ready-made
+  "eject the user" primitive.
+- **`FriendshipStatus.BLOCKED` is reserved but unused** — and the friendship row is
+  *symmetric* (one canonical row per pair), so it cannot express "A blocked B" direction.
+  **Do not reuse it**; add a directional `UserBlock` model (Part C).
+- **The feed + peers' post detail are live/network-only** (never in the mobile offline
+  mirror — `apps/mobile/src/components/friends-feed-list.tsx` fetches
+  `/api/app/feed` fresh; `post/[slug]` mirror rows are always the owner's own). A
+  server-side block exclusion therefore takes effect **instantly** — exactly what 1.2 asks.
+- **Missing entirely:** a `/terms` page, any terms-agreement in sign-up/sign-in, any
+  report/flag model/route/UI, any block mechanism, any admin surface (`/api/admin` doesn't
+  exist; no code calls admin APIs).
+
+### Part A — Terms of Use (EULA) agreed before registering or logging in
+
+1. **New page `apps/web/app/(public)/terms/page.tsx`** → `https://lesswhelmed.com/terms`.
+   Match the privacy page's pattern (server component, `metadata`, `LAST_UPDATED`
+   constant, local `Section` helper, `(public)` layout chrome). Required content:
+   - **Zero-tolerance clause, verbatim-strength:** "There is no tolerance for
+     objectionable content or abusive behavior on Sirius. Content or accounts that
+     violate these terms will be removed and offending users ejected." (Apple's reviewers
+     look for this exact commitment.)
+   - Acceptable-use / content standards (no illegal, hateful, harassing, sexually
+     explicit, violent, or infringing content), enforcement (reports reviewed and acted
+     on **within 24 hours**: content removed, repeat/serious offenders banned),
+     account termination, plus standard license/disclaimer boilerplate. Note that the
+     iOS app is additionally licensed under Apple's standard EULA.
+2. **Sign-up: required agreement checkbox (both platforms).**
+   - Mobile `apps/mobile/src/app/(auth)/sign-up.tsx`: a checkbox row between the Password
+     `AuthField` and the `PrimaryButton` — "I agree to the **Terms of Use** and
+     **Privacy Policy**" with both links opening via `expo-web-browser`
+     `openBrowserAsync` (same pattern as `subscription-section.tsx`). Submit stays
+     disabled until checked. (No checkbox exists in `@/components/sirius` yet — add a
+     small `AgreeRow`/checkbox there.)
+   - Web `apps/web/app/(auth)/sign-up/page.tsx`: same — a checkbox `styles.field` row
+     after Password, before the submit button, links to `/terms` + `/privacy`.
+3. **Sign-in path (Apple said "before registering **or logging in**").**
+   - Add a one-line notice + links on the sign-in screens (mobile + web): "By signing
+     in you agree to the Terms of Use."
+   - **One-time acceptance gate for existing accounts:** stamp acceptance server-side —
+     `termsAcceptedAt DateTime?` on `User` (+ `termsVersion String?` if we ever revise),
+     surfaced via better-auth `user.additionalFields` (`input: false`, set server-side).
+     Sign-up sets it at registration; for any session where it's `null` (i.e. the
+     existing **reviewer demo account** — the reviewer signs *in*, not up), show a
+     one-time blocking "Agree to the Terms" screen that POSTs
+     `/api/app/account/accept-terms`. This guarantees the reviewer *sees* an agreement
+     gate no matter which path they take, and covers all pre-existing users.
+4. **Link swaps (decision — see "Decisions needed"):** point the in-app Terms links at
+   our own terms: `TERMS_URL` in `apps/mobile/src/components/subscription-section.tsx`
+   → `https://lesswhelmed.com/terms`, the RevenueCat paywall footer Terms link, and the
+   App Description EULA line (§7). `/terms` itself references Apple's standard EULA, so
+   the 3.1.2(c) compliance from §0b is preserved.
+
+### Part B — Flag objectionable content
+
+1. **Schema (`packages/db/prisma/schema.prisma`):** new `ContentReport` model —
+   `id`, `postId` (FK → Post, `onDelete: Cascade`), `reporterId` (FK → User),
+   `reason` (enum: `OBJECTIONABLE | ABUSE | SPAM | OTHER`), `note String?`,
+   `status` (`open | resolved`), `createdAt`, `resolvedAt`, `resolvedById`,
+   `resolution String?`; index on `[status, createdAt]`. New helpers in
+   `packages/db/src/moderation.ts` (`createContentReport`, `listOpenReports`,
+   `resolveReport`), re-exported from `src/index.ts`. Prisma migration required.
+2. **API:** `POST /api/app/posts/[slug]/report` (session-authed) — validate the viewer
+   can read the post (`canReadPost`), create the report, and **email the admin
+   immediately** (new `sendModerationAlert` modeled on the worker's `sendSafetyAlert`,
+   using `renderEmail`/`sendEmail` from `@repo/auth/email` + `SAFETY_ALERT_EMAIL`) with
+   post slug/title/author + reporter + reason. Idempotent per (post, reporter).
+3. **UI — mobile:** an overflow ("…") action on peers' content, opening a native
+   `ActionSheetIOS`/`Alert` (NOT the `Sheet` component — one-visible-Modal guard) with
+   "Report post" and "Block @handle":
+   - Feed rows: `apps/mobile/src/components/friends-feed-list.tsx` `renderItem`.
+   - Peer post detail: `apps/mobile/src/app/post/[slug]/index.tsx` — the server-only
+     branch (`!localRow`) is exactly the "someone else's post" case.
+   - Friend catalog: `apps/mobile/src/app/u/[handle]/catalog.tsx`.
+   On submit show a confirmation: "Reported. We review reports within 24 hours."
+4. **UI — web:** a kebab menu on `CatalogCard` (`apps/web/app/(public)/catalog/
+   catalog-card.tsx`) rendered only when `showAuthor` (peer posts — the Friends feed
+   passes it), and a Report/Block control on `posts/[slug]` post detail when the viewer
+   isn't the owner (mirror `delete-post-button.tsx`'s client-button pattern).
+
+### Part C — Block abusive users
+
+1. **Schema:** new **directional** `UserBlock` model — `blockerId`, `blockedId` (both
+   FK → User, `onDelete: Cascade`), `createdAt`, `@@unique([blockerId, blockedId])`.
+   Helpers in `packages/db/src/moderation.ts`: `blockUser`, `unblockUser`,
+   `listBlockedIds(viewerId)` (returns the union of both directions — bidirectional
+   invisibility is standard and cheap).
+2. **Block action = one transaction + one email:** create `UserBlock`, run the existing
+   `removeFriend` cascade (deletes the friendship + both parties' share-group
+   memberships — `packages/db/src/friends.ts:164`), then `sendModerationAlert` —
+   Apple explicitly requires **blocking to notify the developer** of the inappropriate
+   content; include the blocked user + the post that prompted it (thread the post slug
+   through the block UI).
+3. **Enforcement — thread `blockedIds` everywhere visibility is computed** (the explorer
+   found the predicate duplicated in three places; a block filter must land in **all**
+   of them to avoid drift):
+   - `visibilityWhereForViewer` / `listVisibleToViewer` (`packages/db/src/posts.ts`) —
+     add `{ NOT: { submittedById: { in: blockedIds } } }`, param threaded like
+     `friendIds`. Feeds both web `/friends` and `GET /api/app/feed` → **instant removal
+     from the feed** (it's live/network-only on mobile — no mirror migration needed).
+   - `searchVisibilityWhere` + the inline raw-SQL copy in `fullTextLeg`
+     (`packages/db/src/search.ts`).
+   - `listVisiblePostEmbeddings` (`packages/db/src/embeddings.ts`) — the embedding leg.
+   - `listFriendCatalog` route + `sendFriendRequest` (refuse when a `UserBlock` exists
+     in either direction — today it only checks the unused `BLOCKED` enum).
+4. **API:** `POST /api/app/users/[id]/block` (body: optional `postSlug` context),
+   `DELETE /api/app/users/[id]/block` (unblock), `GET /api/app/blocks`.
+5. **Manage-blocks UI (small but expected by reviewers):** a "Blocked users" list with
+   Unblock in mobile Account (`settings.tsx`) and web `/settings`.
+
+### Part D — Act within 24 hours (developer tooling)
+
+Reports and blocks already email `SAFETY_ALERT_EMAIL` in real time (Parts B/C) — the 24h
+clock starts with working notification. Minimal action tooling (no new attack surface;
+an admin web UI can come later):
+
+- **`scripts/moderation/resolve-report.ts`** (bun CLI, mirrors
+  `scripts/create-reviewer-account.ts` conventions): `--list` open reports;
+  `--takedown <postSlug>` (set the post `PRIVATE` — removes it from every feed —
+  or `--delete` for full removal incl. retained files, reusing the post-delete path);
+  `--ban <userId|handle> --reason '…'` → better-auth `admin.banUser` (revokes sessions,
+  blocks sign-in) + optionally mass-set the user's shared posts to `PRIVATE`;
+  `--resolve <reportId> --resolution uphold|overturn`.
+- Add a line to the support page FAQ: objectionable-content reports are reviewed and
+  acted on within 24 hours (matches the terms).
+
+### Part E — App Store Connect config (Guideline 2.3.6)
+
+- [ ] App Information → **Age Rating → Edit** → set **User-Generated Content: Yes**.
+  Answer any follow-on moderation questions truthfully **after Parts A–C ship** (there
+  IS a report mechanism, a block mechanism, and required terms). The computed rating may
+  rise above 4+ (e.g. 13+ under the updated rating system) — that's expected; accept it.
+  The stale "answer No" guidance in the "Age rating questionnaire" section below has been
+  corrected.
+- [ ] §7 listing copy: keep "Private by default", but stop implying no sharing exists —
+  the description's "PRIVATE BY DEFAULT" block and the App Review notes (§12) now
+  mention the Friends feed. Update the description's Terms link per Part A.4.
+
+### Part F — Evidence Apple asked for (reply + recording)
+
+Apple wants **one screen recording, captured on a physical device**, attached in App
+Review Information → Notes AND referenced in the Resolution Center reply, showing:
+
+1. the terms agreement presented before registering or logging in (show sign-up with the
+   required checkbox → tap the Terms link so the zero-tolerance page is visible),
+2. flagging a post from the Friends feed (report flow + confirmation),
+3. blocking a user and their content **disappearing from the feed instantly**.
+
+Practical notes: the reviewer seed (`bun run reviewer:seed` + the friends seeder — see
+`scripts/create-reviewer-account.ts`) already gives the demo account >5 friends with
+shared posts, so the feed is populated for both the recording and Apple's own testing.
+**Re-run it against prod after deploying**, and reset `termsAcceptedAt` on the reviewer
+account so Apple hits the one-time acceptance gate on sign-in. Reply template is in §12
+("Reply to App Review — UGC resubmission").
+
+### Decisions needed (answer before implementation)
+
+1. **Terms link target** — recommended: swap all Terms links (subscription card,
+   RevenueCat footer, App Description) to our own `/terms` (which references Apple's
+   standard EULA). Alternative: keep the Apple std EULA links for subscriptions and add
+   `/terms` only for the sign-up agreement. Both pass; one link target is simpler.
+2. **Takedown default** — recommended: `--takedown` sets the post `PRIVATE` (reversible,
+   evidence preserved, gone from every feed); `--delete` reserved for illegal content.
+3. **Report auto-hide** — optional extra: hide a reported post from the *reporter's* feed
+   immediately (needs one more exclusion set). Not required by 1.2 (blocking covers
+   instant removal); recommended to **skip** for this resubmission.
+4. **Admin web UI** — skip for now (CLI + email meets the 24h bar); build later if report
+   volume warrants.
+
+### Resubmit checklist
+
+- [x] Part A: `/terms` page + sign-up checkboxes (mobile/web) + sign-in notices +
+  `termsAcceptedAt` (stamped by a better-auth `user.create.after` hook; sign-up UIs gate on
+  an explicit checkbox) + one-time acceptance gate (web `(app)/layout.tsx` TermsGate; mobile
+  `(tabs)/_layout.tsx` full-screen gate with cookie-cache-proof latch) — link swaps to
+  `/terms` done in the Settings subscription card copy? **NO — subscription-card
+  `TERMS_URL` + RevenueCat footer + App Description still point at Apple's std EULA;
+  swap when doing Part E** (decision 1)
+- [x] Part B: `ContentReport` + `POST /api/app/posts/[slug]/report` + admin alert email
+  (`SAFETY_ALERT_EMAIL`) + report UI (web kebab/post-detail; mobile action sheets on feed,
+  post detail, friend catalog). Re-reports REOPEN resolved reports.
+- [x] Part C: `UserBlock` + `POST|DELETE /api/app/users/[id]/block` (id-first, handle
+  fallback) + `GET /api/app/blocks` + enforcement in ALL visibility legs (posts, search FTS
+  raw SQL, embeddings — NULL-safe) + blocked-users management (web settings, mobile Account)
+- [x] Part D: `scripts/moderation/resolve-report.ts` (`--list/--takedown/--delete/--ban/
+  --unban/--resolve`, fixture-smoked) + support-page report/block FAQ (24h)
+- [x] Prisma migration `20260703103525_ugc_moderation` (hand-authored; applied to local dev
+  + test DB; prod applies via deploy's `db:migrate:deploy`)
+- [x] Reviewer seed: re-seed nulls the reviewer's `termsAcceptedAt` by default
+  (`--keep-terms` opts out) so App Review always sees the acceptance gate
+- [ ] `bun run deploy` (web + worker) so `/terms`, the report/block APIs, and enforcement
+  are live **before** the binary is reviewed
+- [ ] Re-seed the reviewer account + friends on prod; reset its `termsAcceptedAt`
+- [ ] ASC: Age Rating → **User-Generated Content: Yes** (Part E)
+- [ ] New iOS build + submit (`cd apps/mobile && bunx eas-cli build --profile production
+  --platform ios` → `bunx eas-cli submit --profile production --platform ios --latest`)
+- [ ] Physical-device screen recording (Part F) → App Review Information → Notes
+- [ ] Reply in Resolution Center with **§12 → "Reply to App Review (UGC resubmission)"**
+
+---
+
+## 0b. Resubmission — rejection d1343e4d (2026-06-28) — subscriptions / IAP
+
+**Resolved — not raised again in the 2026-07-03 review (build 72).** Kept for the record;
+don't disturb the paywall links/metadata that fixed it. Submission
+`d1343e4d-28c1-4c29-9e0d-afde0c218059`, v1.0 (build 66),
 reviewed on iPad Air 11" M3 + iPhone 17 Pro Max, rejected for **two** subscription issues.
 Most of the fix is **App Store Connect + RevenueCat dashboard config** (no repo code), plus
 one optional code change. A **new binary is required regardless** (Guideline 2.1(b) wants the
@@ -119,10 +358,11 @@ render when the paywall is actually `presentPaywall()`'d on a device). So:
 
 ---
 
-## 0b. Resubmission — rejection 53b454b8 (2026-06-25)
+## 0c. Resubmission — rejection 53b454b8 (2026-06-25)
 
+**Resolved — fixed, shipped, and not raised in later reviews.** Kept for the record.
 The first submission (v1.0, build 58, reviewed on iPad Air 11" M3) was rejected for **two**
-issues. Both are now fixed in the repo; they require a **new EAS build + resubmit** (the
+issues. Both are now fixed in the repo; they required a **new EAS build + resubmit** (the
 purpose strings are baked into the binary) and a **reply in Resolution Center**.
 
 ### Fix 1 — Guideline 5.1.1(ii): purpose strings
@@ -353,10 +593,12 @@ All copy below respects Apple's character limits. Paste into App Store Connect �
 > lands and gets handled for you. From wherever you already are (the iOS Share Sheet) you
 > send a link, photo, screenshot, note, repo, video, document, or voice memo; AI drafts a
 > clean entry; and you curate and keep what you choose in your own **private** library. The
-> hook is *share-from-anywhere*; the payoff is a *private personal catalog*. Posts stay
-> private to you (no third-party UGC), so the 4+ rating and the privacy story below still
-> hold. The copy and screenshots both reflect this. (The in-app tab is now called
-> **Explore** — formerly "Tree"; keep listing copy aligned to "Explore".)
+> hook is *share-from-anywhere*; the payoff is a *private personal catalog*. Posts are
+> **private by default**, but the Friends feed now lets users share posts with friends —
+> that's user-generated content others can see, so the age rating must declare UGC = Yes
+> (see §0) and the copy should say "private by default", never "private, period". The copy
+> and screenshots both reflect this. (The in-app tab is now called **Explore** — formerly
+> "Tree"; keep listing copy aligned to "Explore".)
 
 > **Tip:** each value below is in its own code block — hover it and click the copy icon to
 > grab the exact text, then paste it straight into App Store Connect.
@@ -561,21 +803,23 @@ built-in mature content, so every content row is **None**. Recommended answers:
 
 Capability / regulatory questions Apple now also asks:
 
-- **Does the app contain user-generated content others can see?** → **No.** A user's posts
-are private to their own account by default; the optional public catalog
-(`/catalog/[handle]`) shows only the **owner's own** content, and the only inbound channel
-is the listing inquiry form (sends email; it is not a public post/comment feed). There is
-no third-party UGC surfaced to other users in-app, so this does not trigger a higher tier.
-*If you later add shared/social feeds, revisit this — it would likely push the rating up
-and require moderation + report/block controls.*
-- **Messaging / communication between users?** → **No.**
+- **Does the app contain user-generated content others can see?** → **Yes.** *(Changed
+2026-07-03 — this answer was "No" pre-Friends-feed and caused the Guideline 2.3.6
+rejection in submission 2c02b4c2; see §0.)* The Friends hub / feed shows friends' shared
+(FRIENDS/GROUP/PUBLIC) posts cross-user. Set **User-Generated Content: Yes** in App
+Information → Age Rating. Any follow-on moderation questions: the app requires terms
+agreement at registration, has in-app report + block mechanisms, and reports are acted
+on within 24 hours (§0 Parts A–D — must be shipped before answering).
+- **Messaging / communication between users?** → **No.** (No DMs/comments between users —
+  sharing posts to a feed is covered by the UGC answer above.)
 - **Unrestricted web access?** → **No.** Sirius fetches specific URLs you submit for
 drafting; it is not a general-purpose web browser.
 
-**Resulting rating: 4+.** No content descriptors apply and there is no open web access or
-third-party UGC.
+**Resulting rating:** with UGC = Yes the computed rating may come back **higher than 4+**
+(e.g. 13+ under Apple's updated rating system). Accept whatever the questionnaire
+computes — under-declaring is what got build 72 rejected.
 
-- [ ] Age rating questionnaire completed; rating shows **4+**
+- [ ] Age rating questionnaire completed with **User-Generated Content: Yes**
 
 ---
 
@@ -592,6 +836,9 @@ third-party UGC.
 
 - [ ] `https://lesswhelmed.com/privacy` returns 200 (deployed)
 - [ ] `https://lesswhelmed.com/support` returns 200 (deployed)
+- [ ] `https://lesswhelmed.com/terms` returns 200 (deployed — §0 Part A)
+- [ ] Report + block work end-to-end against prod (report email arrives; blocked user's
+  posts vanish from the feed without refresh-lag) — §0 Parts B/C
 - [ ] The latest FINISHED build (or your chosen build) is **processed** in App Store Connect
 - [ ] Screenshots uploaded to the 6.9" slot (1320×2868)
 - [ ] Name, subtitle, description, keywords, URLs, copyright all set — no placeholders
@@ -612,7 +859,23 @@ In App Store Connect → your version:
   (fill in the username/password fields in ASC separately):
 
 ```text
-Sirius requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog. Posts are private to the account. Account deletion: Account tab → Danger zone → Delete account → confirm with the account password (a screen recording of the full flow is attached).
+Sirius requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog. Posts are private by default; the Friends tab shows posts that mutual friends have chosen to share (the demo account has several friends with shared posts). User-generated content controls: users must agree to our Terms of Use (zero tolerance for objectionable content) before registering or signing in; every post in the Friends feed has a "…" menu with Report post and Block user (blocking removes their content instantly and notifies us); reports are acted on within 24 hours. Account deletion: Account tab → Danger zone → Delete account → confirm with the account password. Screen recordings of the terms/report/block flows and the deletion flow are attached.
+```
+
+**Reply to App Review (UGC resubmission — rejection 2c02b4c2 — paste into Resolution
+Center once §0 Parts A–E are shipped):**
+
+```text
+Guideline 1.2 — User-generated content precautions. Thank you. This build (together with our updated backend) implements all of the required precautions:
+
+- Terms agreement (EULA): users must agree to our Terms of Use (https://lesswhelmed.com/terms) before registering — sign-up requires an explicit agreement checkbox — and existing users must accept the terms one time before continuing after sign-in. The terms state that there is no tolerance for objectionable content or abusive users, and that violating content is removed and offending users ejected.
+- Flagging objectionable content: every post visible in the Friends feed (and on the post detail screen) has a Report action. Reports notify us immediately by email and are recorded for review.
+- Blocking abusive users: every post from another user has a Block action. Blocking removes that user's content from the viewer's feed instantly, ends the friend relationship, and notifies us (the developer) immediately, including the content that prompted the block.
+- 24-hour moderation: we review every report within 24 hours, remove objectionable content, and eject offending users (account ban). In addition, Sirius pre-moderates: every submission is scanned by an automated content-safety system before it can become a post; flagged material is never published and we are alerted immediately.
+
+A screen recording captured on a physical device demonstrating (1) the terms agreement before registration/login, (2) flagging content, and (3) blocking a user with their content removed instantly is included in the App Review Information Notes.
+
+Guideline 2.3.6 — Age rating. We updated the Age Rating selections in App Store Connect to answer "Yes" for User-Generated Content, and accepted the resulting rating.
 ```
 
 **Reply to App Review (subscriptions resubmission — paste into Resolution Center):**
@@ -678,4 +941,16 @@ Release."
 `bun run app-store:screenshots`)
 - `scripts/create-reviewer-account.ts` — reviewer + demo content (alias `bun run reviewer:seed`)
 - `APP_STORE_SUBMISSION.md` — this guide
+
+Planned for the UGC resubmission (§0 — not yet written as of 2026-07-03):
+
+- `apps/web/app/(public)/terms/page.tsx` — Terms of Use w/ zero-tolerance clause (→ `/terms`)
+- sign-up agreement checkboxes — `apps/mobile/src/app/(auth)/sign-up.tsx`,
+  `apps/web/app/(auth)/sign-up/page.tsx` (+ one-time acceptance gate for existing accounts)
+- `ContentReport` + `UserBlock` models + `packages/db/src/moderation.ts` helpers + migration
+- `POST /api/app/posts/[slug]/report`, `POST|DELETE /api/app/users/[id]/block`,
+  `GET /api/app/blocks`, `POST /api/app/account/accept-terms`
+- report/block UI — mobile `friends-feed-list.tsx` / `post/[slug]` / `u/[handle]/catalog.tsx`;
+  web `catalog-card.tsx` kebab + post-detail control; blocked-users management in settings
+- `scripts/moderation/resolve-report.ts` — list/takedown/ban/resolve CLI
 
