@@ -13,6 +13,7 @@
 // `post.submittedById === viewerId` checks — sharing a post for reading should
 // never grant write/management rights.
 import {
+  isBlockedEither,
   isPostSharedWith,
   isPostSharedWithViaGroup,
   PostStatus,
@@ -59,6 +60,20 @@ export async function canReadPost(
 ): Promise<boolean> {
   if (viewerId != null && post.submittedById === viewerId) {
     return true;
+  }
+
+  // A block is absolute and bidirectional: neither party reads the other's
+  // posts through ANY non-owner tier. FRIENDS/GROUP are also covered
+  // transitively (blockUser severs the friendship + group memberships), but the
+  // PUBLIC tier has no such indirection — without this check a blocked author's
+  // PUBLIC post would still be readable once the catalog flags flip on. Keeps
+  // this function in agreement with blockedAuthorExclusion in list/search/feed.
+  if (
+    viewerId != null &&
+    post.submittedById != null &&
+    (await isBlockedEither(viewerId, post.submittedById))
+  ) {
+    return false;
   }
 
   if (await isPostSharedWith(post, viewerId)) {

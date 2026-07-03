@@ -85,10 +85,22 @@ export const auth = betterAuth({
     user: {
       create: {
         after: async (user) => {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { termsAcceptedAt: new Date() },
-          });
+          // Fail soft: this runs AFTER the user row is committed, so a throw
+          // here doesn't roll the account back — it would only surface a bogus
+          // sign-up error while leaving termsAcceptedAt null. Null just means
+          // the user sees the one-time in-app acceptance gate on next sign-in,
+          // so log and move on rather than failing the whole sign-up.
+          try {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { termsAcceptedAt: new Date() },
+            });
+          } catch (err) {
+            console.error(
+              `[auth] failed to stamp termsAcceptedAt for ${user.id} (user will see the acceptance gate):`,
+              err,
+            );
+          }
         },
       },
     },
