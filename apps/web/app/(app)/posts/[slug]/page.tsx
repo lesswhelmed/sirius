@@ -15,6 +15,7 @@ import { getCachedPost } from "../../../../lib/cached";
 import { DateDisplay } from "../../../../lib/date-display";
 import { canReadPost } from "../../../../lib/post-access";
 import { getSessionOrNull } from "../../../../lib/session";
+import { PostByline } from "../../../_chrome/post-byline";
 import { PostImage } from "../../../_chrome/post-image";
 import { RepoChip } from "../../../_chrome/repo-chip";
 import { buildOriginalContent } from "../../../../lib/originals/original-content";
@@ -209,6 +210,18 @@ export default async function PostDetailPage({
           <p className="mt-6 max-w-[44ch] font-display italic text-[22px] leading-[1.35] text-[var(--fg-muted)] text-pretty">
             {post.excerpt}
           </p>
+        ) : null}
+
+        {/* Author byline — whose post this is. Links to /u/[handle]. Shown for
+            every post (own + others') so attribution is always explicit. */}
+        {post.submittedBy ? (
+          <div className="mt-6 flex items-center gap-3">
+            <PostByline
+              author={post.submittedBy}
+              avatarSize={36}
+              nameSize={17}
+            />
+          </div>
         ) : null}
       </header>
 

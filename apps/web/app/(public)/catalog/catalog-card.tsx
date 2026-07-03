@@ -2,6 +2,7 @@ import type { PostListItem, PostStatus, PostType } from "@repo/db";
 import Link from "next/link";
 import { DateDisplay } from "../../../lib/date-display";
 import { PostModerationMenu } from "../../(app)/friends/post-moderation-menu";
+import { PostByline } from "../../_chrome/post-byline";
 import { PostImage } from "../../_chrome/post-image";
 import { RepoChip } from "../../_chrome/repo-chip";
 
@@ -43,7 +44,11 @@ function StatusPip({ status }: { status: PostStatus }) {
 // The owner-facing audience mark: shows whom *you* shared this with. Driven by
 // ownAudience (owner-only — peer rows carry null, so nothing renders). PRIVATE
 // is silent. GROUP shows the group name and deep-links to the manager.
-function AudienceBadge({ audience }: { audience: PostListItem["ownAudience"] }) {
+function AudienceBadge({
+  audience,
+}: {
+  audience: PostListItem["ownAudience"];
+}) {
   if (!audience) return null;
   if (audience.visibility === "FRIENDS") {
     return (
@@ -146,91 +151,96 @@ export function CatalogCard({
   const tags = post.tags ?? [];
 
   return (
-    <article className="group flex gap-4 py-5 sm:gap-6">
-      <Link
-        href={href}
-        aria-hidden="true"
-        tabIndex={-1}
-        className="relative aspect-[4/3] w-24 shrink-0 overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)] sm:w-40"
-      >
-        {post.imageUrl ? (
-          <PostImage
-            src={post.imageUrl}
-            alt={post.title}
-            sizes="(max-width: 640px) 96px, 160px"
-            className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-          />
-        ) : (
-          <span
-            aria-hidden="true"
-            className={`flex h-full w-full items-center justify-center font-display italic text-[15px] leading-none opacity-45 sm:text-[18px] ${TYPE_TONE[post.type]}`}
-          >
-            {TYPE_LABEL[post.type]}
-          </span>
-        )}
-      </Link>
-
-      <div className="flex min-w-0 flex-1 flex-col">
+    <div className="py-5">
+      {/* Whose post is this? On the Friends feed each row belongs to a
+          different author — lead with an avatar+name byline so attribution is
+          unmissable. Sits outside the post <Link> (it emits its own anchor). */}
+      {showAuthor && author ? (
+        <div className="mb-3">
+          <PostByline author={author} />
+        </div>
+      ) : null}
+      <article className="group flex gap-4 sm:gap-6">
         <Link
           href={href}
-          className="flex flex-col rounded-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-ring)]"
-          aria-label={`${post.title} — ${TYPE_LABEL[post.type]}, ${post.status.toLowerCase()}`}
+          aria-hidden="true"
+          tabIndex={-1}
+          className="relative aspect-[4/3] w-24 shrink-0 overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)] sm:w-40"
         >
-          <div className="flex items-center justify-between gap-3">
+          {post.imageUrl ? (
+            <PostImage
+              src={post.imageUrl}
+              alt={post.title}
+              sizes="(max-width: 640px) 96px, 160px"
+              className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            />
+          ) : (
             <span
-              className={`font-mono text-[10px] uppercase tracking-[0.18em] ${TYPE_TONE[post.type]}`}
+              aria-hidden="true"
+              className={`flex h-full w-full items-center justify-center font-display italic text-[15px] leading-none opacity-45 sm:text-[18px] ${TYPE_TONE[post.type]}`}
             >
               {TYPE_LABEL[post.type]}
             </span>
+          )}
+        </Link>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Link
+            href={href}
+            className="flex flex-col rounded-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-ring)]"
+            aria-label={`${post.title} — ${TYPE_LABEL[post.type]}, ${post.status.toLowerCase()}`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className={`font-mono text-[10px] uppercase tracking-[0.18em] ${TYPE_TONE[post.type]}`}
+              >
+                {TYPE_LABEL[post.type]}
+              </span>
+              <span className="flex items-center gap-3">
+                <AudienceBadge audience={post.ownAudience} />
+                <StatusPip status={post.status} />
+              </span>
+            </div>
+
+            <h2 className="mt-1.5 font-display text-[22px] leading-tight tracking-[-0.005em] text-balance text-[var(--fg)] transition-colors group-hover:text-[var(--color-accent)] sm:text-[26px]">
+              {post.title}
+            </h2>
+
+            {post.excerpt ? (
+              <p className="mt-1.5 line-clamp-2 font-body text-[14px] leading-relaxed text-[var(--fg-muted)] sm:text-[15px]">
+                {post.excerpt}
+              </p>
+            ) : null}
+          </Link>
+
+          <div className="mt-auto flex items-baseline justify-between gap-3 pt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+            <span className="flex items-baseline gap-3">
+              <DateDisplay value={post.originalDate ?? post.createdAt} />
+            </span>
             <span className="flex items-center gap-3">
-              <AudienceBadge audience={post.ownAudience} />
-              <StatusPip status={post.status} />
+              {post.providerId === "github" ? (
+                <RepoChip
+                  providerId={post.providerId}
+                  contentDigest={post.contentDigest}
+                />
+              ) : host ? (
+                <span className="truncate">{host}</span>
+              ) : null}
+              {/* Report/Block overflow — peer posts only (showAuthor implies the
+                row belongs to another author; never rendered on own posts). */}
+              {showAuthor && author ? (
+                <PostModerationMenu
+                  slug={post.slug}
+                  authorId={author.id}
+                  authorHandle={author.handle}
+                />
+              ) : null}
             </span>
           </div>
 
-          <h2 className="mt-1.5 font-display text-[22px] leading-tight tracking-[-0.005em] text-balance text-[var(--fg)] transition-colors group-hover:text-[var(--color-accent)] sm:text-[26px]">
-            {post.title}
-          </h2>
-
-          {post.excerpt ? (
-            <p className="mt-1.5 line-clamp-2 font-body text-[14px] leading-relaxed text-[var(--fg-muted)] sm:text-[15px]">
-              {post.excerpt}
-            </p>
-          ) : null}
-        </Link>
-
-        <div className="mt-auto flex items-baseline justify-between gap-3 pt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
-          <span className="flex items-baseline gap-3">
-            <DateDisplay value={post.originalDate ?? post.createdAt} />
-            {showAuthor && author ? (
-              <span className="text-[var(--fg-muted)]">
-                {author.handle ? `@${author.handle}` : author.name}
-              </span>
-            ) : null}
-          </span>
-          <span className="flex items-center gap-3">
-            {post.providerId === "github" ? (
-              <RepoChip
-                providerId={post.providerId}
-                contentDigest={post.contentDigest}
-              />
-            ) : host ? (
-              <span className="truncate">{host}</span>
-            ) : null}
-            {/* Report/Block overflow — peer posts only (showAuthor implies the
-                row belongs to another author; never rendered on own posts). */}
-            {showAuthor && author ? (
-              <PostModerationMenu
-                slug={post.slug}
-                authorId={author.id}
-                authorHandle={author.handle}
-              />
-            ) : null}
-          </span>
+          <TaxonomyFooter category={category} tags={tags} />
         </div>
-
-        <TaxonomyFooter category={category} tags={tags} />
-      </div>
-    </article>
+      </article>
+    </div>
   );
 }
