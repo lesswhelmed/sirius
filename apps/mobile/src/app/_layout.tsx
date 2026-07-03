@@ -44,6 +44,7 @@ import {
   identifyUser,
   resetUser,
 } from "@/lib/purchases";
+import { migrateAuthStorageAccessibility } from "@/lib/secure-storage";
 import { startSync, stopSync } from "@/lib/sync/engine";
 
 // Crash capture is armed by the first import above (`@/lib/crash-capture-install`)
@@ -178,6 +179,13 @@ function useDbReady(): { ready: boolean; error: Error | null } {
 }
 
 export default function RootLayout() {
+  // One-time re-write of pre-existing auth keychain items to AFTER_FIRST_UNLOCK
+  // so locked-device launches stop hitting errSecInteractionNotAllowed.
+  // Fire-and-forget: must not gate render, and it can never throw.
+  useEffect(() => {
+    void migrateAuthStorageAccessibility();
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ErrorBoundary>

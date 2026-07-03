@@ -74,10 +74,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
 // Renders nothing unless a crash was persisted on a PREVIOUS launch — then a
 // dismissible bar appears so a tester can read/report what happened even
 // without device logs. Tapping shows the full details; dismissing clears it.
+// DEV-ONLY surface: raw stacks must never face production users, so outside
+// __DEV__ this renders nothing — but the record stays on disk (not cleared)
+// for a future diagnostics screen. Capture itself stays armed in prod.
 export function LastCrashBanner(): React.ReactElement | null {
   const [crash, setCrash] = React.useState<CrashRecord | null>(null);
 
   React.useEffect(() => {
+    if (!__DEV__) return;
     let cancelled = false;
     void readLastCrash().then((c) => {
       if (!cancelled) setCrash(c);
