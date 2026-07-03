@@ -29,6 +29,9 @@ const MD4C_FLAGS: Md4cFlags = { latexMath: false };
 
 // Mirrors web MARKDOWN_CLASS_NAME: serif body, oxblood links, display-weight
 // headings, ruled blockquote/code. Built per-theme so it tracks light/dark.
+// NOTE: the library deep-merges its hardcoded LIGHT defaults per sub-key
+// (normalizeMarkdownStyle.ts), so every color-bearing sub-key must be set
+// explicitly here or a light color leaks through in dark mode.
 function makeMarkdownStyle(t: Theme): MarkdownStyle {
   return {
     paragraph: {
@@ -66,9 +69,41 @@ function makeMarkdownStyle(t: Theme): MarkdownStyle {
       marginTop: t.space.md,
       marginBottom: t.space.xs,
     },
+    h4: {
+      fontFamily: SERIF,
+      fontWeight: "600",
+      fontSize: 18,
+      lineHeight: 24,
+      color: t.color.ink,
+      marginTop: t.space.md,
+      marginBottom: t.space.xs,
+    },
+    h5: {
+      fontFamily: SERIF,
+      fontWeight: "600",
+      fontSize: 16,
+      lineHeight: 22,
+      color: t.color.ink,
+      marginTop: t.space.md,
+      marginBottom: t.space.xs,
+    },
+    h6: {
+      fontFamily: SERIF,
+      fontWeight: "600",
+      fontSize: 14,
+      lineHeight: 20,
+      color: t.color.ink,
+      marginTop: t.space.md,
+      marginBottom: t.space.xs,
+    },
     link: { color: t.color.accent, underline: true },
     strong: { color: t.color.ink },
     em: { color: t.color.ink },
+    strikethrough: { color: t.color.inkSubtle },
+    // md4c hard-enables spoilers (`||text||`) regardless of md4cFlags, so the
+    // concealment overlay needs theming too — the library's light default
+    // (#374151) is near-invisible against dark paper.
+    spoiler: { color: t.color.ink },
     list: {
       fontFamily: SERIF,
       fontSize: 17,
@@ -77,6 +112,12 @@ function makeMarkdownStyle(t: Theme): MarkdownStyle {
       bulletColor: t.color.accent,
       markerColor: t.color.accent,
       marginBottom: t.space.lg,
+    },
+    taskList: {
+      checkedColor: t.color.accent,
+      borderColor: t.color.rule,
+      checkmarkColor: t.color.paper,
+      checkedTextColor: t.color.ink,
     },
     blockquote: {
       fontFamily: SERIF,
@@ -87,6 +128,8 @@ function makeMarkdownStyle(t: Theme): MarkdownStyle {
       borderWidth: 2,
       gapWidth: t.space.md,
       marginBottom: t.space.lg,
+      // Match web: border + italic only, no fill (default is a light gray).
+      backgroundColor: "transparent",
     },
     code: {
       fontFamily: MONO,
@@ -121,6 +164,9 @@ function makeMarkdownStyle(t: Theme): MarkdownStyle {
       color: t.color.ink,
       borderColor: t.color.rule,
       headerBackgroundColor: t.color.paperRaised,
+      headerTextColor: t.color.ink,
+      rowEvenBackgroundColor: t.color.paper,
+      rowOddBackgroundColor: t.color.paperRaised,
       cellPaddingHorizontal: t.space.sm,
       cellPaddingVertical: t.space.xs,
       marginBottom: t.space.lg,
