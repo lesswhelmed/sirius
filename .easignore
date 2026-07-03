@@ -1,31 +1,35 @@
 # EAS Build upload filter — applied on top of the committed tree when archiving.
 # None of these are build inputs (and none are native-fingerprint inputs), they
 # just bloat the project archive uploaded to EAS.
+#
+# RULE: every exclusion here is ROOT-ANCHORED (leading /). Gitignore semantics
+# make an unanchored pattern like `docs/` or `plugins/` match at ANY depth —
+# that already bit us twice (apps/docs workspace → broken frozen lockfile;
+# apps/mobile/plugins → "Failed to resolve plugin ./plugins/with-capture-intents").
+# Only the safety-net section below deliberately uses unanchored patterns.
 
 # Store/marketing/doc assets
-# NOTE: `/docs/` must stay root-anchored — an unanchored `docs/` matches any
-# dir named docs at any depth, including the apps/docs workspace, which would
-# defeat the !apps/docs/package.json re-include below and break bun install.
-app-store-assets/
+/app-store-assets/
 /docs/
-apps/web/public/product/
-.beads/
-plugins/
+/apps/web/public/product/
+/.beads/
+/plugins/
 
 # apps/docs is a bun workspace: its package.json MUST stay in the archive or
 # `bun install --frozen-lockfile` fails on EAS ("lockfile had changes") because
 # the workspace set no longer matches bun.lock. Exclude contents, keep manifest.
-apps/docs/*
-!apps/docs/package.json
+/apps/docs/*
+!/apps/docs/package.json
 
 # Safety net: already gitignored, but .easignore takes precedence over
 # .gitignore when present, so re-list anything sensitive or heavy here.
+# (Deliberately unanchored: applies at any depth.)
 node_modules/
 .env
 .env.*
 !.env.example
-apps/mobile/ios/
-apps/mobile/android/
-apps/web/.next/
-apps/web/.next-builds/
-private-uploads/
+/apps/mobile/ios/
+/apps/mobile/android/
+/apps/web/.next/
+/apps/web/.next-builds/
+/private-uploads/
