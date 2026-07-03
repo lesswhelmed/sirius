@@ -37,17 +37,23 @@ before going further.
 
 ## 3. Re-seed the reviewer account (arms the terms gate)
 
+**Run this ON the server** — prod Postgres refuses remote connections (P1010 if run
+locally). The server repo's `.env` already carries the prod `DATABASE_URL`:
+
 ```sh
-DATABASE_URL="<prod-postgres-url>" WEB_URL="https://lesswhelmed.com" \
-  bun run reviewer:seed --password '<the-reviewer-password>'
+set -a; source .env.production; set +a
+ssh -i "$DEPLOY_SSH_KEY" "deploy@$DEPLOY_HOST" \
+  "cd $DEPLOY_APP_DIR && WEB_URL=https://lesswhelmed.com bun run scripts/create-reviewer-account.ts"
 ```
 
-The seed nulls the reviewer's `termsAcceptedAt` **by default** as its final step
-(`--keep-terms` to skip), so App Review's first sign-in shows the acceptance screen.
-The summary must print `Terms gate: armed — first sign-in shows the acceptance screen`.
+Omit `--password` on a re-run to **keep the existing ASC password** (the friends step
+self-skips with a notice — fine, the demo friends already exist on prod). The seed nulls
+the reviewer's `termsAcceptedAt` **by default** as its final step (`--keep-terms` to
+skip), so App Review's first sign-in shows the acceptance screen. The summary must print
+`Terms gate: armed — first sign-in shows the acceptance screen`.
 
-Use the password already in App Store Connect → App Review Information — or update ASC
-if a new one is generated (the script prints it once; it is not stored anywhere).
+> Executed 2026-07-03: deploy + verification + seed all green; gate armed; password
+> unchanged; 16 posts / 5 focus areas re-seeded through the worker pipeline.
 
 ## 4. Sanity-check the live flow as the reviewer
 
@@ -60,6 +66,12 @@ Sign in at `https://lesswhelmed.com/sign-in` with the reviewer credentials:
 3. Settings → **Blocked users** → Unblock works.
 
 This is exactly what Apple will do first.
+
+> **⚠️ Re-arm the gate afterwards.** Accepting the terms in this check (or in the step-8
+> recording) stamps `termsAcceptedAt` — the gate is one-time, so Apple would NOT see it.
+> After your last manual pass / recording, and **before submitting for review**, re-run
+> step 3's seed command (it re-nulls the stamp; everything else is idempotent). Also
+> undo any test block (unblock via Settings) so the reviewer's feed is fully populated.
 
 ## 5. App Store Connect config (Part E — Guideline 2.3.6)
 
@@ -103,7 +115,8 @@ Report (pick a reason) → Block user → post gone from feed → Settings → B
 
 Use the prepared text in `APP_STORE_SUBMISSION.md` **§12 → "Reply to App Review (UGC
 resubmission)"**, attach the recording, confirm the reviewer credentials in App Review
-Information are current, and submit the version for review.
+Information are current, **re-run the step-3 seed one final time (re-arms the terms gate
+your recording just consumed)**, and submit the version for review.
 
 ---
 
