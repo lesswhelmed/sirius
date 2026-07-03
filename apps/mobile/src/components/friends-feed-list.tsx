@@ -3,7 +3,7 @@
 // offline mirror — that keeps the mirror "my own work" and makes unfriend
 // revocation immediate. `header` is the shared scope toggle rendered above the list.
 import type { Post } from "@repo/db";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import type { ReactNode } from "react";
 import {
@@ -23,6 +23,7 @@ import {
   useThemedStyles,
 } from "@/constants/theme-context";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
+import { showPostModerationSheet } from "@/lib/moderation";
 import { openPost, pushOnce } from "@/lib/nav";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -102,6 +103,7 @@ export function FriendsFeedList({ header }: { header?: ReactNode }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTheme();
   const postTypeTone = usePostTypeTone();
+  const queryClient = useQueryClient();
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["feed"],
     queryFn: () => apiGet<{ items: FeedPost[] }>("/api/app/feed?limit=48"),
@@ -145,6 +147,37 @@ export function FriendsFeedList({ header }: { header?: ReactNode }) {
                   {TYPE_LABEL[item.type] ?? item.type}
                 </KindLabel>
                 <AudienceBadge audience={item.ownAudience} />
+                {/* Report/Block overflow — PEER rows only. `ownAudience` is
+                    populated exactly when the viewer authored the row (the
+                    feed's privacy invariant), so its absence marks a peer's
+                    post. Nested Pressable captures the touch, so the row press
+                    (open the post) doesn't also fire. */}
+                {!item.ownAudience && author ? (
+                  <Pressable
+                    onPress={() =>
+                      showPostModerationSheet({
+                        slug: item.slug,
+                        author,
+                        onBlocked: () =>
+                          // Server-side exclusion is already live; refetch so
+                          // the blocked author's rows vanish instantly.
+                          void queryClient.invalidateQueries({
+                            queryKey: ["feed"],
+                          }),
+                      })
+                    }
+                    hitSlop={14}
+                    accessibilityRole="button"
+                    accessibilityLabel={`More actions for ${item.title}`}
+                    accessibilityHint="Report this post or block its author"
+                    style={({ pressed }) => [
+                      styles.moreBtn,
+                      pressed && styles.morePressed,
+                    ]}
+                  >
+                    <Text style={styles.moreGlyph}>···</Text>
+                  </Pressable>
+                ) : null}
               </View>
               <Text style={styles.rowTitle} numberOfLines={2}>
                 {item.title}
@@ -240,6 +273,16 @@ function makeStyles(t: Theme) {
     badgeGroup: { borderColor: t.color.markText },
     badgeGroupText: { color: t.color.markText },
     badgePressed: { opacity: 0.6 },
+    // The "···" overflow trigger on peer rows. marginLeft:auto pins it to the
+    // meta row's right edge; generous hitSlop makes the small glyph tappable.
+    moreBtn: { marginLeft: "auto", paddingHorizontal: 4 },
+    morePressed: { opacity: 0.5 },
+    moreGlyph: {
+      fontFamily: t.font.mono,
+      fontSize: 13,
+      letterSpacing: 1,
+      color: t.color.inkSubtle,
+    },
     rowTitle: {
       fontFamily: t.font.serif,
       fontSize: 20,

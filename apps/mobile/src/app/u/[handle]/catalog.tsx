@@ -9,9 +9,9 @@
 // collapse to a neutral "not available" empty state so the screen never reveals
 // whether the account exists.
 import type { Post } from "@repo/db";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
@@ -21,7 +21,7 @@ import {
   View,
 } from "react-native";
 
-import { KindLabel, Screen, Title } from "@/components/sirius";
+import { KindLabel, Screen, TextLink, Title } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import {
   usePostTypeTone,
@@ -29,6 +29,7 @@ import {
   useThemedStyles,
 } from "@/constants/theme-context";
 import { ApiError, apiGet, resolveMediaUrl } from "@/lib/api";
+import { confirmAndBlockUser } from "@/lib/moderation";
 import { openPost } from "@/lib/nav";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -62,6 +63,8 @@ export default function FriendCatalogScreen() {
   const postTypeTone = usePostTypeTone();
   const { handle: rawHandle } = useLocalSearchParams<{ handle: string }>();
   const handle = (rawHandle ?? "").replace(/^@/, "").trim();
+  const router = useRouter();
+  const queryClient = useQueryClient();
 
   const {
     data,
@@ -125,6 +128,25 @@ export default function FriendCatalogScreen() {
             <Text style={styles.handle}>@{profile.handle}</Text>
           ) : null}
         </View>
+      </View>
+      {/* Block — App Store 1.2 UGC safety. Destructive confirm, then leave the
+          now-blocked catalog and refetch the feed (server exclusion is live,
+          so their rows vanish instantly). */}
+      <View style={styles.blockRow}>
+        <TextLink
+          label={`Block ${profile.handle ? `@${profile.handle}` : profile.name}`}
+          tone={t.color.danger}
+          onPress={() =>
+            confirmAndBlockUser({
+              userId: profile.id,
+              label: profile.handle ? `@${profile.handle}` : profile.name,
+              onBlocked: () => {
+                void queryClient.invalidateQueries({ queryKey: ["feed"] });
+                router.back();
+              },
+            })
+          }
+        />
       </View>
     </View>
   ) : null;
@@ -253,6 +275,7 @@ function makeStyles(t: Theme) {
       color: t.color.inkMuted,
     },
     profileText: { flexShrink: 1, gap: t.space.xs },
+    blockRow: { flexDirection: "row" },
     handle: {
       fontFamily: t.font.mono,
       fontSize: 13,

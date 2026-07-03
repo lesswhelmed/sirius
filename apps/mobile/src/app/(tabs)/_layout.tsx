@@ -1,13 +1,111 @@
 import { Redirect } from "expo-router";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
-import { ActivityIndicator, View } from "react-native";
+import { openBrowserAsync } from "expo-web-browser";
+import { useState } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 
-import { useTheme } from "@/constants/theme-context";
+import {
+  PageHeader,
+  PrimaryButton,
+  Screen,
+  TextLink,
+} from "@/components/sirius";
+import type { Theme } from "@/constants/theme";
+import { useTheme, useThemedStyles } from "@/constants/theme-context";
+import { apiPostJson } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 
+// App Store Guideline 1.2 (UGC): users must agree to the Terms of Use before
+// using the app. New sign-ups agree at registration (server stamps
+// termsAcceptedAt); pre-existing accounts that only ever sign IN hit this
+// one-time blocking gate instead. Rendered as a plain full-screen view in
+// place of the tab navigator — NOT an RN Modal (strict one-visible-Modal rule).
+const TERMS_URL = "https://lesswhelmed.com/terms";
+
+async function openTerms() {
+  try {
+    await openBrowserAsync(TERMS_URL);
+  } catch {
+    // A failed open shouldn't crash the gate; ignore.
+  }
+}
+
+// `termsAcceptedAt` is a custom better-auth additionalField, so it's absent
+// from the base session type — and over the wire it may be a Date, an ISO
+// string, null, or missing entirely (stale cached sessions). Treat
+// null/undefined the same: not yet accepted.
+type TermsUser = { termsAcceptedAt?: Date | string | null };
+
+function TermsGate({ onAccepted }: { onAccepted: () => void }) {
+  const styles = useThemedStyles(makeGateStyles);
+  const [busy, setBusy] = useState(false);
+
+  async function handleAgree() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await apiPostJson<{ ok: boolean }>("/api/app/account/accept-terms", {});
+    } catch {
+      setBusy(false);
+      Alert.alert(
+        "Couldn’t save",
+        "Your agreement couldn’t be recorded. Check your connection and try again.",
+      );
+      return;
+    }
+    // Recorded server-side — drop the gate (the parent also refetches the
+    // session so the store catches up). Leave `busy` on; the gate unmounts.
+    onAccepted();
+  }
+
+  return (
+    <Screen style={styles.gate}>
+      <PageHeader
+        brandMark
+        eyebrow="Sirius — A field journal"
+        title="Terms of Use"
+        titleAccent="."
+        subtitle="One quick agreement before you continue."
+      />
+      <Text style={styles.body}>
+        No tolerance for objectionable content or abusive users. Content that
+        violates our terms is removed and offending accounts are ejected.
+        Reports are reviewed within 24 hours.
+      </Text>
+      <View style={styles.linkRow}>
+        <TextLink label="Read the full Terms" onPress={() => void openTerms()} />
+      </View>
+      <PrimaryButton label="I agree" onPress={handleAgree} busy={busy} />
+    </Screen>
+  );
+}
+
+function makeGateStyles(t: Theme) {
+  return StyleSheet.create({
+    gate: {
+      flex: 1,
+      justifyContent: "center",
+      paddingHorizontal: t.space.xl,
+      gap: t.space.lg,
+    },
+    body: {
+      fontFamily: t.font.serif,
+      fontSize: 17,
+      lineHeight: 24,
+      color: t.color.inkMuted,
+    },
+    linkRow: { flexDirection: "row" },
+  });
+}
+
 export default function TabsLayout() {
-  const { data: session, isPending } = useSession();
+  const { data: session, isPending, refetch } = useSession();
   const t = useTheme();
+  // Optimistic local latch: once the accept-terms POST succeeds the gate drops
+  // immediately, even if the session store still serves a cached payload
+  // without the stamp (better-auth cookie cache). The server row is the source
+  // of truth; the refetch below re-syncs the store in the background.
+  const [acceptedLocally, setAcceptedLocally] = useState(false);
 
   if (isPending) {
     return (
@@ -25,6 +123,23 @@ export default function TabsLayout() {
   }
   if (!session) {
     return <Redirect href="/(auth)/sign-in" />;
+  }
+
+  // Read tolerantly — Date | string | null | undefined (see TermsUser). Any
+  // truthy value counts as accepted.
+  const termsAcceptedAt = (session.user as TermsUser | undefined)
+    ?.termsAcceptedAt;
+  if (!termsAcceptedAt && !acceptedLocally) {
+    return (
+      <TermsGate
+        onAccepted={() => {
+          setAcceptedLocally(true);
+          // Force a server session re-check (bypass the cookie cache) so the
+          // store picks up the fresh termsAcceptedAt stamp.
+          void refetch({ query: { disableCookieCache: true } });
+        }}
+      />
+    );
   }
 
   return (

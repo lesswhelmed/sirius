@@ -32,12 +32,24 @@ import {
   useThemedStyles,
 } from "@/constants/theme-context";
 import { apiGet, resolveMediaUrl } from "@/lib/api";
+import { useSession } from "@/lib/auth-client";
 import { db } from "@/lib/db/client";
 import { type PostRow, posts } from "@/lib/db/schema";
+import { showPostModerationSheet } from "@/lib/moderation";
 import { openPostEdit } from "@/lib/nav";
 import { confirmAndDeletePost } from "@/lib/post-delete";
 
-type PostDetail = Post & { tags: Tag[]; categories: Category[] };
+// The server route returns findPostBySlug's PostWithRelations, which includes
+// the author summary — needed by the peer-post Report/Block action below.
+type PostDetail = Post & {
+  tags: Tag[];
+  categories: Category[];
+  submittedBy?: {
+    id: string;
+    name: string;
+    handle: string | null;
+  } | null;
+};
 
 type SightImage = { url: string; alt: string };
 
@@ -145,6 +157,7 @@ export default function PostDetailScreen() {
   const [visibilityOpen, setVisibilityOpen] = useState(false);
   const router = useRouter();
   const qc = useQueryClient();
+  const { data: session } = useSession();
 
   // Local mirror first. `localRows === undefined` means the live query hasn't
   // resolved yet; an empty array means there's genuinely no local copy.
@@ -198,6 +211,15 @@ export default function PostDetailScreen() {
   }
 
   const tone = postTypeTone[view.type] ?? t.color.inkMuted;
+  // A server-only render (`!localRow`) is a peer's post except for the rare
+  // deep-link to one's OWN not-yet-mirrored post — the id check filters that,
+  // so Report/Block never shows on the viewer's own content. Requires a
+  // RESOLVED session id, so nothing shows while the session is still loading.
+  const viewerId = session?.user?.id;
+  const peerAuthor =
+    !localRow && data?.submittedBy && viewerId && data.submittedBy.id !== viewerId
+      ? data.submittedBy
+      : null;
   const sightImages = view.images;
   // When a SIGHT gallery is present it already includes the hero (images[0]),
   // so render the gallery and skip the standalone hero to avoid showing the
@@ -274,6 +296,30 @@ export default function PostDetailScreen() {
           >
             <Text style={styles.visLabel}>Delete</Text>
             <Text style={styles.deleteValue}>Delete ▸</Text>
+          </Pressable>
+        ) : null}
+        {/* Report/Block — PEER posts only (server-only branch, not the
+            viewer's own). Opens the native moderation action sheet; a
+            successful block refetches the feed (server exclusion is already
+            live) and navigates back off the now-blocked content. */}
+        {peerAuthor ? (
+          <Pressable
+            onPress={() =>
+              showPostModerationSheet({
+                slug,
+                author: peerAuthor,
+                onBlocked: () => {
+                  void qc.invalidateQueries({ queryKey: ["feed"] });
+                  router.back();
+                },
+              })
+            }
+            accessibilityRole="button"
+            accessibilityLabel="Report this post or block its author"
+            style={({ pressed }) => [styles.visRow, pressed && styles.visPressed]}
+          >
+            <Text style={styles.visLabel}>Safety</Text>
+            <Text style={styles.deleteValue}>Report / Block ▸</Text>
           </Pressable>
         ) : null}
         {view.tags.length > 0 ? (

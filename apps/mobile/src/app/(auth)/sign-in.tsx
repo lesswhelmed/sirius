@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import { openBrowserAsync } from "expo-web-browser";
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -33,6 +34,17 @@ import {
   getEnrolledEmail,
   isBiometricEnabled,
 } from "@/lib/biometric-auth";
+
+// App Store Guideline 1.2 (UGC): signing in constitutes agreement to the Terms
+// of Use — the quiet footer below links to them. Pure — module scope.
+const TERMS_URL = "https://lesswhelmed.com/terms";
+async function openTerms() {
+  try {
+    await openBrowserAsync(TERMS_URL);
+  } catch {
+    // A failed open shouldn't crash sign-in; ignore.
+  }
+}
 
 // Shared sign-in tail: clear any stale cookie, call better-auth, route on
 // success. Returns the error (if any) so callers can branch on it. Pure — closes
@@ -298,6 +310,19 @@ export default function SignInScreen() {
               onPress={() => pushOnce("/(auth)/sign-up")}
             />
           </View>
+
+          <Text style={styles.termsNote}>
+            By signing in you agree to the{" "}
+            <Text
+              style={styles.termsLink}
+              accessibilityRole="link"
+              onPress={() => void openTerms()}
+              suppressHighlighting
+            >
+              Terms of Use
+            </Text>
+            .
+          </Text>
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -356,6 +381,17 @@ function makeStyles(t: Theme) {
       color: t.color.inkMuted,
       fontFamily: t.font.serif,
       fontSize: 16,
+    },
+    termsNote: {
+      textAlign: "center",
+      fontFamily: t.font.sans,
+      fontSize: 12,
+      lineHeight: 17,
+      color: t.color.inkSubtle,
+    },
+    termsLink: {
+      color: t.color.accent,
+      textDecorationLine: "underline",
     },
   });
 }

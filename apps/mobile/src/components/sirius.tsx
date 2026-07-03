@@ -509,6 +509,65 @@ export function KeyboardDoneButton({
   );
 }
 
+// Compact agreement row for the auth screens: a tappable checkbox + an inline
+// label whose document names can be links (nested <Text onPress>). The whole
+// label also toggles, so the tap target isn't just the 24pt box. Controlled —
+// the caller owns `checked`.
+export function AgreeRow({
+  checked,
+  onToggle,
+  disabled,
+  accessibilityLabel,
+  children,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+  // Announced for the checkbox (the visual label may be link-fragmented).
+  accessibilityLabel?: string;
+  // Label content, rendered inside a <Text> — strings and nested <Text> links.
+  children: ReactNode;
+}) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.agreeRow}>
+      <Pressable
+        onPress={onToggle}
+        disabled={disabled}
+        hitSlop={12}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked, disabled }}
+        accessibilityLabel={accessibilityLabel}
+        style={({ pressed }) => [
+          styles.agreeBox,
+          checked && styles.agreeBoxChecked,
+          pressed && !disabled && styles.linkPressed,
+        ]}
+      >
+        {checked ? (
+          <SymbolView
+            name="checkmark"
+            size={14}
+            weight="bold"
+            tintColor={t.color.onAccent}
+            fallback={<Text style={styles.agreeCheckGlyph}>✓</Text>}
+          />
+        ) : null}
+      </Pressable>
+      {/* onPress on the label toggles too; nested link <Text>s capture their
+          own presses first, so tapping a document name opens it instead. */}
+      <Text
+        style={styles.agreeLabel}
+        onPress={disabled ? undefined : onToggle}
+        suppressHighlighting
+      >
+        {children}
+      </Text>
+    </View>
+  );
+}
+
 type ButtonProps = Omit<PressableProps, "children" | "style"> & {
   label: string;
   busy?: boolean;
@@ -1137,6 +1196,38 @@ function makeStyles(t: Theme) {
       letterSpacing: 0.3,
     },
     buttonDisabled: { opacity: 0.45 },
+    agreeRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: t.space.md,
+    },
+    agreeBox: {
+      width: 24,
+      height: 24,
+      borderWidth: 1,
+      borderColor: t.color.ruleStrong,
+      borderRadius: t.radius.none,
+      backgroundColor: t.color.paperRaised,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    agreeBoxChecked: {
+      backgroundColor: t.color.accent,
+      borderColor: t.color.accent,
+    },
+    agreeCheckGlyph: {
+      color: t.color.onAccent,
+      fontSize: 14,
+      lineHeight: 16,
+      fontWeight: "700",
+    },
+    agreeLabel: {
+      flex: 1,
+      fontFamily: t.font.sans,
+      fontSize: 13,
+      lineHeight: 19,
+      color: t.color.inkMuted,
+    },
     submitBar: {
       position: "absolute",
       left: 0,

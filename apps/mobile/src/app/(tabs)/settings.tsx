@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -28,6 +29,7 @@ import { SubscriptionSection } from "@/components/subscription-section";
 import { VoiceSection } from "@/components/voice-section";
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
+import { apiDelete, apiGet } from "@/lib/api";
 import { deleteUser, signIn, signOut, useSession } from "@/lib/auth-client";
 import { clearAuthStorage } from "@/lib/auth-recovery";
 import { pushOnce } from "@/lib/nav";
@@ -255,6 +257,10 @@ export default function SettingsScreen() {
             />
           ) : null}
         </View>
+
+        {/* Blocked users — manage-blocks list (App Store 1.2 UGC safety).
+            Sits with the friends/privacy controls above. */}
+        <BlockedUsersSection />
 
         {/* Subscription — Sirius AI Pro + weekly AI-draft usage. */}
         <SubscriptionSection />
@@ -534,6 +540,91 @@ function formatEventTime(at: string): string {
   return at.slice(0, 16).replace("T", " ");
 }
 
+// Users the account has blocked (Report/Block flows in the Friends feed, peer
+// post detail, and friend catalogs), with per-row Unblock. Server contract:
+// GET /api/app/blocks -> { items }, DELETE /api/app/users/[id]/block.
+type BlockedUser = {
+  id: string;
+  name: string;
+  handle: string | null;
+  image: string | null;
+  blockedAt: string;
+};
+
+function BlockedUsersSection() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["blocks"],
+    queryFn: () => apiGet<{ items: BlockedUser[] }>("/api/app/blocks"),
+  });
+  // The id currently being unblocked — labels that row "Unblocking…" and
+  // serializes the actions (all Unblock buttons disable while one is in
+  // flight, so a double-tap can't fire two DELETEs).
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
+  const items = data?.items ?? [];
+
+  async function handleUnblock(user: BlockedUser) {
+    if (unblockingId) return;
+    setUnblockingId(user.id);
+    try {
+      await apiDelete<{ ok: boolean }>(
+        `/api/app/users/${encodeURIComponent(user.id)}/block`,
+      );
+      // Refresh the list, and the feed — their posts may reappear there.
+      await queryClient.invalidateQueries({ queryKey: ["blocks"] });
+      void queryClient.invalidateQueries({ queryKey: ["feed"] });
+    } catch {
+      Alert.alert("Couldn’t unblock", "Check your connection and try again.");
+    } finally {
+      setUnblockingId(null);
+    }
+  }
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionLabel}>Blocked users</Text>
+      <View style={styles.card}>
+        {isLoading ? (
+          <Text style={styles.toggleSub}>Loading…</Text>
+        ) : isError ? (
+          <View style={styles.row}>
+            <Text style={[styles.toggleSub, styles.blockedText]}>
+              Couldn’t load blocked users.
+            </Text>
+            <TextLink label="Retry" onPress={() => void refetch()} />
+          </View>
+        ) : items.length === 0 ? (
+          <Text style={styles.toggleSub}>No blocked users.</Text>
+        ) : (
+          items.map((user) => (
+            <View key={user.id} style={styles.row}>
+              <View style={styles.blockedText}>
+                <Text style={styles.rowValue} numberOfLines={1}>
+                  {user.handle ? `@${user.handle}` : user.name}
+                </Text>
+                {user.handle && user.name ? (
+                  <Text style={styles.rowLabel} numberOfLines={1}>
+                    {user.name}
+                  </Text>
+                ) : null}
+              </View>
+              <TextLink
+                label={unblockingId === user.id ? "Unblocking…" : "Unblock"}
+                tone={t.color.accent}
+                disabled={unblockingId !== null}
+                accessibilityLabel={`Unblock ${user.handle ? `@${user.handle}` : user.name}`}
+                onPress={() => void handleUnblock(user)}
+              />
+            </View>
+          ))
+        )}
+      </View>
+    </View>
+  );
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   const styles = useThemedStyles(makeStyles);
   return (
@@ -589,6 +680,8 @@ function makeStyles(t: Theme) {
     fontSize: 16,
     color: t.color.ink,
   },
+  // Blocked-users row: handle on top, real name beneath, Unblock on the right.
+  blockedText: { flex: 1, gap: 2 },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import { openBrowserAsync } from "expo-web-browser";
 import { useRef, useState } from "react";
 import {
   Alert,
@@ -10,6 +11,7 @@ import {
 } from "react-native";
 
 import {
+  AgreeRow,
   AuthField,
   type AuthFieldHandle,
   PageHeader,
@@ -22,6 +24,21 @@ import { useThemedStyles } from "@/constants/theme-context";
 import { signUp } from "@/lib/auth-client";
 import { pushOnce } from "@/lib/nav";
 
+// App Store Guideline 1.2 (UGC): registration requires explicit agreement to
+// the Terms of Use (zero tolerance for objectionable content / abusive users)
+// and the Privacy Policy. External legal pages open in the in-app browser —
+// same pattern as components/subscription-section.tsx.
+const TERMS_URL = "https://lesswhelmed.com/terms";
+const PRIVACY_URL = "https://lesswhelmed.com/privacy";
+
+async function openLegal(url: string) {
+  try {
+    await openBrowserAsync(url);
+  } catch {
+    // A failed open shouldn't crash sign-up; ignore.
+  }
+}
+
 export default function SignUpScreen() {
   const styles = useThemedStyles(makeStyles);
   // Uncontrolled inputs (see <AuthField/>): read at submit so iOS Password
@@ -31,6 +48,10 @@ export default function SignUpScreen() {
   const emailRef = useRef<AuthFieldHandle>(null);
   const passwordRef = useRef<AuthFieldHandle>(null);
   const [busy, setBusy] = useState(false);
+  // Terms/Privacy agreement — required before the account can be created (the
+  // button below is disabled until checked; this guard covers programmatic
+  // submits too).
+  const [agreed, setAgreed] = useState(false);
 
   async function handleSubmit() {
     if (busy) return;
@@ -43,6 +64,13 @@ export default function SignUpScreen() {
     }
     if (password.length < 8) {
       Alert.alert("Weak password", "Password must be at least 8 characters.");
+      return;
+    }
+    if (!agreed) {
+      Alert.alert(
+        "Agreement required",
+        "Please agree to the Terms of Use and Privacy Policy to create an account.",
+      );
       return;
     }
     setBusy(true);
@@ -106,7 +134,37 @@ export default function SignUpScreen() {
               editable={!busy}
               ref={passwordRef}
             />
-            <PrimaryButton label="Sign up" onPress={handleSubmit} busy={busy} />
+            <AgreeRow
+              checked={agreed}
+              onToggle={() => setAgreed((a) => !a)}
+              disabled={busy}
+              accessibilityLabel="I agree to the Terms of Use and Privacy Policy"
+            >
+              I agree to the{" "}
+              <Text
+                style={styles.legalLink}
+                accessibilityRole="link"
+                onPress={() => void openLegal(TERMS_URL)}
+                suppressHighlighting
+              >
+                Terms of Use
+              </Text>{" "}
+              and{" "}
+              <Text
+                style={styles.legalLink}
+                accessibilityRole="link"
+                onPress={() => void openLegal(PRIVACY_URL)}
+                suppressHighlighting
+              >
+                Privacy Policy
+              </Text>
+            </AgreeRow>
+            <PrimaryButton
+              label="Sign up"
+              onPress={handleSubmit}
+              busy={busy}
+              disabled={!agreed}
+            />
           </View>
 
           <View style={styles.footer}>
@@ -143,6 +201,10 @@ function makeStyles(t: Theme) {
       color: t.color.inkMuted,
       fontFamily: t.font.serif,
       fontSize: 16,
+    },
+    legalLink: {
+      color: t.color.accent,
+      textDecorationLine: "underline",
     },
   });
 }
