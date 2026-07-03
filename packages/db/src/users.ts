@@ -8,6 +8,15 @@ import { prisma } from "./index";
 const HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{2,29}$/;
 const UNIQUE_VIOLATION = "P2002";
 
+// Display-name bounds. Mirrors the Zod schema on /api/app/me/name so the domain
+// helper owns the invariant too (callers can't bypass it by hitting Prisma
+// directly). Whitespace is collapsed before length is measured.
+export const USER_NAME_MAX_CHARS = 80;
+
+export function normalizeUserName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}
+
 export type StorefrontUser = {
   id: string;
   name: string;
@@ -83,6 +92,25 @@ export async function getUserHandle(userId: string): Promise<string | null> {
     select: { handle: true },
   });
   return row?.handle ?? null;
+}
+
+export type SetNameResult =
+  | { ok: true; name: string }
+  | { ok: false; reason: "invalid" };
+
+export async function setUserName(
+  userId: string,
+  name: string,
+): Promise<SetNameResult> {
+  const cleaned = normalizeUserName(name);
+  if (cleaned.length < 1 || cleaned.length > USER_NAME_MAX_CHARS) {
+    return { ok: false, reason: "invalid" };
+  }
+  await prisma.user.update({
+    where: { id: userId },
+    data: { name: cleaned },
+  });
+  return { ok: true, name: cleaned };
 }
 
 // Email + display name for a user — used by the worker to address the

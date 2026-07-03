@@ -12,6 +12,7 @@ import { requireSession } from "../../../lib/session";
 import { ApiKeysSection } from "./api-keys-section";
 import { BlockedUsersSection } from "./blocked-users-section";
 import { DeleteAccountButton } from "./delete-account-button";
+import { ProfileNameEditor } from "./profile-name-editor";
 import { RequestArchiveButton } from "./request-archive-button";
 import { SettingsShell, type SettingsSection } from "./settings-shell";
 import { InviteDialog } from "./invite-dialog";
@@ -63,10 +64,11 @@ export default async function SettingsPage() {
       id: "profile",
       label: "Profile",
       folio: "i",
-      blurb: "Your handle and invite link.",
+      blurb: "Your name, handle, and invite link.",
       content: (
         <div className="space-y-7">
-          <SectionHeader eyebrow="Profile" title="Your handle" />
+          <SectionHeader eyebrow="Profile" title="Your profile" />
+          <ProfileNameEditor initialName={session.user.name ?? ""} />
           {handle ? (
             <div className="space-y-6">
               <div className="space-y-2">

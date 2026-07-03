@@ -4,10 +4,12 @@ import {
   Alert,
   Linking,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -40,6 +42,7 @@ import {
   getBiometricCapability,
   isBiometricEnabled,
 } from "@/lib/biometric-auth";
+import { apiPostJson } from "@/lib/api";
 import {
   type ShareBreadcrumb,
   readShareBreadcrumbs,
@@ -52,7 +55,7 @@ export default function SettingsScreen() {
   // so the content owns its top inset (the old fixed paddingTop tucked the
   // title under the clock on notched devices).
   const insets = useSafeAreaInsets();
-  const { data: session } = useSession();
+  const { data: session, refetch: refetchSession } = useSession();
   const email = session?.user?.email ?? "";
   const name = session?.user?.name ?? "";
   // `handle` is an extra profile field on the user (see schema); not in the
@@ -234,7 +237,11 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Account</Text>
           <View style={styles.card}>
-            {name ? <Row label="Name" value={name} /> : null}
+            <EditableNameRow
+              key={`${session?.user?.id ?? "anonymous"}:${name}`}
+              initialName={name}
+              refetchSession={refetchSession}
+            />
             <Row label="Email" value={email || "—"} />
             {handle ? <Row label="Handle" value={`@${handle}`} /> : null}
           </View>
@@ -549,6 +556,110 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function EditableNameRow({
+  initialName,
+  refetchSession,
+}: {
+  initialName: string;
+  refetchSession: (options?: {
+    query?: { disableCookieCache?: boolean };
+  }) => Promise<unknown>;
+}) {
+  const t = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const [value, setValue] = useState(initialName);
+  const [savedValue, setSavedValue] = useState(initialName);
+  const [focused, setFocused] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const cleaned = value.trim().replace(/\s+/g, " ");
+  const dirty = cleaned !== savedValue;
+  const canSave = dirty && cleaned.length > 0 && !busy;
+
+  async function save() {
+    if (!canSave) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await apiPostJson<{ name: string }>("/api/app/me/name", {
+        name: cleaned,
+      });
+      setValue(result.name);
+      setSavedValue(result.name);
+      setSaved(true);
+      await refetchSession({ query: { disableCookieCache: true } });
+    } catch (err) {
+      console.warn("[settings] update name failed", err);
+      setError("Couldn’t save your name. Check your connection and try again.");
+      Alert.alert(
+        "Couldn’t save name",
+        "We couldn’t save your name — you may be offline. We’ll keep what you typed here so you can try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.nameBlock}>
+      <View style={styles.nameHeader}>
+        <Text style={styles.rowLabel}>Name</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Save name"
+          accessibilityState={{ disabled: !canSave, busy }}
+          disabled={!canSave}
+          onPress={() => void save()}
+          style={({ pressed }) => [
+            styles.nameAction,
+            canSave && styles.nameActionActive,
+            pressed && canSave && styles.nameActionPressed,
+            !canSave && !saved && styles.nameActionDisabled,
+          ]}
+        >
+          <Text
+            style={[
+              styles.nameActionText,
+              canSave && styles.nameActionTextActive,
+            ]}
+          >
+            {busy ? "…" : "✓"}
+          </Text>
+        </Pressable>
+      </View>
+      <TextInput
+        value={value}
+        onChangeText={(next) => {
+          setValue(next);
+          setError(null);
+          setSaved(false);
+        }}
+        editable={!busy}
+        maxLength={80}
+        placeholder="Your name"
+        placeholderTextColor={t.color.inkSubtle}
+        autoCapitalize="words"
+        autoCorrect
+        returnKeyType="done"
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onSubmitEditing={() => void save()}
+        style={[
+          styles.nameInput,
+          (focused || dirty) && styles.nameInputActive,
+        ]}
+      />
+      {error ? (
+        <Text style={styles.inlineError}>{error}</Text>
+      ) : saved ? (
+        <Text style={styles.nameSaved}>✓ Saved</Text>
+      ) : null}
+    </View>
+  );
+}
+
 function makeStyles(t: Theme) {
   return StyleSheet.create({
   container: {
@@ -573,6 +684,69 @@ function makeStyles(t: Theme) {
     paddingHorizontal: t.space.lg,
     paddingVertical: t.space.sm,
     gap: t.space.sm,
+  },
+  nameBlock: {
+    gap: t.space.xs,
+    paddingVertical: t.space.sm,
+  },
+  nameHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: t.space.md,
+  },
+  nameAction: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: t.color.ruleStrong,
+    backgroundColor: "transparent",
+  },
+  nameActionActive: {
+    borderColor: t.color.accent,
+    backgroundColor: t.color.accent,
+  },
+  nameActionPressed: {
+    opacity: 0.7,
+  },
+  nameActionDisabled: {
+    opacity: 0.4,
+  },
+  nameActionText: {
+    fontFamily: t.font.mono,
+    fontSize: 15,
+    color: t.color.ink,
+  },
+  nameActionTextActive: {
+    color: t.color.onAccent,
+  },
+  nameInput: {
+    borderWidth: 1,
+    borderColor: t.color.rule,
+    paddingHorizontal: t.space.md,
+    paddingVertical: Platform.OS === "ios" ? t.space.sm : 6,
+    fontFamily: t.font.serif,
+    fontSize: 19,
+    color: t.color.ink,
+    backgroundColor: "transparent",
+  },
+  nameInputActive: {
+    borderColor: t.color.accent,
+  },
+  nameSaved: {
+    fontFamily: t.font.mono,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: t.color.inkMuted,
+  },
+  inlineError: {
+    fontFamily: t.font.sans,
+    fontSize: 12,
+    lineHeight: 16,
+    color: t.color.accent,
   },
   row: {
     flexDirection: "row",
