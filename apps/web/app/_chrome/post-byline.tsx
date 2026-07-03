@@ -18,15 +18,24 @@ export function PostByline({
   author,
   avatarSize = 28,
   nameSize = 15,
+  isSelf = false,
 }: {
   author: SubmitterSummary;
   avatarSize?: number;
   nameSize?: number;
+  // When the post is the viewer's own, append a quiet "(you)" so a self-authored
+  // row in the merged feed is unmistakable (it also carries an audience badge).
+  isSelf?: boolean;
 }) {
   const inner = (
     <span className="flex min-w-0 items-center gap-2.5">
       <Avatar name={author.name} image={author.image} size={avatarSize} />
       <FriendName name={author.name} handle={author.handle} size={nameSize} />
+      {isSelf ? (
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--fg-subtle)]">
+          (you)
+        </span>
+      ) : null}
     </span>
   );
   if (!author.handle) {

@@ -137,15 +137,26 @@ function TaxonomyFooter({
 export function CatalogCard({
   post,
   showAuthor = false,
+  viewerId,
 }: {
   post: PostListItem;
-  // In the Friends feed each row belongs to a different author, so surface whose
-  // post it is; in the owner's own catalog every post is theirs, so omit it.
+  // Render the author byline. On the Friends feed we want it on EVERY row —
+  // including the viewer's own posts (so attribution is never missing) — so the
+  // feed passes `showAuthor` unconditionally; the owner's private catalog leaves
+  // it off (every post is theirs, so it's redundant).
   showAuthor?: boolean;
+  // The signed-in viewer. Used only to gate the peer-only report/block menu: it
+  // renders on other people's posts, never on the viewer's own.
+  viewerId?: string;
 }) {
   const host = sourceHost(post.originalUrl);
   const href = `/posts/${post.slug}`;
   const author = post.submittedBy;
+  // Is this the viewer's own post? Drives the "(you)" byline marker. A peer post
+  // is any post that is NOT the viewer's own; it drives the report/block menu
+  // (never offered on your own post).
+  const isSelf = author != null && viewerId != null && author.id === viewerId;
+  const isPeer = author != null && viewerId != null && author.id !== viewerId;
   // A post carries exactly one category in the shipped model; take the first.
   const category = post.categories?.[0];
   const tags = post.tags ?? [];
@@ -157,7 +168,7 @@ export function CatalogCard({
           unmissable. Sits outside the post <Link> (it emits its own anchor). */}
       {showAuthor && author ? (
         <div className="mb-3">
-          <PostByline author={author} />
+          <PostByline author={author} isSelf={isSelf} />
         </div>
       ) : null}
       <article className="group flex gap-4 sm:gap-6">
@@ -226,9 +237,8 @@ export function CatalogCard({
               ) : host ? (
                 <span className="truncate">{host}</span>
               ) : null}
-              {/* Report/Block overflow — peer posts only (showAuthor implies the
-                row belongs to another author; never rendered on own posts). */}
-              {showAuthor && author ? (
+              {/* Report/Block overflow — peer posts only (never on your own). */}
+              {isPeer && author ? (
                 <PostModerationMenu
                   slug={post.slug}
                   authorId={author.id}

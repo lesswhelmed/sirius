@@ -220,6 +220,7 @@ export default async function PostDetailPage({
               author={post.submittedBy}
               avatarSize={36}
               nameSize={17}
+              isSelf={isOwner}
             />
           </div>
         ) : null}

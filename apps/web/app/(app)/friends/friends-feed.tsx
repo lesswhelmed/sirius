@@ -70,7 +70,7 @@ export async function FriendsFeed({ userId }: { userId: string }) {
           key={post.id}
           className="border-b border-[var(--color-rule)] transition-colors hover:bg-[var(--color-paper-raised)]/40"
         >
-          <CatalogCard post={post} showAuthor={post.submittedById !== userId} />
+          <CatalogCard post={post} showAuthor viewerId={userId} />
         </li>
       ))}
     </ul>
