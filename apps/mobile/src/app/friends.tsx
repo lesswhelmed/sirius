@@ -35,6 +35,18 @@ type RawRequest = {
   direction: "incoming" | "outgoing";
 };
 
+// Users this account has blocked (via the Report/Block flows in the Friends
+// feed, peer post detail, and friend catalogs), with per-row Unblock. Lives
+// here — nested under Friends — rather than on the Account screen. Server
+// contract: GET /api/app/blocks -> { items }, DELETE /api/app/users/[id]/block.
+type BlockedUser = {
+  id: string;
+  name: string;
+  handle: string | null;
+  image: string | null;
+  blockedAt: string;
+};
+
 type Tab = "friends" | "requests";
 
 export default function FriendsScreen() {
@@ -102,6 +114,9 @@ export default function FriendsScreen() {
 
   const loading = friendsLoading || requestsLoading;
 
+  // Always shown beneath the friends/requests list (see BlockedUsersSection).
+  const blockedFooter = <BlockedUsersSection />;
+
   return (
     <Screen>
       <Stack.Screen options={{ title: "Friends" }} />
@@ -147,6 +162,7 @@ export default function FriendsScreen() {
             </FriendRow>
           )}
           ListEmptyComponent={<Empty line="No friends yet." />}
+          ListFooterComponent={blockedFooter}
         />
       ) : (
         <FlatList
@@ -174,6 +190,7 @@ export default function FriendsScreen() {
             </FriendRow>
           )}
           ListEmptyComponent={<Empty line="No pending requests." />}
+          ListFooterComponent={blockedFooter}
         />
       )}
 
@@ -190,16 +207,103 @@ function Action({
   label,
   muted = false,
   onPress,
+  accessibilityLabel,
 }: {
   label: string;
   muted?: boolean;
   onPress: () => void;
+  accessibilityLabel?: string;
 }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <Pressable onPress={onPress} hitSlop={8} accessibilityRole="button">
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
       <Text style={[styles.action, muted && styles.actionMuted]}>{label}</Text>
     </Pressable>
+  );
+}
+
+// Blocked users list, nested beneath the friends/requests list on this screen
+// (moved here from the Account screen). Own react-query cache key ["blocks"];
+// blocking anywhere in the app invalidates it so this list stays current.
+function BlockedUsersSection() {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTheme();
+  const qc = useQueryClient();
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["blocks"],
+    queryFn: () => apiGet<{ items: BlockedUser[] }>("/api/app/blocks"),
+  });
+  // The id currently being unblocked — shows a spinner on that row and
+  // serializes the actions so a double-tap can't fire two DELETEs.
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
+  const items = data?.items ?? [];
+
+  async function handleUnblock(user: BlockedUser) {
+    if (unblockingId) return;
+    setUnblockingId(user.id);
+    try {
+      await apiDelete<{ ok: boolean }>(
+        `/api/app/users/${encodeURIComponent(user.id)}/block`,
+      );
+      // Refresh this list, and the feed — their posts may reappear there.
+      await qc.invalidateQueries({ queryKey: ["blocks"] });
+      void qc.invalidateQueries({ queryKey: ["feed"] });
+    } catch {
+      Alert.alert("Couldn’t unblock", "Check your connection and try again.");
+    } finally {
+      setUnblockingId(null);
+    }
+  }
+
+  return (
+    <View style={styles.blocked}>
+      <Text style={styles.blockedLabel}>Blocked users</Text>
+      {isLoading ? (
+        <Text style={styles.blockedMuted}>Loading…</Text>
+      ) : isError ? (
+        <View style={styles.blockedRow}>
+          <Text style={styles.blockedMuted}>Couldn’t load blocked users.</Text>
+          <Action label="Retry" onPress={() => void refetch()} />
+        </View>
+      ) : items.length === 0 ? (
+        <Text style={styles.blockedMuted}>No blocked users.</Text>
+      ) : (
+        items.map((user, i) => {
+          const display = user.handle ? `@${user.handle}` : user.name;
+          return (
+            <View key={user.id}>
+              {i > 0 ? <Sep /> : null}
+              <View style={styles.blockedRow}>
+                <View style={styles.blockedText}>
+                  <Text style={styles.blockedName} numberOfLines={1}>
+                    {display}
+                  </Text>
+                  {user.handle && user.name ? (
+                    <Text style={styles.blockedSub} numberOfLines={1}>
+                      {user.name}
+                    </Text>
+                  ) : null}
+                </View>
+                {unblockingId === user.id ? (
+                  <ActivityIndicator color={t.color.accent} />
+                ) : (
+                  <Action
+                    label="Unblock"
+                    accessibilityLabel={`Unblock ${display}`}
+                    onPress={() => void handleUnblock(user)}
+                  />
+                )}
+              </View>
+            </View>
+          );
+        })
+      )}
+    </View>
   );
 }
 
@@ -247,6 +351,42 @@ function makeStyles(t: Theme) {
       color: t.color.inkFaint,
     },
     sep: { height: 1, backgroundColor: t.color.rule },
+    blocked: {
+      marginTop: t.space.xl,
+      paddingTop: t.space.lg,
+      borderTopWidth: 1,
+      borderTopColor: t.color.rule,
+      gap: t.space.xs,
+    },
+    blockedLabel: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: t.color.inkMuted,
+      marginBottom: t.space.sm,
+    },
+    blockedMuted: {
+      fontFamily: t.font.serif,
+      fontStyle: "italic",
+      fontSize: 15,
+      color: t.color.inkMuted,
+      flexShrink: 1,
+    },
+    blockedRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: t.space.lg,
+      paddingVertical: t.space.md,
+    },
+    blockedText: { flexShrink: 1, gap: 2 },
+    blockedName: { fontFamily: t.font.serif, fontSize: 18, color: t.color.ink },
+    blockedSub: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.inkSubtle,
+    },
     empty: { padding: 40, alignItems: "center", gap: t.space.sm },
     emptyGlyph: {
       fontFamily: t.font.serif,

@@ -158,12 +158,17 @@ export function FriendsFeedList({ header }: { header?: ReactNode }) {
                       showPostModerationSheet({
                         slug: item.slug,
                         author,
-                        onBlocked: () =>
+                        onBlocked: () => {
                           // Server-side exclusion is already live; refetch so
-                          // the blocked author's rows vanish instantly.
+                          // the blocked author's rows vanish instantly, and
+                          // refresh the blocked-users list under Friends.
                           void queryClient.invalidateQueries({
                             queryKey: ["feed"],
-                          }),
+                          });
+                          void queryClient.invalidateQueries({
+                            queryKey: ["blocks"],
+                          });
+                        },
                       })
                     }
                     hitSlop={14}

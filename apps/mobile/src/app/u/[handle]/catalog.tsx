@@ -142,6 +142,7 @@ export default function FriendCatalogScreen() {
               label: profile.handle ? `@${profile.handle}` : profile.name,
               onBlocked: () => {
                 void queryClient.invalidateQueries({ queryKey: ["feed"] });
+                void queryClient.invalidateQueries({ queryKey: ["blocks"] });
                 router.back();
               },
             })

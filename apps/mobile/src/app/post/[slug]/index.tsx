@@ -310,6 +310,7 @@ export default function PostDetailScreen() {
                 author: peerAuthor,
                 onBlocked: () => {
                   void qc.invalidateQueries({ queryKey: ["feed"] });
+                  void qc.invalidateQueries({ queryKey: ["blocks"] });
                   router.back();
                 },
               })

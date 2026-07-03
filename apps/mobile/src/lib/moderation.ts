@@ -103,10 +103,12 @@ function pickReportReason(slug: string): void {
   );
 }
 
-// Destructive confirm → POST the block → onBlocked (callers invalidate the
-// feed query so the author's rows vanish instantly, and/or navigate away) →
-// confirmation alert. `postSlug` threads the post that prompted the block to
-// the server, which notifies the developer (Apple requires this).
+// Destructive confirm → POST the block → onBlocked → confirmation alert.
+// Callers' onBlocked MUST invalidate BOTH the ["feed"] query (so the author's
+// rows vanish instantly) and the ["blocks"] query (so the blocked-users list
+// under Friends reflects the new block), and/or navigate away. `postSlug`
+// threads the post that prompted the block to the server, which notifies the
+// developer (Apple requires this).
 export function confirmAndBlockUser({
   userId,
   label,
