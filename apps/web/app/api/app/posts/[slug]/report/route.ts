@@ -23,6 +23,9 @@ export async function POST(
   if (!session) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
+  // NOT terms-gated: reporting objectionable content (App Store 1.2 Part B) is a
+  // safety mechanism and must stay available even to a not-yet-agreed account,
+  // like block. Terms gating applies to UGC creation/exposure, not safety tools.
 
   let raw: unknown;
   try {

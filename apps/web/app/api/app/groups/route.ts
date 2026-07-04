@@ -1,6 +1,6 @@
 import { createShareGroup, listShareGroups } from "@repo/db";
 import { groupCreateSchema } from "../../../../lib/groups/schema";
-import { getSessionOrNull } from "../../../../lib/session";
+import { agreedOr403, getSessionOrNull } from "../../../../lib/session";
 
 // Share groups: named, reusable audiences of the owner's friends. Session-authed;
 // the actor is always session.user.id, owner-gated inside the @repo/db helpers.
@@ -23,6 +23,10 @@ export async function POST(request: Request) {
   const session = await getSessionOrNull();
   if (!session) {
     return jsonError(401, "unauthorized");
+  }
+  const denied = agreedOr403(session);
+  if (denied) {
+    return denied;
   }
   let raw: unknown;
   try {

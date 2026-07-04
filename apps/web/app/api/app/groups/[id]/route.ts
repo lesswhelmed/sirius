@@ -1,6 +1,6 @@
 import { deleteShareGroup, getShareGroup, updateShareGroup } from "@repo/db";
 import { groupUpdateSchema } from "../../../../../lib/groups/schema";
-import { getSessionOrNull } from "../../../../../lib/session";
+import { agreedOr403, getSessionOrNull } from "../../../../../lib/session";
 
 // One share group: detail (with roster), rename/re-scope, delete. All owner-gated
 // inside the @repo/db helpers — a non-owner matches zero rows → 404.
@@ -32,6 +32,10 @@ export async function PATCH(
   if (!session) {
     return jsonError(401, "unauthorized");
   }
+  // Re-scoping a group can add friends who then see the group's shared posts —
+  // UGC exposure, so gate it behind Terms like the group-create + visibility routes.
+  const denied = agreedOr403(session);
+  if (denied) return denied;
   const { id } = await params;
   let raw: unknown;
   try {

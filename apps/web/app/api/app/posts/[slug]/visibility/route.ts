@@ -1,7 +1,7 @@
 import { findPostAttributionBySlug, setPostVisibility } from "@repo/db";
 import { revalidateTag } from "next/cache";
 import { visibilitySchema } from "../../../../../../lib/posts/schema";
-import { getSessionOrNull } from "../../../../../../lib/session";
+import { agreedOr403, getSessionOrNull } from "../../../../../../lib/session";
 
 // PUT: set a post's read visibility (PRIVATE | FRIENDS | PUBLIC). Owner-only —
 // setPostVisibility guards on submittedById inside its where, so a non-owner
@@ -19,6 +19,10 @@ export async function PUT(
   if (!session) {
     return jsonError(401, "unauthorized");
   }
+  // Making a post FRIENDS/PUBLIC exposes UGC to other users — gate it behind the
+  // Terms acceptance like the other UGC-exposure mutations.
+  const denied = agreedOr403(session);
+  if (denied) return denied;
   const { slug } = await params;
   const post = await findPostAttributionBySlug(slug);
   if (!post) {

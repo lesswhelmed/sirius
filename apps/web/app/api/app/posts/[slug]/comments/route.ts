@@ -7,7 +7,7 @@ import {
 } from "@repo/db";
 import { commentCreateSchema } from "../../../../../../lib/comments/schema";
 import { canReadPost } from "../../../../../../lib/post-access";
-import { getSessionOrNull } from "../../../../../../lib/session";
+import { agreedOr403, getSessionOrNull } from "../../../../../../lib/session";
 
 // Comments on a post. Read AND write are gated by canReadPost (the single read
 // policy): anyone who may SEE the post may read its thread and add to it, so
@@ -60,6 +60,10 @@ export async function POST(
   const session = await getSessionOrNull();
   if (!session) {
     return jsonError(401, "unauthorized");
+  }
+  const denied = agreedOr403(session);
+  if (denied) {
+    return denied;
   }
   const { slug } = await params;
   const post = await findPostAttributionBySlug(slug);

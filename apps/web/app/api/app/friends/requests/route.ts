@@ -1,6 +1,6 @@
 import { findUserByHandle, listPendingRequests, sendFriendRequest } from "@repo/db";
 import { friendRequestSchema } from "../../../../../lib/friends/schema";
-import { getSessionOrNull } from "../../../../../lib/session";
+import { agreedOr403, getSessionOrNull } from "../../../../../lib/session";
 
 // Pending friend requests (incoming + outgoing) and sending a new one.
 //
@@ -29,6 +29,10 @@ export async function POST(request: Request) {
   const session = await getSessionOrNull();
   if (!session) {
     return jsonError(401, "unauthorized");
+  }
+  const denied = agreedOr403(session);
+  if (denied) {
+    return denied;
   }
   let raw: unknown;
   try {

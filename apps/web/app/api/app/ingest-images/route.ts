@@ -3,7 +3,7 @@ import {
   parseRawImage,
   submitImageIngest,
 } from "../../../../lib/ingest/submit";
-import { getSessionOrNull } from "../../../../lib/session";
+import { agreedOr403, getSessionOrNull } from "../../../../lib/session";
 
 function jsonError(
   status: number,
@@ -27,6 +27,11 @@ export async function POST(request: Request) {
   if (!session) {
     log("warn", "unauthorized");
     return jsonError(401, "unauthorized");
+  }
+  const denied = agreedOr403(session);
+  if (denied) {
+    log("warn", "terms-required");
+    return denied;
   }
 
   const contentType = request.headers.get("content-type") ?? "";
