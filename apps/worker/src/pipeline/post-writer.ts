@@ -24,6 +24,7 @@ import {
 } from "../lib/media-paths";
 import { revalidatePost } from "../lib/revalidate";
 import { randomSlugWord } from "../lib/slug-words";
+import { firstSentenceExcerpt } from "./excerpt";
 import { generateCoverImage } from "./image-generator";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 import { generateVideoThumbnail } from "./video-thumbnail";
@@ -417,10 +418,14 @@ export async function writePost(
   const contentDigest = getContentDigest(parsed.frontmatter);
   const visibility = getVisibility(input);
 
+  // Model-provided excerpt wins; otherwise derive a first-sentence fallback so
+  // no post is created without a summary line (weight C in searchVector; feeds
+  // catalog cards, search snippets, and the cover-image prompt below).
   const excerpt =
-    typeof parsed.frontmatter.excerpt === "string"
+    typeof parsed.frontmatter.excerpt === "string" &&
+    parsed.frontmatter.excerpt.trim()
       ? (parsed.frontmatter.excerpt as string)
-      : null;
+      : firstSentenceExcerpt(body);
 
   // SIGHT batches: the hero is the first photo. Otherwise download remote cover
   // images once (Instagram CDN links expire), serving them from public/social;
