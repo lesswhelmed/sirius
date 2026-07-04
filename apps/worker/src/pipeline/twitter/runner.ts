@@ -12,6 +12,7 @@ import { generateText, Output } from "ai";
 import { getAIConfig, getHeavyModel } from "../../lib/ai-config";
 import { parseTwitterUrl, type TwitterUrlParse } from "../../lib/twitter-url";
 import { toGeminiOutput } from "../gemini-runner";
+import { notesLeadLines } from "../prompt-blocks";
 import type { GeminiOutput } from "../types";
 import { fetchTwitterEvidence } from "./apify";
 import type { TwitterEvidence } from "./types";
@@ -78,7 +79,9 @@ function buildTwitterPrompt(
       ? "Summarize and engage with the article's actual ideas in the body; do not just restate the title."
       : "",
     "Do not fabricate engagement numbers, claims, or context beyond the evidence below.",
+    "Also return a one-sentence excerpt summarizing the post.",
     "",
+    ...notesLeadLines(notes),
     "## Tweet evidence",
     `Author: ${author.name ?? handle} (${handle})${author.isVerified ? " — verified" : ""}`,
   ];
@@ -118,9 +121,6 @@ function buildTwitterPrompt(
       "",
       `This tweet has ${evidence.mediaUrls.length} attached image(s)${evidence.primaryImageUrl ? " — the first is attached for you to look at" : ""}.`,
     );
-  }
-  if (notes.trim()) {
-    lines.push("", "## The saver's own notes", notes.trim());
   }
   if (voiceBlock.trim()) {
     lines.push("", voiceBlock.trim());

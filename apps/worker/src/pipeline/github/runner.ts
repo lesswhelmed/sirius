@@ -14,6 +14,7 @@ import { buildVoiceInstruction, PostDraftSchema } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig, getHeavyModel } from "../../lib/ai-config";
 import { type PostDraft, toGeminiOutput } from "../gemini-runner";
+import { notesLeadLines } from "../prompt-blocks";
 import type { GeminiOutput } from "../types";
 
 export type GitHubRunOptions = {
@@ -42,8 +43,10 @@ export function buildGitHubPrompt(
     "Voice: first-person, observational, concrete. 120-320 words.",
     "No marketing copy. No 'Here is' preambles. Write prose, not a file listing — you may name key files inline but do not paste large code blocks or code fences in the body.",
     "Describe what the project is, the problem it solves, how it's built (language/stack), and anything notable about its structure or approach. Ground every claim in the evidence below — do not invent features.",
+    "Also return a one-sentence excerpt summarizing the finding.",
     "Categories: 1-3 broad->narrow slash paths (e.g. 'software/developer-tools'); reuse common broad top-level fields, don't invent near-duplicates.",
     "",
+    ...notesLeadLines(notes),
     `Repository: ${evidence.owner}/${evidence.repo}`,
   ];
   if (evidence.description) {
@@ -72,9 +75,6 @@ export function buildGitHubPrompt(
     for (const file of evidence.keyFiles) {
       lines.push(`--- ${file.path} ---`, file.content.trim());
     }
-  }
-  if (notes.trim()) {
-    lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
   }
   if (voiceBlock) {
     lines.push(voiceBlock);

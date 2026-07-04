@@ -20,6 +20,7 @@ import {
   type YouTubeUrlParse,
 } from "../../lib/youtube-url";
 import { PostDraftSchema, toGeminiOutput } from "../gemini-runner";
+import { notesLeadLines } from "../prompt-blocks";
 import type { GeminiOutput } from "../types";
 import {
   buildAnalysisPrompt,
@@ -305,13 +306,12 @@ function buildStructuringPrompt(
     "Voice: first-person, observational, concrete. 120-300 words.",
     "No marketing copy. No 'Here is' preambles. No code fences in the body.",
     "Lead with what the video is and why it's worth a look. Keep any timestamps already present in the evidence summary — they're real and useful as deeplinks.",
+    "Also return a one-sentence excerpt summarizing the finding.",
     "",
+    ...notesLeadLines(notes),
     "Evidence summary:",
     summary,
   ];
-  if (notes.trim()) {
-    lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
-  }
   if (voiceBlock) {
     lines.push(voiceBlock);
   }

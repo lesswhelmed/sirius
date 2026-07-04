@@ -47,6 +47,17 @@ describe("buildGitHubPrompt", () => {
   });
 
   test("omits empty notes", () => {
-    expect(buildGitHubPrompt(evidence, "  ", "")).not.toContain("Author's notes");
+    const noNotes = buildGitHubPrompt(evidence, "  ", "");
+    expect(noNotes).not.toContain("Author's notes");
+    expect(noNotes).not.toContain("AUTHOR'S NOTE");
+  });
+
+  test("leads with the author's note, before the repository evidence", () => {
+    const noteIdx = prompt.indexOf("AUTHOR'S NOTE");
+    const repoIdx = prompt.indexOf("Repository:");
+    expect(noteIdx).toBeGreaterThan(-1);
+    expect(noteIdx).toBeLessThan(repoIdx);
+    expect(prompt).not.toContain("Author's notes (verbatim)");
+    expect(prompt.toLowerCase()).toContain("one-sentence excerpt");
   });
 });

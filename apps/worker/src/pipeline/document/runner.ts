@@ -16,6 +16,7 @@ import { buildVoiceInstruction } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig, getHeavyModel } from "../../lib/ai-config";
 import { PostDraftSchema, toGeminiOutput } from "../gemini-runner";
+import { notesLeadLines } from "../prompt-blocks";
 import type { GeminiOutput, PipelineInput } from "../types";
 import { parseDocxText } from "./parse-docx";
 import { parsePdfStructure } from "./parse-pdf";
@@ -54,14 +55,13 @@ function buildStructuringPrompt(
     "Voice: first-person, observational, concrete. 80-300 words.",
     "No marketing copy. No 'Here is' preambles. No code fences in the body.",
     "Summarize what the document is, its key claims, and why it's worth noting. Cite any quoted phrases inline naturally.",
+    "Also return a one-sentence excerpt summarizing the finding.",
     "Categories: 1-3 broad->narrow slash paths (e.g. 'technology/artificial-intelligence'); reuse common broad top-level fields, don't invent near-duplicates.",
     "",
+    ...notesLeadLines(notes),
     "Extracted document content:",
     evidence,
   ];
-  if (notes.trim()) {
-    lines.push("", `Author's notes (verbatim): ${notes.trim()}`);
-  }
   if (voiceBlock) {
     lines.push(voiceBlock);
   }
