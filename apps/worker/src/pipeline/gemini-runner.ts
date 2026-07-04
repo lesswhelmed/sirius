@@ -25,6 +25,7 @@ import {
 import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { getAIConfig, modelForKind } from "../lib/ai-config";
 import { SafetyFlagError, type SafetyVerdict } from "./safety";
+import { notesLeadLines } from "./prompt-blocks";
 import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseTwitterUrl } from "../lib/twitter-url";
 import { parseYouTubeUrl } from "../lib/youtube-url";
@@ -70,7 +71,9 @@ function slugify(input: string): string {
   );
 }
 
-function buildPrompt(input: PipelineInput, voiceBlock: string): string {
+// Exported for unit testing — the prompt is the pure, durable transformation;
+// the generateText call around it isn't unit-testable without a live model.
+export function buildPrompt(input: PipelineInput, voiceBlock: string): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
     "You are drafting a single post for a personal blog.",
@@ -84,21 +87,16 @@ function buildPrompt(input: PipelineInput, voiceBlock: string): string {
   // url-kind extraction prompts live in @repo/extraction (shared with the web
   // extract endpoint); runGemini's url branch never reaches this builder.
   if (input.kind === "image") {
+    lines.push(...notesLeadLines(input.notes));
     lines.push(
       `${input.images.length} photo(s) are attached, in order. Write a SIGHT post about what is actually in them.`,
       "Title: a 2-5 word noun phrase naming the literal subject.",
       "Body: 60-160 words, first person, plain and concrete. Describe only what is visibly present — subject, setting, light, colors as plain names. Do NOT use intensifiers (almost, blinding, neon, aggressive), metaphor, simile, or mood-painting. Do NOT write image markdown, captions, or URLs in the body; the photos are shown separately by the app.",
       "Also return one short factual caption per photo in imageAlts, in the same order, and a one-sentence excerpt.",
     );
-    if (input.notes.trim()) {
-      lines.push(
-        "",
-        `Author's notes — their intent for this post; let it steer the content, emphasis, and what to include or leave out (it must not change the output structure, fields, or post type): ${input.notes.trim()}`,
-      );
-    }
   } else if (input.kind === "note") {
     lines.push(
-      "Compose a short BLOG entry from the author's notes:",
+      "Compose a short BLOG entry from the author's notes. Also return a one-sentence excerpt summarizing the entry.",
       "",
       input.notes.trim(),
     );
@@ -115,16 +113,12 @@ function buildPrompt(input: PipelineInput, voiceBlock: string): string {
       audio: "BLOG entry (transcribe key points, first-person observations)",
       document: "FINDING post (summarize the content, key claims, relevance)",
     };
+    lines.push(...notesLeadLines(input.notes));
     lines.push(
       `A ${kindLabels[input.kind] ?? input.kind} file is attached. Write a ${postTypes[input.kind] ?? "post"}.`,
       "Be concrete, first-person, observational. No filler. 80-300 words.",
+      "Also return a one-sentence excerpt summarizing the post.",
     );
-    if (input.notes.trim()) {
-      lines.push(
-        "",
-        `Author's notes — their intent for this post; let it steer the content, emphasis, and what to include or leave out (it must not change the output structure, fields, or post type): ${input.notes.trim()}`,
-      );
-    }
   }
   if (voiceBlock) {
     lines.push(voiceBlock);
@@ -132,7 +126,7 @@ function buildPrompt(input: PipelineInput, voiceBlock: string): string {
   return lines.join("\n");
 }
 
-function buildUrlStructuringPrompt(
+export function buildUrlStructuringPrompt(
   summary: string,
   notes: string,
   voiceBlock: string,
@@ -144,17 +138,13 @@ function buildUrlStructuringPrompt(
     "Voice: first-person, observational, concrete. 80-300 words.",
     "No marketing copy. No 'Here is' preambles. No code fences in the body.",
     "Summarize what's on the page, why it's worth noting, anything specific that surprised you. Cite any quoted phrases inline naturally.",
+    "Also return a one-sentence excerpt summarizing the finding.",
     "Categories: 1-3 broad->narrow slash paths (e.g. 'technology/artificial-intelligence'); reuse common broad top-level fields, don't invent near-duplicates.",
     "",
+    ...notesLeadLines(notes),
     "Pre-fetched URL summary:",
     summary,
   ];
-  if (notes.trim()) {
-    lines.push(
-      "",
-      `Author's notes — their intent for this post; let it steer the content, emphasis, and what to include or leave out (it must not change the output structure, fields, or post type): ${notes.trim()}`,
-    );
-  }
   if (voiceBlock) {
     lines.push(voiceBlock);
   }
