@@ -28,6 +28,7 @@
 		"@repo/ingest-classify": "*",
 		"@repo/ingest-draft": "*",
 		"@repo/research-agent": "*",
+		"@repo/safety": "*",
 		"@repo/ui": "*",
 		"ai": "^6.0.218",
 		"better-auth": "^1.6.20",

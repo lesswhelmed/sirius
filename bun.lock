@@ -149,6 +149,7 @@
         "@repo/ingest-classify": "*",
         "@repo/ingest-draft": "*",
         "@repo/research-agent": "*",
+        "@repo/safety": "*",
         "@repo/ui": "*",
         "ai": "^6.0.218",
         "better-auth": "^1.6.20",
@@ -340,6 +341,22 @@
       "name": "@repo/research-agent",
       "version": "0.0.0",
       "dependencies": {
+        "ai": "^6.0.218",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@repo/eslint-config": "*",
+        "@repo/typescript-config": "*",
+        "@types/node": "^22.15.3",
+        "eslint": "^9.39.1",
+        "typescript": "~6.0.3",
+      },
+    },
+    "packages/safety": {
+      "name": "@repo/safety",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/google": "^3.0.88",
         "ai": "^6.0.218",
         "zod": "^4.4.3",
       },
@@ -1034,6 +1051,8 @@
     "@repo/ingest-draft": ["@repo/ingest-draft@workspace:packages/ingest-draft"],
 
     "@repo/research-agent": ["@repo/research-agent@workspace:packages/research-agent"],
+
+    "@repo/safety": ["@repo/safety@workspace:packages/safety"],
 
     "@repo/typescript-config": ["@repo/typescript-config@workspace:packages/typescript-config"],
 
