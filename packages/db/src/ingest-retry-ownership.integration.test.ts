@@ -1,8 +1,18 @@
-// Blackbox integration test for the failed-row-retry ownership guard in
-// createSubmission (packages/db/src/ingest.ts). Mirrors the harness contract of
-// search.integration.test.ts: gated on TEST_DATABASE_URL, run via
-// `bun test --preload ./test/setup-env.ts`, seeds under a UNIQUE prefix, and in
-// afterAll deletes ONLY its own rows (no truncate/reset — the tree is shared).
+// Blackbox integration test for per-submitter ingest dedup + the failed-row
+// retry ownership guard in createSubmission (packages/db/src/ingest.ts).
+//
+// Since migration 20260704120000_ingest_per_submitter_dedup, IngestSubmission
+// dedup is PARTITIONED: attributed rows are unique per (submittedById,
+// contentHash); unattributed bearer rows (submittedById IS NULL) stay globally
+// unique on contentHash. This suite pins both the cross-tenant isolation that
+// buys us AND the behaviour that must NOT change (own retry, bearer global
+// dedup, own non-failed dedup).
+//
+// Mirrors the harness contract of search.integration.test.ts: gated on
+// TEST_DATABASE_URL, run via `bun test --preload ./test/setup-env.ts`, seeds
+// under a UNIQUE prefix, and in afterAll deletes ONLY its own rows (no
+// truncate/reset — the tree is shared). The test DB must have the partial-index
+// migration applied (db:migrate:deploy against TEST_DATABASE_URL).
 //
 // Run:
 //   cd packages/db && bun test --preload ./test/setup-env.ts \
@@ -39,17 +49,22 @@ async function makeUser(id: string): Promise<void> {
 
 const suite = RUN_DB ? describe : describe.skip;
 
-suite("createSubmission failed-row retry ownership guard", () => {
+suite("createSubmission per-submitter dedup + retry ownership", () => {
   afterAll(async () => {
-    // Delete ONLY our own rows. Submissions first (FK submittedById is SetNull,
-    // so order is not strictly required, but keep it tidy), then our two users.
+    // Delete ONLY our own rows: every submission id we captured, plus any row
+    // sharing our prefix hash (belt-and-braces), then our two users.
     await prisma.ingestSubmission.deleteMany({
-      where: { id: { in: createdSubmissionIds } },
+      where: {
+        OR: [
+          { id: { in: createdSubmissionIds } },
+          { contentHash: { startsWith: PREFIX } },
+        ],
+      },
     });
     await prisma.user.deleteMany({ where: { id: { in: [userAId, userBId] } } });
   });
 
-  test("cross-user hash collision cannot hijack another user's failed row", async () => {
+  test("cross-user hash collision gives userB their OWN row and cannot touch userA's", async () => {
     await makeUser(userAId);
     await makeUser(userBId);
 
@@ -73,22 +88,23 @@ suite("createSubmission failed-row retry ownership guard", () => {
       data: { status: "failed" },
     });
 
-    // userB submits content whose hash collides with userA's FAILED row.
-    const hijackAttempt = await createSubmission({
+    // userB submits content whose hash equals userA's. Under per-submitter dedup
+    // this is a DIFFERENT partition, so B is NOT deduped against A — B gets their
+    // OWN new "created" row. (Pre-migration, the global unique returned A's row
+    // as "deduped" and leaked A's id; the earlier unscoped updateMany even let B
+    // flip A's failed row back to pending and clobber its payload.)
+    const bSubmit = await createSubmission({
       kind: "note",
       contentHash: hash,
-      payload: { note: "userB HIJACK payload", owner: "B" },
+      payload: { note: "userB own payload", owner: "B" },
       submittedById: userBId,
     });
+    expect(bSubmit.status).toBe("created");
+    expect(bSubmit.submission.id).not.toBe(victimId);
+    expect(bSubmit.submission.submittedById).toBe(userBId);
+    createdSubmissionIds.push(bSubmit.submission.id);
 
-    // The global-unique contentHash still collides, so B gets the existing row
-    // back as a plain "deduped" result — NOT a "retried" requeue.
-    expect(hijackAttempt.status).toBe("deduped");
-    expect(hijackAttempt.submission.id).toBe(victimId);
-
-    // The victim's row is untouched: still FAILED, payload not overwritten.
-    // (Pre-fix, the unscoped updateMany flipped it back to "pending" and
-    // clobbered the payload with userB's.)
+    // The victim's row is untouched: still FAILED, still A's, payload intact.
     const victim = await prisma.ingestSubmission.findUniqueOrThrow({
       where: { id: victimId },
     });
@@ -126,5 +142,51 @@ suite("createSubmission failed-row retry ownership guard", () => {
     expect(retry.status).toBe("retried");
     expect(retry.submission.id).toBe(rowId);
     expect(retry.submission.status).toBe("pending");
+  });
+
+  test("owner re-submitting an unfailed row is deduped (not retried)", async () => {
+    const hash = `${PREFIX}-own-dedup`;
+
+    const first = await createSubmission({
+      kind: "note",
+      contentHash: hash,
+      payload: { note: "first" },
+      submittedById: userAId,
+    });
+    expect(first.status).toBe("created");
+    createdSubmissionIds.push(first.submission.id);
+
+    // Leave it pending; same user, same content again → deduped to the same row.
+    const again = await createSubmission({
+      kind: "note",
+      contentHash: hash,
+      payload: { note: "second" },
+      submittedById: userAId,
+    });
+    expect(again.status).toBe("deduped");
+    expect(again.submission.id).toBe(first.submission.id);
+  });
+
+  test("unattributed bearer rows keep GLOBAL dedup (submittedById null)", async () => {
+    const hash = `${PREFIX}-bearer`;
+
+    const first = await createSubmission({
+      kind: "note",
+      contentHash: hash,
+      payload: { note: "bearer first" },
+      submittedById: null,
+    });
+    expect(first.status).toBe("created");
+    createdSubmissionIds.push(first.submission.id);
+
+    // A second unattributed submission of the same content dedups globally.
+    const second = await createSubmission({
+      kind: "note",
+      contentHash: hash,
+      payload: { note: "bearer second" },
+      submittedById: null,
+    });
+    expect(second.status).toBe("deduped");
+    expect(second.submission.id).toBe(first.submission.id);
   });
 });

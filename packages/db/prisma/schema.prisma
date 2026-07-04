@@ -325,7 +325,15 @@ model IngestSubmission {
   id             String    @id @default(cuid())
   kind           String // "url" | "image" | "note" | "video" | "audio" | "document"
   payload        Json // raw normalized request payload
-  contentHash    String    @unique // dedup key; force=true salts the hash
+  // Dedup key; force=true salts the hash. Uniqueness is PARTITIONED, not global:
+  // two PARTIAL unique indexes (hand-authored in migration
+  // 20260704120000_ingest_per_submitter_dedup — Prisma DSL cannot express WHERE
+  // indexes) enforce (1) global uniqueness for unattributed bearer rows
+  // (submittedById IS NULL) and (2) per-submitter uniqueness for attributed rows
+  // (submittedById IS NOT NULL). So user B can submit the same contentHash as user
+  // A and still get their own row. The `@unique` was dropped for exactly this;
+  // schema/DB drift on the partial indexes is expected + documented in the migration.
+  contentHash    String
   batchId        String? // groups image rows that should become one SIGHT post
   imageIndex     Int?
   totalCount     Int?

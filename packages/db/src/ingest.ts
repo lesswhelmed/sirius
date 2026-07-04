@@ -80,8 +80,17 @@ export async function createSubmission(
       "code" in error &&
       (error as { code?: string }).code === UNIQUE_VIOLATION
     ) {
-      const existing = await prisma.ingestSubmission.findUnique({
-        where: { contentHash: input.contentHash },
+      // Dedup is PARTITIONED (see migration 20260704120000_ingest_per_submitter_dedup):
+      // an attributed collision is unique per (submittedById, contentHash), an
+      // unattributed bearer collision is globally unique on contentHash. Scope the
+      // lookup to the SAME partition the constraint fired on so user B never resolves
+      // to (or hijacks) user A's row on a cross-user hash match. The two partial
+      // unique indexes guarantee at most one row per partition, so findFirst is
+      // deterministic.
+      const existing = await prisma.ingestSubmission.findFirst({
+        where: input.submittedById
+          ? { contentHash: input.contentHash, submittedById: input.submittedById }
+          : { contentHash: input.contentHash, submittedById: null },
       });
       if (existing) {
         // Re-submitting content whose previous attempt failed should retry it,
@@ -95,9 +104,10 @@ export async function createSubmission(
           // OWN failed row. Without submittedById here, user B submitting content
           // whose hash collides with user A's FAILED submission would flip A's
           // row back to pending and overwrite its payload — a cross-tenant
-          // hijack. Under the current global-unique contentHash a cross-user
-          // collision yields requeued.count === 0 (victim untouched) and falls
-          // through to the "deduped" path below.
+          // hijack. With per-submitter dedup this `existing` lookup is already
+          // partition-scoped, so a cross-user match no longer resolves here at
+          // all; this predicate stays as defense-in-depth (and still matters for
+          // the unattributed-bearer partition, where rows are shared).
           const requeued = await prisma.ingestSubmission.updateMany({
             where: {
               id: existing.id,
