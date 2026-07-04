@@ -3,11 +3,31 @@
 Mission: answer App Store rejection **2c02b4c2** (Guideline 1.2 UGC + 2.3.6 age rating).
 Code is on `main` (commits `ad5dacb`, `9d71616`, `ec541ce`, `ac161b0`, `ea3a0d6`).
 Plan + prepared reply text live in `APP_STORE_SUBMISSION.md` §0 (and §12 for the reply).
+Builds **71/72/73 are not sufficient** for this rejection. Record and submit only a new
+build that includes the full UGC moderation set below.
 
 Steps 1–4 are terminal work. Steps 5–9 are Apple-side (App Store Connect + a physical
 device) and need a human.
 
 ---
+
+## 0. Coverage inventory — what Apple needs proved
+
+Apple's 1.2 ask has four obligations. Only the first three are visible in a device
+recording; the fourth is an operations commitment backed by email alerts + CLI tooling.
+
+- **Terms/EULA before registration or login:** `/terms`, sign-up checkbox, sign-in notice,
+  and one-time `termsAcceptedAt` gate for existing accounts.
+- **Flag objectionable content:** report action on peer posts, `ContentReport`, immediate
+  developer email to `SAFETY_ALERT_EMAIL`, idempotent re-reporting.
+- **Block abusive users:** directional `UserBlock`, developer email with post context,
+  instant feed/search/catalog/embedding exclusion, blocked-users management + unblock.
+- **Act within 24 hours:** moderation CLI can list open reports, takedown/delete content,
+  ban/eject the offending user, and resolve the report.
+
+Extra protection to mention in the reply, but **not** to demo with harmful content in the
+video: the worker's harmful-content safety gate scans user-produced uploads/notes before a
+post exists; flagged material is quarantined, never published, and emails the developer.
 
 ## 1. Deploy web + worker (runs the migration)
 
@@ -73,6 +93,10 @@ This is exactly what Apple will do first.
 > step 3's seed command (it re-nulls the stamp; everything else is idempotent). Also
 > undo any test block (unblock via Settings) so the reviewer's feed is fully populated.
 
+Do this smoke on web first, then on the **new TestFlight build** after step 7. Builds
+71/72/73 are stale for this rejection; the evidence video must come from the binary that
+contains the UGC safety work.
+
 ## 5. App Store Connect config (Part E — Guideline 2.3.6)
 
 - ASC → app → **App Information → Age Rating → Edit** → set
@@ -107,9 +131,104 @@ report, block, Settings → Blocked users).
 
 ## 8. Record the evidence (Part F)
 
-On the **physical device**, one continuous screen recording (~2 min max):
-sign in as reviewer → terms acceptance screen → Agree → open a friend's post →
-Report (pick a reason) → Block user → post gone from feed → Settings → Blocked users.
+Apple asked for a **screen recording captured on a physical device**. Do not use the
+simulator. Record the new TestFlight/App Store Connect build, not an old local/dev build.
+
+Mental model: the video proves the **three reviewer-visible controls**. The reply text
+and notes explain the non-visible controls: report/block alert emails, the 24-hour
+moderation CLI, and the harmful-content pre-publish safety gate.
+
+### 8a. Pre-recording state
+
+Before pressing Record:
+
+1. Install the new TestFlight build on a real iPhone/iPad.
+2. Sign out of Sirius if needed so the video starts from a clean auth state.
+3. Re-run step 3's reviewer seed so:
+   - the reviewer account exists, is email-verified, and has friends with shared posts;
+   - `termsAcceptedAt` is null, so the one-time terms gate will appear;
+   - any previous test data is reset enough for the feed to look populated.
+4. If the reviewer account currently has blocked users from testing, unblock them first
+   (Account/Settings → Blocked users), then re-run the seed again.
+5. Confirm App Store Connect Age Rating already says **User-Generated Content: Yes**.
+
+If you do a dry run on the same reviewer account, it consumes the one-time terms gate.
+Re-run step 3 again before the real recording.
+
+### 8b. Recording script
+
+Keep it one continuous video, roughly 2–4 minutes. Move slowly enough for Apple to read
+the labels and confirmation alerts.
+
+1. **Show terms before registration.**
+   - Launch Sirius while signed out.
+   - Open the sign-up screen.
+   - Show that account creation has the required "I agree to the Terms of Use and Privacy
+     Policy" checkbox.
+   - Tap **Terms of Use** and briefly show the `/terms` page, especially the zero-tolerance
+     language and 24-hour moderation promise.
+   - Go back without creating a new account.
+
+2. **Show terms before existing-user access.**
+   - Sign in with the reviewer demo account.
+   - Show the full-screen **Terms of Use** gate before the app/Friends feed is usable.
+   - Tap **I agree** and wait until the app opens.
+
+3. **Show the UGC surface.**
+   - Open the **Friends** tab/feed.
+   - Pause long enough to show that this feed contains posts shared by other users.
+   - Open a friend's post, or use the feed row's **…** menu if visible.
+
+4. **Show flag/report.**
+   - Tap **Report post**.
+   - Pick a concrete reason, preferably **Objectionable content** or **Abusive or
+     harassing**.
+   - Wait for the confirmation: **Reported — We review reports within 24 hours.**
+
+5. **Show block and instant feed removal.**
+   - From the same friend's post/feed row, open the **…** menu again.
+   - Tap **Block @handle**.
+   - Confirm the destructive **Block** prompt.
+   - Wait for the **Blocked** confirmation.
+   - Return to / remain on the Friends feed and show that the blocked author's posts are
+     gone without relaunching the app.
+
+6. **Show block management.**
+   - Go to **Account/Settings → Blocked users**.
+   - Show the blocked user in the list and the available **Unblock** control.
+   - Do **not** unblock during the recording unless you immediately re-block afterward;
+     Apple asked to see the blocked state.
+
+### 8c. What not to put in the video
+
+- Do not submit harmful sample content in the app just to prove the safety classifier.
+  The reviewer-visible requirement is report/block/terms; harmful-content detection is
+  documented in the reply as proactive moderation.
+- Do not show server logs, terminal commands, private admin email, or database output in
+  the App Review video. Keep those as internal proof.
+- Do not leave the reviewer account in a consumed state after filming.
+
+### 8d. Internal proof before submission
+
+These are not part of the screen recording, but they support the claims in the reply:
+
+```sh
+bun --cwd apps/worker run safety:try
+bun run scripts/moderation/resolve-report.ts --list
+```
+
+Expected: the safety harness flags the synthetic harmful case without publishing a post,
+and the moderation CLI lists the report created during the smoke/recording so we can act
+inside the 24-hour SLA.
+
+### 8e. Reset after recording
+
+After the video is saved:
+
+1. Export/upload the screen recording for App Store Connect notes.
+2. Unblock the demo friend if the reviewer account should start with a full feed.
+3. Re-run step 3 one final time so Apple sees the terms gate on their own first sign-in.
+4. Confirm the seed summary prints `Terms gate: armed — first sign-in shows the acceptance screen`.
 
 ## 9. Reply in Resolution Center
 

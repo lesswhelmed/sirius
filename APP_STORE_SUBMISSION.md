@@ -558,9 +558,7 @@ bunx eas-cli submit --profile production --platform ios --latest
 - [x] Sign in with the Apple ID on Team `L7U86T3YRV` (+ 2FA)
 - [x] EAS uploads the `.ipa`; ASC then "processes" it (a few minutes to ~1 hr)
 
-**Non-interactive alternative** (if you create an App Store Connect API key — `.p8` + Key ID
-
-- Issuer ID):
+**Non-interactive alternative** (if you create an App Store Connect API key — `.p8` + Key ID + Issuer ID):
 
 ```sh
 cd apps/mobile
