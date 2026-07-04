@@ -6,8 +6,10 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import {
   findPostBySlug,
+  listSourceSubmissionsForPost,
   requireApiKey,
   searchCorpus,
+  type IngestSubmission,
   type PostWithRelations,
   type SearchHit,
 } from "@repo/db";
@@ -20,6 +22,7 @@ import {
 } from "@repo/research-agent";
 import type { ModelMessage } from "ai";
 
+import { rawNotesFor } from "../originals/original-content";
 import type { ChatSource } from "./ui-stream";
 
 const CHAT_MODEL_ID = "gemini-3.5-flash";
@@ -46,6 +49,27 @@ export function postToFullPost(post: PostWithRelations): FullPost {
     categories: post.categories.map((c) => c.name),
     createdAt: post.createdAt ? post.createdAt.toISOString() : null,
   };
+}
+
+// The verbatim text the owner typed at capture, as a clearly-labeled trailer
+// for get_post results. OWNER-ONLY: callers must gate on
+// post.submittedById === viewerId before appending — friends' shared posts
+// must never expose their submission notes to another viewer's chat.
+export function ownerNotesBlock(
+  submissions: Array<Pick<IngestSubmission, "payload">>,
+): string {
+  const notes = submissions
+    .map((s) => rawNotesFor(s.payload).notes)
+    .filter((n) => n.length > 0);
+  if (notes.length === 0) {
+    return "";
+  }
+  return [
+    "",
+    "---",
+    "Author's original submission notes (verbatim):",
+    ...notes,
+  ].join("\n");
 }
 
 export function buildChatDeps(
@@ -78,7 +102,19 @@ export function buildChatDeps(
       title: post.title,
       excerpt: post.excerpt,
     });
-    return postToFullPost(post);
+    const full = postToFullPost(post);
+    // Owner-only: append the author's original capture notes so the agent can
+    // ground on what the user actually said, not just the generated post.
+    // Never for peers' posts — their notes are private (see ownerNotesBlock).
+    if (post.submittedById === viewerId) {
+      const block = ownerNotesBlock(
+        await listSourceSubmissionsForPost(post.id),
+      );
+      if (block) {
+        full.body += `\n${block}`;
+      }
+    }
+    return full;
   };
 
   return { deps: { llm: google(CHAT_MODEL_ID), search, getPost } };

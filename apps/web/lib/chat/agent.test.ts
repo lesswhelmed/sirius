@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { hitToCandidate, postToFullPost } from "./agent";
+import { hitToCandidate, ownerNotesBlock, postToFullPost } from "./agent";
 
 test("hitToCandidate maps a search hit to a tool candidate", () => {
   const c = hitToCandidate({
@@ -39,4 +39,24 @@ test("postToFullPost uses content as body and names as tag/category strings", ()
   expect(full.tags).toEqual(["travel"]);
   expect(full.categories).toEqual(["life"]);
   expect(full.createdAt).toBe("2026-01-01T00:00:00.000Z");
+});
+
+test("ownerNotesBlock renders each submission's note text under a labeled trailer", () => {
+  const block = ownerNotesBlock([
+    { payload: { notes: "the trail where the bridge broke" } },
+    { payload: { notes: "" } },
+    { payload: { contentType: "image/jpeg" } },
+    { payload: { notes: "second note" } },
+  ] as never);
+  expect(block).toContain("Author's original submission notes");
+  expect(block).toContain("the trail where the bridge broke");
+  expect(block).toContain("second note");
+  expect(block.startsWith("\n---\n")).toBe(true);
+});
+
+test("ownerNotesBlock returns empty string when no submission has notes", () => {
+  expect(ownerNotesBlock([] as never)).toBe("");
+  expect(
+    ownerNotesBlock([{ payload: { notes: "  " } }] as never),
+  ).toBe("");
 });
