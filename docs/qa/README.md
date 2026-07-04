@@ -113,10 +113,10 @@ These docs rot the moment they're wrong, so the rules are mechanical:
 Before a store submission or production deploy, run every **P0** scenario:
 
 - [ ] CP1: AUTH-1, AUTH-3, AUTH-5, AUTH-7, AUTH-8
-- [ ] CP2: ING-1, ING-2, ING-4, ING-6
+- [ ] CP2: ING-1, ING-2, ING-4, ING-6, ING-8
 - [ ] CP3: MOB-1, MOB-2, MOB-3
 - [ ] CP4: VIS-1, VIS-2, VIS-4, VIS-6
-- [ ] CP5: MOD-1, MOD-2, MOD-3, MOD-6
+- [ ] CP5: MOD-1, MOD-2, MOD-3, MOD-6, MOD-7, MOD-8
 - [ ] CP6: SRCH-1, SRCH-3
 - [ ] CP7: DATA-1, DATA-3, DATA-4
 - [ ] `scripts/testing/e2e.sh` green

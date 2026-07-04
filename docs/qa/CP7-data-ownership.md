@@ -113,3 +113,26 @@ The account-level version of DATA-4 — steps live in
 originals directory for the user is gone, their posts are out of friends'
 feeds/search, and their `ContentReport`/block rows don't break other users'
 settings pages.
+
+---
+
+### DATA-6 · Expired archive zips are swept from disk  `P1` ⏳
+
+Export zips in `ARCHIVES_DIR` were never deleted — the download route flips a row
+to `expired` + 410s but left the file, leaking disk. The worker now sweeps expired
+zips (every reclaim tick + on each build + orphaned partials).
+
+**Steps:**
+1. Create an archive (DATA-3); note its zip under `ARCHIVES_DIR`.
+2. Force-expire: `q "update \"ArchiveRequest\" set status='ready', \"expiresAt\"=now()-interval '1 day' where id='<id>'"`.
+3. Wait one worker poll interval (or build another archive).
+
+**Expected:** the `.zip` is unlinked; worker logs `archive-zips-swept` /
+`archive-zip-removed`; a missing file never throws; row ends `expired`,
+`downloadPath` null.
+
+**Ground truth:** `ls "$ARCHIVES_DIR/<userId>/"` no longer lists the zip.
+
+**Anchors:** `packages/db/src/archive.ts` (`sweepExpiredArchiveZips`),
+`apps/worker/src/archive/run-archive.ts` (`sweepExpiredArchiveZipFiles`),
+`apps/worker/src/index.ts` (`runReclaim`)

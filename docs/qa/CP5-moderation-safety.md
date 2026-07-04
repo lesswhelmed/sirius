@@ -159,3 +159,60 @@ equivalent mobile behavior when the account is un-stamped.
 **Anchors:** `apps/web/app/(app)/_chrome/terms-gate.tsx`,
 `apps/web/app/api/app/account/accept-terms/route.ts`,
 `apps/web/app/(public)/terms/page.tsx`
+
+---
+
+### MOD-7 · Web edit/publish runs through the safety gate  `P0` ✅
+
+Closes the same bypass class as the draft-envelope hole, via the **edit** path:
+`PATCH /api/app/posts/[slug]` used to write title/body/excerpt verbatim and flip
+DRAFT→PUBLISHED (or mutate an already-live body) with **no scan**. It now scans
+the final title/body/excerpt through the shared `@repo/safety` classifier
+whenever the edit results in published content, **fail-closed**.
+
+**Steps:**
+1. As owner: `PATCH /api/app/posts/<published-slug>` with `{ content: "<clearly-flaggable text>" }`.
+2. Repeat with a benign edit.
+3. (Optional) unset `GEMINI_API_KEY` in the web env, repeat step 1.
+
+**Expected:**
+- Flagged → **422 `content-flagged`**; the post is **unchanged** (422 returns
+  before `updatePostContent`).
+- Benign → 200, post updates/publishes. Draft-only saves are not scanned.
+- Scan error / missing key → **503**, never a silent publish.
+
+**Ground truth:** `q "select left(content,60),status from \"Post\" where slug='<slug>'"` — unchanged after a 422.
+
+**Verified:** 2026-07-04 on dev via authenticated fetch — flagged PATCH → `422
+content-flagged`, post body unchanged (real Gemini scan).
+
+**Anchors:** `apps/web/app/api/app/posts/[slug]/route.ts` (PATCH),
+`packages/safety/src/evaluate.ts`, `packages/safety/src/scan.ts`,
+`apps/web/lib/posts/schema.ts`
+
+---
+
+### MOD-8 · Server-side Terms gate on UGC mutations  `P0` ✅
+
+MOD-6 covers the UI gate; this is the **server** enforcement — a session with
+`termsAcceptedAt = null` cannot create/expose UGC via direct API calls. Safety
+tools stay open.
+
+**Steps:**
+1. `q "update \"user\" set \"termsAcceptedAt\"=null where email='<test>'"`.
+2. With that session: `PUT …/visibility`, `POST …/comments`, `POST /api/app/ingest`.
+3. `POST …/report`.
+4. Restore terms; retry step 2.
+
+**Expected:**
+- Gated mutations → **403 `{ error: "terms-required" }`** (distinct code, not 401).
+- `report` is **NOT** gated (safety mechanism, like block) — reaches its own validation.
+- After accepting, the next request succeeds (no cookieCache).
+
+**Verified:** 2026-07-04 on dev — visibility PUT + comments POST → `403
+terms-required`; report POST → `400 cannot report your own post` (not 403);
+terms restored to original stamp.
+
+**Anchors:** `apps/web/lib/session.ts` (`agreedOr403`); gated:
+ingest{,-images,-file}, `posts/[slug]/{comments,route,visibility}`,
+`friends/requests`, `groups{,/[id]}`; NOT gated: `posts/[slug]/report`

@@ -165,3 +165,57 @@ anything still `processing` after a kill is reclaimed by lease recovery on the
 next worker run — no permanently wedged rows.
 
 **Anchors:** `apps/worker/src/index.ts`
+
+---
+
+### ING-8 · Per-user dedup — same URL, two users, two posts  `P0` ✅
+
+Migration `20260704120000_ingest_per_submitter_dedup` partitioned dedup: two
+different users submitting the SAME url each get their OWN submission (pre-fix
+user B's capture was swallowed into A's row + A's id leaked). Unattributed
+bearer rows (`submittedById` NULL) stay globally deduped.
+
+**Steps:** run the flow script against a **migrated** dev/test DB:
+```sh
+DATABASE_URL="$TEST_DATABASE_URL" bun run scripts/testing/dedup-flow.ts
+```
+It drives the real `contentHashForUrls` + `createSubmission`, creates + deletes
+two fixture users only, and refuses a non-local `DATABASE_URL`.
+
+**Expected (6 checks green):** userA→created; userB same url→**created, own
+distinct row owned by B**; userA again→deduped to own row; userA force→new row;
+bearer same url twice→created then globally deduped.
+
+**Ground truth:** `q "select \"submittedById\",count(*) from \"IngestSubmission\" where \"contentHash\"='<h>' group by 1"` → one row per attributed submitter.
+
+**Verified:** 2026-07-04 — script 6/6 pass against the migrated test DB; migration applied on prod.
+
+**Anchors:** `packages/db/src/ingest.ts` (`createSubmission` partition findFirst),
+`packages/db/prisma/migrations/20260704120000_ingest_per_submitter_dedup/`,
+`apps/web/lib/ingest/hash.ts`, `scripts/testing/dedup-flow.ts`,
+`packages/db/src/ingest-retry-ownership.integration.test.ts`
+
+---
+
+### ING-9 · Bearer ingest is rate-limited + AI-capped  `P1` ◑
+
+A leaked static `INGEST_TOKEN` must not enable unlimited spend/flood. The bearer
+routes enforce a pre-auth IP window + per-caller + global windows (→ 429); the
+worker caps bearer AI drafts.
+
+**Steps:**
+```sh
+for i in $(seq 1 70); do curl -s -o /dev/null -w "%{http_code} " -X POST \
+  https://sirius.local/api/ingest -H "Authorization: Bearer $INGEST_TOKEN" \
+  -H "content-type: application/json" -d '{"urls":["https://example.com"]}'; done; echo
+```
+
+**Expected:** accepted codes then **429** past ~`INGEST_RL_PER_MAX`/min with a
+`Retry-After` header. Over `BEARER_AI_WINDOW_MAX`/day the worker stops drafting
+bearer submissions (manual stub, never crashes).
+
+**Verified:** unit-tested (`scripts/testing/security/ingest-rate-limit.test.ts`, 4 pass); route-level 429 not yet live-smoked.
+
+**Anchors:** `apps/web/lib/ingest/auth.ts` (`enforceBearerRateLimit`),
+`apps/web/app/api/ingest{,-images,-file}/route.ts`,
+`apps/worker/src/pipeline/bearer-meter.ts`

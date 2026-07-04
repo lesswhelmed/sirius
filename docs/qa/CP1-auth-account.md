@@ -177,3 +177,24 @@ q "select count(*) from \"Post\" where \"submittedById\"='<old-user-id>'"  # →
 
 **Anchors:** `apps/mobile/src/app/(tabs)/settings.tsx` (`handleDeleteAccount`),
 `packages/auth/src/index.ts` (`deleteUser`)
+
+---
+
+### AUTH-9 · Reserved handles are blocked  `P1` ✅
+
+`setUserHandle` rejects a reserved list (admin/support/sirius/security/… + app
+route words) so nobody claims an official-looking handle on public pages. Gates
+**new** claims only — existing holders are grandfathered.
+
+**Steps:**
+1. `POST /api/app/me/handle` `{ handle: "admin" }` (or via the setup-handle UI).
+2. Try a normal, available handle.
+
+**Expected:** reserved → **400 `{ error: "handle is reserved" }`**; a normal
+handle → ok; any legacy holder's public page still resolves.
+
+**Verified:** 2026-07-04 on dev via authenticated fetch — `{handle:"admin"}` → `400 handle is reserved`.
+
+**Anchors:** `packages/db/src/handle-policy.ts` (`validateHandle`, `RESERVED_HANDLES`),
+`packages/db/src/users.ts` (`setUserHandle`),
+`apps/web/app/api/app/me/handle/route.ts`
