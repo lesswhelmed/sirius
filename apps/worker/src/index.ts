@@ -26,7 +26,10 @@ import {
   recordModerationEvent,
   recordRetainedOriginal,
 } from "@repo/db";
-import { processArchiveRequest } from "./archive/run-archive";
+import {
+  processArchiveRequest,
+  sweepExpiredArchiveZipFiles,
+} from "./archive/run-archive";
 import { recomputeOwnerScene } from "./scene/recompute";
 import { retainOriginal } from "./lib/originals";
 import { removeStagedFile } from "./lib/staging";
@@ -184,6 +187,15 @@ async function runReclaim(): Promise<void> {
         requeued: archiveResult.requeued,
         deadLettered: archiveResult.deadLettered,
       });
+    }
+    // Unlink expired archive zips from disk every tick (the download route flips
+    // rows to expired but never removes the file) so ARCHIVES_DIR stays bounded
+    // even on a low-traffic instance that isn't building new archives.
+    const sweptZips = await sweepExpiredArchiveZipFiles((msg, extra) =>
+      log("info", msg, extra),
+    );
+    if (sweptZips > 0) {
+      log("info", "reclaim-archive-zips", { removed: sweptZips });
     }
     const staleScenes = await reclaimStaleSceneRecomputes(leaseMs());
     if (staleScenes > 0) {

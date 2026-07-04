@@ -5,17 +5,19 @@
 // poll loop as ingest (see index.ts tick()).
 
 import { randomBytes } from "node:crypto";
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream, existsSync, rmSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { sendEmail } from "@repo/auth/email";
 import {
   type ArchiveRequest,
+  type ArchiveZipRef,
   getUserContact,
   type IngestSubmission,
   listRetainedSubmissionsForUser,
   markArchiveFailed,
   markArchiveReady,
+  sweepExpiredArchiveZips,
 } from "@repo/db";
 import archiver from "archiver";
 import { ensureDir, resolveArchivesDir } from "../lib/originals-paths";
@@ -69,16 +71,75 @@ function noteMarkdown(row: IngestSubmission): string | null {
   return lines.join("\n");
 }
 
+// Resolve the absolute zip path for an archive row EXACTLY as the writer does
+// (join(ARCHIVES_DIR, userId, `${id}.zip`)). Prefers the stored downloadPath,
+// but falls back to deriving it so reclaimed rows whose path column was cleared
+// are still cleaned. Pure (no fs/env beyond the passed dir) so it is unit-testable.
+export function archiveZipPath(ref: ArchiveZipRef, archivesDir: string): string {
+  return ref.downloadPath ?? join(archivesDir, ref.userId, `${ref.id}.zip`);
+}
+
+// Best-effort unlink of a single zip: a missing file or fs error must never
+// crash the poll loop. Returns whether a file was actually removed.
+export function removeZipFile(zipPath: string, logger: Logger): boolean {
+  try {
+    if (!existsSync(zipPath)) {
+      return false;
+    }
+    rmSync(zipPath, { force: true });
+    logger("archive-zip-removed", { zipPath });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger("archive-zip-remove-failed", { zipPath, error: message });
+    return false;
+  }
+}
+
+// Delete the physical zips of archives that have expired (or were expired by the
+// download route but left on disk). Runs on the same worker poll loop that builds
+// archives — invoked from processArchiveRequest — so ARCHIVES_DIR can't grow
+// without bound. Best-effort throughout: never throws to the caller.
+export async function sweepExpiredArchiveZipFiles(
+  logger: Logger,
+): Promise<number> {
+  try {
+    const archivesDir = resolveArchivesDir();
+    const refs = await sweepExpiredArchiveZips();
+    let removed = 0;
+    for (const ref of refs) {
+      if (removeZipFile(archiveZipPath(ref, archivesDir), logger)) {
+        removed += 1;
+      }
+    }
+    if (removed > 0) {
+      logger("archive-zips-swept", { removed });
+    }
+    return removed;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger("archive-sweep-failed", { error: message });
+    return 0;
+  }
+}
+
 export async function processArchiveRequest(
   req: ArchiveRequest,
   logger: Logger,
 ): Promise<void> {
   logger("archive-start", { id: req.id, userId: req.userId });
+  // Piggyback the expired-zip sweep on every archive build (the worker's reclaim
+  // pass lives in index.ts and can't be extended from here). This is exactly when
+  // new disk is consumed, so it bounds ARCHIVES_DIR growth.
+  await sweepExpiredArchiveZipFiles(logger);
+  // Tracked outside the try so the catch can unlink a partial zip on failure.
+  let partialZipPath: string | null = null;
   try {
     const submissions = await listRetainedSubmissionsForUser(req.userId);
     const archivesDir = join(resolveArchivesDir(), req.userId);
     ensureDir(archivesDir);
     const zipPath = join(archivesDir, `${req.id}.zip`);
+    partialZipPath = zipPath;
 
     const manifest: Array<Record<string, unknown>> = [];
     let fileCount = 0;
@@ -172,6 +233,11 @@ export async function processArchiveRequest(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger("archive-error", { id: req.id, error: message });
+    // A failure after the write stream opened leaves a partial zip on disk with
+    // no downloadPath ever recorded — unlink it so it isn't an orphaned leak.
+    if (partialZipPath) {
+      removeZipFile(partialZipPath, logger);
+    }
     await markArchiveFailed(req.id, message);
   }
 }

@@ -1,4 +1,8 @@
-import { verifyBearer } from "../../../lib/ingest/auth";
+import {
+  enforceBearerRateLimit,
+  verifyBearer,
+  type BearerRateLimitResult,
+} from "../../../lib/ingest/auth";
 import { submitUrlIngest } from "../../../lib/ingest/submit";
 
 function jsonError(
@@ -7,6 +11,18 @@ function jsonError(
   extra?: Record<string, unknown>,
 ) {
   return Response.json({ error, ...extra }, { status });
+}
+
+function rateLimited(
+  limit: Extract<BearerRateLimitResult, { ok: false }>,
+) {
+  return Response.json(
+    { error: "rate limited", retryAfterMs: limit.retryAfterMs },
+    {
+      status: limit.status,
+      headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) },
+    },
+  );
 }
 
 function log(
@@ -19,10 +35,28 @@ function log(
 }
 
 export async function POST(request: Request) {
+  const preLimit = enforceBearerRateLimit(request, "pre");
+  if (!preLimit.ok) {
+    log("warn", "rate-limited", {
+      scope: preLimit.scope,
+      retryAfterMs: preLimit.retryAfterMs,
+    });
+    return rateLimited(preLimit);
+  }
+
   const auth = verifyBearer(request);
   if (!auth.ok) {
     log("warn", "unauthorized", { reason: auth.reason });
     return jsonError(401, "unauthorized", { reason: auth.reason });
+  }
+
+  const postLimit = enforceBearerRateLimit(request, "post");
+  if (!postLimit.ok) {
+    log("warn", "rate-limited", {
+      scope: postLimit.scope,
+      retryAfterMs: postLimit.retryAfterMs,
+    });
+    return rateLimited(postLimit);
   }
 
   let raw: unknown;

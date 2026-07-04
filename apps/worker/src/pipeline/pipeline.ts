@@ -10,6 +10,7 @@ import {
   recordAiGeneration,
   reserveAiGeneration,
 } from "@repo/db";
+import { consumeBearerAiGeneration } from "./bearer-meter";
 import { buildClassificationInput } from "./classification/adapters";
 import { assignOrg, sceneRowWarning } from "./classification/assign-org";
 import { tryClientDraft } from "./draft-runner";
@@ -93,18 +94,42 @@ export async function processIngest(
       writePost(parsed, input, undefined),
     );
   } else {
-    // Bearer ingests (iOS Shortcut, no user) are unmetered: no one to attribute.
+    // Bearer ingests (iOS Shortcut, no user) have no one to attribute a per-user
+    // quota to — but they are NOT unlimited: a process-local fixed-window meter
+    // caps bearer-path AI generations so a leaked INGEST_TOKEN can't run up
+    // unbounded Gemini spend. Over the cap we fall back to a DRAFT stub (the
+    // ingest still lands; the worker never crashes).
     if (userId == null) {
-      parsed = await timed("gemini", logger, () => runGemini(input, { logger }));
-      logger("gemini:parsed", {
-        title: parsed.title,
-        slug: parsed.slug,
-        type: parsed.type,
-        isPro: null,
-      });
-      written = await timed("post:write", logger, () =>
-        writePost(parsed, input, undefined),
-      );
+      const meter = consumeBearerAiGeneration();
+      if (!meter.allowed) {
+        parsed = buildManualStub(input);
+        stub = true;
+        logger("bearer:over-limit", {
+          used: meter.used,
+          limit: meter.limit,
+          retryAfterMs: meter.retryAfterMs,
+          title: parsed.title,
+          type: parsed.type,
+        });
+        written = await timed("post:write", logger, () =>
+          writePost(parsed, input, { status: PostStatus.DRAFT }),
+        );
+      } else {
+        parsed = await timed("gemini", logger, () =>
+          runGemini(input, { logger }),
+        );
+        logger("gemini:parsed", {
+          title: parsed.title,
+          slug: parsed.slug,
+          type: parsed.type,
+          isPro: null,
+          bearerUsed: meter.used,
+          bearerLimit: meter.limit,
+        });
+        written = await timed("post:write", logger, () =>
+          writePost(parsed, input, undefined),
+        );
+      }
     } else {
       const decision = await reserveAiGeneration({
         userId,

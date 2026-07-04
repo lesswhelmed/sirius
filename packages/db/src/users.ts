@@ -3,9 +3,9 @@
 import { sanitizeVoiceProfile } from "@repo/ingest-draft";
 
 import { Prisma } from "../generated/prisma";
+import { HANDLE_REGEX, validateHandle } from "./handle-policy";
 import { prisma } from "./index";
 
-const HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{2,29}$/;
 const UNIQUE_VIOLATION = "P2002";
 
 // Display-name bounds. Mirrors the Zod schema on /api/app/me/name so the domain
@@ -59,16 +59,17 @@ export async function findUserByHandle(
 
 export type SetHandleResult =
   | { ok: true; handle: string }
-  | { ok: false; reason: "invalid" | "taken" };
+  | { ok: false; reason: "invalid" | "reserved" | "taken" };
 
 export async function setUserHandle(
   userId: string,
   handle: string,
 ): Promise<SetHandleResult> {
-  const lower = handle.trim().toLowerCase();
-  if (!HANDLE_REGEX.test(lower)) {
-    return { ok: false, reason: "invalid" };
+  const validation = validateHandle(handle);
+  if (!validation.ok) {
+    return { ok: false, reason: validation.reason };
   }
+  const lower = validation.handle;
   try {
     await prisma.user.update({
       where: { id: userId },

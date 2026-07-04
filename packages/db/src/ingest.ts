@@ -91,8 +91,19 @@ export async function createSubmission(
         // original staged copy). Guard on status:"failed" so a row that has
         // concurrently moved to processing/completed is never disturbed.
         if (existing.status === "failed") {
+          // Ownership-scope the requeue so a caller can only ever retry THEIR
+          // OWN failed row. Without submittedById here, user B submitting content
+          // whose hash collides with user A's FAILED submission would flip A's
+          // row back to pending and overwrite its payload — a cross-tenant
+          // hijack. Under the current global-unique contentHash a cross-user
+          // collision yields requeued.count === 0 (victim untouched) and falls
+          // through to the "deduped" path below.
           const requeued = await prisma.ingestSubmission.updateMany({
-            where: { id: existing.id, status: "failed" },
+            where: {
+              id: existing.id,
+              status: "failed",
+              submittedById: input.submittedById ?? null,
+            },
             data: {
               status: "pending",
               attempts: 0,

@@ -31,10 +31,12 @@ export async function POST(request: Request) {
 
   const result = await setUserHandle(session.user.id, parsed.data.handle);
   if (!result.ok) {
-    const status = result.reason === "taken" ? 409 : 400;
+    if (result.reason === "taken") {
+      return jsonError(409, "handle is taken");
+    }
     return jsonError(
-      status,
-      result.reason === "taken" ? "handle is taken" : "handle is invalid",
+      400,
+      result.reason === "reserved" ? "handle is reserved" : "handle is invalid",
     );
   }
 

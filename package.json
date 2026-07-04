@@ -35,6 +35,8 @@
 		"db:push": "turbo run db:push --filter=@repo/db",
 		"db:studio": "turbo run db:studio --filter=@repo/db",
 		"db:test:setup": "bash scripts/setup-test-db.sh",
+		"test:security": "bun test scripts/testing/security/",
+		"test:security:db": "cd packages/db && bun test --preload ./test/setup-env.ts src/*.integration.test.ts",
 		"mobile:dev": "turbo run dev --filter=mobile",
 		"notmobile:dev": "turbo run dev --filter=!mobile",
 		"worker:dev": "turbo run dev --filter=worker",
