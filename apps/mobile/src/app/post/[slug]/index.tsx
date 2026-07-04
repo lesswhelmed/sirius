@@ -36,7 +36,7 @@ import { useSession } from "@/lib/auth-client";
 import { db } from "@/lib/db/client";
 import { type PostRow, posts } from "@/lib/db/schema";
 import { showPostModerationSheet } from "@/lib/moderation";
-import { openPostEdit } from "@/lib/nav";
+import { openPostEdit, pushOnce } from "@/lib/nav";
 import { confirmAndDeletePost } from "@/lib/post-delete";
 
 // The server route returns findPostBySlug's PostWithRelations, which includes
@@ -251,6 +251,28 @@ export default function PostDetailScreen() {
         ))}
         <KindLabel tone={tone}>{TYPE_LABEL[view.type] ?? view.type}</KindLabel>
         <Title accent=".">{view.title}</Title>
+        {/* Friend byline — PEER posts only (server-only branch, gated by
+            peerAuthor exactly like Report/Block below, so it never shows on the
+            viewer's own content). Taps through to the author's catalog when a
+            handle exists; plain name otherwise. Never derives audience/group. */}
+        {peerAuthor ? (
+          peerAuthor.handle ? (
+            <Pressable
+              onPress={() => pushOnce(`/u/${peerAuthor.handle}/catalog`)}
+              accessibilityRole="button"
+              accessibilityLabel={`@${peerAuthor.handle} — open catalog`}
+              hitSlop={6}
+            >
+              {({ pressed }) => (
+                <Text style={[styles.author, pressed && styles.authorPressed]}>
+                  @{peerAuthor.handle}
+                </Text>
+              )}
+            </Pressable>
+          ) : (
+            <Text style={styles.author}>{peerAuthor.name}</Text>
+          )
+        ) : null}
         {/* Visibility is editable only for the user's OWN posts — a mirror-backed
             row is always owned (the mirror holds only the owner's posts). A
             deep-linked, server-only post hides the control. */}
@@ -393,6 +415,15 @@ function makeStyles(t: Theme) {
       borderWidth: 1,
       borderColor: t.color.rule,
     },
+    // Friend byline under the title on a peer post — mono micro-caps, taps to
+    // accent on press. Mirrors the author line in friends-feed-list.tsx.
+    author: {
+      fontFamily: t.font.mono,
+      fontSize: 12,
+      color: t.color.inkSubtle,
+      marginTop: t.space.xs,
+    },
+    authorPressed: { color: t.color.accent },
     galleryFallback: { alignItems: "center", justifyContent: "center" },
     galleryFallbackText: {
       fontFamily: t.font.mono,
