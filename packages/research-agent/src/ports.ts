@@ -34,6 +34,11 @@ export interface FullPost {
   tags: string[];
   categories: string[];
   createdAt: string | null;
+  // Whether this post belongs to the asking user (vs a friend's shared post).
+  // REQUIRED so no host can ship an attribution-blind agent again.
+  isOwn: boolean;
+  // The post author's handle or display name; null when unattributed.
+  author: string | null;
 }
 
 // A post's stored vector, as returned by the vector store for ranking. The vector

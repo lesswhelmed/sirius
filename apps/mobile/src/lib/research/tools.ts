@@ -54,5 +54,9 @@ export async function fullPostById(id: string): Promise<FullPost | null> {
     tags: row.tags ?? [],
     categories: row.categories ?? [],
     createdAt: row.createdAt ? row.createdAt.toISOString() : null,
+    // The local mirror is owner-scoped — everything synced to this device is
+    // the signed-in user's own post.
+    isOwn: true,
+    author: null,
   };
 }

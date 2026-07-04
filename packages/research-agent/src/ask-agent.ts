@@ -33,6 +33,11 @@ export interface Candidate {
   title: string;
   excerpt: string | null;
   score: number;
+  // Whether this post belongs to the asking user (vs a friend's shared post).
+  // REQUIRED so no host can ship an attribution-blind agent again.
+  isOwn: boolean;
+  // The post author's handle or display name; null when unattributed.
+  author: string | null;
 }
 
 export interface AskAgentDeps {
@@ -72,8 +77,10 @@ export function runAskAgent(args: AskAgentArgs): AskAgentRun {
   const searchTool = tool({
     description:
       "Search the user's own saved posts by meaning and return the most relevant " +
-      "candidates (id, title, excerpt, score). Call whenever answering needs the " +
-      "user's library; pass a focused query.",
+      "candidates (id, title, excerpt, score, isOwn, author). isOwn is true for the " +
+      "user's own posts and false for a friend's shared post; author names the " +
+      "post's author. Call whenever answering needs the user's library; pass a " +
+      "focused query.",
     inputSchema: PostSearchInputSchema,
     execute: async ({ query, includeFriends }): Promise<{ posts: Candidate[] }> => {
       didSearch = true;
@@ -84,7 +91,8 @@ export function runAskAgent(args: AskAgentArgs): AskAgentRun {
   const getPostTool = tool({
     description:
       "Open ONE post by id (from a search_posts result) and return its full text, " +
-      "tags, and date. Open only the posts that matter to the question.",
+      "tags, date, isOwn, and author. isOwn is true when the post is the user's own " +
+      "(vs a friend's shared post). Open only the posts that matter to the question.",
     inputSchema: GetPostInputSchema,
     execute: async ({
       id,

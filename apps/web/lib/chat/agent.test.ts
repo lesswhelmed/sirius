@@ -2,43 +2,116 @@ import { expect, test } from "bun:test";
 import { hitToCandidate, ownerNotesBlock, postToFullPost } from "./agent";
 
 test("hitToCandidate maps a search hit to a tool candidate", () => {
-  const c = hitToCandidate({
-    slug: "my-trip",
-    title: "My Trip",
-    excerpt: null,
-    snippet: "a snippet",
-    score: 0.42,
-    type: "FINDING",
-    status: "PUBLISHED",
-    categories: [],
-    tags: [],
-    submittedBy: null,
-    createdAt: "2026-01-01T00:00:00.000Z",
-    matchReasons: ["exact"],
-  } as never);
+  const c = hitToCandidate(
+    {
+      slug: "my-trip",
+      title: "My Trip",
+      excerpt: null,
+      snippet: "a snippet",
+      score: 0.42,
+      type: "FINDING",
+      status: "PUBLISHED",
+      categories: [],
+      tags: [],
+      submittedBy: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      matchReasons: ["exact"],
+    } as never,
+    "viewer-1",
+  );
   expect(c).toEqual({
     id: "my-trip",
     title: "My Trip",
     excerpt: "a snippet",
     score: 0.42,
+    isOwn: false,
+    author: null,
   });
 });
 
+test("hitToCandidate marks isOwn=true and takes the author's handle when the viewer submitted it", () => {
+  const c = hitToCandidate(
+    {
+      slug: "my-trip",
+      title: "My Trip",
+      excerpt: null,
+      snippet: "a snippet",
+      score: 0.42,
+      submittedBy: {
+        id: "viewer-1",
+        name: "Ada",
+        handle: "ada",
+        image: null,
+      },
+    } as never,
+    "viewer-1",
+  );
+  expect(c.isOwn).toBe(true);
+  expect(c.author).toBe("ada");
+});
+
+test("hitToCandidate falls back to the submitter's name when handle is null", () => {
+  const c = hitToCandidate(
+    {
+      slug: "my-trip",
+      title: "My Trip",
+      excerpt: null,
+      snippet: null,
+      score: 0.1,
+      submittedBy: {
+        id: "friend-1",
+        name: "Grace",
+        handle: null,
+        image: null,
+      },
+    } as never,
+    "viewer-1",
+  );
+  expect(c.isOwn).toBe(false);
+  expect(c.author).toBe("Grace");
+});
+
 test("postToFullPost uses content as body and names as tag/category strings", () => {
-  const full = postToFullPost({
-    slug: "my-trip",
-    title: "My Trip",
-    content: "the full body",
-    excerpt: "blurb",
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    tags: [{ name: "travel" }],
-    categories: [{ name: "life" }],
-  } as never);
+  const full = postToFullPost(
+    {
+      slug: "my-trip",
+      title: "My Trip",
+      content: "the full body",
+      excerpt: "blurb",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      tags: [{ name: "travel" }],
+      categories: [{ name: "life" }],
+      submittedById: "friend-1",
+      submittedBy: { id: "friend-1", name: "Grace", handle: "grace", image: null },
+    } as never,
+    "viewer-1",
+  );
   expect(full.id).toBe("my-trip");
   expect(full.body).toBe("the full body");
   expect(full.tags).toEqual(["travel"]);
   expect(full.categories).toEqual(["life"]);
   expect(full.createdAt).toBe("2026-01-01T00:00:00.000Z");
+  expect(full.isOwn).toBe(false);
+  expect(full.author).toBe("grace");
+});
+
+test("postToFullPost marks isOwn=true and falls back to name when handle is null", () => {
+  const full = postToFullPost(
+    {
+      slug: "my-trip",
+      title: "My Trip",
+      content: "the full body",
+      excerpt: "blurb",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      tags: [],
+      categories: [],
+      submittedById: "viewer-1",
+      submittedBy: { id: "viewer-1", name: "Ada", handle: null, image: null },
+    } as never,
+    "viewer-1",
+  );
+  expect(full.isOwn).toBe(true);
+  expect(full.author).toBe("Ada");
 });
 
 test("ownerNotesBlock renders each submission's note text under a labeled trailer", () => {

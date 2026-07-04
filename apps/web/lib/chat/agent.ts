@@ -29,16 +29,21 @@ const CHAT_MODEL_ID = "gemini-3.5-flash";
 // Enough candidates for the model to choose from without bloating the tool result.
 const SEARCH_LIMIT = 8;
 
-export function hitToCandidate(hit: SearchHit): Candidate {
+export function hitToCandidate(hit: SearchHit, viewerId: string): Candidate {
   return {
     id: hit.slug,
     title: hit.title,
     excerpt: hit.snippet ?? hit.excerpt,
     score: hit.score,
+    isOwn: hit.submittedBy?.id === viewerId,
+    author: hit.submittedBy?.handle ?? hit.submittedBy?.name ?? null,
   };
 }
 
-export function postToFullPost(post: PostWithRelations): FullPost {
+export function postToFullPost(
+  post: PostWithRelations,
+  viewerId: string,
+): FullPost {
   return {
     id: post.slug,
     slug: post.slug,
@@ -48,6 +53,8 @@ export function postToFullPost(post: PostWithRelations): FullPost {
     tags: post.tags.map((t) => t.name),
     categories: post.categories.map((c) => c.name),
     createdAt: post.createdAt ? post.createdAt.toISOString() : null,
+    isOwn: post.submittedById === viewerId,
+    author: post.submittedBy?.handle ?? post.submittedBy?.name ?? null,
   };
 }
 
@@ -89,7 +96,7 @@ export function buildChatDeps(
       // publicCatalogEnabled intentionally omitted → stays false → no strangers.
     });
     for (const hit of page.items) candidateBySlug.set(hit.slug, true);
-    return page.items.map(hitToCandidate);
+    return page.items.map((hit) => hitToCandidate(hit, viewerId));
   };
 
   const getPost: AskAgentDeps["getPost"] = async (id) => {
@@ -102,7 +109,7 @@ export function buildChatDeps(
       title: post.title,
       excerpt: post.excerpt,
     });
-    const full = postToFullPost(post);
+    const full = postToFullPost(post, viewerId);
     // Owner-only: append the author's original capture notes so the agent can
     // ground on what the user actually said, not just the generated post.
     // Never for peers' posts — their notes are private (see ownerNotesBlock).
