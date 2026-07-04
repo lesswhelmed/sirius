@@ -23,17 +23,10 @@ import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiDelete, ApiError, apiGet, apiPostJson } from "@/lib/api";
 import { pushOnce } from "@/lib/nav";
-
-type Request = Friend & { direction: "incoming" | "outgoing" };
-
-// The API returns pending requests as `{ user, direction, createdAt }` with the
-// peer nested under `user` (see packages/db listPendingRequests). Web flattens
-// this server-side in friends/page.tsx; mobile flattens it here so `item.name`
-// renders and the accept/decline POST targets the peer's id (not `undefined`).
-type RawRequest = {
-  user: { id: string; name: string; handle: string | null };
-  direction: "incoming" | "outgoing";
-};
+import {
+  type FriendRequest,
+  useFriendRequests,
+} from "@/lib/use-incoming-request-count";
 
 // Users this account has blocked (via the Report/Block flows in the Friends
 // feed, peer post detail, and friend catalogs), with per-row Unblock. Lives
@@ -61,25 +54,18 @@ export default function FriendsScreen() {
     queryKey: ["friends"],
     queryFn: () => apiGet<{ friends: Friend[] }>("/api/app/friends"),
   });
-  const { data: requestsData, isLoading: requestsLoading } = useQuery({
-    queryKey: ["friend-requests"],
-    queryFn: async () => {
-      const { requests } = await apiGet<{ requests: RawRequest[] }>(
-        "/api/app/friends/requests",
-      );
-      return {
-        requests: requests.map<Request>((r) => ({
-          id: r.user.id,
-          name: r.user.name,
-          handle: r.user.handle,
-          direction: r.direction,
-        })),
-      };
-    },
-  });
+  // Shared ["friend-requests"] query — the list here + the request-count badges
+  // (nav tab, feed header, this segment) read one cache entry, so accept/decline
+  // invalidations below refresh all of them.
+  const { data: requestsData, isLoading: requestsLoading } = useFriendRequests();
 
   const friends = friendsData?.friends ?? [];
   const requests = requestsData?.requests ?? [];
+  // Incoming-only count for the Requests segment. The list still shows BOTH
+  // directions (requests), but the badge must not count the viewer's own
+  // outgoing pendings — hence incomingCount (server's countIncomingRequests),
+  // not requests.length.
+  const incomingCount = requestsData?.incomingCount ?? 0;
 
   const refetch = () => {
     void qc.invalidateQueries({ queryKey: ["friends"] });
@@ -101,11 +87,11 @@ export default function FriendsScreen() {
     }
   }
 
-  const accept = (r: Request) =>
+  const accept = (r: FriendRequest) =>
     act(r.id, () =>
       apiPostJson(`/api/app/friends/requests/${r.id}`, { action: "accept" }),
     );
-  const decline = (r: Request) =>
+  const decline = (r: FriendRequest) =>
     act(r.id, () =>
       apiPostJson(`/api/app/friends/requests/${r.id}`, { action: "decline" }),
     );
@@ -138,7 +124,7 @@ export default function FriendsScreen() {
         />
         <SegmentedControl value={tab} onChange={setTab}>
           <Segment value="friends" label="Friends" count={friends.length} />
-          <Segment value="requests" label="Requests" count={requests.length} />
+          <Segment value="requests" label="Requests" count={incomingCount} />
         </SegmentedControl>
       </View>
 

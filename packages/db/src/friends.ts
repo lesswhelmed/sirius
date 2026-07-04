@@ -296,6 +296,21 @@ export async function listPendingRequests(
   });
 }
 
+// The number of INCOMING pending requests (someone asked to friend this user).
+// Mirrors listPendingRequests' where-clause but excludes the user's own outgoing
+// pendings (requestedById !== userId) and returns just the count — the single
+// source of truth behind the mobile request-count badges (nav tab, feed header,
+// People segment), so a raw list length can't overcount by including outgoing.
+export async function countIncomingRequests(userId: string): Promise<number> {
+  return prisma.friendship.count({
+    where: {
+      status: FriendshipStatus.PENDING,
+      requestedById: { not: userId },
+      OR: [{ userAId: userId }, { userBId: userId }],
+    },
+  });
+}
+
 // The viewer's friendship state toward another user, for the profile add-friend
 // button. "self" when ids match.
 export type FriendshipState =

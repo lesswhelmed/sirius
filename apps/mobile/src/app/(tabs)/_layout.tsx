@@ -14,6 +14,7 @@ import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { apiPostJson } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
+import { useIncomingRequestCount } from "@/lib/use-incoming-request-count";
 
 // App Store Guideline 1.2 (UGC): users must agree to the Terms of Use before
 // using the app. New sign-ups agree at registration (server stamps
@@ -101,6 +102,10 @@ function makeGateStyles(t: Theme) {
 export default function TabsLayout() {
   const { data: session, isPending, refetch } = useSession();
   const t = useTheme();
+  // Incoming friend-request count for the Friends tab badge. Shares the
+  // ["friend-requests"] cache with the People manager + feed header, so an
+  // accept/decline anywhere updates all three. 0 → no badge (see below).
+  const incomingRequests = useIncomingRequestCount();
   // Optimistic local latch: once the accept-terms POST succeeds the gate drops
   // immediately, even if the session store still serves a cached payload
   // without the stamp (better-auth cookie cache). The server row is the source
@@ -184,6 +189,16 @@ export default function TabsLayout() {
       <NativeTabs.Trigger name="feed">
         <NativeTabs.Trigger.Label>Friends</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="person.2.fill" md="people" />
+        {/* Native tab badge for incoming friend requests. The Badge MUST be a
+            direct child of Trigger — NativeTabTrigger filters its children by
+            element type (filterAllowedChildrenElements), so a wrapper component
+            wouldn't be recognized. Rendered only when > 0 (a null child is
+            dropped by Children.toArray → no badge). */}
+        {incomingRequests > 0 ? (
+          <NativeTabs.Trigger.Badge>
+            {String(incomingRequests)}
+          </NativeTabs.Trigger.Badge>
+        ) : null}
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="tree">
         <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>

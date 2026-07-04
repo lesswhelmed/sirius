@@ -1,4 +1,9 @@
-import { findUserByHandle, listPendingRequests, sendFriendRequest } from "@repo/db";
+import {
+  countIncomingRequests,
+  findUserByHandle,
+  listPendingRequests,
+  sendFriendRequest,
+} from "@repo/db";
 import { friendRequestSchema } from "../../../../../lib/friends/schema";
 import { agreedOr403, getSessionOrNull } from "../../../../../lib/session";
 
@@ -14,14 +19,20 @@ function jsonError(status: number, error: string) {
   return Response.json({ error }, { status });
 }
 
-// GET: both directions, each tagged incoming|outgoing.
+// GET: both directions, each tagged incoming|outgoing, plus `incomingCount` —
+// the incoming-only pending count (from countIncomingRequests, the single source
+// of truth) so mobile's request-count badges don't overcount by including the
+// viewer's own outgoing pendings that also ride in `requests`.
 export async function GET() {
   const session = await getSessionOrNull();
   if (!session) {
     return jsonError(401, "unauthorized");
   }
-  const requests = await listPendingRequests(session.user.id);
-  return Response.json({ requests });
+  const [requests, incomingCount] = await Promise.all([
+    listPendingRequests(session.user.id),
+    countIncomingRequests(session.user.id),
+  ]);
+  return Response.json({ requests, incomingCount });
 }
 
 // POST: send a friend request to a user identified by handle.
