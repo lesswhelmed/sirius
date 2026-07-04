@@ -296,6 +296,16 @@ and is gated on `post.submittedById === viewer`:
   what that section means and to treat it as the author's intent
   (`AGENT_SYSTEM_PROMPT` in
   [`packages/research-agent/src/prompt.ts`](../packages/research-agent/src/prompt.ts)).
+- **Chat attribution** (companion change, same day): every `Candidate` and
+  `FullPost` the tools return carries REQUIRED `isOwn: boolean` +
+  `author: string | null` (derived from `SearchHit.submittedBy` /
+  `post.submittedById` — already-fetched, visibility-gated data; no new
+  queries), and the system prompt instructs the model to attribute posts
+  correctly and gently correct a wrong premise (e.g. the user calling their own
+  post "a friend's"). Without these fields the model was attribution-blind and
+  adopted whatever ownership the question asserted. The parked on-device
+  producer ([`apps/mobile/src/lib/research/tools.ts`](../apps/mobile/src/lib/research/tools.ts))
+  sets `isOwn: true, author: null` (its local mirror is owner-scoped).
 
 **The privacy invariant** (non-negotiable): the chat corpus includes friends'
 shared posts via `searchCorpus`, but a peer's `get_post` result is byte-for-byte
