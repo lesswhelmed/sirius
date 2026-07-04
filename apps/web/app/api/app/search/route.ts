@@ -12,7 +12,9 @@ import { getSessionOrNull } from "../../../../lib/session";
 // session read already makes this handler dynamic.
 //
 // scope=all (default) spans the viewer's own posts + friends' shared + public;
-// scope=mine restricts to the viewer's own corpus (what the MCP tools do).
+// scope=mine restricts to the viewer's own corpus (what the MCP tools do);
+// scope=friends spans own + friends'-shared + friends' PUBLIC only (never a
+// stranger's PUBLIC post, independent of the public-catalog flag).
 export async function GET(request: Request) {
   const session = await getSessionOrNull();
   if (!session) {
@@ -21,7 +23,11 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
-  const scope = url.searchParams.get("scope") === "mine" ? "mine" : "all";
+  // Explicit allowlist (not a passthrough): anything outside {mine, friends}
+  // collapses to the default "all".
+  const scopeParam = url.searchParams.get("scope");
+  const scope: "all" | "mine" | "friends" =
+    scopeParam === "mine" || scopeParam === "friends" ? scopeParam : "all";
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const limitRaw = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
   const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;

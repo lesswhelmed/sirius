@@ -228,10 +228,13 @@ export interface VisiblePostEmbedding {
 }
 
 // The embedding candidate set a viewer may search: their OWN posts (any status)
-// plus friends' FRIENDS posts and PUBLIC posts (both PUBLISHED-only). Shares its
-// visibility shape with searchVisibilityWhere (search.ts) so the embedding and
-// full-text legs never disagree about what's reachable. Owner-trust: viewerId
-// and friendIds are resolved server-side from the session, never client input.
+// plus friends' FRIENDS/GROUP posts and PUBLIC posts (both PUBLISHED-only). Shares
+// its visibility shape with searchVisibilityWhere (search.ts) so the embedding and
+// full-text legs never disagree about what's reachable — including the TWO PUBLIC
+// arms: includePublic (global, any author) vs. includeFriendPublic (friend-gated,
+// used by scope=friends). Trailing params default to the historical behavior (own
+// on, friend-public off). Owner-trust: viewerId and friendIds are resolved
+// server-side from the session, never client input.
 export async function listVisiblePostEmbeddings(
   viewerId: string,
   friendIds: string[],
@@ -239,8 +242,13 @@ export async function listVisiblePostEmbeddings(
   // Blocked-author exclusion (moderation.blockedIdsFor — both directions),
   // threaded like friendIds; defaults empty so existing callers are unchanged.
   blockedIds: string[] = [],
+  includeOwn = true,
+  includeFriendPublic = false,
 ): Promise<VisiblePostEmbedding[]> {
-  const or: Prisma.PostWhereInput[] = [{ submittedById: viewerId }];
+  const or: Prisma.PostWhereInput[] = [];
+  if (includeOwn) {
+    or.push({ submittedById: viewerId });
+  }
   if (friendIds.length > 0) {
     or.push({
       submittedById: { in: friendIds },
@@ -257,16 +265,29 @@ export async function listVisiblePostEmbeddings(
         some: { group: { members: { some: { userId: viewerId } } } },
       },
     });
+    // Friend-scoped PUBLIC (scope=friends): admitted by friend authorship, not by
+    // the global-public flag — mirrors searchVisibilityWhere's friend-PUBLIC arm.
+    if (includeFriendPublic) {
+      or.push({
+        submittedById: { in: friendIds },
+        visibility: PostVisibility.PUBLIC,
+        status: PostStatus.PUBLISHED,
+      });
+    }
   }
   if (includePublic) {
     or.push({ visibility: PostVisibility.PUBLIC, status: PostStatus.PUBLISHED });
   }
+  // No arms at all → match NOTHING explicitly (mirrors searchVisibilityWhere /
+  // posts.visibilityWhereForViewer), never an empty `{ OR: [] }`.
+  const base: Prisma.PostWhereInput =
+    or.length === 0 ? { OR: [{ id: { equals: "__none__" } }] } : { OR: or };
   // Same block clamp as searchVisibilityWhere so the semantic and full-text
   // legs can never disagree about a blocked author.
   const postWhere: Prisma.PostWhereInput =
     blockedIds.length === 0
-      ? { OR: or }
-      : { AND: [{ OR: or }, blockedAuthorExclusion(blockedIds)] };
+      ? base
+      : { AND: [base, blockedAuthorExclusion(blockedIds)] };
   const rows = await prisma.postEmbedding.findMany({
     where: { post: postWhere },
     select: {

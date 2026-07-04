@@ -20,6 +20,7 @@ import {
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { CorpusSearchResults } from "@/components/corpus-search";
+import { Segment, SegmentedControl } from "@/components/segmented";
 import {
   KindLabel,
   PageHeader,
@@ -476,6 +477,12 @@ export default function LibraryScreen() {
   // Networked curated search (full-text + embedding). When non-empty it takes
   // over the list below the field; the local offline browse is the default.
   const [searchQuery, setSearchQuery] = useState("");
+  // Scope of the networked search — Mine (own corpus) / Friends (own +
+  // friends'-shared + friends' PUBLIC) / All. Surfaced by the segmented control
+  // shown only while a query is active. Defaults to "all" (the historical scope).
+  const [searchScope, setSearchScope] = useState<"mine" | "friends" | "all">(
+    "all",
+  );
 
   const categoryFacets = useMemo(() => {
     const counts = new Map<string, number>();
@@ -731,7 +738,18 @@ export default function LibraryScreen() {
       )}
 
       {searching ? (
-        <CorpusSearchResults query={searchQuery} scope="all" />
+        <>
+          {/* Scope selector — Mine / Friends / All. Shown only while a query is
+              active; drives which corpus the networked search spans. */}
+          <View style={styles.scopeBar}>
+            <SegmentedControl value={searchScope} onChange={setSearchScope}>
+              <Segment value="mine" label="Mine" />
+              <Segment value="friends" label="Friends" />
+              <Segment value="all" label="All" />
+            </SegmentedControl>
+          </View>
+          <CorpusSearchResults query={searchQuery} scope={searchScope} />
+        </>
       ) : (
         <FlatList
           data={visibleItems}
@@ -1115,6 +1133,10 @@ function makeStyles(t: Theme) {
     fontSize: 18,
     color: t.color.ink,
     paddingVertical: t.space.xs,
+  },
+  // Scope selector bar (Mine / Friends / All) above the networked results.
+  scopeBar: {
+    paddingHorizontal: t.space.xl,
   },
 
   // "Ask your library" entry — the conversational counterpart to search, and the

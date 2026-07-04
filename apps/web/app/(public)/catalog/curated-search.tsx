@@ -116,7 +116,58 @@ function ResultRow({ hit }: { hit: SearchHit }) {
   );
 }
 
-export function CuratedSearch({ scope = "all" }: { scope?: "all" | "mine" }) {
+type SearchScope = "mine" | "friends" | "all";
+
+const SCOPE_OPTIONS: { value: SearchScope; label: string }[] = [
+  { value: "mine", label: "Mine" },
+  { value: "friends", label: "Friends" },
+  { value: "all", label: "All" },
+];
+
+// Hairline-ruled 3-way scope control in the catalog's editorial token system —
+// solid-accent active segment, quiet mono labels, sharp 0px corners (no pills).
+function ScopeSelector({
+  value,
+  onChange,
+}: {
+  value: SearchScope;
+  onChange: (scope: SearchScope) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Search scope"
+      className="flex border border-[var(--color-rule)]"
+    >
+      {SCOPE_OPTIONS.map((opt, i) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(opt.value)}
+            className={`px-3 py-1 font-mono text-[9px] uppercase leading-none tracking-[0.18em] transition-colors ${
+              i > 0 ? "border-l border-[var(--color-rule)]" : ""
+            } ${
+              active
+                ? "bg-[var(--color-accent)] text-[var(--color-paper)]"
+                : "text-[var(--fg-subtle)] hover:text-[var(--color-accent)]"
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// `scope` is the INITIAL scope; the in-field selector below lets the viewer
+// switch between Mine / Friends / All while a query is active.
+export function CuratedSearch({ scope = "all" }: { scope?: SearchScope }) {
+  const [activeScope, setActiveScope] = useState<SearchScope>(scope);
   const [value, setValue] = useState("");
   const [items, setItems] = useState<SearchHit[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -143,7 +194,7 @@ export function CuratedSearch({ scope = "all" }: { scope?: "all" | "mine" }) {
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(
-          `/api/app/search?q=${encodeURIComponent(q)}&scope=${scope}`,
+          `/api/app/search?q=${encodeURIComponent(q)}&scope=${activeScope}`,
           { signal: controller.signal },
         );
         if (!res.ok) throw new Error(`search failed: ${res.status}`);
@@ -162,7 +213,7 @@ export function CuratedSearch({ scope = "all" }: { scope?: "all" | "mine" }) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [value, scope]);
+  }, [value, activeScope]);
 
   const hasQuery = value.trim().length > 0;
   const showEmpty = hasQuery && !isLoading && !error && items.length === 0;
@@ -210,20 +261,24 @@ export function CuratedSearch({ scope = "all" }: { scope?: "all" | "mine" }) {
         <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-[var(--color-rule-emphatic)]" />
       </div>
 
-      {/* Status bar: result count + degraded-semantic note. */}
+      {/* Status bar: scope selector + result count + degraded-semantic note. The
+          Mine / Friends / All control appears only while a query is active. */}
       {hasQuery ? (
         <div
           aria-live="polite"
           aria-atomic="true"
-          className="flex min-h-[1.5rem] items-center justify-between pt-2.5"
+          className="flex min-h-[1.5rem] flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-2.5"
         >
-          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
-            {isLoading
-              ? "Searching…"
-              : error
-                ? "Search failed"
-                : `${items.length} result${items.length === 1 ? "" : "s"}`}
-          </span>
+          <div className="flex items-center gap-3">
+            <ScopeSelector value={activeScope} onChange={setActiveScope} />
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+              {isLoading
+                ? "Searching…"
+                : error
+                  ? "Search failed"
+                  : `${items.length} result${items.length === 1 ? "" : "s"}`}
+            </span>
+          </div>
           {partial && !isLoading ? (
             <span
               role="note"

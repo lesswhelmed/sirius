@@ -118,7 +118,7 @@ export function CorpusSearchResults({
   scope = "all",
 }: {
   query: string;
-  scope?: "all" | "mine";
+  scope?: "all" | "mine" | "friends";
 }) {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);

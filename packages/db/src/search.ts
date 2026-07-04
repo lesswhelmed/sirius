@@ -48,7 +48,18 @@ const FUSION_CANDIDATES = 50;
 const SNIPPET_MAX = 280;
 
 // The ONE visibility predicate, shared with listVisiblePostEmbeddings: own posts
-// (any status) OR friends' FRIENDS (published) OR PUBLIC (published, if allowed).
+// (any status) OR friends' FRIENDS/GROUP (published) OR PUBLIC (published) — where
+// PUBLIC is admitted by one of TWO independent arms:
+//   - includePublic: the GLOBAL unrestricted PUBLIC arm (any author). Only ever
+//     on under scope=all AND when the public catalog is enabled.
+//   - includeFriendPublic: the FRIEND-scoped PUBLIC arm (submittedById IN friends).
+//     Used by scope=friends; a friend's PUBLIC post is admitted because the AUTHOR
+//     is a friend, NOT because the public catalog flag is on — so a stranger's
+//     PUBLIC post can never enter through this arm, flag-independent.
+// includeOwn gates the own-posts arm (always true for the three live scopes; a
+// param so the four visibility mirrors express one predicate). Trailing params
+// default to the historical behavior (own on, friend-public off) so existing
+// callers are byte-for-byte unchanged.
 export function searchVisibilityWhere(
   viewerId: string,
   friendIds: string[],
@@ -56,8 +67,13 @@ export function searchVisibilityWhere(
   // Blocked-author exclusion (moderation.blockedIdsFor — both directions),
   // threaded like friendIds; defaults empty so existing callers are unchanged.
   blockedIds: string[] = [],
+  includeOwn = true,
+  includeFriendPublic = false,
 ): Prisma.PostWhereInput {
-  const or: Prisma.PostWhereInput[] = [{ submittedById: viewerId }];
+  const or: Prisma.PostWhereInput[] = [];
+  if (includeOwn) {
+    or.push({ submittedById: viewerId });
+  }
   if (friendIds.length > 0) {
     or.push({
       submittedById: { in: friendIds },
@@ -73,14 +89,28 @@ export function searchVisibilityWhere(
         some: { group: { members: { some: { userId: viewerId } } } },
       },
     });
+    // Friend-scoped PUBLIC (scope=friends): a friend's published PUBLIC post,
+    // gated by friend authorship — never the global-public kill-switch.
+    if (includeFriendPublic) {
+      or.push({
+        submittedById: { in: friendIds },
+        visibility: PostVisibility.PUBLIC,
+        status: PostStatus.PUBLISHED,
+      });
+    }
   }
   if (includePublic) {
     or.push({ visibility: PostVisibility.PUBLIC, status: PostStatus.PUBLISHED });
   }
+  // No arms at all (e.g. own off + no friends + no public) → match NOTHING
+  // explicitly (mirrors posts.visibilityWhereForViewer's __none__ sentinel), so
+  // an empty `{ OR: [] }` can never be read as "match everything".
+  const base: Prisma.PostWhereInput =
+    or.length === 0 ? { OR: [{ id: { equals: "__none__" } }] } : { OR: or };
   if (blockedIds.length === 0) {
-    return { OR: or };
+    return base;
   }
-  return { AND: [{ OR: or }, blockedAuthorExclusion(blockedIds)] };
+  return { AND: [base, blockedAuthorExclusion(blockedIds)] };
 }
 
 // Full-text leg: rank by ts_rank over the generated tsvector, visibility-gated
@@ -95,12 +125,18 @@ export function searchVisibilityWhere(
 // at or near \"$4\"" (verified via the Postgres error log; the same code works
 // under bun, which is why the test suite alone can't catch a regression here).
 // `ANY(${array})` binds the array as ONE param ('{}' matches nothing when
-// empty); `${includePublic}` is a boolean param short-circuiting the PUBLIC arm.
+// empty); `${includePublic}` / `${includeOwn}` / `${includeFriendPublic}` are
+// boolean params short-circuiting their respective arms. The friend-scoped
+// PUBLIC arm carries the SAME `= ANY(${friendIds})` author gate as FRIENDS/GROUP
+// — so scope=friends can never surface a stranger's PUBLIC post, mirroring
+// searchVisibilityWhere exactly (any divergence here is a visibility leak).
 async function fullTextLeg(
   viewerId: string,
   query: string,
   friendIds: string[],
   includePublic: boolean,
+  includeOwn: boolean,
+  includeFriendPublic: boolean,
   blockedIds: string[],
   limit: number,
 ): Promise<string[]> {
@@ -116,7 +152,7 @@ async function fullTextLeg(
     FROM "Post" p
     WHERE p."searchVector" @@ websearch_to_tsquery('english', ${query})
       AND (
-        p."submittedById" = ${viewerId}
+        (${includeOwn} AND p."submittedById" = ${viewerId})
         OR (p."visibility" = 'FRIENDS' AND p."status" = 'PUBLISHED'
             AND p."submittedById" = ANY(${friendIds}))
         OR (p."visibility" = 'GROUP' AND p."status" = 'PUBLISHED'
@@ -126,6 +162,8 @@ async function fullTextLeg(
               JOIN "ShareGroupMember" sgm ON sgm."groupId" = psg."groupId"
               WHERE psg."postId" = p."id" AND sgm."userId" = ${viewerId}
             ))
+        OR (${includeFriendPublic} AND p."visibility" = 'PUBLIC' AND p."status" = 'PUBLISHED'
+            AND p."submittedById" = ANY(${friendIds}))
         OR (${includePublic} AND p."visibility" = 'PUBLIC' AND p."status" = 'PUBLISHED')
       )
       AND (${noBlocks}
@@ -165,6 +203,8 @@ async function semanticLeg(
   query: string,
   friendIds: string[],
   includePublic: boolean,
+  includeOwn: boolean,
+  includeFriendPublic: boolean,
   blockedIds: string[],
   limit: number,
   embedder: QueryEmbedder,
@@ -180,6 +220,8 @@ async function semanticLeg(
     friendIds,
     includePublic,
     blockedIds,
+    includeOwn,
+    includeFriendPublic,
   );
   return rankByCosine(queryVector, candidates, limit);
 }
@@ -227,7 +269,13 @@ export async function searchCorpus(
   viewerId: string,
   query: string,
   opts: {
-    scope?: "all" | "mine";
+    // "all"  — own posts + friends'-shared + (opt-in) cross-user PUBLIC.
+    // "mine" — the viewer's own corpus only (what the MCP tools do).
+    // "friends" — own posts + friends'-shared + friends' PUBLIC ONLY. There is NO
+    //   unrestricted PUBLIC arm in this scope, so a stranger's PUBLIC post is never
+    //   returned — independent of publicCatalogEnabled (a friend's PUBLIC post is
+    //   admitted because the author is a friend, not because the flag is on).
+    scope?: "all" | "mine" | "friends";
     limit?: number;
     cursor?: string;
     embedder?: QueryEmbedder;
@@ -235,7 +283,9 @@ export async function searchCorpus(
     // PUBLIC_CATALOG_ENABLED that gates canReadPost's PUBLIC tier. @repo/db can't
     // read the web-only feature flag, so the caller threads it in. Defaults FALSE
     // (secure default): own posts + friends'-shared are always searchable, but the
-    // cross-user public leg is opt-in. `scope: "mine"` ignores it entirely.
+    // cross-user public leg is opt-in. ONLY `scope: "all"` consults it; `scope:
+    // "mine"` and `scope: "friends"` ignore it entirely (friends admits a friend's
+    // PUBLIC post by friend authorship, never via this flag).
     publicCatalogEnabled?: boolean;
   } = {},
 ): Promise<SearchPage> {
@@ -246,23 +296,31 @@ export async function searchCorpus(
 
   const limit = Math.min(50, Math.max(1, opts.limit ?? 24));
   const offset = Math.max(0, Number.parseInt(opts.cursor ?? "0", 10) || 0);
-  const scopeAll = (opts.scope ?? "all") === "all";
+  const scope = opts.scope ?? "all";
+  // All three live scopes include the viewer's own posts (any status).
+  const includeOwn = true;
+  // Cross-user legs (friend arms + blocked clamp) apply to "all" AND "friends".
+  // "mine" only ever returns the viewer's own posts, so no graph lookup is needed.
+  const needsGraph = scope === "all" || scope === "friends";
 
   // Blocked authors are excluded from every cross-user leg. Looked up here
-  // (like friendIds) so both legs + the hydration gate share one set. scope
-  // "mine" only ever returns the viewer's own posts, so no lookup needed.
-  const [friendIds, blockedIds] = scopeAll
+  // (like friendIds) so both legs + the hydration gate share one set.
+  const [friendIds, blockedIds] = needsGraph
     ? await Promise.all([friendIdsOf(viewerId), blockedIdsFor(viewerId)])
     : [[], []];
-  // Cross-user PUBLIC posts are admitted only under scope=all AND when the public
-  // catalog is enabled — otherwise search would return strangers' PUBLIC posts the
-  // catalog/canReadPost would refuse, diverging from the one read policy.
-  const includePublic = scopeAll && (opts.publicCatalogEnabled ?? false);
+  // GLOBAL unrestricted PUBLIC arm: admitted only under scope=all AND when the
+  // public catalog is enabled — otherwise search would return strangers' PUBLIC
+  // posts the catalog/canReadPost would refuse, diverging from the one read policy.
+  const includePublic = scope === "all" && (opts.publicCatalogEnabled ?? false);
+  // FRIEND-scoped PUBLIC arm: ONLY under scope=friends, and flag-independent — a
+  // friend's PUBLIC post is admitted by friendship, never by publicCatalogEnabled.
+  // The global arm above stays OFF here, so no non-friend PUBLIC post can leak.
+  const includeFriendPublic = scope === "friends";
 
   const embedder = opts.embedder ?? defaultQueryEmbedder;
   const [ftSlugs, semSlugs] = await Promise.all([
-    fullTextLeg(viewerId, q, friendIds, includePublic, blockedIds, FUSION_CANDIDATES),
-    semanticLeg(viewerId, q, friendIds, includePublic, blockedIds, FUSION_CANDIDATES, embedder),
+    fullTextLeg(viewerId, q, friendIds, includePublic, includeOwn, includeFriendPublic, blockedIds, FUSION_CANDIDATES),
+    semanticLeg(viewerId, q, friendIds, includePublic, includeOwn, includeFriendPublic, blockedIds, FUSION_CANDIDATES, embedder),
   ]);
   const partial = semSlugs === null;
   const fused = reciprocalRankFusion(ftSlugs, semSlugs ?? []);
@@ -274,7 +332,14 @@ export async function searchCorpus(
   // the viewer can't actually read is dropped (defense in depth).
   const full = await listPostsBySlugsVisible(
     pageRanked.map((r) => r.slug),
-    searchVisibilityWhere(viewerId, friendIds, includePublic, blockedIds),
+    searchVisibilityWhere(
+      viewerId,
+      friendIds,
+      includePublic,
+      blockedIds,
+      includeOwn,
+      includeFriendPublic,
+    ),
   );
   const bySlug = new Map(full.map((p) => [p.slug, p]));
 

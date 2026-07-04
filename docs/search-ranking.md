@@ -114,10 +114,56 @@ semantics. This is the `exact`+`similar` badge behavior users see.
 ## Visibility (defense in depth)
 
 Both legs are gated by the same predicate (`searchVisibilityWhere`): the viewer's
-own posts (any status) OR friends' `FRIENDS` published posts OR `PUBLIC` published
-posts (`scope=all`; `scope=mine` restricts to own). The two legs share the predicate
-so they never disagree about what's reachable, and the final hydration re-applies it
-so a slug the viewer can't actually read is dropped even if it leaked into a leg.
+own posts (any status) OR friends' `FRIENDS`/`GROUP` published posts OR `PUBLIC`
+published posts. The two legs share the predicate so they never disagree about
+what's reachable, and the final hydration re-applies it so a slug the viewer can't
+actually read is dropped even if it leaked into a leg.
+
+### The three scopes
+
+`searchCorpus(viewerId, query, { scope })` takes `scope: "all" | "mine" | "friends"`:
+
+| Scope | Own (any status) | Friends' FRIENDS/GROUP (published) | Friends' PUBLIC (published) | Any-author PUBLIC (published) |
+|---|---|---|---|---|
+| `mine` | ✅ | — | — | — |
+| `all` | ✅ | ✅ | ✅ (via the global arm) | ✅ **only if `publicCatalogEnabled`** |
+| `friends` | ✅ | ✅ | ✅ **(friend-author-gated)** | ❌ **never** |
+
+There are **two distinct PUBLIC arms**, and keeping them separate is the security
+crux of `scope=friends`:
+
+- **Global unrestricted PUBLIC** (`includePublic`) — any author's published PUBLIC
+  post. On **only** under `scope=all` AND when `publicCatalogEnabled` is true (the
+  same kill-switch `canReadPost` honors). Off under `mine` and `friends`.
+- **Friend-scoped PUBLIC** (`includeFriendPublic`) — a friend's published PUBLIC
+  post, gated by `submittedById IN friendIds` (the same author gate as the
+  FRIENDS/GROUP arms). Used **only** by `scope=friends`.
+
+**The hard `scope=friends` guarantee:** there is **no PUBLIC arm without an
+`IN friendIds` author gate**, and this holds **independently of
+`publicCatalogEnabled`**. A friend's PUBLIC post is admitted because the author is a
+friend (not because the public catalog is on); a non-friend's PUBLIC post is **never**
+admitted under this scope, even when the flag is true. With **zero** friends the
+friend arms contribute nothing, so the predicate degrades to own-posts-only — never
+to "everything" (an empty arm set falls back to the `__none__` sentinel, matching
+`posts.visibilityWhereForViewer`).
+
+### The four mirrors (must stay in lockstep)
+
+The identical friend-scoped predicate is expressed in **four** places; a divergence
+between any of them is a visibility leak, so the test suite verifies all four agree:
+
+1. `searchVisibilityWhere` (Prisma) — the hydration gate + shared shape.
+2. `fullTextLeg` raw SQL — the friend-scoped PUBLIC arm carries the same
+   `= ANY(friendIds)` author gate as FRIENDS/GROUP. Every interpolation is a plain
+   value/array/boolean param (never a composed `Prisma.sql` fragment) — see the
+   raw-SQL comment for why fragments break under the Next/Turbopack runtime.
+3. `listVisiblePostEmbeddings` (the embedding leg's candidate set).
+4. The final hydration gate (reuses `searchVisibilityWhere`).
+
+`scope=friends` resolves `friendIds` and `blockedIds` (like `scope=all`, unlike
+`scope=mine`); the blocked-author clamp excludes a blocked user's posts from every
+arm, so even a still-"friend" who is blocked is fully invisible.
 
 ## Pagination
 

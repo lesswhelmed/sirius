@@ -44,6 +44,48 @@ describe("searchVisibilityWhere", () => {
     const w = searchVisibilityWhere("u1", [], true);
     expect(w.OR).toContainEqual({ visibility: "PUBLIC", status: "PUBLISHED" });
   });
+
+  // scope=friends: friend-scoped PUBLIC arm (author-gated), NO global PUBLIC arm.
+  test("scope=friends: friend-gated PUBLIC arm present, global PUBLIC arm absent", () => {
+    // includePublic=false, includeOwn=true, includeFriendPublic=true.
+    const w = searchVisibilityWhere("u1", ["f1", "f2"], false, [], true, true);
+    // Friend-authored PUBLIC published post is admitted…
+    expect(w.OR).toContainEqual({
+      submittedById: { in: ["f1", "f2"] },
+      visibility: "PUBLIC",
+      status: "PUBLISHED",
+    });
+    // …but the UNRESTRICTED (any-author) PUBLIC arm is NOT — a stranger's PUBLIC
+    // post can never enter under this scope.
+    expect(w.OR).not.toContainEqual({ visibility: "PUBLIC", status: "PUBLISHED" });
+    // Own posts still included.
+    expect(w.OR).toContainEqual({ submittedById: "u1" });
+  });
+
+  // Security: no friends → the friend-PUBLIC arm contributes nothing, so the
+  // predicate degrades to own-only. It must NEVER widen to a bare PUBLIC arm.
+  test("scope=friends with zero friends degrades to own-only (no PUBLIC arm)", () => {
+    const w = searchVisibilityWhere("u1", [], false, [], true, true);
+    expect(w.OR).toEqual([{ submittedById: "u1" }]);
+    expect(w.OR).not.toContainEqual({ visibility: "PUBLIC", status: "PUBLISHED" });
+  });
+
+  test("includeOwn=false omits the own-posts arm", () => {
+    const w = searchVisibilityWhere("u1", ["f1"], false, [], false, false);
+    expect(w.OR).not.toContainEqual({ submittedById: "u1" });
+    expect(w.OR).toContainEqual({
+      submittedById: { in: ["f1"] },
+      visibility: "FRIENDS",
+      status: "PUBLISHED",
+    });
+  });
+
+  // Defense in depth: no arms at all must match NOTHING explicitly (the
+  // __none__ sentinel), never an empty OR that could read as "match everything".
+  test("no arms → __none__ sentinel, never empty OR", () => {
+    const w = searchVisibilityWhere("u1", [], false, [], false, false);
+    expect(w.OR).toEqual([{ id: { equals: "__none__" } }]);
+  });
 });
 
 describe("rankByCosine", () => {
