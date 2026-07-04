@@ -228,6 +228,10 @@ worker never call each other directly, they only share the DB and the `@repo/db`
    **upserts** the `Post` by slug. Then the worker marks the submission(s) completed and
    deletes the staged file.
 
+**Materials, author notes & excerpts** (the client Material unit, how the capture note
+travels + leads drafting prompts, the excerpt lifecycle, owner-only note surfaces incl.
+chat): full write-up + maintained code links in `docs/materials-and-notes.md`.
+
 ### Serving worker-written media (`/sight`, `/social`)
 
 The worker writes post images into `public/sight/` and `public/social/` **at runtime**, but
