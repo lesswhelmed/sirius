@@ -35,6 +35,15 @@ export const PostDraftSchema = z.object({
     .describe(
       "1-3 hierarchical category paths, slash-delimited from broad to narrow, lowercase kebab-case (e.g. 'technology/artificial-intelligence', 'design/typography'), ORDERED most-representative first — the worker keeps the first 3 (the post itself keeps only the single best-fitting category; the rest become tags). Reuse common broad top-level fields (technology, design, business, history, science, art, lifestyle, finance) rather than inventing near-duplicates. A single broad term with no subtopic is fine (e.g. 'cooking').",
     ),
+  // Optional for the same reason the arrays carry no bounds: flash sometimes
+  // omits described-optional fields, and a missing excerpt must not fail the
+  // post — post-writer derives a first-sentence fallback instead.
+  excerpt: z
+    .string()
+    .optional()
+    .describe(
+      "One plain declarative sentence summarizing the post. No hype, no ellipsis.",
+    ),
   body: z
     .string()
     .min(1)

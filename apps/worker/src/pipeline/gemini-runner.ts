@@ -231,7 +231,12 @@ export function toGeminiOutput(
   if (trimmedUrl) {
     frontmatter.original_url = trimmedUrl;
   }
-  const excerpt = opts?.excerpt?.trim();
+  // Excerpt: explicit opts win (client-draft SIGHT caller), else the draft's
+  // own optional excerpt (on PostDraftSchema for every kind since 2026-07).
+  // Clamped to 200 chars like the tag/category counts — steer in the prompt,
+  // enforce here. Posts with no excerpt at all get a first-sentence fallback
+  // in post-writer, so this stays absence-tolerant.
+  const excerpt = (opts?.excerpt ?? draft.excerpt)?.trim().slice(0, 200);
   if (excerpt) {
     frontmatter.excerpt = excerpt;
   }
@@ -523,13 +528,9 @@ export async function runGemini(
     ]);
     assertDraftNotBlocked(draftResult.finishReason);
     const { output } = draftResult;
-    // excerpt is optional in the schema (flash sometimes omits it). Fall back to
-    // the first sentence of the body so the post still has a summary line.
-    const excerpt =
-      output.excerpt?.trim() ||
-      output.body.trim().split(/(?<=[.!?])\s+/)[0]?.slice(0, 200);
+    // output.excerpt (optional) is read by toGeminiOutput directly; a missing
+    // one gets the central first-sentence fallback in post-writer.
     const result = toGeminiOutput(output, "SIGHT", {
-      excerpt,
       imageAlts: output.imageAlts,
     });
     // Non-null OCR text becomes embeddable/searchable: appended to the body as
