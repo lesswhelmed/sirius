@@ -872,11 +872,23 @@ async function seedDemoContent(
         : {}),
     };
 
-    const submission = await prisma.ingestSubmission.upsert({
-      where: { contentHash },
-      create: { contentHash, ...submissionData },
-      update: submissionData,
+    // `contentHash` is no longer @unique (migration 20260704120000_ingest_per_submitter_dedup
+    // dropped it for PARTITIONED dedup — see packages/db/src/ingest.ts createSubmission), so a
+    // unique upsert on it is invalid. Mirror that helper's partition-scoped lookup: these seed
+    // rows are always attributed, so dedup on (contentHash, submittedById) and update-or-create
+    // by id to stay idempotent across re-seeds.
+    const existing = await prisma.ingestSubmission.findFirst({
+      where: { contentHash, submittedById: userId },
+      select: { id: true },
     });
+    const submission = existing
+      ? await prisma.ingestSubmission.update({
+          where: { id: existing.id },
+          data: submissionData,
+        })
+      : await prisma.ingestSubmission.create({
+          data: { contentHash, ...submissionData },
+        });
 
     items.push({
       postId: created.id,
