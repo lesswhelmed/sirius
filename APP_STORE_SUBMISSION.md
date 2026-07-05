@@ -269,9 +269,10 @@ IAP submitted *with* a build).
   (`apps/mobile/src/lib/purchases/`), surfaced from the Settings "Subscription" section
   (`apps/mobile/src/components/subscription-section.tsx`).
 - Privacy Policy page **exists** → `https://lesswhelmed.com/privacy`.
-- **No Terms of Use / EULA page** in the repo — and **decision made: use Apple's standard
-  EULA** (`https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`). No web page
-  to write.
+- **Terms of Use page now exists** → `https://lesswhelmed.com/terms` (added in §0 for the
+  UGC work; it references Apple's standard EULA, so 3.1.2(c) is preserved). This **supersedes**
+  the earlier "link the Apple standard EULA URL directly" decision — all Terms links (paywall
+  footer, Settings subscription card, App Description) now point at `/terms`.
 - The mobile app currently shows **no Privacy or Terms links** anywhere (paywall, Settings,
   sign-up).
 
@@ -296,23 +297,22 @@ length / price come from the products automatically; the real gap is the **two l
 - [ ] **RevenueCat dashboard** → paywall editor for the current offering → enable the footer
   **Terms & Privacy** links:
   - Privacy → `https://lesswhelmed.com/privacy`
-  - Terms (EULA) → `https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`
+  - Terms → `https://lesswhelmed.com/terms` (references the standard Apple EULA)
   - This makes the **in-app** links functional with no app-code change (the RevenueCat-hosted
     paywall is remote-configured). You're shipping a new binary for Issue 1 anyway.
 - [x] *(Optional, belt-and-suspenders)* **DONE** — added always-visible **Privacy Policy** +
   **Terms of Use** links at the bottom of the Settings Subscription card
   (`apps/mobile/src/components/subscription-section.tsx`), opening via
-  `expo-web-browser`'s `openBrowserAsync` (Privacy → `/privacy`, Terms → Apple standard EULA).
+  `expo-web-browser`'s `openBrowserAsync` (Privacy → `/privacy`, Terms → `/terms`).
   Ungated (always render). Typecheck + lint pass. Ships in the next binary; strengthens the
   screen recording. Independent of the RevenueCat paywall footer links.
 
 **Part B — App Store metadata.**
 
 - [ ] **Privacy Policy** field in App Store Connect → confirm `https://lesswhelmed.com/privacy`.
-- [ ] **App Description** → add a line with both links (standard-EULA path requires the EULA
-  link in the description):
+- [ ] **App Description** → add a line with both links:
   - Privacy: `https://lesswhelmed.com/privacy`
-  - Terms (EULA): `https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`
+  - Terms: `https://lesswhelmed.com/terms` (references the standard Apple EULA)
 
 ### Note — the IAP review screenshot vs. the screen recording (don't conflate them)
 
@@ -884,11 +884,11 @@ Guideline 2.3.6 — Age rating. We updated the Age Rating selections in App Stor
 **Reply to App Review (subscriptions resubmission — paste into Resolution Center):**
 
 ```text
-Guideline 2.1(b) — In-App Purchase submitted. Thank you. The auto-renewable subscription "Sirius AI Pro" now has complete metadata and a review screenshot, is in the "Ready to Submit" state, and has been attached to this version so it is submitted together with this new binary for review.
+Guideline 2.1(b) — In-App Purchase submitted. Thank you. The "Sirius AI Pro" subscriptions (monthly and annual auto-renewable) and the "Sirius AI Pro Lifetime" non-consumable now have complete metadata and a review screenshot, are in the "Ready to Submit" state, and have been attached to this version so they are submitted together with this new binary for review.
 
 Guideline 3.1.2(c) — Subscription information. The required information is now present in both the app and the metadata:
-- In the purchase flow (paywall): the subscription title, length, and price are displayed, along with functional links to our Privacy Policy (https://lesswhelmed.com/privacy) and the standard Apple Terms of Use / EULA (https://www.apple.com/legal/internet-services/itunes/dev/stdeula/).
-- In the App Store metadata: the Privacy Policy field links to https://lesswhelmed.com/privacy, and the App Description includes a functional link to the standard Apple Terms of Use (EULA).
+- In the purchase flow (paywall): the subscription title, length, and price are displayed, along with functional links to our Privacy Policy (https://lesswhelmed.com/privacy) and our Terms of Use (https://lesswhelmed.com/terms), which references the standard Apple Terms of Use (EULA).
+- In the App Store metadata: the Privacy Policy field links to https://lesswhelmed.com/privacy, and the App Description includes a functional link to our Terms of Use (https://lesswhelmed.com/terms).
 A screen recording of the purchase flow showing the title, length, price, and both functional links is included in the App Review Information Notes.
 ```
 
