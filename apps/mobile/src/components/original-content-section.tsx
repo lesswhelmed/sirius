@@ -91,6 +91,13 @@ function AudioPlayer({ audio }: { audio: OriginalAudio }) {
   const onTrackLayout = (e: LayoutChangeEvent) => {
     trackWidthRef.current = e.nativeEvent.layout.width;
   };
+  // Single seek primitive (clamped to [0, duration]) shared by the tap/drag path
+  // and the VoiceOver increment/decrement actions below, so they can never drift.
+  const seekToSeconds = (seconds: number) => {
+    if (duration <= 0) return;
+    const clamped = Math.min(duration, Math.max(0, seconds));
+    void player.seekTo(clamped);
+  };
   const onSeek = (e: { nativeEvent: { locationX: number } }) => {
     const trackWidth = trackWidthRef.current;
     if (trackWidth <= 0 || duration <= 0) return;
@@ -98,7 +105,17 @@ function AudioPlayer({ audio }: { audio: OriginalAudio }) {
       1,
       Math.max(0, e.nativeEvent.locationX / trackWidth),
     );
-    void player.seekTo(fraction * duration);
+    seekToSeconds(fraction * duration);
+  };
+  const SEEK_STEP_SECONDS = 10;
+  const onSeekAccessibilityAction = (e: {
+    nativeEvent: { actionName: string };
+  }) => {
+    if (e.nativeEvent.actionName === "increment") {
+      seekToSeconds(status.currentTime + SEEK_STEP_SECONDS);
+    } else if (e.nativeEvent.actionName === "decrement") {
+      seekToSeconds(status.currentTime - SEEK_STEP_SECONDS);
+    }
   };
 
   return (
@@ -122,6 +139,12 @@ function AudioPlayer({ audio }: { audio: OriginalAudio }) {
             onLayout={onTrackLayout}
             accessibilityRole="adjustable"
             accessibilityLabel="Seek audio"
+            accessibilityValue={{ min: 0, max: 100, now: Math.round(progress * 100) }}
+            accessibilityActions={[
+              { name: "increment" },
+              { name: "decrement" },
+            ]}
+            onAccessibilityAction={onSeekAccessibilityAction}
             style={styles.track}
           >
             <View style={[styles.trackFill, { width: `${progress * 100}%` }]} />

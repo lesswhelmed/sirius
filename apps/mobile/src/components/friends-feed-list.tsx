@@ -13,6 +13,8 @@ import {
   StyleSheet,
   Text,
   View,
+  type AccessibilityActionEvent,
+  type AccessibilityActionInfo,
 } from "react-native";
 
 import { KindLabel } from "@/components/sirius";
@@ -47,6 +49,35 @@ type FeedPost = Post & {
   ownAudience?: OwnAudience | null;
 };
 
+// Single source of truth for "what audience state is visually shown" — shared
+// by AudienceBadge (the pill) and the row's composed VoiceOver label, so the
+// two can never say different things. Mirrors AudienceBadge's own branching
+// exactly (null/PRIVATE → nothing; FRIENDS/PUBLIC → fixed word; GROUP → first
+// group name (+N more), only when a group is actually present).
+function audienceBadgeInfo(
+  audience: OwnAudience | null | undefined,
+): { label: string; group?: { id: string; name: string } } | null {
+  if (!audience || audience.visibility === "PRIVATE") return null;
+  if (audience.visibility === "FRIENDS") return { label: "Friends" };
+  if (audience.visibility === "PUBLIC") return { label: "Public" };
+  // GROUP
+  const [first, ...rest] = audience.groups;
+  if (!first) return null;
+  const extra = rest.length > 0 ? ` +${rest.length}` : "";
+  return { label: `${first.name}${extra}`, group: first };
+}
+
+// Shared navigation handlers — used both by the nested Pressables (sighted
+// tap) and by the row's onAccessibilityAction (VoiceOver custom action), so
+// the two paths can never drift apart.
+function navigateToGroupManager(groupId: string) {
+  pushOnce(`/groups?group=${encodeURIComponent(groupId)}`);
+}
+
+function navigateToAuthorCatalog(handle: string) {
+  pushOnce(`/u/${handle}/catalog`);
+}
+
 // The owner-facing audience mark: shows whom *you* shared this with. Driven by
 // ownAudience (peer rows are null → nothing renders; PRIVATE is silent). FRIENDS
 // and PUBLIC are static pills; GROUP shows the first group name (+N more) and
@@ -58,15 +89,16 @@ function AudienceBadge({
   audience: OwnAudience | null | undefined;
 }) {
   const styles = useThemedStyles(makeStyles);
-  if (!audience || audience.visibility === "PRIVATE") return null;
-  if (audience.visibility === "FRIENDS") {
+  const info = audienceBadgeInfo(audience);
+  if (!info) return null;
+  if (audience?.visibility === "FRIENDS") {
     return (
       <View style={[styles.badge, styles.badgeFriends]}>
         <Text style={[styles.badgeText, styles.badgeFriendsText]}>FRIENDS</Text>
       </View>
     );
   }
-  if (audience.visibility === "PUBLIC") {
+  if (audience?.visibility === "PUBLIC") {
     return (
       <View style={[styles.badge, styles.badgePublic]}>
         <Text style={[styles.badgeText, styles.badgePublicText]}>PUBLIC</Text>
@@ -74,16 +106,13 @@ function AudienceBadge({
     );
   }
   // GROUP
-  const [first, ...rest] = audience.groups;
-  if (!first) return null;
-  const extra = rest.length > 0 ? ` +${rest.length}` : "";
+  const group = info.group;
+  if (!group) return null;
   return (
     <Pressable
-      onPress={() =>
-        pushOnce(`/groups?group=${encodeURIComponent(first.id)}`)
-      }
+      onPress={() => navigateToGroupManager(group.id)}
       accessibilityRole="button"
-      accessibilityLabel={`Shared with ${first.name}${extra} — manage group`}
+      accessibilityLabel={`Shared with ${info.label} — manage group`}
       hitSlop={6}
       style={({ pressed }) => [
         styles.badge,
@@ -92,8 +121,7 @@ function AudienceBadge({
       ]}
     >
       <Text style={[styles.badgeText, styles.badgeGroupText]} numberOfLines={1}>
-        ▣ {first.name}
-        {extra}
+        ▣ {info.label}
       </Text>
     </Pressable>
   );
@@ -125,11 +153,80 @@ export function FriendsFeedList({ header }: { header?: ReactNode }) {
         const tone = postTypeTone[item.type] ?? t.color.inkMuted;
         const imageUri = resolveMediaUrl(item.imageUrl);
         const author = item.submittedBy;
+        const typeLabel = TYPE_LABEL[item.type] ?? item.type;
+        // Same variables the visible children below read from (author,
+        // item.ownAudience) — the composed label and the custom actions are
+        // built from them directly so they can't drift from what's rendered.
+        const audienceInfo = audienceBadgeInfo(item.ownAudience);
+        const authorLine = author
+          ? author.handle
+            ? `@${author.handle}`
+            : author.name
+          : null;
+        const showModeration = !item.ownAudience && !!author;
+
+        const openModerationSheet = () => {
+          if (!author) return;
+          showPostModerationSheet({
+            slug: item.slug,
+            author,
+            onBlocked: () => {
+              // Server-side exclusion is already live; refetch so the
+              // blocked author's rows vanish instantly, and refresh the
+              // blocked-users list under Friends.
+              void queryClient.invalidateQueries({ queryKey: ["feed"] });
+              void queryClient.invalidateQueries({ queryKey: ["blocks"] });
+            },
+          });
+        };
+
+        let rowLabel = `${item.title} — ${typeLabel}`;
+        if (authorLine) rowLabel += `, by ${authorLine}`;
+        if (audienceInfo) rowLabel += `, shared with ${audienceInfo.label}`;
+
+        const accessibilityActions: AccessibilityActionInfo[] = [];
+        if (author?.handle) {
+          accessibilityActions.push({
+            name: "open-author",
+            label: `Open @${author.handle} catalog`,
+          });
+        }
+        if (showModeration) {
+          accessibilityActions.push({
+            name: "more-actions",
+            label: "Report or block",
+          });
+        }
+        if (audienceInfo?.group) {
+          accessibilityActions.push({
+            name: "manage-group",
+            label: `Manage group ${audienceInfo.group.name}`,
+          });
+        }
+
+        const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
+          switch (event.nativeEvent.actionName) {
+            case "open-author":
+              if (author?.handle) navigateToAuthorCatalog(author.handle);
+              break;
+            case "more-actions":
+              openModerationSheet();
+              break;
+            case "manage-group":
+              if (audienceInfo?.group) {
+                navigateToGroupManager(audienceInfo.group.id);
+              }
+              break;
+          }
+        };
+
         return (
           <Pressable
             onPress={() => openPost(item.slug, "Friends")}
             accessibilityRole="button"
-            accessibilityLabel={`${item.title} — ${TYPE_LABEL[item.type] ?? item.type}`}
+            accessibilityLabel={rowLabel}
+            accessibilityActions={accessibilityActions}
+            onAccessibilityAction={handleAccessibilityAction}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
           >
             {imageUri ? (
@@ -152,25 +249,9 @@ export function FriendsFeedList({ header }: { header?: ReactNode }) {
                     feed's privacy invariant), so its absence marks a peer's
                     post. Nested Pressable captures the touch, so the row press
                     (open the post) doesn't also fire. */}
-                {!item.ownAudience && author ? (
+                {showModeration ? (
                   <Pressable
-                    onPress={() =>
-                      showPostModerationSheet({
-                        slug: item.slug,
-                        author,
-                        onBlocked: () => {
-                          // Server-side exclusion is already live; refetch so
-                          // the blocked author's rows vanish instantly, and
-                          // refresh the blocked-users list under Friends.
-                          void queryClient.invalidateQueries({
-                            queryKey: ["feed"],
-                          });
-                          void queryClient.invalidateQueries({
-                            queryKey: ["blocks"],
-                          });
-                        },
-                      })
-                    }
+                    onPress={openModerationSheet}
                     hitSlop={14}
                     accessibilityRole="button"
                     accessibilityLabel={`More actions for ${item.title}`}
@@ -193,7 +274,7 @@ export function FriendsFeedList({ header }: { header?: ReactNode }) {
                   // Pressable it captures the touch, so the surrounding row press
                   // (open the post) doesn't also fire.
                   <Pressable
-                    onPress={() => pushOnce(`/u/${author.handle}/catalog`)}
+                    onPress={() => navigateToAuthorCatalog(author.handle!)}
                     accessibilityRole="button"
                     accessibilityLabel={`@${author.handle} — open catalog`}
                     hitSlop={6}

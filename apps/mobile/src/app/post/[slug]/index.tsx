@@ -68,7 +68,7 @@ type PostView = {
 // A gallery photo that degrades to a labeled placeholder on load failure (a
 // deleted/moved file), mirroring the web PostImage "No plate" behavior so the
 // two clients stay consistent instead of mobile showing a blank box.
-function GalleryImage({ image }: { image: SightImage }) {
+function GalleryImage({ image, index }: { image: SightImage; index?: number }) {
   const styles = useThemedStyles(makeStyles);
   const [failed, setFailed] = useState(false);
   if (failed) {
@@ -78,13 +78,18 @@ function GalleryImage({ image }: { image: SightImage }) {
       </View>
     );
   }
+  // Meaningful post content — even without an authored alt, fall back to a
+  // generic label (never leave it unlabeled AND unhidden, which is a silent
+  // VoiceOver gap: a nameless image stop).
+  const fallbackLabel =
+    typeof index === "number" ? `Post image ${index + 1}` : "Post image";
   return (
     <Image
       source={{ uri: resolveMediaUrl(image.url) }}
       style={styles.galleryImage}
       contentFit="cover"
       transition={150}
-      accessibilityLabel={image.alt || undefined}
+      accessibilityLabel={image.alt || fallbackLabel}
       onError={() => setFailed(true)}
     />
   );
@@ -250,7 +255,7 @@ export default function PostDetailScreen() {
           />
         ) : null}
         {sightImages.map((img, i) => (
-          <GalleryImage key={`${img.url}-${i}`} image={img} />
+          <GalleryImage key={`${img.url}-${i}`} image={img} index={i} />
         ))}
         <KindLabel tone={tone}>{TYPE_LABEL[view.type] ?? view.type}</KindLabel>
         <Title accent=".">{view.title}</Title>

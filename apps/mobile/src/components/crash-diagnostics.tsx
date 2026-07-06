@@ -87,6 +87,7 @@ export function CrashDiagnostics(): React.ReactElement {
         accessibilityRole="button"
         accessibilityLabel="Diagnostics"
         accessibilityHint="Long-press to show crash diagnostics"
+        accessibilityState={{ expanded: revealed }}
         hitSlop={12}
         delayLongPress={REVEAL_LONG_PRESS_MS}
         onPress={onTriggerPress}

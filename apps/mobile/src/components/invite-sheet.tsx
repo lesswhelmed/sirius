@@ -85,6 +85,7 @@ export function InviteSheet({
         />
         <SecondaryButton
           label={copied ? "Copied ✓" : "Copy link"}
+          accessibilityLabel={copied ? "Copied" : "Copy link"}
           symbol="link"
           onPress={copyLink}
         />

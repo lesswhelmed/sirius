@@ -351,6 +351,7 @@ export default function SettingsScreen() {
               diagVisible ? "Hide share diagnostics" : "Share diagnostics"
             }
             symbol="list.bullet.rectangle"
+            accessibilityState={{ expanded: diagVisible }}
             onPress={onToggleDiagnostics}
           />
           {diagVisible ? (

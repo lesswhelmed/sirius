@@ -177,7 +177,7 @@ export function VoiceSection() {
             <Pressable
               onPress={handleCopyPrompt}
               accessibilityRole="button"
-              accessibilityLabel="Copy prompt"
+              accessibilityLabel={copied ? "Copied" : "Copy prompt"}
               hitSlop={8}
               style={({ pressed }) => [
                 styles.copyButton,
