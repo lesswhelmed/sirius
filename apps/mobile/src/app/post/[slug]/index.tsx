@@ -244,6 +244,9 @@ export default function PostDetailScreen() {
             style={styles.hero}
             contentFit="cover"
             transition={150}
+            accessible={false}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
           />
         ) : null}
         {sightImages.map((img, i) => (

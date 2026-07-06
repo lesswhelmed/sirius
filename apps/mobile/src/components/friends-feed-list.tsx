@@ -219,7 +219,9 @@ export function FriendsFeedList({ header }: { header?: ReactNode }) {
           </View>
         ) : (
           <View style={styles.empty}>
-            <Text style={styles.emptyGlyph}>∅</Text>
+            <Text style={styles.emptyGlyph} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              ∅
+            </Text>
             <Text style={styles.emptyTitle}>
               {isError ? "Couldn’t load." : "Nothing shared with you yet."}
             </Text>
