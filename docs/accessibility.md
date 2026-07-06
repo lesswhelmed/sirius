@@ -3,12 +3,12 @@
 This is the evidence-and-answers doc behind Sirius's **Accessibility Nutrition
 Labels** in App Store Connect. It backs four claims and nothing more:
 
-| Label | Status | Nature of the work |
-|---|---|---|
-| **VoiceOver** | supported (device pass pending) | targeted labeling of four thin surfaces |
-| **Reduced Motion** | supported (device pass pending) | guarded the 3D Explore/Space scenes |
-| **Dark Interface** | supported | already true — dual light/dark theme |
-| **Sufficient Contrast** | supported | already true — WCAG-AA token audit |
+| Label                   | Status                          | Nature of the work                      |
+| ----------------------- | ------------------------------- | --------------------------------------- |
+| **VoiceOver**           | supported (device pass pending) | targeted labeling of four thin surfaces |
+| **Reduced Motion**      | supported (device pass pending) | guarded the 3D Explore/Space scenes     |
+| **Dark Interface**      | supported                       | already true — dual light/dark theme    |
+| **Sufficient Contrast** | supported                       | already true — WCAG-AA token audit      |
 
 Scope is `apps/mobile` only. The web app (`apps/web`) is **not** covered by these
 claims. Phase 1 deliberately does **not** claim Larger Text (Dynamic Type) or
@@ -41,6 +41,7 @@ standard; the shared primitives in `src/components/sirius.tsx` carry the roles f
 everything built on them.
 
 **Shared primitives (`src/components/sirius.tsx`).**
+
 - `PrimaryButton` sets `accessibilityRole="button"` +
   `accessibilityState={{ disabled, busy }}` (`:589-590`); `SecondaryButton` does
   the same (`:622-623`). Every button in the app inherits this.
@@ -56,8 +57,9 @@ everything built on them.
 subtree, so the row's nested controls (author-handle link, moderation "···",
 GROUP-audience badge) are unreachable by swipe on their own. They are instead
 exposed two ways that cannot drift from the visible UI:
+
 - **Composed label** (`:183-185`): `` `${title} — ${typeLabel}` `` + `, by
-  ${authorLine}` (when an author renders) + `, shared with ${audienceInfo.label}`
+${authorLine}` (when an author renders) + `, shared with ${audienceInfo.label}`
   (when the owner audience badge renders) — e.g. "How I built X — Finding, by
   @mina, shared with Friends".
 - **VoiceOver custom actions** (`:187-205` build the list, `:207-221` dispatch,
@@ -123,7 +125,7 @@ In App Store Connect → your app → **App Information → Accessibility**
 (Accessibility Nutrition Labels), mark **VoiceOver** Supported for **iPhone and
 iPad** — but only after the on-device script below passes (see the device gate).
 Justification to keep on file: "Every interactive control across the core loop
-(capture, queue, feed, post detail, audience change, settings) carries an
+(capture, in-flight processing, feed, post detail, audience change, settings) carries an
 accessibilityRole and a meaningful accessibilityLabel; list rows read as a single
 composed unit with custom actions for nested controls; decorative art is hidden;
 stateful controls announce state. Evidence: `docs/accessibility.md` → VoiceOver."
@@ -136,7 +138,9 @@ stateful controls announce state. Evidence: `docs/accessibility.md` → VoiceOve
    double-tap to activate it; swipe right/left to move between stops.
 3. Walk the core loop:
    - **Capture** a note (Capture tab → type a note → submit).
-   - Open **Queue** and confirm the new item is announced.
+   - Open **Catalog** — while your capture is processing it appears at the top
+     under **In flight**; wait for it to finish and confirm the completed post
+     is announced.
    - Open the **Friends** feed and swipe through 3 cards. Each card must read as
      **one stop** giving title + type (and author/audience when shown) — not four
      separate text fragments.
@@ -160,17 +164,18 @@ stateful controls announce state. Evidence: `docs/accessibility.md` → VoiceOve
 
 ### Implementation
 
-Apple's bar is reducing *unnecessary / vestibular-triggering* motion — ambient,
+Apple's bar is reducing _unnecessary / vestibular-triggering_ motion — ambient,
 looping, or idle animation — not freezing functional one-shot transitions. The
 only ambient motion in the app is in the two Three.js scenes; both consume
 `useReducedMotion()` from `src/lib/a11y.ts` (`:15`).
 
 **Explore scene — `src/components/explore/constellation-scene.tsx`.**
+
 - `PulseHalo`'s per-frame glow pulse is stilled when reduce-motion is on: it snaps
   to a static mid-range glow (`m.scale.setScalar(1)`, `mat.opacity = 0.24`) and
   early-returns before any trig runs (`:501-503`).
 - `CameraRig` replaces the per-frame easing factor with `const d = reduced ? 1 :
-  DAMPING` (`:644`), so the camera **snaps** to its target instead of gliding —
+DAMPING` (`:644`), so the camera **snaps** to its target instead of gliding —
   applied to yaw, pitch, target, radius, and the bottom-sheet lift. `d = 1` means
   "arrive this frame".
 - The hook is read once outside the Canvas (`:848`) and passed to both
@@ -353,23 +358,23 @@ Not claimed in phase 1; each needs real work before its label is honest.
 Acceptance criteria from the phase-1 design spec
 (`docs/superpowers/specs/2026-07-06-ios-accessibility-phase1-design.md`).
 
-| AC | What it covers | Status |
-|---|---|---|
-| **AC1.1** | `constellation-scene.tsx` consumes `useReducedMotion()` | **pass** — import + hook at `constellation-scene.tsx:848`; `space.tsx:18/149` |
-| **AC1.2** | Reduce-motion ON ⇒ no ambient per-frame motion; camera snaps | **pass** — PulseHalo static `:501-503`; `d = reduced ? 1 : DAMPING` `:644`; `space.tsx:87`; `gl.render` never skipped |
-| **AC1.3** | Animation sweep exhaustive + dispositioned | **pass** — all `useFrame` sites guarded/exempt; 0 `withRepeat`/`Animated.loop`; one-shots exempt (see Reduced Motion) |
-| **AC1.4** | `check-types` + `lint` (`--force`) pass, output pasted | **pass** — Task 1 report: 6/6 check-types, 5/5 lint |
-| **AC1.5** | Reduce-motion script passes on device | **pending user verification** |
-| **AC2.1** | Zero unlabeled interactive elements in swept surfaces | **pass** — inventory tables in `verify-{feed,settings,tree,post}.md`; feed nested controls exposed via custom actions (`friends-feed-list.tsx:187-229`) |
-| **AC2.2** | Repeated rows are single composed accessible units | **pass** — feed `:183-185`, tree `:647-649`, post rows explicit labels |
-| **AC2.3** | Decorative hidden; meaningful images labeled | **pass** — feed ∅ `:303`, post hero triad `:252-254`, gallery alt fallback `:84/:92` |
-| **AC2.4** | Stateful controls carry `accessibilityState`/value | **pass** — biometric Switch (native), tabs `segmented.tsx:74`, expands `settings.tsx:354`/`crash-diagnostics.tsx:90`, seek `original-content-section.tsx:142` |
-| **AC2.5** | `check-types` + `lint` (`--force`) pass, output pasted | **pass** — Task 3/4 reports: 6/6 check-types, 5/5 lint |
-| **AC2.6** | VoiceOver core-loop script passes on device | **pending user verification** |
-| **AC3.1** | This doc exists with 4 label sections (×3 subsections) + contract + backlog | **pass** — this document |
-| **AC3.2** | Independent verifier confirms every pointer | **pass** — verifier reports `verify-{feed,settings,tree,post}.md`, round-1 re-verify sections |
-| **AC3.3** | Scripts executable by a non-engineer | **pass** — exact Settings paths + in-app steps + report-back points above |
-| **AC3.4** | ASC answers only claim what evidence supports; device-pending marked | **pass** — device gate stated up front; AC1.5/AC2.6 marked pending; Larger Text / Voice Control excluded |
+| AC        | What it covers                                                              | Status                                                                                                                                                        |
+| --------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AC1.1** | `constellation-scene.tsx` consumes `useReducedMotion()`                     | **pass** — import + hook at `constellation-scene.tsx:848`; `space.tsx:18/149`                                                                                 |
+| **AC1.2** | Reduce-motion ON ⇒ no ambient per-frame motion; camera snaps                | **pass** — PulseHalo static `:501-503`; `d = reduced ? 1 : DAMPING` `:644`; `space.tsx:87`; `gl.render` never skipped                                         |
+| **AC1.3** | Animation sweep exhaustive + dispositioned                                  | **pass** — all `useFrame` sites guarded/exempt; 0 `withRepeat`/`Animated.loop`; one-shots exempt (see Reduced Motion)                                         |
+| **AC1.4** | `check-types` + `lint` (`--force`) pass, output pasted                      | **pass** — Task 1 report: 6/6 check-types, 5/5 lint                                                                                                           |
+| **AC1.5** | Reduce-motion script passes on device                                       | **pending user verification**                                                                                                                                 |
+| **AC2.1** | Zero unlabeled interactive elements in swept surfaces                       | **pass** — inventory tables in `verify-{feed,settings,tree,post}.md`; feed nested controls exposed via custom actions (`friends-feed-list.tsx:187-229`)       |
+| **AC2.2** | Repeated rows are single composed accessible units                          | **pass** — feed `:183-185`, tree `:647-649`, post rows explicit labels                                                                                        |
+| **AC2.3** | Decorative hidden; meaningful images labeled                                | **pass** — feed ∅ `:303`, post hero triad `:252-254`, gallery alt fallback `:84/:92`                                                                          |
+| **AC2.4** | Stateful controls carry `accessibilityState`/value                          | **pass** — biometric Switch (native), tabs `segmented.tsx:74`, expands `settings.tsx:354`/`crash-diagnostics.tsx:90`, seek `original-content-section.tsx:142` |
+| **AC2.5** | `check-types` + `lint` (`--force`) pass, output pasted                      | **pass** — Task 3/4 reports: 6/6 check-types, 5/5 lint                                                                                                        |
+| **AC2.6** | VoiceOver core-loop script passes on device                                 | **pending user verification**                                                                                                                                 |
+| **AC3.1** | This doc exists with 4 label sections (×3 subsections) + contract + backlog | **pass** — this document                                                                                                                                      |
+| **AC3.2** | Independent verifier confirms every pointer                                 | **pass** — verifier reports `verify-{feed,settings,tree,post}.md`, round-1 re-verify sections                                                                 |
+| **AC3.3** | Scripts executable by a non-engineer                                        | **pass** — exact Settings paths + in-app steps + report-back points above                                                                                     |
+| **AC3.4** | ASC answers only claim what evidence supports; device-pending marked        | **pass** — device gate stated up front; AC1.5/AC2.6 marked pending; Larger Text / Voice Control excluded                                                      |
 
 Device-gated ACs (AC1.5, AC2.6) stay **open** until the user runs the scripts on
 hardware and confirms. No App Store Connect label may be marked Supported before

@@ -612,6 +612,7 @@ export function SecondaryButton({
   disabled,
   style,
   symbol,
+  accessibilityState: accessibilityStateProp,
   ...rest
 }: ButtonProps & { symbol?: SFSymbol }) {
   const t = useTheme();
@@ -620,7 +621,7 @@ export function SecondaryButton({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled: isDisabled, busy }}
+      accessibilityState={{ disabled: isDisabled, busy, ...accessibilityStateProp }}
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.secondaryButton,
