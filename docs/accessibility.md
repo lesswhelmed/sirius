@@ -108,8 +108,8 @@ plus increment/decrement actions (`:143-147`) that step the same 10-second
 `seekToSeconds` helper the tap path uses (`:110-117`).
 
 **Auth-screen focus survival (coordination note).** Verified with coworker agent
-DarkCanyon on the iOS input-wipe fix (agent-mail thread `ios-input-wipe`, msgs
-439-441): the auth client sets `refetchOnWindowFocus: false`
+DarkCanyon on the iOS input-wipe fix (commit `8942503`, agent-mail thread
+`ios-input-wipe`, msgs 439-443): the auth client sets `refetchOnWindowFocus: false`
 (`src/lib/auth-client.ts:19`) and the `(auth)` layout never swaps the auth `Stack`
 out during a session refetch — it gates on the hook's own state,
 `isPending && !isRefetching` (`src/app/(auth)/_layout.tsx:16`), rather than a local
