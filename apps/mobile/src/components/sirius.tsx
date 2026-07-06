@@ -655,13 +655,17 @@ export function SecondaryButton({
 export function TextLink({
   label,
   tone,
+  accessibilityLabel,
   ...rest
-}: Omit<PressableProps, "children"> & { label: string; tone?: string }) {
+}: Omit<PressableProps, "children"> & { label: string; tone?: string; accessibilityLabel?: string }) {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={
+        accessibilityLabel ?? label.replace(/[→←▸▹›‹✕·]/gu, "").trim()
+      }
       hitSlop={12}
       style={({ pressed }) => [pressed && styles.linkPressed]}
       {...rest}
