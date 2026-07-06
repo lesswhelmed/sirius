@@ -54,6 +54,25 @@ One-shot functional transitions (e.g. a sheet sliding in) do not need guarding �
 Apple's bar is reducing *unnecessary/vestibular-triggering* motion, not freezing
 the UI.
 
+### Acceptance criteria (work item 1)
+
+- **AC1.1** `constellation-scene.tsx` consumes `useReducedMotion()` from
+  `src/lib/a11y.ts` (evidence: import + hook call at cited lines).
+- **AC1.2** With reduce-motion ON, no ambient per-frame mutation runs: every
+  `useFrame` loop either early-returns or computes the settled state; idle camera
+  drift is disabled; tap-to-focus sets the camera position instantly instead of
+  tweening. Evidence: per-loop citation of the guard.
+- **AC1.3** Sweep is exhaustive and enumerated: the implementing agent reports
+  EVERY match for `useFrame`, `Animated.loop`, `withRepeat`, and
+  looping/ambient `withSpring`/`withTiming` in `apps/mobile/src`, with a per-site
+  disposition — `guarded` (with line citation) or `exempt: one-shot functional
+  transition` (with one-line justification). An unlisted match = AC failed.
+- **AC1.4** `turbo check-types --filter=mobile --force` and
+  `turbo lint --filter=mobile --force` pass; output pasted, not summarized.
+- **AC1.5** *(user-manual, blocks the ASC claim, not the merge)* The Reduced
+  Motion verification script in `docs/accessibility.md` passes on device,
+  confirmed by the user.
+
 ## Work item 2: VoiceOver baseline
 
 Bring these surfaces up to the composer's labeling standard:
@@ -90,6 +109,26 @@ refactor existing well-labeled surfaces onto it.
 **Execution:** four parallel subagent sweeps (one per surface), each gated on
 `turbo check-types` + `lint` (with `--force` per the turbo-cache false-pass rule).
 
+### Acceptance criteria (work item 2, per surface)
+
+- **AC2.1** Zero unlabeled interactive elements in the swept files. Evidence: the
+  implementing agent returns an **element inventory table** — every `Pressable`,
+  `TouchableOpacity`, `Switch`, `TextInput`, and tappable link in the surface,
+  with its line number, `accessibilityRole`, and `accessibilityLabel` (or the
+  reason it needs none, e.g. wrapped in an accessible parent). An interactive
+  element absent from the table = AC failed.
+- **AC2.2** Repeated list rows (feed cards, tree outline rows, settings rows)
+  are single accessible units with a composed label; evidence: the composed
+  label template per row type.
+- **AC2.3** Decorative icons/images are hidden from VoiceOver; meaningful images
+  are labeled. Evidence: enumerated icon dispositions.
+- **AC2.4** Stateful controls carry `accessibilityState`; evidence per control.
+- **AC2.5** `turbo check-types --filter=mobile --force` and
+  `turbo lint --filter=mobile --force` pass; output pasted, not summarized.
+- **AC2.6** *(user-manual, blocks the ASC claim, not the merge)* The VoiceOver
+  core-loop script in `docs/accessibility.md` passes on device, confirmed by the
+  user.
+
 ## Work item 3: Documentation — `docs/accessibility.md`
 
 One doc, four per-label sections (VoiceOver, Reduced Motion, Dark Interface,
@@ -113,6 +152,55 @@ Plus two closing sections:
   `maxFontSizeMultiplier` clamps + large-size testing → claim Larger Text),
   Voice Control verification pass, `eslint-plugin-react-native-a11y` enforcement,
   Differentiate Without Color Alone audit.
+
+### Acceptance criteria (work item 3)
+
+- **AC3.1** `docs/accessibility.md` exists with all four label sections, each
+  containing the three required subsections (implementation + file pointers,
+  exact ASC answer, on-device verification script), plus the accessibility
+  contract and phase-2 backlog sections.
+- **AC3.2** Every factual claim in the doc has a file pointer, and an
+  **independent verifier subagent** (not the author) confirms each pointer
+  exists and the code does what the doc claims. Any claim the verifier cannot
+  confirm is removed or rewritten — the doc must never overstate.
+- **AC3.3** Verification scripts are executable by a non-engineer: exact
+  Settings paths, exact in-app steps, expected behavior, and the specific
+  feedback points to report back.
+- **AC3.4** The ASC answers section only claims what AC1.x/AC2.x evidence
+  supports; anything pending user device verification is explicitly marked
+  "do not select in ASC until verified on device."
+
+## Verification & subagent execution rules (binding)
+
+Every implementation/verification subagent dispatched for this work is given
+these rules verbatim in its prompt, and its report is rejected (work re-run) if
+it violates them:
+
+1. **Run it or say you didn't.** Never claim a check passed without executing
+   it in this run. Paste the actual command and its tail output. "Should pass"
+   / "no reason it would fail" = a failed report.
+2. **Force-bust the turbo cache.** All `check-types`/`lint` gates use
+   `--force`. A `FULL TURBO` cached pass is not evidence (known false-pass
+   trap in this repo).
+3. **No fabricated device results.** Subagents cannot run VoiceOver or Reduce
+   Motion on hardware. Device-level ACs (AC1.5, AC2.6) are ALWAYS reported as
+   `pending user verification` — never `passed`.
+4. **Evidence per AC.** Reports are structured as one line per AC:
+   `AC id — pass/fail/pending — evidence (file:line citations, command output,
+   or inventory table)`. Missing evidence = fail, not pass.
+5. **Report failures verbatim.** If a gate fails or an AC can't be met, report
+   the exact error and stop; do not work around it by changing the approach
+   (per team rule: ask before deviating).
+6. **Scope discipline.** Touch only the assigned files; no drive-by refactors;
+   never run `git add`/`git commit` (the main session commits explicit paths
+   only — swarm-shared tree).
+7. **Author ≠ verifier.** The doc-claims verification pass (AC3.2) and the
+   final AC roll-up are performed by subagents that did not write the code/doc
+   they're checking.
+
+The main session's final roll-up presents the full AC table (all of AC1–AC3)
+with per-AC status before anything is declared done; ACs marked `pending user
+verification` stay open until the user reports device results.
 
 ## Explicitly out of scope (phase 1)
 
