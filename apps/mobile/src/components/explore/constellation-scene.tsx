@@ -41,6 +41,7 @@ import {
 } from "three";
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
+import { useReducedMotion } from "@/lib/a11y";
 
 type Vec3 = [number, number, number];
 
@@ -485,21 +486,27 @@ function SelectedRing({
 function PulseHalo({
   position,
   palette,
+  reduced,
 }: {
   position: Vec3;
   palette: Palette;
+  reduced: boolean;
 }) {
   const ref = useRef<Mesh>(null);
   const t = useRef(0);
   useFrame((_state, delta) => {
-    t.current += delta;
     const m = ref.current;
     if (!m) return;
+    const mat = m.material as { opacity?: number };
+    if (reduced) {
+      m.scale.setScalar(1);
+      if (mat) mat.opacity = 0.24;
+      return;
+    }
+    t.current += delta;
     const s = 1 + 0.35 * (0.5 + 0.5 * Math.sin(t.current * 2.2));
     m.scale.setScalar(s);
-    const mat = m.material as { opacity?: number };
-    if (mat)
-      mat.opacity = 0.18 + 0.12 * (0.5 + 0.5 * Math.sin(t.current * 2.2));
+    if (mat) mat.opacity = 0.18 + 0.12 * (0.5 + 0.5 * Math.sin(t.current * 2.2));
   });
   return (
     <mesh ref={ref} position={position}>
@@ -611,6 +618,7 @@ function CameraRig({
   initialTarget,
   sheetRef,
   liftRef,
+  reduced,
 }: {
   orbit: RefObject<Orbit>;
   target: RefObject<Vec3>;
@@ -624,6 +632,7 @@ function CameraRig({
   // CameraRig writes its eased lift here each frame so the label projector can
   // reproject when the framing shifts but the camera position hasn't moved.
   liftRef: RefObject<number>;
+  reduced: boolean;
 }) {
   const curOrbit = useRef<Orbit>({ ...orbit.current });
   const curTarget = useRef<Vec3>([...initialTarget] as Vec3);
@@ -632,15 +641,15 @@ function CameraRig({
   // render trips react-hooks/refs); the tiny one-time settle on mount reads fine.
   const curSheet = useRef<number>(0);
   useFrame((state) => {
+    const d = reduced ? 1 : DAMPING; // reduce-motion: snap to target this frame
     const o = curOrbit.current;
-    o.yaw += (orbit.current.yaw - o.yaw) * DAMPING;
-    o.pitch += (orbit.current.pitch - o.pitch) * DAMPING;
+    o.yaw += (orbit.current.yaw - o.yaw) * d;
+    o.pitch += (orbit.current.pitch - o.pitch) * d;
     const c = curTarget.current;
     for (let i = 0; i < 3; i++) {
-      c[i] += (target.current[i]! - c[i]!) * DAMPING;
+      c[i] += (target.current[i]! - c[i]!) * d;
     }
-    curRadius.current +=
-      (fitRadius * zoom.current - curRadius.current) * DAMPING;
+    curRadius.current += (fitRadius * zoom.current - curRadius.current) * d;
     const r = curRadius.current;
     state.camera.position.set(
       c[0]! + r * Math.cos(o.pitch) * Math.sin(o.yaw),
@@ -654,7 +663,7 @@ function CameraRig({
     // so the centered look-at target lands in the middle of the visible band
     // above the sheet. Applied AFTER lookAt and BEFORE render so the projection
     // is current for this frame's draw and the label projector below.
-    curSheet.current += (sheetRef.current - curSheet.current) * DAMPING;
+    curSheet.current += (sheetRef.current - curSheet.current) * d;
     const cam = state.camera as unknown as PerspectiveCamera;
     const w = state.size?.width ?? 0;
     const h = state.size?.height ?? 0;
@@ -836,6 +845,7 @@ export function ConstellationHero({
   const t = useTheme();
   const palette = makePalette(t);
   const styles = useThemedStyles(makeStyles);
+  const reduced = useReducedMotion();
   const bounds = computeBounds(scene.nodes);
   const fitRadius = bounds.radius * FIT_MULT;
   const panLimit = bounds.radius * PAN_LIMIT_MULT;
@@ -991,6 +1001,7 @@ export function ConstellationHero({
           initialTarget={bounds.center}
           sheetRef={sheetRef}
           liftRef={liftRef}
+          reduced={reduced}
         />
         <LabelProjector
           nodes={labelNodes}
@@ -1032,7 +1043,11 @@ export function ConstellationHero({
           <SelectedRing node={selectedNode} palette={palette} />
         ) : null}
         {focused ? (
-          <PulseHalo position={focused.position} palette={palette} />
+          <PulseHalo
+            position={focused.position}
+            palette={palette}
+            reduced={reduced}
+          />
         ) : null}
       </Canvas>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">

@@ -15,6 +15,7 @@ import { BackSide } from "three";
 
 import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
+import { useReducedMotion } from "@/lib/a11y";
 import { openPost } from "@/lib/nav";
 
 // Share the Tree tab's scene query — SAME key + fetcher, so opening one screen
@@ -74,12 +75,19 @@ function OrbitBackdrop({
 // (no drei on native), so we drive the canvas default camera instead.
 const ORBIT_RADIUS = 18;
 const ORBIT_DAMPING = 0.18;
-function CameraRig({ target }: { target: RefObject<Orbit> }) {
+function CameraRig({
+  target,
+  reduced,
+}: {
+  target: RefObject<Orbit>;
+  reduced: boolean;
+}) {
   const current = useRef<Orbit>({ ...target.current });
   useFrame((state) => {
+    const d = reduced ? 1 : ORBIT_DAMPING; // reduce-motion: snap to target this frame
     const cur = current.current;
-    cur.yaw += (target.current.yaw - cur.yaw) * ORBIT_DAMPING;
-    cur.pitch += (target.current.pitch - cur.pitch) * ORBIT_DAMPING;
+    cur.yaw += (target.current.yaw - cur.yaw) * d;
+    cur.pitch += (target.current.pitch - cur.pitch) * d;
     state.camera.position.set(
       ORBIT_RADIUS * Math.cos(cur.pitch) * Math.sin(cur.yaw),
       ORBIT_RADIUS * Math.sin(cur.pitch),
@@ -138,6 +146,7 @@ function LoadedSpace({
 }) {
   const t = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const reduced = useReducedMotion();
   const orbitTarget = useRef<Orbit>({ yaw: 0.6, pitch: 0.35 });
   const onOrbitDelta = useCallback((dx: number, dy: number) => {
     // deltas arrive in NDC units (-1..1 across the canvas); ~2.5 rad per
@@ -164,7 +173,7 @@ function LoadedSpace({
         {/* Web leaves the canvas transparent over the page; expo-gl doesn't
             composite a transparent clear, so clear to the screen bg instead. */}
         <color attach="background" args={[t.color.scene.bg]} />
-        <CameraRig target={orbitTarget} />
+        <CameraRig target={orbitTarget} reduced={reduced} />
         <OrbitBackdrop onDelta={onOrbitDelta} />
         <SpaceScene
           scene={scene}
