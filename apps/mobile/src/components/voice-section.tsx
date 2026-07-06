@@ -150,6 +150,7 @@ export function VoiceSection() {
         <Pressable
           onPress={() => setShowGenerator((s) => !s)}
           accessibilityRole="button"
+          accessibilityLabel="Not sure what to write? Generate it"
           accessibilityState={{ expanded: showGenerator }}
           hitSlop={8}
           style={styles.generatorHeader}
@@ -157,7 +158,9 @@ export function VoiceSection() {
           <Text style={styles.generatorTitle}>
             Not sure what to write? Generate it
           </Text>
-          <Text style={styles.generatorChevron}>
+          {/* Decorative disclosure glyph — the explicit accessibilityLabel above
+              already conveys the row's purpose; VoiceOver shouldn't read "chevron". */}
+          <Text style={styles.generatorChevron} accessibilityElementsHidden>
             {showGenerator ? "⌄" : "›"}
           </Text>
         </Pressable>

@@ -111,6 +111,12 @@ export default function SettingsScreen() {
   }, []);
 
   const label = biometricLabel(bioType);
+  // Shared by the visible toggle Text nodes AND the Switch's accessibilityLabel/Hint
+  // below so VoiceOver announces exactly what sighted users read — never a paraphrase.
+  const biometricToggleTitle = `Sign in with ${label}`;
+  const biometricToggleSub = bioEnabled
+    ? `${label} is on. Your credentials are encrypted on this device.`
+    : `Use ${label} to sign in without typing your password.`;
 
   function onToggleBiometric(next: boolean) {
     if (next) {
@@ -300,14 +306,8 @@ export default function SettingsScreen() {
             {bioCapable ? (
               <View style={styles.toggleRow}>
                 <View style={styles.toggleText}>
-                  <Text
-                    style={styles.toggleTitle}
-                  >{`Sign in with ${label}`}</Text>
-                  <Text style={styles.toggleSub}>
-                    {bioEnabled
-                      ? `${label} is on. Your credentials are encrypted on this device.`
-                      : `Use ${label} to sign in without typing your password.`}
-                  </Text>
+                  <Text style={styles.toggleTitle}>{biometricToggleTitle}</Text>
+                  <Text style={styles.toggleSub}>{biometricToggleSub}</Text>
                 </View>
                 <Switch
                   value={bioEnabled}
@@ -318,6 +318,8 @@ export default function SettingsScreen() {
                   }}
                   thumbColor={t.color.paper}
                   ios_backgroundColor={t.color.rule}
+                  accessibilityLabel={biometricToggleTitle}
+                  accessibilityHint={biometricToggleSub}
                 />
               </View>
             ) : (
@@ -639,6 +641,7 @@ function EditableNameRow({
         editable={!busy}
         maxLength={80}
         placeholder="Your name"
+        accessibilityLabel="Name"
         placeholderTextColor={t.color.inkSubtle}
         autoCapitalize="words"
         autoCorrect
