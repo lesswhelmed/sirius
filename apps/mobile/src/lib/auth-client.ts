@@ -8,6 +8,16 @@ const baseURL =
 
 export const authClient = createAuthClient({
   baseURL,
+  // No session refetch on app foreground: the sync engine
+  // (src/lib/sync/engine.ts revalidateThenSync) already confirms the server
+  // session on every foreground for signed-in users and signs out on an
+  // authoritative "none". For signed-out users the focus refetch only flipped
+  // useSession().isPending (better-auth sets isPending = data === null on
+  // every refetch), which remounted the (auth) screens and wiped in-progress
+  // input during iOS password autofill.
+  sessionOptions: {
+    refetchOnWindowFocus: false,
+  },
   plugins: [
     expoClient({
       scheme: "siriusapp",
