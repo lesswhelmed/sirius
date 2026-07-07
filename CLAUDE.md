@@ -22,7 +22,7 @@ bun run build                   # turbo build all
 bun run dev                     # one-shot full stack: boot iOS Simulator + trust CA + web + worker + mobile. Mobile dev = `prebuild-if-native-changed.mjs && bun run verify:native-ai && expo run:ios`: clean-prebuilds (+ pod install) ONLY when a native input changed (deps, app.json/plugins, llama.rn override) or ios/ is missing — else fast incremental run (no Pod reinstall). Native build (on-device-AI/llama.rn JSI bridge baked in + verified) still FINISHES before Metro. Fast JS-only escape hatch: `bun --cwd apps/mobile ios`. web at https://sirius.local. Wrapper: scripts/dev.sh
 bun run dev:stack               # raw `turbo dev` all (persistent), NO simulator/proxy prep — escape hatch
 bun run dev:proxy               # heavy proxy reset / macOS re-trust / one-time iPhone CA-trust runbook (scripts/setup-dev-proxy.sh)
-bun run lint                    # turbo lint (eslint, --max-warnings 0 per app)
+bun run lint                    # turbo lint (eslint --max-warnings 0 per package; mobile uses `expo lint`)
 bun run check-types             # turbo tsc --noEmit (web also runs `next typegen` first)
 bun run format                  # prettier on **/*.{ts,tsx,md}
 
@@ -32,6 +32,7 @@ bun run db:migrate:dev          # prisma migrate dev (local)
 bun run db:migrate:deploy       # prisma migrate deploy (prod)
 bun run db:studio               # prisma studio — inspect IngestSubmission/Post rows
 bun run db:push                 # prisma db push (no migration)
+bun run db:migrate:reset        # prisma migrate reset
 
 # Worker (ingest daemon)
 bun run worker:setup            # interactive preflight: checks env, generates INGEST_TOKEN, makes staging/sight dirs
@@ -66,8 +67,12 @@ all point at the host the current proxy mode serves (`https://sirius.local`). By
 `PORTLESS=0 bun --cwd=apps/web run dev:app`. The physical-device test runbook lives in
 `docs/HANDOFF-on-device-ai.md`.
 
-There is **no test runner wired up** (`scripts/testing/` exists but nothing in package.json
-runs it). Don't claim tests pass — there are none to run.
+**Tests.** Root `bun run test` = `turbo run test` (per-package `bun test`; not every package
+has a suite). Notable suites: the deterministic search harness in `packages/db` (one-time
+`bun run db:test:setup`, then `bun --cwd packages/db run test:search` — see
+`docs/search-ranking.md`), the security regression suite (`bun run test:security` →
+`scripts/testing/security/`, plus `bun run test:security:db`), and `bun --cwd apps/mobile
+test`. Coverage is NOT repo-wide — never claim "tests pass" beyond the suite you actually ran.
 
 Mobile (Expo, run from repo root):
 
@@ -115,18 +120,19 @@ bun run mobile:build:dev:android      # --profile development --platform android
 For a dev client on a **physical** device use the `development-device` profile
 directly (`bun --cwd=apps/mobile run build:dev:ios` builds the simulator dev
 client; the `development-device` profile in `eas.json` is the on-hardware one —
-no root alias yet, ask if you want one).
+no root alias yet, ask if you want one). A `production-device` profile also exists.
 
 - **Android cloud build + Play submit runbook:** `apps/mobile/docs/ANDROID-BUILD.md`
   (server-URL env, the masked-view fingerprint pitfall, service-account key). iOS is the
   `ios-app-store-deploy` skill.
 - Three profiles/channels: `development` (dev client, localhost), `preview` (internal,
-  `lesswhelmed.com`), `production` (store, `lesswhelmed.com`). The per-profile
-  `EXPO_PUBLIC_AUTH_BASE_URL` is the only env that differs — and because `apps/mobile/.env`
-  is gitignored + `requireCommit` builds the committed tree, cloud builds get the URL
-  **only** from the `eas.json` profile `env` (never the dev `sirius.local`).
+  `lesswhelmed.com`), `production` (store, `lesswhelmed.com`). Per-profile env:
+  `EXPO_PUBLIC_AUTH_BASE_URL` differs across all three; `preview`/`production` also set the
+  RevenueCat keys, and `production` sets `EXPO_PUBLIC_ON_DEVICE_AI=true`. Because
+  `apps/mobile/.env` is gitignored + `requireCommit` builds the committed tree, cloud builds
+  get env **only** from the `eas.json` profile `env` (never the dev `sirius.local`).
 - Reproducibility: `cli.appVersionSource: "remote"` (EAS owns build numbers),
-  `requireCommit: true` (clean tree only), pinned `node`/`image`.
+  `requireCommit: true` (clean tree only), pinned `node`.
 - OTA: `expo-updates` with `runtimeVersion.policy: "fingerprint"` — updates only reach
   builds with a matching native fingerprint.
 - Prod auth: `AUTH_TRUSTED_ORIGINS` **must include `siriusapp://`** (dev trusts it
@@ -164,17 +170,27 @@ Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zo
 
 - `apps/web` — Next.js 16 App Router. The product: the public catalog, ingest UI, queue, auth pages, and all HTTP APIs.
 - `apps/worker` — long-running Bun daemon. Polls the DB for ingest jobs, runs the Gemini pipeline. Runs via `bun run src/index.ts` (no build step).
-- `apps/mobile` — Expo / React Native client. Tabs (UI label ≠ route name): **Capture**
-  (route `composer`), **Catalog** (route `library`), **Friends** (route `feed` — NOT
-  `friends`, which is the off-tab People manager; the merged shared-posts feed, see
-  "The Friends hub" below), **Explore** (route `tree` — the analysis-taxonomy outline +
-  3D map, native counterpart of web's Observatory, see below),
-  **Queue** (`queue`), **Account** (route `settings`). URL scheme is **`siriusapp://`**
+- `apps/mobile` — Expo / React Native client. **5 tabs** (UI label ≠ route name): **Capture**
+  (route `composer`), **Catalog** (route `library` — the private archive, which also carries
+  the owner's "In flight" status board, folded in from the retired Queue tab; hidden when
+  empty), **Friends** (route `feed` — NOT `friends`, which is the off-tab People manager;
+  the merged shared-posts feed, see "The Friends hub" below), **Explore** (route `tree` —
+  the analysis-taxonomy outline + 3D map, native counterpart of web's Observatory, see
+  below), **Account** (route `settings`). There is **no Queue tab** — the legacy deep link
+  `siriusapp://queue` resolves via a root `app/queue.tsx` `<Redirect href="/library" />`.
+  URL scheme is **`siriusapp://`**
   (the bundle id `dev.copt.sirius` is for `simctl launch`, NOT a deep-link scheme); there is
   **no `/explore` route** — the Explore tab is `siriusapp://tree`. The full route + deep-link
   map is `apps/mobile/docs/ROUTES.md` (consult it before deep-linking). Talks to `apps/web`
   APIs with the better-auth Expo client; also drafts posts on-device (`src/lib/llm/`,
-  llama.rn — see `docs/HANDOFF-on-device-ai.md`).
+  llama.rn — see repo-root `docs/HANDOFF-on-device-ai.md`). Binding contracts for new mobile
+  surfaces: theming/WCAG-AA in `apps/mobile/docs/THEMING.md`; accessibility (VoiceOver +
+  Reduced Motion evidence, App Store Connect answers, and the "Accessibility contract"
+  section) in `docs/accessibility.md`.
+- `apps/mcp` — standalone Bun HTTP service (PM2 `sirius-mcp`, `MCP_PORT`; prod 3005) exposing
+  each user's own post corpus to external AI agents over MCP (Streamable HTTP, stateless,
+  Bearer API key via better-auth `apiKey()`). Owner-scoped, read-only. Its Claude Code
+  client face is `plugins/sirius-research`.
 - `apps/docs` — **unused** vestigial Turborepo starter stub. Ignore unless explicitly asked.
 - `packages/db` — `@repo/db`: Prisma schema, generated client, and all DB access helpers.
 - `packages/auth` — `@repo/auth`: the single `betterAuth(...)` instance + email sending.
@@ -187,7 +203,22 @@ Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zo
 - `packages/{ingest-draft,extraction}` — `@repo/ingest-draft` (versioned draft wire schemas
   shared by mobile on-device drafting + worker) and `@repo/extraction` (URL `url_context`
   extraction shared by `/api/app/extract` + the worker).
+- `packages/safety` — `@repo/safety`: shared content-safety classifier (harm taxonomy,
+  classifier prompt/schema, verdict→action policy, Gemini scan). Consumed by the web
+  publish/edit gate; the worker still carries its own copy (convergence is a noted
+  follow-up in the package's index.ts).
+- `packages/github-ingest` — `@repo/github-ingest`: recognize a GitHub repo URL + gather
+  structure/key-file evidence from the public GitHub API; shared by web
+  `/api/app/github/preview` and the worker's dedicated GitHub runner.
+- `packages/ingest-classify` — `@repo/ingest-classify`: pure, host-agnostic capture-tray
+  classification (display + pre-submit validation ONLY — the worker still forces the final
+  post type); shared by the web composer and mobile Capture.
+- `packages/research-agent` — `@repo/research-agent`: host-agnostic core of the on-device
+  "ask my posts" assistant (embed query → cosine-rank local vectors → stream a cited
+  answer; runtimes injected via ports).
 - `packages/{eslint-config,typescript-config}` — shared configs.
+- `plugins/sirius-research` — Claude Code plugin: connects to the `apps/mcp` corpus server
+  via `.mcp.json` and adds corpus-research skills; blackbox smoke in `scripts/smoke.sh`.
 
 ### The ingest pipeline (the core flow)
 
@@ -269,15 +300,18 @@ the email link works; expires after `ARCHIVE_TTL_HOURS`, default 7d). Keep `ORIG
   classic engine. Singleton client in `src/index.ts`, cached on `globalThis` outside production.
 - Generated client lands in `packages/db/generated/prisma` and is **gitignored** — you must
   run `db:generate` after a fresh clone or schema change or types won't resolve.
-- DB access is wrapped in domain helpers (`ingest.ts`, `posts.ts`, `users.ts`, `inquiries.ts`)
-  re-exported from `src/index.ts`. Prefer adding/using these over reaching for `prisma` directly.
+- DB access is wrapped in domain helpers (~22 modules: `ingest.ts`, `posts.ts`, `users.ts`,
+  `friends.ts`, `groups.ts`, `search.ts`, `comments.ts`, `projects.ts`, `moderation.ts`,
+  `archive.ts`, `embeddings.ts`, …) re-exported from `src/index.ts`. Prefer adding/using
+  these over reaching for `prisma` directly.
 - Model row types are re-exported by name (`Post`, `IngestSubmission`, …) rather than
   `export *` — Turbopack warns on `export *` from the generated CJS namespace.
 
 ### Auth (`packages/auth`)
 
 - One `betterAuth` instance: email+password with **required email verification**, plugins
-  `admin()` + `expo()` + `nextCookies()`. Emails sent via Resend (`src/email.ts`).
+  `admin()` + `expo()` + `apiKey()` (per-user API keys for the `apps/mcp` corpus server) +
+  `nextCookies()`. Emails sent via Resend (`src/email.ts`).
 - Next.js mounts it at `/api/auth/[...all]`. Rate limiting is DB-backed and **production-only**.
 - The Prisma User/Session/Account/Verification/RateLimit models use `@@map` to lowercase table
   names and match Better Auth field conventions — **don't rename fields without updating the
@@ -289,7 +323,9 @@ the email link works; expires after `ARCHIVE_TTL_HOURS`, default 7d). Keep `ORIG
   **Observatory**). `layout.tsx` calls `requireSession` and redirects to `/setup-handle` if the
   user has no `handle`.
 - `(auth)` — sign-in/up, verify-email, forgot/reset password.
-- `(public)` — public catalog: `/catalog`, `/catalog/[handle]`, `/listing/[slug]` + inquiry form.
+- `(public)` — public catalog: `/catalog`, `/catalog/[handle]`, `/listing/[slug]` (with
+  comments + related posts; the old Inquiry model/form was dropped).
+- `(marketing)` — public marketing pages (incl. `/product`).
 - API layout: `/api/app/*` = session-authed app APIs (incl. `/api/app/embedding-scene` →
   the Observatory/Tree scene, and `/api/app/search` → curated corpus search); `/api/*`
   (ingest/ingest-images) = bearer; `/api/catalog/*` = public read; `/api/auth/*` =
@@ -305,7 +341,7 @@ candidate set, then fuses both ranked lists via Reciprocal Rank Fusion into one
 `SearchHit[]` with `matchReasons` (`exact`/`similar`) badges. Visibility-gated (own posts any
 status + friends' FRIENDS/PUBLIC published + PUBLIC) via the shared `searchVisibilityWhere`,
 so FTS and embedding legs never disagree. The embedding leg degrades gracefully (returns
-`partial: true`, FTS-only) when Gemini is down. `GET /api/app/search?q=&scope=all|mine&cursor=`
+`partial: true`, FTS-only) when Gemini is down. `GET /api/app/search?q=&scope=all|mine|friends&cursor=`
 wraps it; web `/catalog` (`curated-search.tsx`) and the mobile library tab
 (`components/corpus-search.tsx`, online-only) both consume it, and the MCP `full_text_search`
 tool was refactored onto the same core so UI and MCP can't drift. **Ranking principles +
@@ -350,8 +386,9 @@ signed-in user who has posts with embeddings + categorized/assigned content.
 `db:generate` → `db:migrate:deploy` → build into `apps/web/.next-builds/<id>` with
 `.next-builds/current` symlinked (web `next.config.js` reads `distDir` from `BUILD_DIR`) →
 `pm2 startOrReload ecosystem.config.cjs` → `pm2 save` → prune to 3 builds → `pm2 status`.
-PM2 (`ecosystem.config.cjs`) runs two fork-mode processes: **sirius-web** (`apps/web`, `bun run
-start`, port 3003) and **sirius-worker** (`apps/worker`, `bun run start`). Both load the
+PM2 (`ecosystem.config.cjs`) runs three fork-mode processes: **sirius-web** (`apps/web`, `bun run
+start`, port 3003), **sirius-worker** (`apps/worker`, `bun run start`), and **sirius-mcp**
+(`apps/mcp`, `bun run start`, `MCP_PORT=3005`). All load the
 repo-root `.env`. The worker has no HTTP surface — it's purely the queue consumer. Full
 server setup (Postgres, Caddy, env mirror) is in `DEPLOY.md`; `bun run env:production`
 generates the local `.env.production` mirror (never overwrites an existing one).
@@ -360,7 +397,8 @@ generates the local `.env.production` mirror (never overwrites an existing one).
 
 Copy `.env.example` to `.env` at the repo root (all apps read the root `.env`). Required for the
 full pipeline: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` /
-`NEXT_PUBLIC_BETTER_AUTH_URL`, `INGEST_TOKEN`, `GEMINI_API_KEY`, `RESEND_API_KEY`. Instagram
+`NEXT_PUBLIC_BETTER_AUTH_URL`, `INGEST_TOKEN`, `GEMINI_API_KEY`, `RESEND_API_KEY`; production
+additionally requires `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (deploy.sh enforces it). Instagram
 ingest additionally needs a paid `APIFY_TOKEN`; YouTube data API key is optional (transcript
 fallback works without it). `turbo.json`'s `globalEnv` is the authoritative list of vars that
 invalidate the build cache — add new ones there.
