@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Streamdown } from "streamdown";
 import { getCachedPost } from "../../../../lib/cached";
 import { CommentsSection } from "./comments-section";
+import { ReflectionSection } from "./reflection-section";
 import { RegenerateBanner } from "./regenerate-banner";
 import { RelatedPosts } from "./related-posts";
 import { denyCatalogAccess } from "../../../../lib/catalog-access";
@@ -131,6 +132,14 @@ export default async function ListingPage({
           <Streamdown className={MARKDOWN_CLASS_NAME} mode="static">
             {post.content}
           </Streamdown>
+          {/* Reflect: AI-generated questions + the owner's own written answers.
+              Renders nothing for posts with no prompts (pre-feature posts are
+              byte-identical). */}
+          <ReflectionSection
+            postId={post.id}
+            postSlug={slug}
+            isOwner={isOwner}
+          />
         </div>
 
         <aside className="space-y-7 lg:border-l lg:border-[var(--color-rule)] lg:pl-8">

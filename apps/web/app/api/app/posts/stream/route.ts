@@ -3,6 +3,8 @@ import {
   type CommentChangeNotification,
   POSTS_CHANNEL,
   type PostChangeNotification,
+  REFLECTIONS_CHANNEL,
+  type ReflectionChangeNotification,
   SUBMISSIONS_CHANNEL,
   type SubmissionRejectedNotification,
 } from "@repo/db";
@@ -12,11 +14,12 @@ import { getSessionOrNull } from "../../../../../lib/session";
 // Server-Sent Events stream of change nudges for the signed-in user.
 //
 // The worker NOTIFYs POSTS_CHANNEL after writing a post and the web API NOTIFYs
-// COMMENTS_CHANNEL after a comment write (see @repo/db notify.ts); this route
-// holds a dedicated `pg` LISTEN connection per client and relays the owner's
-// events for BOTH channels as a single `change` SSE event. A nudge carries only
-// ids/timestamps — the client reacts by pulling the delta feeds (../changes and
-// ../../comments/changes), which are the real source of data.
+// COMMENTS_CHANNEL / REFLECTIONS_CHANNEL after a comment or reflection write
+// (see @repo/db notify.ts); this route holds a dedicated `pg` LISTEN connection
+// per client and relays the owner's events for ALL channels as a single
+// `change` SSE event. A nudge carries only ids/timestamps — the client reacts
+// by pulling the delta feeds (../changes, ../../comments/changes and
+// ../../reflections/changes), which are the real source of data.
 //
 // No route segment config exports here: this app uses Next 16 Cache Components,
 // which rejects both `runtime` and `dynamic`. The handler is already dynamic
@@ -58,6 +61,7 @@ export async function GET(request: Request) {
         if (
           (msg.channel !== POSTS_CHANNEL &&
             msg.channel !== COMMENTS_CHANNEL &&
+            msg.channel !== REFLECTIONS_CHANNEL &&
             msg.channel !== SUBMISSIONS_CHANNEL) ||
           !msg.payload
         ) {
@@ -67,6 +71,7 @@ export async function GET(request: Request) {
           const payload = JSON.parse(msg.payload) as
             | PostChangeNotification
             | CommentChangeNotification
+            | ReflectionChangeNotification
             | SubmissionRejectedNotification;
           // Owner-scoped: drop other users' (and unattributed bearer) events.
           if (payload.ownerId !== ownerId) return;
@@ -77,8 +82,9 @@ export async function GET(request: Request) {
             enqueue(`event: submission-rejected\ndata: ${msg.payload}\n\n`);
             return;
           }
-          // Posts + comments: the client treats every `change` event identically
-          // (re-pull both delta feeds), so the two channels relay through one type.
+          // Posts + comments + reflections: the client treats every `change`
+          // event identically (re-pull the delta feeds), so the channels relay
+          // through one event type.
           enqueue(`event: change\ndata: ${msg.payload}\n\n`);
         } catch {
           // Malformed payload — ignore rather than tear down the stream.
@@ -99,6 +105,7 @@ export async function GET(request: Request) {
         await client.connect();
         await client.query(`LISTEN ${POSTS_CHANNEL}`);
         await client.query(`LISTEN ${COMMENTS_CHANNEL}`);
+        await client.query(`LISTEN ${REFLECTIONS_CHANNEL}`);
         await client.query(`LISTEN ${SUBMISSIONS_CHANNEL}`);
       } catch (err) {
         controller.error(err);
