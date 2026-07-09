@@ -57,8 +57,12 @@ Otherwise, build automatically, then hand off. Don't fake the human steps.
   `appleTeamId L7U86T3YRV`). First-submit app-record creation is DONE — there is no
   "create the app?" prompt anymore, and submit is turnkey once you clear the Apple login.
 - **eas.json:** `production` profile is `distribution: store`, `autoIncrement: true`
-  (EAS owns the build number — no manual bumping), `appVersionSource: remote`,
+  (EAS owns the **build number** — no manual bumping), `appVersionSource: remote`,
   `requireCommit: true` (**the git tree must be clean** or the build refuses to start).
+  ⚠️ `appVersionSource: remote` only auto-owns the **build number**. The **marketing
+  version** (`CFBundleShortVersionString`) still comes from `apps/mobile/app.json`
+  → `expo.version` and must be **hand-bumped for every build after a version reaches
+  the store** — see Part 0.5.
 - **Server URL is already wired for prod** (see Part 1).
 
 ## Root scripts (prefer these over raw `eas` invocations)
@@ -84,6 +88,39 @@ matches the user's standing instruction to ask before irreversible/outward actio
    - build + fully non-interactive submit → only if they've provided an ASC API key
 3. **Submit auth:** interactive Apple login (default) or an App Store Connect API key
    (`.p8` + Key ID + Issuer ID) for non-interactive submit.
+
+## Part 0.5 — Bump the marketing version FIRST (mandatory for every post-release build)
+
+**Every** production build made after a version has been submitted to Apple MUST carry a
+**higher** `CFBundleShortVersionString` than the last version that reached the store — or
+the upload dies at `eas submit` time (a full ~25-min cloud build wasted first, because the
+build itself SUCCEEDS and only Apple's delivery step rejects it):
+
+- `ITMS-90186` — *"The train version 'X' is closed for new build submissions."* Once a
+  version is approved/released, its **pre-release train is closed to ALL new builds —
+  including TestFlight.** You cannot sneak another build into it, not even for testers.
+- `ITMS-90062` — *"CFBundleShortVersionString must contain a higher version than the
+  previously approved version."*
+
+`autoIncrement`/`appVersionSource: remote` do **not** save you here — they only bump the
+**build number**, not the marketing version. The marketing version is `apps/mobile/app.json`
+→ `expo.version`, and it is a manual edit.
+
+**Do this before Part 2, on every release:**
+
+1. Check what's live: `cd apps/mobile && bunx eas-cli build:list --platform ios --limit 5 --non-interactive --json` (look at `appVersion`), or the App Store Connect **Versions** list.
+2. Bump `apps/mobile/app.json` → `expo.version` to a higher value (patch e.g. `1.0.1 → 1.0.2` for fixes; minor e.g. `1.0.1 → 1.1.0` to headline a feature).
+3. **Commit it** (`requireCommit: true` builds the committed tree): `git commit -- apps/mobile/app.json -m "chore(mobile): bump iOS marketing version to <X>"`.
+
+The bundled build script now enforces this: **preflight 1/5** hard-stops if `app.json`'s
+version equals the last FINISHED production build's `appVersion` (override only for a
+version that was never uploaded to Apple: `ALLOW_SAME_VERSION=1`). Don't defeat the guard
+to "just get a build out" — bump the version, that's the fix.
+
+> **Incident (2026-07-09):** shipped a build reusing `1.0.1` (already live) straight to
+> `eas submit`; Apple rejected it with ITMS-90186 + ITMS-90062 after the cloud build had
+> already finished. Root cause: no version bump + no pre-build guard. Fixed by adding the
+> preflight guard above.
 
 ## Part 1 — Verify the server URL (lesswhelmed.com)
 

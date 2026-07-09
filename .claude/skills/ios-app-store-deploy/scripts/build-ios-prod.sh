@@ -51,13 +51,37 @@ if [ "${REUSE_LATEST:-}" = "1" ]; then
   BUILD_ID="$(resolve_latest_finished)" || { echo "✖ no finished production build to reuse"; exit 1; }
   echo "  reusing build: $BUILD_ID"
 else
-  echo "→ preflight 1/4: db:generate (mobile typecheck pulls in @repo/*)…"
+  # ── preflight 1/5: version-bump guard ──────────────────────────────────────
+  # A version that has been APPROVED/released owns a "pre-release train" that
+  # Apple CLOSES to all new build submissions — TestFlight included. Re-uploading
+  # the same CFBundleShortVersionString fails at delivery with:
+  #   ITMS-90186 "The train version 'X' is closed for new build submissions"
+  #   ITMS-90062 "CFBundleShortVersionString must be higher than previously approved"
+  # This is invisible at build time (the build SUCCEEDS) and only blows up at
+  # `eas submit` — after ~25 wasted cloud minutes. So gate it BEFORE building.
+  # `appVersionSource: remote` only auto-owns the BUILD NUMBER; the marketing
+  # version still comes from apps/mobile/app.json and must be hand-bumped.
+  echo "→ preflight 1/5: version-bump guard (a released version's train is CLOSED to new builds — Apple ITMS-90186/90062)…"
+  LOCAL_VER="$(cd "$MOBILE_DIR" && node -e 'process.stdout.write(String((require("./app.json").expo||{}).version||""))')"
+  LATEST_VER="$(cd "$MOBILE_DIR" && bunx eas-cli build:list --platform ios --limit 15 --non-interactive --json 2>/dev/null \
+    | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const b=(JSON.parse(d)||[]).find(x=>x.status==="FINISHED"&&x.buildProfile==="production");process.stdout.write(b&&b.appVersion?String(b.appVersion):"")})')"
+  echo "  app.json version=${LOCAL_VER:-<unknown>}   last FINISHED prod build version=${LATEST_VER:-<none>}"
+  if [ -n "$LATEST_VER" ] && [ "$LOCAL_VER" = "$LATEST_VER" ] && [ "${ALLOW_SAME_VERSION:-}" != "1" ]; then
+    echo "✖ apps/mobile/app.json version ($LOCAL_VER) matches the last FINISHED production build."
+    echo "  If $LOCAL_VER is already on the App Store / TestFlight, that train is CLOSED and Apple"
+    echo "  will REJECT the upload at submit time (ITMS-90186 + ITMS-90062) — after a full cloud build."
+    echo "  → Bump \"version\" in apps/mobile/app.json (e.g. next patch), commit it, then re-run."
+    echo "  Override ONLY if $LOCAL_VER has never been uploaded to Apple: ALLOW_SAME_VERSION=1 $0"
+    exit 1
+  fi
+
+  echo "→ preflight 2/5: db:generate (mobile typecheck pulls in @repo/*)…"
   (cd "$REPO_ROOT" && bun run db:generate >/dev/null)
 
-  echo "→ preflight 2/4: mobile typecheck…"
+  echo "→ preflight 3/5: mobile typecheck…"
   (cd "$MOBILE_DIR" && bun run check-types)
 
-  echo "→ preflight 3/4: clean-tree check (EAS requireCommit builds the committed tree)…"
+  echo "→ preflight 4/5: clean-tree check (EAS requireCommit builds the committed tree)…"
   if [ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
     echo "✖ working tree is dirty. Commit (or stash) everything first — EAS builds the"
     echo "  committed tree only, so uncommitted work would ship stale or refuse to build."
@@ -65,7 +89,7 @@ else
     exit 1
   fi
 
-  echo "→ preflight 4/4: verify on-device-AI native bridge…"
+  echo "→ preflight 5/5: verify on-device-AI native bridge…"
   (cd "$MOBILE_DIR" && bun run verify:native-ai)
 
   echo "→ kicking EAS production iOS build (non-interactive; EAS owns the build number)…"
