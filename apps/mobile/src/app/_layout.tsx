@@ -16,8 +16,14 @@ import {
 } from "expo-router";
 import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useRef } from "react";
-import { Platform, StyleSheet, Text, useColorScheme } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Platform,
+  StyleSheet,
+  Text,
+  useColorScheme,
+} from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
@@ -65,9 +71,24 @@ const queryClient = new QueryClient({
 // and foreground (the engine owns those triggers). Also registers the periodic
 // background sync task. Every primitive is self-serialized, so overlapping
 // triggers are safe.
-function SyncRunner() {
+//
+// ALSO the ownership gate for everything it wraps (the whole navigator): while
+// a session exists but ensureLocalOwner hasn't yet verified/wiped the local
+// store for that user, `children` don't render — a neutral spinner does. The
+// wipe on an account switch is async, so without this gate the tabs mount
+// against the PREVIOUS account's mirror and its posts paint for a beat before
+// the wipe lands. Gated on `verifiedFor !== userId` (never on
+// useSession().isPending — see the auth remount trap in
+// docs/../lib/auth-client.ts): signed-out renders freely (the (auth) screens
+// aren't user-scoped), and a verified session re-renders with no gate.
+function SyncRunner({ children }: { children: React.ReactNode }) {
+  const t = useTheme();
   const { data: session } = useSession();
   const userId = session?.user?.id ?? null;
+  // The user id the local store has been VERIFIED to belong to this app run
+  // (ensureLocalOwner resolved for it). Reset on sign-out so the next sign-in
+  // re-verifies before anything user-scoped can paint.
+  const [verifiedFor, setVerifiedFor] = useState<string | null>(null);
 
   // The headless background task is registered at process scope; do it once.
   useEffect(() => {
@@ -86,6 +107,11 @@ function SyncRunner() {
       // Drop the mirrored Siri-capture cookie so a background dictation can't
       // submit as the signed-out user.
       clearCaptureCredentials();
+      // verifiedFor is deliberately NOT reset here (sync setState in an effect
+      // trips the compiler lint, and it isn't needed for correctness): the
+      // gate below keys on `verifiedFor !== userId`, so a DIFFERENT next
+      // account always re-gates, while a same-user re-login showing their own
+      // (already-verified) mirror early leaks nothing.
       return;
     }
     let cancelled = false;
@@ -97,11 +123,16 @@ function SyncRunner() {
       } catch (err) {
         console.warn("[sync] ensureLocalOwner failed", err);
       }
+      if (cancelled) return;
       // Fail CLOSED: if the ownership guard couldn't run, do not start syncing
-      // — pulling this user's feed into a store that may still hold another
-      // account's rows is exactly the cross-account leak the guard prevents.
-      // The next trigger (relaunch/foreground re-mount of this effect) retries.
-      if (!cancelled && owned) startSync();
+      // (pulling this user's feed into a store that may still hold another
+      // account's rows is exactly the cross-account leak the guard prevents)
+      // and do not open the gate — the spinner is the safe state. The next
+      // trigger (relaunch / re-auth re-running this effect) retries.
+      if (owned) {
+        setVerifiedFor(userId);
+        startSync();
+      }
     })();
     // Mirror the freshly-signed-in cookie for hands-free Siri capture.
     syncCaptureCredentials();
@@ -110,7 +141,19 @@ function SyncRunner() {
     };
   }, [userId]);
 
-  return null;
+  if (userId && verifiedFor !== userId) {
+    // Neutral holding state for the (typically sub-second) verify/wipe window.
+    // Deliberately paints NO user data — not the previous account's, not the
+    // new one's.
+    return (
+      <Screen
+        style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+      >
+        <ActivityIndicator color={t.color.accent} />
+      </Screen>
+    );
+  }
+  return <>{children}</>;
 }
 
 // Configures RevenueCat once, then binds its app_user_id to the signed-in user
@@ -257,9 +300,13 @@ function RootContent() {
               </Screen>
             ) : ready ? (
               <>
-                <SyncRunner />
                 <PurchasesRunner />
                 <ShareIntentNavigator />
+                {/* SyncRunner WRAPS the navigator: nothing user-scoped may
+                    mount until the local store is verified to belong to the
+                    signed-in user (else a prior account's mirror paints for a
+                    beat during an account switch). */}
+                <SyncRunner>
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="index" />
                   <Stack.Screen name="(auth)" />
@@ -415,6 +462,7 @@ function RootContent() {
                     }}
                   />
                 </Stack>
+                </SyncRunner>
               </>
             ) : null}
     </ThemeProvider>
