@@ -26,7 +26,14 @@ const evidence: RepoEvidence = {
 };
 
 describe("buildGitHubPrompt", () => {
-  const prompt = buildGitHubPrompt(evidence, "found via a newsletter", "");
+  const prompt = buildGitHubPrompt(evidence, "found via a newsletter");
+
+  test("frames the body as a RAW ANALYSIS, not a voiced post", () => {
+    expect(prompt).toContain("RAW ANALYSIS");
+    expect(prompt).toContain("## Full breakdown");
+    expect(prompt).not.toContain("first-person");
+    expect(prompt).not.toContain("AUTHOR VOICE");
+  });
 
   test("embeds the repo identity and stats", () => {
     expect(prompt).toContain("sindresorhus/slugify");
@@ -47,7 +54,7 @@ describe("buildGitHubPrompt", () => {
   });
 
   test("omits empty notes", () => {
-    const noNotes = buildGitHubPrompt(evidence, "  ", "");
+    const noNotes = buildGitHubPrompt(evidence, "  ");
     expect(noNotes).not.toContain("Author's notes");
     expect(noNotes).not.toContain("AUTHOR'S NOTE");
   });

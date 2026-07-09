@@ -3,14 +3,16 @@
 // Mirrors the lightweight one-call shape of the GitHub path: the tweet is
 // mostly text, so we let Gemini draft straight into PostDraftSchema rather than
 // running a heavy custom digest like Instagram. The worker forces the post type
-// to SOCIAL after the model returns.
+// to SOCIAL (or FINDING for an X Article) after the model returns. The body is
+// a RAW ANALYSIS (see ../analysis-contract.ts), not a voiced post.
 
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { PostDraft } from "@repo/ingest-draft";
-import { buildVoiceInstruction, PostDraftSchema } from "@repo/ingest-draft";
+import { PostDraftSchema } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig, getHeavyModel } from "../../lib/ai-config";
 import { parseTwitterUrl, type TwitterUrlParse } from "../../lib/twitter-url";
+import { analysisContractLines } from "../analysis-contract";
 import { toGeminiOutput } from "../gemini-runner";
 import { notesLeadLines } from "../prompt-blocks";
 import type { GeminiOutput } from "../types";
@@ -22,7 +24,6 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 export type TwitterRunOptions = {
   url: string;
   notes: string;
-  voiceProfile?: string | null;
 };
 
 export type TwitterRunResult = {
@@ -62,24 +63,37 @@ function formatCount(n: number | null): string | null {
   return typeof n === "number" ? n.toLocaleString("en-US") : null;
 }
 
-function buildTwitterPrompt(
+// Exported for unit testing — the prompt is the pure, durable transformation;
+// the Apify fetch + generateText call around it aren't unit-testable without
+// live services. The body is a RAW ANALYSIS (see ../analysis-contract.ts):
+// neutral analyst voice, maximal extraction. The author's voiceProfile
+// deliberately no longer touches this prompt — it personalizes the reflection
+// questions (pipeline/reflection) instead.
+export function buildTwitterPrompt(
   evidence: TwitterEvidence,
   notes: string,
-  voiceBlock: string,
 ): string {
   const author = evidence.author;
   const handle = author.username ? `@${author.username}` : "unknown author";
   const article = evidence.article;
+  const lengthHint =
+    "as long as the material warrants — a short tweet needs only a compact analysis; a thread or Article deserves a full one";
   const lines: string[] = [
-    article
-      ? "You are drafting a FINDING — a saved long-form X Article (a post on X / Twitter) worth keeping and revisiting. The tweet itself is just a link; the real content is the article below."
-      : "You are drafting a personal SOCIAL post that captures a tweet (a post on X / Twitter).",
-    "Write in first person as the person saving this — what it says and why it's worth keeping.",
-    article
-      ? "Summarize and engage with the article's actual ideas in the body; do not just restate the title."
-      : "",
+    ...analysisContractLines(
+      article
+        ? {
+            kindLabel:
+              "a long-form X Article (a post on X / Twitter, from the fetched data below)",
+            lengthHint,
+            breakdownHint: `the Article's content section-by-section, in order: its argument structure, the points made and the evidence behind them, notable passages quoted verbatim (attributed to ${handle}), media described, and engagement/context signals ONLY if present in the fetched data. The tweet itself is just a link — analyze the Article body, not the link.`,
+          }
+        : {
+            kindLabel: "an X/Twitter post (from the fetched data below)",
+            lengthHint,
+            breakdownHint: `the tweet — and any quoted/retweeted or thread content — reconstructed in order: the argument or points made, verbatim tweet text as quotes (attributed to ${handle}), media described, and engagement/context signals ONLY if present in the fetched data.`,
+          },
+    ),
     "Do not fabricate engagement numbers, claims, or context beyond the evidence below.",
-    "Also return a one-sentence excerpt summarizing the post.",
     "",
     ...notesLeadLines(notes),
     "## Tweet evidence",
@@ -122,9 +136,6 @@ function buildTwitterPrompt(
       `This tweet has ${evidence.mediaUrls.length} attached image(s)${evidence.primaryImageUrl ? " — the first is attached for you to look at" : ""}.`,
     );
   }
-  if (voiceBlock.trim()) {
-    lines.push("", voiceBlock.trim());
-  }
   return lines.join("\n");
 }
 
@@ -143,8 +154,7 @@ export async function runTwitterGemini(
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
   // url-derived path → heavy (Pro) tier, matching modelForKind("url").
   const model = google(getHeavyModel());
-  const voiceBlock = buildVoiceInstruction(options.voiceProfile ?? null);
-  const prompt = buildTwitterPrompt(evidence, options.notes, voiceBlock);
+  const prompt = buildTwitterPrompt(evidence, options.notes);
 
   const imageAttachment = evidence.primaryImageUrl
     ? await fetchImageBytes(evidence.primaryImageUrl)

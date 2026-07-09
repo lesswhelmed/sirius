@@ -10,9 +10,10 @@ import {
   parseGitHubUrl,
   type RepoEvidence,
 } from "@repo/github-ingest";
-import { buildVoiceInstruction, PostDraftSchema } from "@repo/ingest-draft";
+import { PostDraftSchema } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig, getHeavyModel } from "../../lib/ai-config";
+import { analysisContractLines } from "../analysis-contract";
 import { type PostDraft, toGeminiOutput } from "../gemini-runner";
 import { notesLeadLines } from "../prompt-blocks";
 import type { GeminiOutput } from "../types";
@@ -20,7 +21,6 @@ import type { GeminiOutput } from "../types";
 export type GitHubRunOptions = {
   url: string;
   notes: string;
-  voiceProfile?: string | null;
 };
 
 export type GitHubRunResult = {
@@ -30,23 +30,23 @@ export type GitHubRunResult = {
 
 // Exported for unit testing — the prompt is the worker's one durable, pure
 // transformation of the evidence (the generateText call around it isn't unit
-// testable without a live model).
-export function buildGitHubPrompt(
-  evidence: RepoEvidence,
-  notes: string,
-  voiceBlock: string,
-): string {
+// testable without a live model). Body follows the shared RAW-ANALYSIS
+// contract (../analysis-contract.ts); the author's voiceProfile deliberately
+// does NOT touch this prompt anymore — voice powers the reflection questions.
+export function buildGitHubPrompt(evidence: RepoEvidence, notes: string): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
-    "You are drafting a single FINDING post for a personal blog about a GitHub repository.",
     `Today's date: ${today}.`,
-    "Voice: first-person, observational, concrete. 120-320 words.",
-    "No marketing copy. No 'Here is' preambles. Write prose, not a file listing — you may name key files inline but do not paste large code blocks or code fences in the body.",
-    "Describe what the project is, the problem it solves, how it's built (language/stack), and anything notable about its structure or approach. Ground every claim in the evidence below — do not invent features.",
-    "Also return a one-sentence excerpt summarizing the finding.",
-    "Categories: 1-3 broad->narrow slash paths (e.g. 'software/developer-tools'); reuse common broad top-level fields, don't invent near-duplicates.",
     "",
     ...notesLeadLines(notes),
+    ...analysisContractLines({
+      kindLabel: "a GitHub repository (from the gathered evidence below)",
+      lengthHint: "300-1200 words, as long as the evidence warrants",
+      breakdownHint:
+        "repo-specific deep extraction: the project's purpose and the problem it solves, architecture and how it's built (language/stack), key files/modules and what each does, notable code and design choices, setup/usage, and project health signals (stars, activity, docs quality) where present in the evidence.",
+    }),
+    "Ground every claim in the evidence below — do not invent features.",
+    "",
     `Repository: ${evidence.owner}/${evidence.repo}`,
   ];
   if (evidence.description) {
@@ -76,9 +76,6 @@ export function buildGitHubPrompt(
       lines.push(`--- ${file.path} ---`, file.content.trim());
     }
   }
-  if (voiceBlock) {
-    lines.push(voiceBlock);
-  }
   return lines.join("\n");
 }
 
@@ -100,11 +97,7 @@ export async function runGitHubGemini(
   const { output } = await generateText({
     model,
     temperature: config.temperature,
-    prompt: buildGitHubPrompt(
-      evidence,
-      options.notes,
-      buildVoiceInstruction(options.voiceProfile),
-    ),
+    prompt: buildGitHubPrompt(evidence, options.notes),
     output: Output.object({ schema: PostDraftSchema }),
   });
 

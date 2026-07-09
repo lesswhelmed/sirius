@@ -25,17 +25,18 @@ export type ExtractUrlOptions = {
 const DEFAULT_MODEL = "gemini-2.5-flash";
 const DEFAULT_TEMPERATURE = 0.7;
 
-// Verbatim move of the worker's url-branch extraction prompt (gemini-runner
-// buildPrompt) so the worker path stays behavior-identical.
+// Extraction feeds the raw-analysis structuring step (and the web /extract
+// endpoint), so it must capture as much of the page as possible — the
+// structuring call is instructed never to go beyond this summary, making this
+// step the ceiling on analysis quality.
 function buildExtractionPrompt(urls: string[], notes: string): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
-    "You are drafting a single post for a personal blog.",
+    "You are extracting the content of web page(s) for a personal knowledge base.",
     `Today's date: ${today}.`,
-    "Voice: first-person, observational, concrete. 80-300 words.",
-    "No marketing copy. No 'Here is' preambles. No code fences in the body.",
+    "No 'Here is' preambles. No code fences.",
     "",
-    "Use the url_context tool to fetch every URL below before drafting. Summarize what you found as a short FINDING — what's on the page, why it's worth noting, anything specific that surprised you. Cite any quoted phrases inline naturally.",
+    "Use the url_context tool to fetch every URL below, then write a MAXIMAL-DETAIL extraction of what each page contains: its full argument/content structure section by section, the concrete claims and evidence, notable passages quoted verbatim (attributed), the people/organizations/products/works referenced, all figures and numbers, and the page's own metadata (author, date, platform, outbound links it highlights). Capture as much specific detail as the page warrants — a later step structures this, so completeness beats brevity; do not editorialize or pad.",
     "",
     "URLs:",
   ];

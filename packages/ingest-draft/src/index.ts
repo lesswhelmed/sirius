@@ -48,7 +48,7 @@ export const PostDraftSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "MDX body content. First-person, observational, 80-300 words. No frontmatter, no wrapping code fences. Prose only — never embed image markdown or URLs; photos are attached and rendered separately by the app.",
+      "MDX body content: a maximal-detail RAW ANALYSIS of the material in a neutral analyst voice (third person, never 'I'), structured with ## markdown sections, as long as the material warrants (typically 300-1200 words). No frontmatter, no wrapping code fences. Never embed image markdown or URLs; media is attached and rendered separately by the app.",
     ),
 });
 
@@ -85,7 +85,7 @@ export const SightDraftSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "60-160 words, first person, plain and concrete. Describe only what is visibly present. No intensifiers (almost, blinding, neon, aggressive), no metaphor or simile, no mood-painting. No image markdown or URLs — the photos render separately.",
+      "150-500 words: an exhaustive visual RAW ANALYSIS in a neutral analyst voice (third person, never 'I'), structured with ## markdown sections. Describe only what is visibly present — subjects, setting, composition, lighting, colors, condition, brands/labels, text in the images. No metaphor, no mood-painting. No image markdown or URLs — the photos render separately.",
     ),
   // Optional: flash sometimes omits it. The worker falls back to the first
   // sentence of the body rather than failing the post on a missing excerpt.
@@ -123,6 +123,36 @@ export const SightDraftEnvelopeSchema = z.object({
 });
 
 export type SightDraftEnvelope = z.infer<typeof SightDraftEnvelopeSchema>;
+
+// Reflection prompts: the AI-generated questions inviting the post owner to
+// write their own take (the human layer on top of the raw analysis). Structured
+// output for the worker's reflection stage; shared here so a future on-device
+// path can produce the same shape. Same no-array-bounds rule as the draft
+// schemas — the worker clamps to 5.
+export const ReflectionPromptsSchema = z.object({
+  prompts: z
+    .array(
+      z.object({
+        question: z
+          .string()
+          .min(1)
+          .describe(
+            "One reflection question addressed to the author ('you'), specific to this material and connected to their existing interests. Thought-provoking, answerable in a paragraph of their own words — never generic filler like 'what do you think?'.",
+          ),
+        rationale: z
+          .string()
+          .optional()
+          .describe(
+            "Optional one-line 'why we're asking you this' — the connection to their material or interests that makes the question worth answering.",
+          ),
+      }),
+    )
+    .describe(
+      "3-5 reflection questions, ordered most compelling first (the worker keeps the first 5).",
+    ),
+});
+
+export type ReflectionPrompts = z.infer<typeof ReflectionPromptsSchema>;
 
 export {
   VOICE_PROFILE_MAX_CHARS,

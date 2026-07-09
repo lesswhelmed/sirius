@@ -11,10 +11,9 @@
 
 import { extname } from "node:path";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { getVoiceProfile } from "@repo/db";
-import { buildVoiceInstruction } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import { getAIConfig, getHeavyModel } from "../../lib/ai-config";
+import { analysisContractLines } from "../analysis-contract";
 import { PostDraftSchema, toGeminiOutput } from "../gemini-runner";
 import { notesLeadLines } from "../prompt-blocks";
 import type { GeminiOutput, PipelineInput } from "../types";
@@ -43,28 +42,31 @@ function isDocx(input: DocumentInput): boolean {
   return extname(input.stagedFilePath).toLowerCase() === ".docx";
 }
 
-function buildStructuringPrompt(
-  evidence: string,
-  notes: string,
-  voiceBlock: string,
-): string {
+// Exported for unit testing — the prompt is this runner's one durable, pure
+// transformation of the evidence (the generateText call around it isn't unit
+// testable without a live model). Body follows the shared RAW-ANALYSIS
+// contract (../analysis-contract.ts); the author's voiceProfile deliberately
+// no longer touches body prompts.
+export function buildStructuringPrompt(evidence: string, notes: string): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
-    "You are drafting a single FINDING post for a personal blog from pre-extracted document content.",
     `Today's date: ${today}.`,
-    "Voice: first-person, observational, concrete. 80-300 words.",
-    "No marketing copy. No 'Here is' preambles. No code fences in the body.",
-    "Summarize what the document is, its key claims, and why it's worth noting. Cite any quoted phrases inline naturally.",
-    "Also return a one-sentence excerpt summarizing the finding.",
-    "Categories: 1-3 broad->narrow slash paths (e.g. 'technology/artificial-intelligence'); reuse common broad top-level fields, don't invent near-duplicates.",
     "",
     ...notesLeadLines(notes),
+    ...analysisContractLines({
+      kindLabel: "a document (from the parsed content below)",
+      lengthHint: "300-1200 words, as long as the document warrants",
+      breakdownHint:
+        "section-by-section: the document's structure, key claims and their evidence, methodology, tables/figures and what they show, notable passages.",
+      extraSections: [
+        "## Extracted text — verbatim passages that carry the substance of the document.",
+      ],
+    }),
+    "Ground every claim in the extracted document content below — do not invent material the document does not contain.",
+    "",
     "Extracted document content:",
     evidence,
   ];
-  if (voiceBlock) {
-    lines.push(voiceBlock);
-  }
   return lines.join("\n");
 }
 
@@ -100,20 +102,14 @@ export async function runDocumentGemini(
     return null;
   }
 
-  // Step 2: structure the evidence into a FINDING draft. Voice resolution uses
-  // the same override seam as runGemini (explicit input.voiceProfile wins, else
-  // DB fetch) so callers like the gen:try harness can inject voice without a DB.
-  const voiceProfile =
-    input.voiceProfile ??
-    (input.submittedById ? await getVoiceProfile(input.submittedById) : null);
-  const voiceBlock = buildVoiceInstruction(voiceProfile);
-
+  // Step 2: structure the evidence into a FINDING raw analysis (neutral analyst
+  // voice per the shared contract — no author voiceProfile in body prompts).
   const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
   const { output } = await generateText({
     // document draft → heavy (Pro) tier, matching modelForKind("document").
     model: google(getHeavyModel()),
     temperature: config.temperature,
-    prompt: buildStructuringPrompt(evidence, docInput.notes, voiceBlock),
+    prompt: buildStructuringPrompt(evidence, docInput.notes),
     output: Output.object({ schema: PostDraftSchema }),
   });
 

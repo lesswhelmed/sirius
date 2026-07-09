@@ -3,11 +3,13 @@
 //   1. Evidence call: send the YouTube URL as a FilePart (Gemini-native video
 //      ingest via fileData.fileUri), plus the transcript + Data API metadata
 //      + parsed chapters as text.
-//   2. Structuring call: take that summary + author notes, return a strict
-//      PostDraftSchema object.
+//   2. Structuring call: take that evidence (summary + metadata/transcript
+//      context) + author notes and compose the RAW-ANALYSIS body directly
+//      (analysis-contract.ts `##` sections), returned as a strict
+//      PostDraftSchema object. The former separate structured-analysis call +
+//      collapsible <details> appendix are gone — the analysis IS the body.
 
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { buildVoiceInstruction } from "@repo/ingest-draft";
 import { generateText, Output } from "ai";
 import {
   getAIConfig,
@@ -19,15 +21,10 @@ import {
   parseYouTubeUrl,
   type YouTubeUrlParse,
 } from "../../lib/youtube-url";
+import { analysisContractLines } from "../analysis-contract";
 import { PostDraftSchema, toGeminiOutput } from "../gemini-runner";
 import { notesLeadLines } from "../prompt-blocks";
 import type { GeminiOutput } from "../types";
-import {
-  buildAnalysisPrompt,
-  renderYouTubeAppendix,
-  type YouTubeAnalysis,
-  YouTubeAnalysisSchema,
-} from "./analysis";
 import { parseChaptersFromDescription, type YouTubeChapter } from "./chapters";
 import {
   getChunkConfig,
@@ -217,7 +214,7 @@ function buildEvidencePrompt(
   notes: string,
 ): { prompt: string; videoUri: string } {
   const lines: string[] = [
-    "You are gathering evidence from a YouTube video so a second model call can draft a short FINDING post for a personal blog.",
+    "You are gathering evidence from a YouTube video so a second model call can compose a maximal-detail raw analysis (a FINDING post) for the owner's personal knowledge base.",
     "Your job here is to produce a grounded, timestamped summary of what the video is about, what's specifically notable, and any concrete tools, claims, or moments worth citing. Do not invent timestamps — only use ones present in the transcript, the official chapters, or directly visible in the video.",
     "Use the attached video for visual/audio context. Use the transcript and metadata below as the source of truth for quoted text and timing.",
     "",
@@ -268,7 +265,7 @@ function buildMergePrompt(
   }>,
 ): string {
   const lines: string[] = [
-    "You are merging per-window evidence summaries of a long YouTube video into a single grounded summary for a FINDING post on a personal blog.",
+    "You are merging per-window evidence summaries of a long YouTube video into a single grounded summary that a later model call turns into a maximal-detail raw analysis (a FINDING post).",
     "The video was too long for a single pass, so it was split into overlapping time windows. Some windows may have failed and are marked SKIPPED — note any obvious gaps but do not invent content for them.",
     "Reconcile timestamps (they're absolute), deduplicate overlapping content from window boundaries, and keep direct quotes anchored to their timestamp.",
     "Use the full transcript below as the canonical source of truth for any quoted phrasing.",
@@ -294,41 +291,57 @@ function buildMergePrompt(
   return lines.join("\n");
 }
 
-function buildStructuringPrompt(
+// Exported for unit testing — the prompt is the pure, durable transformation.
+// The body IS the raw analysis (analysis-contract.ts): neutral analyst voice,
+// contract `##` sections carrying what the old two-call analysis captured
+// (overview, key claims, tools/frameworks, notable moments with timestamps,
+// verbatim quotes, entities) plus the video's own metadata. The author's
+// voiceProfile deliberately does NOT touch this prompt anymore.
+export function buildStructuringPrompt(
+  evidence: YouTubeEvidence,
   summary: string,
   notes: string,
-  voiceBlock: string,
 ): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
-    "You are drafting a single FINDING post for a personal blog from a pre-gathered YouTube evidence summary.",
     `Today's date: ${today}.`,
-    "Voice: first-person, observational, concrete. 120-300 words.",
-    "No marketing copy. No 'Here is' preambles. No code fences in the body.",
-    "Lead with what the video is and why it's worth a look. Keep any timestamps already present in the evidence summary — they're real and useful as deeplinks.",
-    "Also return a one-sentence excerpt summarizing the finding.",
     "",
     ...notesLeadLines(notes),
-    "Evidence summary:",
+    ...analysisContractLines({
+      kindLabel: "a YouTube video (from the pre-gathered evidence below)",
+      lengthHint: "300-1200 words, as long as the video warrants",
+      breakdownHint:
+        "a chronological breakdown of what the video covers, with rough timestamps for notable moments.",
+      extraSections: [
+        "## Tools & frameworks — software, libraries, products, methods, or named techniques used or shown, each with what it's used for here.",
+        "## Notable moments — specific moments worth jumping back to (demos, surprises, pivots, conclusions), each anchored to its timestamp.",
+      ],
+    }),
+    "Ground every statement in the evidence below — the merged evidence summary plus the metadata/transcript context. Do not go beyond it.",
+    "Timestamps already present in the evidence are real — keep them, as plain [m:ss] or [h:mm:ss] text (no links). Do not invent timestamps.",
+    "Quotes must be verbatim from the transcript or evidence summary; omit a quote rather than paraphrase it.",
+    "In ## Context & metadata, record the video's own metadata when available: title, channel, published date, duration.",
+    "",
+    "Video metadata + transcript context:",
+    "---",
+    buildSharedContext(evidence, "", null),
+    "---",
+    "",
+    "Evidence summary (merged from model passes over the video; primary source):",
     summary,
   ];
-  if (voiceBlock) {
-    lines.push(voiceBlock);
-  }
   return lines.join("\n");
 }
 
 export type YouTubeRunOptions = {
   url: string;
   notes: string;
-  voiceProfile?: string | null;
 };
 
 export type YouTubeRunResult = {
   output: GeminiOutput;
   evidence: YouTubeEvidence;
   evidenceSummary: string;
-  analysis: YouTubeAnalysis | null;
 };
 
 async function runChunkWithRetry(args: {
@@ -509,60 +522,18 @@ export async function runYouTubeGemini(
   const { output } = await generateText({
     model: textModel,
     temperature: config.temperature,
-    prompt: buildStructuringPrompt(
-      evidenceSummary,
-      options.notes,
-      buildVoiceInstruction(options.voiceProfile),
-    ),
+    prompt: buildStructuringPrompt(evidence, evidenceSummary, options.notes),
     output: Output.object({ schema: PostDraftSchema }),
   });
-
-  let analysis: YouTubeAnalysis | null = null;
-  try {
-    const metadataBlock = buildSharedContext(evidence, "", null);
-    const { output: analysisOutput } = await generateText({
-      model: textModel,
-      temperature: config.temperature,
-      prompt: buildAnalysisPrompt({
-        mergedSummary: evidenceSummary,
-        metadataBlock,
-        notes: options.notes,
-      }),
-      output: Output.object({ schema: YouTubeAnalysisSchema }),
-    });
-    analysis = analysisOutput;
-  } catch (err) {
-    log(
-      `[youtube] structured analysis call failed; appendix will be omitted: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
 
   const draft = toGeminiOutput(output, "FINDING", {
     originalUrl: evidence.parse.canonicalUrl,
   });
-  if (analysis) {
-    const appendix = renderYouTubeAppendix({
-      videoId: evidence.parse.videoId,
-      analysis,
-      mergedSummary: evidenceSummary,
-      transcript: evidence.transcript
-        ? {
-            segments: evidence.transcript.segments,
-            language: evidence.transcript.language,
-          }
-        : null,
-      chapters: evidence.chapters,
-    });
-    draft.body = `${draft.body.trimEnd()}\n\n${appendix}\n`;
-  }
 
   return {
     output: draft,
     evidence,
     evidenceSummary,
-    analysis,
   };
 }
 

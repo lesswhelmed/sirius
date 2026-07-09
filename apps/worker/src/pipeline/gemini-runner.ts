@@ -12,19 +12,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { PostType } from "@repo/db";
-import { getVoiceProfile } from "@repo/db";
 import { extractUrlContext } from "@repo/extraction";
 import { parseGitHubUrl } from "@repo/github-ingest";
 import type { PostDraft } from "@repo/ingest-draft";
-import {
-  buildVoiceInstruction,
-  PostDraftSchema,
-  sanitizeVoiceProfile,
-  SightDraftSchema,
-} from "@repo/ingest-draft";
+import { PostDraftSchema, SightDraftSchema } from "@repo/ingest-draft";
 import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { getAIConfig, modelForKind } from "../lib/ai-config";
 import { SafetyFlagError, type SafetyVerdict } from "./safety";
+import { analysisContractLines } from "./analysis-contract";
 import { notesLeadLines } from "./prompt-blocks";
 import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseTwitterUrl } from "../lib/twitter-url";
@@ -73,55 +68,76 @@ function slugify(input: string): string {
 
 // Exported for unit testing — the prompt is the pure, durable transformation;
 // the generateText call around it isn't unit-testable without a live model.
-export function buildPrompt(input: PipelineInput, voiceBlock: string): string {
+// Bodies are RAW ANALYSES (see analysis-contract.ts): neutral analyst voice,
+// maximal type-appropriate extraction. The author's voiceProfile deliberately
+// does NOT touch these prompts anymore — it personalizes the reflection
+// questions (pipeline/reflection) instead.
+export function buildPrompt(input: PipelineInput): string {
   const today = new Date().toISOString().slice(0, 10);
-  const lines = [
-    "You are drafting a single post for a personal blog.",
-    `Today's date: ${today}.`,
-    "Voice: first-person, observational, concrete. 80-300 words.",
-    "No marketing copy. No 'Here is' preambles. No code fences in the body.",
-    "Categories: 1-3 broad->narrow slash paths (e.g. 'technology/artificial-intelligence'); reuse common broad top-level fields, don't invent near-duplicates.",
-    "",
-  ];
+  const lines = [`Today's date: ${today}.`, ""];
 
   // url-kind extraction prompts live in @repo/extraction (shared with the web
   // extract endpoint); runGemini's url branch never reaches this builder.
   if (input.kind === "image") {
     lines.push(...notesLeadLines(input.notes));
     lines.push(
-      `${input.images.length} photo(s) are attached, in order. Write a SIGHT post about what is actually in them.`,
+      `${input.images.length} photo(s) are attached, in order.`,
+      ...analysisContractLines({
+        kindLabel:
+          input.images.length > 1 ? "a set of photos" : "a photo",
+        lengthHint: "150-500 words",
+        breakdownHint:
+          "photo-by-photo: subjects, setting, composition, lighting, colors, condition, brands/labels/signage, and any text visible in the images. Describe only what is visibly present.",
+      }),
       "Title: a 2-5 word noun phrase naming the literal subject.",
-      "Body: 60-160 words, first person, plain and concrete. Describe only what is visibly present — subject, setting, light, colors as plain names. Do NOT use intensifiers (almost, blinding, neon, aggressive), metaphor, simile, or mood-painting. Do NOT write image markdown, captions, or URLs in the body; the photos are shown separately by the app.",
-      "Also return one short factual caption per photo in imageAlts, in the same order, and a one-sentence excerpt.",
+      "Also return one short factual caption per photo in imageAlts, in the same order.",
     );
   } else if (input.kind === "note") {
+    // The note IS the human layer — preserve it verbatim (product decision
+    // 2026-07-09: never paraphrase away the author's own words), then analyze
+    // around it.
     lines.push(
-      "Compose a short BLOG entry from the author's notes. Also return a one-sentence excerpt summarizing the entry.",
+      "The author's note below is the core of this post. PRESERVE it verbatim — do not paraphrase, correct, trim, or rewrite it.",
+      "Return the body as: the author's note exactly as written (no heading, no edits), then a `---` divider, then your analysis of it.",
+      "For the analysis part:",
+      ...analysisContractLines({
+        kindLabel: "the author's own note",
+        lengthHint: "as long as the note warrants — a one-line note needs only a brief analysis",
+        breakdownHint:
+          "the themes and threads in the note, connections between its ideas, and what the author seems to be working toward.",
+      }),
       "",
+      "AUTHOR'S NOTE (verbatim, becomes the top of the body):",
       input.notes.trim(),
     );
   } else {
-    // video | audio | document — reference-only: describe/summarize the
-    // attached file's content as text. No media is embedded in the post.
+    // video | audio | document — reference-only: analyze the attached file's
+    // content as text. No media is embedded in the post.
     const kindLabels: Record<string, string> = {
-      video: "VIDEO",
-      audio: "AUDIO RECORDING",
-      document: "DOCUMENT",
+      video: "a video",
+      audio: "an audio recording",
+      document: "a document",
     };
-    const postTypes: Record<string, string> = {
-      video: "SIGHT post (describe what you see/hear, the subject, the mood)",
-      audio: "BLOG entry (transcribe key points, first-person observations)",
-      document: "FINDING post (summarize the content, key claims, relevance)",
+    const breakdowns: Record<string, string> = {
+      video:
+        "a scene-by-scene timeline: what is shown and said, on-screen text, people, setting, and notable moments (with rough timestamps).",
+      audio:
+        "the recording's content in order: key points, distinguishable speakers and their turns, and the topics discussed.",
+      document:
+        "section-by-section: the document's structure, key claims and evidence, methodology, and tables/figures.",
     };
     lines.push(...notesLeadLines(input.notes));
     lines.push(
-      `A ${kindLabels[input.kind] ?? input.kind} file is attached. Write a ${postTypes[input.kind] ?? "post"}.`,
-      "Be concrete, first-person, observational. No filler. 80-300 words.",
-      "Also return a one-sentence excerpt summarizing the post.",
+      `A ${input.kind.toUpperCase()} file is attached.`,
+      ...analysisContractLines({
+        kindLabel: kindLabels[input.kind] ?? "an attached file",
+        lengthHint: "300-1200 words, as long as the material warrants",
+        breakdownHint: breakdowns[input.kind] ?? "a type-appropriate deep extraction.",
+        extraSections: [
+          "## Extracted text — verbatim transcript or text passages that carry the substance of the material.",
+        ],
+      }),
     );
-  }
-  if (voiceBlock) {
-    lines.push(voiceBlock);
   }
   return lines.join("\n");
 }
@@ -129,25 +145,23 @@ export function buildPrompt(input: PipelineInput, voiceBlock: string): string {
 export function buildUrlStructuringPrompt(
   summary: string,
   notes: string,
-  voiceBlock: string,
 ): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [
-    "You are drafting a single FINDING post for a personal blog from a pre-fetched URL summary.",
     `Today's date: ${today}.`,
-    "Voice: first-person, observational, concrete. 80-300 words.",
-    "No marketing copy. No 'Here is' preambles. No code fences in the body.",
-    "Summarize what's on the page, why it's worth noting, anything specific that surprised you. Cite any quoted phrases inline naturally.",
-    "Also return a one-sentence excerpt summarizing the finding.",
-    "Categories: 1-3 broad->narrow slash paths (e.g. 'technology/artificial-intelligence'); reuse common broad top-level fields, don't invent near-duplicates.",
     "",
     ...notesLeadLines(notes),
+    ...analysisContractLines({
+      kindLabel: "a web page (from the pre-fetched summary below)",
+      lengthHint: "300-1200 words, as long as the material warrants",
+      breakdownHint:
+        "the page's full content and argument structure: its sections, claims and evidence, and notable passages.",
+    }),
+    "Ground every statement in the pre-fetched summary — do not go beyond it.",
+    "",
     "Pre-fetched URL summary:",
     summary,
   ];
-  if (voiceBlock) {
-    lines.push(voiceBlock);
-  }
   return lines.join("\n");
 }
 
@@ -164,7 +178,9 @@ const DRAFT_SAFETY_SETTINGS = [
   "HARM_CATEGORY_DANGEROUS_CONTENT",
 ].map((category) => ({ category, threshold: "BLOCK_ONLY_HIGH" }));
 
-const DRAFT_PROVIDER_OPTIONS = {
+// Exported for the reflection stage (pipeline/reflection), which makes its own
+// ancillary flash call with the same provider guardrails.
+export const DRAFT_PROVIDER_OPTIONS = {
   google: { safetySettings: DRAFT_SAFETY_SETTINGS },
 } as const;
 
@@ -255,7 +271,7 @@ export function toGeminiOutput(
 
 // Minimal logger seam (structurally compatible with pipeline.ts's StageLogger)
 // so runGemini can emit injection proof without importing the pipeline module.
-type StageLog = (stage: string, extra?: Record<string, unknown>) => void;
+export type StageLog = (stage: string, extra?: Record<string, unknown>) => void;
 
 // Number of attempts for a structured-output (Output.object) call before the
 // failure propagates. The first attempt plus (N-1) retries. Gemini's structured
@@ -294,7 +310,7 @@ export function noObjectErrorDetail(
 // (the recoverable "model returned bad/empty structured output" case) — any
 // other error (network, auth, content-filter) rethrows immediately so we don't
 // mask real failures or burn quota on a permanent error.
-async function withObjectRetry<T>(
+export async function withObjectRetry<T>(
   label: string,
   logger: StageLog | undefined,
   fn: () => Promise<T>,
@@ -326,25 +342,14 @@ export async function runGemini(
   const modelId = modelForKind(input.kind);
   const model = google(modelId);
 
-  // Voice resolution with an override seam: an explicitly-supplied
-  // input.voiceProfile wins (lets callers — e.g. the gen:try harness — inject a
-  // voice with no DB), else fall back to the DB fetch by submitter. The daemon
-  // passes no voiceProfile, so its behavior is unchanged (still fetches).
-  const voiceProfile =
-    input.voiceProfile ??
-    (input.submittedById ? await getVoiceProfile(input.submittedById) : null);
-  const voiceBlock = buildVoiceInstruction(voiceProfile);
-
-  // Proof that the author voice + notes actually reach the prompt. voiceBlock is
-  // only non-empty when a voice is present, and notes are only concatenated into
-  // a prompt when non-empty — so these booleans mirror what the model sees.
+  // The author's voiceProfile no longer shapes ANY body prompt (raw-analysis
+  // pivot 2026-07): it personalizes the reflection questions instead
+  // (pipeline/reflection). Bodies are neutral analyst voice by contract.
   const trimmedNotes = input.notes.trim();
   opts?.logger?.("prompt:built", {
     kind: input.kind,
     model: modelId,
     temperature: config.temperature,
-    voiceApplied: voiceBlock.length > 0,
-    voiceChars: sanitizeVoiceProfile(voiceProfile).length,
     notesApplied: trimmedNotes.length > 0,
     notesChars: trimmedNotes.length,
   });
@@ -359,7 +364,6 @@ export async function runGemini(
         const result = await runGitHubGemini({
           url: githubUrls[0]!,
           notes: input.notes,
-          voiceProfile,
         });
         if (result) {
           return result.output;
@@ -398,7 +402,6 @@ export async function runGemini(
         const result = await runTwitterGemini({
           url: twitterUrls[0]!,
           notes: input.notes,
-          voiceProfile,
         });
         if (result) {
           return result.output;
@@ -418,7 +421,6 @@ export async function runGemini(
         const result = await runYouTubeGemini({
           url: youtubeUrls[0]!,
           notes: input.notes,
-          voiceProfile,
         });
         if (result) {
           return result.output;
@@ -474,7 +476,7 @@ export async function runGemini(
         generateText({
           model,
           temperature: config.temperature,
-          prompt: buildUrlStructuringPrompt(summary, input.notes, voiceBlock),
+          prompt: buildUrlStructuringPrompt(summary, input.notes),
           providerOptions: DRAFT_PROVIDER_OPTIONS,
           output: Output.object({ schema: PostDraftSchema }),
         }),
@@ -483,7 +485,7 @@ export async function runGemini(
     return toGeminiOutput(output, "FINDING", { originalUrl: input.urls[0] });
   }
 
-  const prompt = buildPrompt(input, voiceBlock);
+  const prompt = buildPrompt(input);
 
   if (input.kind === "image") {
     const imageParts = input.images.map(loadImagePart);
