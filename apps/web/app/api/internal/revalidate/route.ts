@@ -1,4 +1,8 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { revalidateTag } from "next/cache";
+
+const BEARER_PREFIX = "Bearer ";
 
 // Internal endpoint the worker calls after writing a post, so cached post
 // bodies and lists refresh immediately instead of waiting out cacheLife.
@@ -10,8 +14,18 @@ export async function POST(request: Request) {
     return Response.json({ error: "revalidate-disabled" }, { status: 503 });
   }
 
-  const auth = request.headers.get("authorization");
-  if (auth !== `Bearer ${token}`) {
+  // Constant-time compare against REVALIDATE_TOKEN so timing leaks don't
+  // reveal the token shape (matches lib/ingest/auth.ts verifyBearer).
+  const header = request.headers.get("authorization");
+  if (!header?.startsWith(BEARER_PREFIX)) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const provided = Buffer.from(header.slice(BEARER_PREFIX.length).trim());
+  const expected = Buffer.from(token);
+  if (
+    provided.length !== expected.length ||
+    !timingSafeEqual(provided, expected)
+  ) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
