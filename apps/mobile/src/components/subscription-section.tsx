@@ -83,6 +83,11 @@ export function SubscriptionSection() {
   }, [refreshUsage]);
 
   const showPro = isPro || usage?.isPro;
+  // Bookmarks saved without an AI draft (over the weekly cap). Surfaced for
+  // FREE users as upgrade context; Pro users regenerate any leftover stubs
+  // from the post detail screen instead, so the Pro view stays unchanged.
+  // `?? 0` tolerates an older cached payload without the field.
+  const stubCount = usage?.stubCount ?? 0;
 
   return (
     <View style={styles.section}>
@@ -92,6 +97,11 @@ export function SubscriptionSection() {
           {showPro ? "Sirius AI Pro" : "Free plan"}
         </Text>
         <UsageMeter usage={usage} />
+        {!showPro && stubCount > 0 ? (
+          <Text style={styles.stubLine}>
+            {stubCount} post{stubCount === 1 ? "" : "s"} waiting for AI
+          </Text>
+        ) : null}
         {!showPro ? (
           <Text style={styles.sub}>
             Ingesting is always free. Upgrade for unlimited AI-drafted posts.
@@ -186,6 +196,12 @@ function makeStyles(t: Theme) {
       fontFamily: t.font.mono,
       fontSize: 12,
       color: t.color.accent,
+    },
+    // "N posts waiting for AI" — sits directly under the meter, same register.
+    stubLine: {
+      fontFamily: t.font.mono,
+      fontSize: 11,
+      color: t.color.inkMuted,
     },
     legal: {
       flexDirection: "row",

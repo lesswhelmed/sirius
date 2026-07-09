@@ -13,6 +13,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +25,7 @@ import { RelatedPosts } from "@/components/explore/related-posts";
 import { OriginalContentSection } from "@/components/original-content-section";
 import { PostBody } from "@/components/post-body";
 import { AudienceSheet } from "@/components/audience-sheet";
+import { ReflectionSection } from "@/components/reflection-section";
 import { KindLabel, Screen, Title } from "@/components/sirius";
 import type { Theme } from "@/constants/theme";
 import {
@@ -31,13 +33,15 @@ import {
   useTheme,
   useThemedStyles,
 } from "@/constants/theme-context";
-import { apiGet, resolveMediaUrl } from "@/lib/api";
+import { ApiError, apiGet, apiPostJson, resolveMediaUrl } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { db } from "@/lib/db/client";
 import { type PostRow, posts } from "@/lib/db/schema";
 import { showPostModerationSheet } from "@/lib/moderation";
 import { openPostEdit, pushOnce } from "@/lib/nav";
 import { confirmAndDeletePost } from "@/lib/post-delete";
+import { presentPaywall } from "@/lib/purchases";
+import { useAiUsage } from "@/lib/purchases/use-usage";
 
 // The server route returns findPostBySlug's PostWithRelations, which includes
 // the author summary — needed by the peer-post Report/Block action below.
@@ -160,9 +164,16 @@ export default function PostDetailScreen() {
     from?: string;
   }>();
   const [visibilityOpen, setVisibilityOpen] = useState(false);
+  // Once the regenerate POST is accepted (202) this stays true — the disabled
+  // "Regenerating…" state holds until the delta pull flips aiTreatment to
+  // "full", which removes the whole stub UI (badge + row) from this screen.
+  const [regenerating, setRegenerating] = useState(false);
   const router = useRouter();
   const qc = useQueryClient();
   const { data: session } = useSession();
+  // Weekly AI budget — only consulted to route a non-Pro owner to the paywall
+  // before the regenerate call (the server re-verifies with a 402 either way).
+  const { data: usage } = useAiUsage();
 
   // Local mirror first. `localRows === undefined` means the live query hasn't
   // resolved yet; an empty array means there's genuinely no local copy.
@@ -232,6 +243,64 @@ export default function PostDetailScreen() {
   const heroUri =
     sightImages.length > 0 ? undefined : resolveMediaUrl(view.imageUrl);
 
+  // Degraded bookmark: the post was saved without an AI draft (free user over
+  // the weekly cap — body is their own material verbatim). Owner-only signal:
+  // the mirror row is the source of truth, and only the owner's posts mirror.
+  const isStub = !!localRow && localRow.aiTreatment === "stub";
+
+  // Fire the regenerate request. On 202 the button stays in its disabled
+  // "Regenerating…" state — the delta pull flips aiTreatment and clears the
+  // stub UI on its own. 402 = server says Pro required (entitlement lapsed or
+  // the pre-check raced) → paywall, then retry on purchase. 409 = the post
+  // isn't regeneratable. Anything else gets a brief generic error.
+  const runRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      await apiPostJson(`/api/app/posts/${slug}/regenerate`, {});
+    } catch (err) {
+      setRegenerating(false);
+      if (err instanceof ApiError && err.status === 402) {
+        const becamePro = await presentPaywall();
+        if (becamePro) {
+          void qc.invalidateQueries({ queryKey: ["ai-usage"] });
+          void runRegenerate();
+        }
+        return;
+      }
+      Alert.alert(
+        "Couldn’t regenerate",
+        err instanceof ApiError && err.status === 409
+          ? "This post can’t be regenerated."
+          : "Something went wrong. Please try again.",
+      );
+    }
+  };
+
+  // Native confirm (same Alert pattern as confirmAndDeletePost) — regenerating
+  // overwrites whatever body text the stub currently carries.
+  const confirmRegenerate = () => {
+    Alert.alert(
+      "Regenerate with AI",
+      "Regenerating replaces the current draft text.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Regenerate", onPress: () => void runRegenerate() },
+      ],
+    );
+  };
+
+  // Entry point: non-Pro owners go to the paywall first; a successful purchase
+  // refreshes usage and proceeds straight into the confirm → regenerate flow.
+  const onRegenerate = async () => {
+    if (regenerating) return;
+    if (usage && !usage.isPro) {
+      const becamePro = await presentPaywall();
+      if (!becamePro) return;
+      void qc.invalidateQueries({ queryKey: ["ai-usage"] });
+    }
+    confirmRegenerate();
+  };
+
   return (
     <Screen>
       <Stack.Screen
@@ -257,7 +326,19 @@ export default function PostDetailScreen() {
         {sightImages.map((img, i) => (
           <GalleryImage key={`${img.url}-${i}`} image={img} index={i} />
         ))}
-        <KindLabel tone={tone}>{TYPE_LABEL[view.type] ?? view.type}</KindLabel>
+        <View style={styles.kindRow}>
+          <KindLabel tone={tone}>{TYPE_LABEL[view.type] ?? view.type}</KindLabel>
+          {/* Quiet owner-only badge for a degraded bookmark (no AI draft). It
+              disappears on its own when aiTreatment flips to "full". */}
+          {isStub ? (
+            <Text
+              style={styles.stubBadge}
+              accessibilityLabel="Saved without AI — this bookmark has no AI draft yet"
+            >
+              Saved without AI
+            </Text>
+          ) : null}
+        </View>
         <Title accent=".">{view.title}</Title>
         {/* Friend byline — PEER posts only (server-only branch, gated by
             peerAuthor exactly like Report/Block below, so it never shows on the
@@ -306,6 +387,30 @@ export default function PostDetailScreen() {
           >
             <Text style={styles.visLabel}>Content</Text>
             <Text style={styles.visValue}>Edit ▸</Text>
+          </Pressable>
+        ) : null}
+        {/* Regenerate — owner-only, stub bookmarks only. Paywalls a non-Pro
+            owner first; once the 202 lands the row holds a disabled
+            "Regenerating…" state until the delta pull clears the stub. */}
+        {isStub ? (
+          <Pressable
+            onPress={() => void onRegenerate()}
+            disabled={regenerating}
+            accessibilityRole="button"
+            accessibilityLabel={
+              regenerating ? "Regenerating with AI" : "Regenerate with AI"
+            }
+            accessibilityState={{ disabled: regenerating, busy: regenerating }}
+            style={({ pressed }) => [
+              styles.visRow,
+              pressed && !regenerating && styles.visPressed,
+              regenerating && styles.visDisabled,
+            ]}
+          >
+            <Text style={styles.visLabel}>AI draft</Text>
+            <Text style={styles.visValue}>
+              {regenerating ? "Regenerating…" : "Regenerate ▸"}
+            </Text>
           </Pressable>
         ) : null}
         {/* Delete — owner-only (gated on a mirror-backed row, like the controls
@@ -371,6 +476,11 @@ export default function PostDetailScreen() {
             hasGallery={sightImages.length > 0}
           />
         ) : null}
+        {/* Reflection thread — AI prompts inviting the owner's own take, after
+            the body and before comments. Mirror-first; renders nothing when the
+            post has no prompts. Ownership signal = mirror-backed row, same as
+            the Audience/Content/Delete controls above. */}
+        <ReflectionSection postSlug={slug} isOwner={!!localRow} />
         {/* Comments attach to synced posts only — this slug-routed screen is
 				    always a real server post. */}
         {/* Posts that share this one's topics — connective tissue from the
@@ -440,6 +550,24 @@ function makeStyles(t: Theme) {
       textTransform: "uppercase",
       color: t.color.inkMuted,
     },
+    // Kind label + optional stub badge share one meta row above the title.
+    kindRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: t.space.sm,
+    },
+    // Quiet mono chip for a bookmark saved without an AI draft.
+    stubBadge: {
+      fontFamily: t.font.mono,
+      fontSize: 10,
+      letterSpacing: 0.5,
+      textTransform: "uppercase",
+      color: t.color.inkSubtle,
+      borderWidth: 1,
+      borderColor: t.color.rule,
+      paddingHorizontal: t.space.sm,
+      paddingVertical: 2,
+    },
     visRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -451,6 +579,7 @@ function makeStyles(t: Theme) {
       marginTop: t.space.xs,
     },
     visPressed: { opacity: 0.6 },
+    visDisabled: { opacity: 0.5 },
     visLabel: {
       fontFamily: t.font.mono,
       fontSize: 11,

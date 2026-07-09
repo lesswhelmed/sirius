@@ -597,7 +597,9 @@ export default function LibraryScreen() {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${item.title} — ${TYPE_LABEL[item.type] ?? item.type}`}
+        accessibilityLabel={`${item.title} — ${TYPE_LABEL[item.type] ?? item.type}${
+          item.aiTreatment === "stub" ? " — bookmark, saved without AI" : ""
+        }`}
         style={({ pressed }) => [styles.row, pressed && styles.pressed]}
       >
         {imageUri ? (
@@ -628,6 +630,12 @@ export default function LibraryScreen() {
               >
                 {pip}
               </Text>
+            ) : null}
+            {/* Degraded bookmark (saved without an AI draft — free user over
+                the weekly cap). Quiet signal only; the regenerate CTA lives on
+                the post detail screen, not the card. */}
+            {item.aiTreatment === "stub" ? (
+              <Text style={styles.stubChip}>Bookmark</Text>
             ) : null}
             {repoChip ? (
               <Text style={styles.repoChip} numberOfLines={1}>
@@ -1331,6 +1339,18 @@ function makeStyles(t: Theme) {
     color: t.color.inkSubtle,
   },
   pipFailed: { color: t.color.accent },
+  // Quiet chip for a bookmark saved without an AI draft (aiTreatment "stub").
+  stubChip: {
+    fontFamily: t.font.mono,
+    fontSize: 10,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: t.color.inkSubtle,
+    borderWidth: 1,
+    borderColor: t.color.rule,
+    paddingHorizontal: t.space.sm,
+    paddingVertical: 1,
+  },
   repoChip: {
     flexShrink: 1,
     fontFamily: t.font.mono,

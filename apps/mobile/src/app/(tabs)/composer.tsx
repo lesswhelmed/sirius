@@ -727,7 +727,7 @@ export default function ComposerScreen() {
   // a submit — no blocking "Saved on this device" Alert (submitMaterials only
   // does local/durable writes now, uploads finish in the background), just a
   // polite screen-reader announcement so the outcome is still communicated.
-  function finishSubmit(queued: number) {
+  function finishSubmit(queued: number, savedAsBookmark = false) {
     setItems([]);
     setNotesById(new Map());
     setSubmissionNote("");
@@ -743,7 +743,9 @@ export default function ComposerScreen() {
     pushOnce("/(tabs)/library");
     if (queued > 0) {
       announcePolite(
-        `Capture queued, ${queued} item${queued === 1 ? "" : "s"} uploading`,
+        savedAsBookmark
+          ? "Saved as a bookmark — upgrade anytime to generate the AI analysis."
+          : `Capture queued, ${queued} item${queued === 1 ? "" : "s"} uploading`,
       );
     }
   }
@@ -751,10 +753,16 @@ export default function ComposerScreen() {
   async function submit() {
     if (busy || items.length === 0 || submitBlocked) return;
     // Drafting is always server-side now, so the usage cap always applies.
+    // Over-cap captures still save either way — as a degraded "bookmark" post
+    // (verbatim material, no AI draft) that Pro can regenerate later — so a
+    // declined paywall just changes the success copy, never blocks the submit.
+    let savedAsBookmark = false;
     if (usage && !usage.isPro && (usage.remaining ?? 0) <= 0) {
       const becamePro = await presentPaywall();
       if (becamePro) {
         queryClient.invalidateQueries({ queryKey: ["ai-usage"] });
+      } else {
+        savedAsBookmark = true;
       }
     }
     // Every file-kind card's bytes were already staged durably at pick time
@@ -791,7 +799,7 @@ export default function ComposerScreen() {
     // created nothing new, so they aren't queued. No blocking Alert here
     // anymore; the dedup/"Process again" state is surfaced in-board (Task 12)
     // via the In-flight board's own re-enqueue control, not a composer handler.
-    finishSubmit(result.queued);
+    finishSubmit(result.queued, savedAsBookmark);
   }
 
   // Step 2 focus list, filtered by the search box. "Auto" stays pinned at the
