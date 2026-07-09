@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Streamdown } from "streamdown";
 import { getCachedPost } from "../../../../lib/cached";
 import { CommentsSection } from "./comments-section";
+import { RegenerateBanner } from "./regenerate-banner";
 import { RelatedPosts } from "./related-posts";
 import { denyCatalogAccess } from "../../../../lib/catalog-access";
 import { DateDisplay } from "../../../../lib/date-display";
@@ -112,6 +113,11 @@ export default async function ListingPage({
 
       <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div>
+          {/* Owner-only: a degraded "stub" bookmark (free AI cap hit) offers a
+              Pro regeneration. Full posts and non-owners render nothing. */}
+          {isOwner && post.aiTreatment === "stub" ? (
+            <RegenerateBanner slug={slug} />
+          ) : null}
           {post.imageUrl ? (
             <div className="relative mb-8 aspect-[4/5] w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunken)]">
               <PostImage

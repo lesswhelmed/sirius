@@ -490,6 +490,15 @@ export function countPosts(filters: PostFilters = {}): Promise<number> {
   return prisma.post.count({ where: buildPostWhere(filters) });
 }
 
+// Count of the owner's degraded "bookmark" posts (aiTreatment = "stub") — the
+// ones Pro regeneration can re-roll. Additive field on GET /api/app/usage.
+// Served by the [submittedById, aiTreatment] index.
+export function countStubPosts(ownerId: string): Promise<number> {
+  return prisma.post.count({
+    where: { submittedById: ownerId, aiTreatment: "stub" },
+  });
+}
+
 // Lightweight slug -> id resolution for mutation routes that only need the id.
 export async function findPostIdBySlug(slug: string): Promise<string | null> {
   const row = await prisma.post.findUnique({
