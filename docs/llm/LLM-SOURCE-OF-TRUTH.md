@@ -9,7 +9,7 @@
 
 - **Owner:** Sirius team
 - **Created:** 2026-07-01
-- **Last validated:** 2026-07-02 (chat-modernization landed; anchors A12/A14/A15 redefined — see drift log)
+- **Last validated:** 2026-07-09 (raw-analysis pivot + reflection layer landed; anchors A18/A19 added — see drift log)
 - **Related docs:** `docs/HANDOFF-on-device-ai.md`, `docs/search-ranking.md`,
   `docs/friends-feed.md`, `packages/research-agent/`, `apps/mcp/`
 
@@ -22,7 +22,8 @@
 | **Drafting** (note→BLOG, url→FINDING, image→SIGHT) | `apps/mobile/src/lib/llm/curate.ts` | on-device llama.rn (+ server `/extract` for URL) | ⚠️ **PARKED** — implemented, bench-tested, NOT wired to any live submit path (`onDeviceCuration` forced `false`). Production drafting = server worker. |
 | **Ask my posts** (on-device chat) | `apps/mobile/src/lib/research/ask.ts` (`askMyPosts`) | on-device select+answer, server query-embed | 🔌 **UNHOOKED** — `/llm` no longer calls it (commit `e5dc196`). Code + embed-query + sqlite vector store **retained but not reachable**, reusable later. |
 | **Transcription** | `apps/mobile/src/lib/llm/transcribe.ios.ts` | on-device Apple SpeechAnalyzer (iOS 26+) | ✅ live; feeds drafting. Untouched by the migration. |
-| **Server draft pipeline** | `apps/worker/src/pipeline/gemini-runner.ts` | server Gemini (Vercel AI SDK) | ✅ live; the real production drafter. |
+| **Server draft pipeline → RAW ANALYSIS** | `apps/worker/src/pipeline/gemini-runner.ts` + `analysis-contract.ts` | server Gemini (Vercel AI SDK) | ✅ live; pivoted 2026-07-09 — bodies are maximal-detail neutral-analyst analyses (shared `##`-section contract, per-type breakdowns), NOT voice-styled posts. Voice no longer touches any body prompt. |
+| **Reflection prompts** (the human layer) | `apps/worker/src/pipeline/reflection/generate.ts` | server Gemini flash (unmetered ridealong) | ✅ live 2026-07-09; post-classification stage generates 3-5 personalized "write your own take" questions (voiceProfile + owner topics/focus areas + cosine-related posts). Non-fatal; kill switch `REFLECTION_ENABLED=false`. Rows: `ReflectionPrompt`/`ReflectionResponse` (packages/db `reflections.ts`). |
 | **Curated search** (catalog bar) | `packages/db/src/search.ts` `searchCorpus` | server Postgres FTS + embedding RRF | ✅ live; the retrieval core the new chat will reuse. |
 | **MCP corpus server** | `apps/mcp/` | server, per-user apiKey | ✅ live; external-agent tool surface. |
 | **Server chat agent** (Gemini Flash, tool loop) | `apps/web/app/api/app/chat/route.ts` + `apps/web/lib/chat/agent.ts` | server Gemini Flash 3.5 | ✅ **LIVE (v2 protocol)** — the `/llm` chat backend, now speaking the **AI SDK UI message stream** (`createUIMessageStream`); mobile consumes with `useChat`. See §3. Sim verification USER-PENDING. |
@@ -245,6 +246,8 @@ exist until the migration lands (its appearance = progress, update status).
 | A15 | Route speaks UI message stream | `rg -n "createUIMessageStream" apps/web/app/api/app/chat/route.ts` | `[LIVE]` present (2026-07-02) — AI SDK UI message stream; hand-rolled chat SSE retired |
 | A16 | Server-chat dev bench card | `rg -n "runServerChatTest" apps/mobile/src/lib/llm/test-bench.ts` | `[LIVE]` present (c10c934) — deep-link `siriusapp://llm-test?run=serverchat` |
 | A17 | Catalog → chat entry point | `rg -n 'pushOnce\("/llm"\)' apps/mobile/src/app/\(tabs\)/library.tsx` | `[LIVE]` present (9e25b80) — "Ask your library" CTA on Catalog; the sole prod entry to `/llm` |
+| A18 | Raw-analysis contract in every body prompt | `rg -n "analysisContractLines" apps/worker/src/pipeline/ -l` | `[LIVE]` present (2026-07-09) in gemini-runner + github/twitter/youtube/document runners; if a builder drops it, bodies drift back to voiced posts |
+| A19 | Reflection stage wired non-fatal | `rg -n "generateReflectionPrompts" apps/worker/src/pipeline/pipeline.ts` | `[LIVE]` present (2026-07-09); skipped for stubs/bearer; REFLECTION_ENABLED kill switch |
 
 **Validation loop procedure (every 4 min):** run the checks above; for each mismatch,
 note it under §6 with a timestamp and reconcile the doc. Update **Last validated** at the
@@ -253,6 +256,24 @@ top. Keep it cheap — grep-level checks, not a full re-exploration.
 ---
 
 ## 6. Drift log (loop-maintained)
+
+- **2026-07-09 — RAW-ANALYSIS PIVOT + REFLECTION LAYER LANDED, EXPECTED not drift.**
+  (1) Every drafting prompt now embeds the shared analysis contract
+  (`apps/worker/src/pipeline/analysis-contract.ts`): neutral analyst voice, `##`
+  sections, 300-1200 words (SIGHT 150-500); note-kind preserves the author's
+  words verbatim + analyzes around them. `buildVoiceInstruction` is REMOVED from
+  all body prompts — voice now personalizes the reflection questions instead.
+  YouTube's separate analysis call + `<details>` appendix are GONE
+  (`youtube/analysis.ts` deleted; the analysis IS the body). Anchor A18 added.
+  (2) New reflection stage (`pipeline/reflection/generate.ts`, wired non-fatal in
+  `pipeline.ts` after assignOrg): unmetered flash ridealong, generates
+  `ReflectionPrompt` rows; owner answers land in `ReflectionResponse` (text or
+  audio+transcript), audience inherited from the post via canReadPost. Anchor
+  A19 added. If reviving on-device drafting (§2.1), it MUST adopt the analysis
+  contract — the parked curate.ts prompts are now legacy-voiced.
+  (3) Over-quota stubs now carry the user's material verbatim (no upsell body);
+  `Post.aiTreatment` full|stub marks degraded bookmarks; Pro regeneration
+  requeues the original submissions and rewrites the same post in place.
 
 - **2026-07-02 — chat modernization LANDED (AI SDK 6 stack), EXPECTED not drift.** Route
   → UI message stream (`createUIMessageStream`, sources as `data-source-posts`, get_post
