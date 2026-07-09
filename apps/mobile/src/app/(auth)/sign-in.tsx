@@ -24,6 +24,7 @@ import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { signIn } from "@/lib/auth-client";
 import { clearAuthStorage, takeRecoveryBreadcrumb } from "@/lib/auth-recovery";
 import { pushOnce } from "@/lib/nav";
+import { clearEmailVerificationPending } from "@/lib/verify-email-cookie";
 import {
   type BiometricType,
   biometricLabel,
@@ -55,7 +56,13 @@ async function attemptSignIn(email: string, password: string) {
   // clear it first so a fresh login is always clean. See
   // plans/auth-is-broken-on-swift-noodle.md.
   await clearAuthStorage("pre-sign-in");
-  return signIn.email({ email, password });
+  const result = await signIn.email({ email, password });
+  // Signed in — disarm the verify-return cookie window. A stale flag would
+  // otherwise hold the deep-link cookie-consumption gate open indefinitely
+  // (login-CSRF guard; see verify-email-cookie.ts). Both the manual and
+  // biometric paths funnel through here.
+  if (!result.error) clearEmailVerificationPending();
+  return result;
 }
 
 // Post-login: if biometrics are available and not yet enabled, ask once

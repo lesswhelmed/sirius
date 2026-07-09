@@ -23,6 +23,7 @@ import type { Theme } from "@/constants/theme";
 import { useThemedStyles } from "@/constants/theme-context";
 import { signUp } from "@/lib/auth-client";
 import { pushOnce } from "@/lib/nav";
+import { markEmailVerificationPending } from "@/lib/verify-email-cookie";
 
 // App Store Guideline 1.2 (UGC): registration requires explicit agreement to
 // the Terms of Use (zero tolerance for objectionable content / abusive users)
@@ -78,12 +79,21 @@ export default function SignUpScreen() {
       email,
       password,
       name: name || email.split("@")[0],
+      // App-first verification: the expo client rewrites a leading-"/"
+      // callbackURL into a full siriusapp:// deep link, so the emailed
+      // verify link returns to THIS app (signed in — +native-intent.ts stores
+      // the session cookie the server attaches) instead of the web app.
+      callbackURL: "/",
     });
     setBusy(false);
     if (error) {
       Alert.alert("Sign-up failed", error.message ?? "Try again.");
       return;
     }
+    // Arm the verify-return window: +native-intent.ts consumes the emailed
+    // link's session cookie ONLY while this flag is set (login-CSRF guard —
+    // see verify-email-cookie.ts).
+    markEmailVerificationPending();
     router.replace({
       pathname: "/(auth)/verify-pending",
       params: { email },

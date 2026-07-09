@@ -11,14 +11,17 @@
 // routing depend on that native lookup not throwing (a throw used to eat the
 // share and silently land on "/").
 import { logShareEvent } from "@/lib/share-breadcrumbs";
+import { consumeAuthCookieParam } from "@/lib/verify-email-cookie";
 
-export function redirectSystemPath({
+// Async is supported: expo-router awaits a Promise<string | null> return, so
+// the auth-cookie write below completes before any navigation resolves.
+export async function redirectSystemPath({
   path,
   initial,
 }: {
   path: string;
   initial: boolean;
-}): string {
+}): Promise<string> {
   try {
     if (path.includes("dataUrl=")) {
       // Never log the path itself — flags only (see share-breadcrumbs.ts).
@@ -43,6 +46,43 @@ export function redirectSystemPath({
     if (base.startsWith("u/")) {
       const rest = base.slice(2).replace(/^\/+/, "");
       if (rest) return `/u/${rest}`;
+    }
+    // Email verification return: better-auth verifies the token on the web
+    // host, then redirects to our trusted `siriusapp://` callbackURL with the
+    // fresh session attached as `?cookie=<set-cookie>` (the @better-auth/expo
+    // server plugin appends it; autoSignInAfterVerification mints the
+    // session). Nothing else consumes that param when the app is opened by a
+    // plain deep link, so store it here — see verify-email-cookie.ts. Checked
+    // after the share/capture/u branches so those keep their routing even if a
+    // future link somehow carried a stray `cookie` param.
+    if (query) {
+      const params = new URLSearchParams(query);
+      const cookie = params.get("cookie");
+      if (cookie) {
+        // Gated (login-CSRF guard): consumed only when this device armed the
+        // verify-return window AND is signed out — see verify-email-cookie.ts.
+        const stored = await consumeAuthCookieParam(cookie);
+        // Flags only — NEVER the cookie value (see share-breadcrumbs.ts).
+        logShareEvent(
+          stored
+            ? "native-intent:auth-cookie"
+            : "native-intent:auth-cookie-refused",
+          { initial },
+        );
+        // "/" lets index.tsx route by session: cookie accepted → signed in →
+        // library (or first-run help); cookie refused/invalid → whatever the
+        // current session state dictates (signed-out → sign-in). Never
+        // crashes on a bad link.
+        return "/";
+      }
+      // Verification-failure return (e.g. expired token): better-auth
+      // redirects to the callbackURL with ?error=<code> and no cookie. Land
+      // on sign-in, where attempting to sign in unverified routes back to
+      // verify-pending with its Resend button.
+      if (params.get("error")) {
+        logShareEvent("native-intent:auth-error", { initial });
+        return "/(auth)/sign-in";
+      }
     }
     logShareEvent("native-intent:passthrough", { initial });
     return path;
