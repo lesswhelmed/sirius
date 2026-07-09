@@ -1,4 +1,5 @@
 import { listFriends, listPendingRequests, listShareGroups } from "@repo/db";
+import { Suspense } from "react";
 import { requireSession } from "../../../lib/session";
 import type { GroupSummary } from "../../../lib/groups/types";
 import { FriendsFeed } from "./friends-feed";
@@ -71,9 +72,26 @@ export default async function FriendsPage({
           groups={groupItems}
           initialTab={initialTab}
           selectedGroupId={selectedGroupId}
-          feed={<FriendsFeed userId={session.user.id} />}
+          feed={
+            <Suspense fallback={<FriendsFeedFallback />}>
+              <FriendsFeed userId={session.user.id} />
+            </Suspense>
+          }
         />
       </div>
     </section>
+  );
+}
+
+// Streams while the merged feed's own queries (friend/blocked ids →
+// listVisibleToViewer) resolve, so the shell + tab bar render immediately.
+function FriendsFeedFallback() {
+  return (
+    <div
+      role="status"
+      className="flex min-h-[420px] items-center justify-center px-6 text-center font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]"
+    >
+      Loading…
+    </div>
   );
 }

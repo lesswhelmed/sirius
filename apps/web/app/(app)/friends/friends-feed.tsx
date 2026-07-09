@@ -1,14 +1,10 @@
-import {
-  blockedIdsFor,
-  friendIdsOf,
-  listVisibleToViewer,
-  publicTierPolicy,
-} from "@repo/db";
+import { blockedIdsFor, listVisibleToViewer, publicTierPolicy } from "@repo/db";
 import Link from "next/link";
 import {
   ANONYMOUS_CATALOG_ENABLED,
   PUBLIC_CATALOG_ENABLED,
 } from "../../../lib/features";
+import { getViewerFriendIds } from "../../../lib/friends-access";
 import { CatalogCard } from "../../(public)/catalog/catalog-card";
 
 const FEED_PAGE = 48;
@@ -20,7 +16,7 @@ export async function FriendsFeed({ userId }: { userId: string }) {
   // Blocked-author exclusion (both directions) — the db layer defaults
   // blockedIds to [], so the feed must pass the real set (App Store 1.2 Part C).
   const [friendIds, blockedIds] = await Promise.all([
-    friendIdsOf(userId),
+    getViewerFriendIds(userId),
     blockedIdsFor(userId),
   ]);
   // Signed-in surface: cross-user PUBLIC admission comes from the shared PUBLIC
