@@ -240,24 +240,54 @@ worker never call each other directly, they only share the DB and the `@repo/db`
    SIGHT post. Claiming flips `pending → processing` via a guarded `updateMany` (count-check
  = optimistic lock). Shutdown drains active jobs for `INGEST_SHUTDOWN_DRAIN_MS`, then exits
  and lets lease reclaim recover anything still processing. State machine: `pending → processing → completed | failed`.
-3. **Draft (worker).** `pipeline/pipeline.ts` runs two stages: `runGemini` then `writePost`.
-   `gemini-runner.ts` uses the Vercel AI SDK (`generateText` + `Output.object(zodSchema)`) so
-   output is schema-validated, no manual JSON parsing. Routing:
-   - URL ingest → two-step: `url_context` tool fetches/summarizes (tools + JSON mode can't
-     coexist in one Gemini call), then a second call structures it. Forced type `FINDING`.
+3. **Analyze (worker).** `pipeline/pipeline.ts` stages: `runGemini` → `writePost` →
+   `assignOrg` → `reflection` (last two non-fatal). Since 2026-07 the model produces a
+   **maximal-detail RAW ANALYSIS in neutral analyst voice** (NOT a stylized post in the
+   user's voice) — every prompt builder embeds the shared contract in
+   `pipeline/analysis-contract.ts` (`##` sections: Overview, Full breakdown, Key claims &
+   facts, Notable quotes, Entities, Data & numbers, Context & metadata, Open questions;
+   300-1200 words, SIGHT 150-500). The analysis lands in the same `Post.content` field, so
+   search/embeddings get richer with no schema change. `gemini-runner.ts` uses the Vercel
+   AI SDK (`generateText` + `Output.object(zodSchema)`). Routing:
+   - URL ingest → two-step: `url_context` tool does maximal extraction (tools + JSON mode
+     can't coexist in one Gemini call), then a second call structures it. Forced `FINDING`.
    - Single Instagram URL → dedicated Apify path (`pipeline/instagram/`).
-   - Single YouTube URL → dedicated transcript/chunk path (`pipeline/youtube/`).
+   - Single YouTube URL → dedicated transcript/chunk path (`pipeline/youtube/`) — the
+     analysis IS the body (the old `<details>` appendix + separate analysis call are gone).
      Both dedicated paths **fall back to `url_context`** on failure.
    - Image batch → inline image parts, forced type `SIGHT`.
-   - Note → forced type `BLOG`.
+   - Note → forced type `BLOG`, **author's note preserved verbatim** with the analysis
+     appended after a `---` divider (never paraphrase the human's words).
      The post **type is forced by the worker after the model returns** so a model regression
      can't drift it.
+   **Reflection stage** (`pipeline/reflection/generate.ts`): after classification, an
+   unmetered flash ridealong generates 3-5 personalized questions (`ReflectionPrompt` rows)
+   inviting the OWNER to write their own take — this is where `User.voiceProfile` now lives
+   (it no longer shapes any body), plus corpus context (owner categories, focus areas,
+   cosine-related posts via the assign-org embedding). Non-fatal; skipped for stubs/bearer;
+   kill switch `REFLECTION_ENABLED=false`. The owner's answers (`ReflectionResponse`, text
+   or audio+transcript) are the human-written layer, rendered on the post page on both
+   hosts with audience inherited from the post (`canReadPost` — zero visibility columns).
 4. **Persist (worker).** `post-writer.ts` (replaces copt-dev's mdx-writer): copies image
    batches into `apps/web/public/sight/<batchId>/` (override with `SIGHT_IMAGE_DIR`; the
    Instagram/social path uses `SOCIAL_IMAGE_DIR` → `public/social/`), rewrites `IMAGE_N`
    placeholders in the body to served URLs, `connectOrCreate`s Tag/Category rows, and
    **upserts** the `Post` by slug. Then the worker marks the submission(s) completed and
-   deletes the staged file.
+   deletes the staged file. `Post.aiTreatment` (`"full" | "stub"`) records whether the body
+   got the AI pass — see the freemium note below.
+
+**Freemium degraded bookmarks + Pro regenerate.** A free user past the weekly AI cap
+(`entitlement.ts`; `AI_WEEKLY_LIMIT`, 0 now valid for dev testing) still gets a great
+bookmark: `manual-stub.ts` writes their OWN material verbatim (notes/link/filename — no
+upsell copy in the body), status DRAFT, `aiTreatment="stub"`, cover-gen skipped; embeddings
+still run so the capture is searchable and in the on-device LLM DB. Upgrade CTAs live in UI
+chrome keyed off the marker (mobile post detail/library/settings, web listing banner).
+`POST /api/app/posts/[slug]/regenerate` (session + terms + rate limit + ownership-as-404 +
+stub-only 409 + **server-side `checkProStatus` 402**) calls `requeueForRegeneration`
+(packages/db/src/ingest.ts) which flips the original submissions back to pending with
+`force=true` and restores `stagedFilePath` from `retainedFilePath` — the worker re-runs the
+full pipeline and **updates the same Post in place** (marker flips to full, guarded
+DRAFT+stub→PUBLISHED promote, entitlement re-checked at claim time).
 
 **Materials, author notes & excerpts** (the client Material unit, how the capture note
 travels + leads drafting prompts, the excerpt lifecycle, owner-only note surfaces incl.
@@ -327,7 +357,10 @@ the email link works; expires after `ARCHIVE_TTL_HOURS`, default 7d). Keep `ORIG
   comments + related posts; the old Inquiry model/form was dropped).
 - `(marketing)` — public marketing pages (incl. `/product`).
 - API layout: `/api/app/*` = session-authed app APIs (incl. `/api/app/embedding-scene` →
-  the Observatory/Tree scene, and `/api/app/search` → curated corpus search); `/api/*`
+  the Observatory/Tree scene, `/api/app/search` → curated corpus search, the reflection
+  surface `/api/app/posts/[slug]/reflections` + `/api/app/reflection-responses/[id]` +
+  `/api/app/reflections/changes` (mobile delta feed), and
+  `/api/app/posts/[slug]/regenerate` → Pro re-run of a degraded bookmark); `/api/*`
   (ingest/ingest-images) = bearer; `/api/catalog/*` = public read; `/api/auth/*` =
   better-auth. Plus the media catch-alls `/sight/*` + `/social/*`
   (see "Serving worker-written media").
