@@ -10,6 +10,7 @@ import { apiGet } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { syncMeta } from "@/lib/db/schema";
 import type { ReflectionChangesResult } from "./events";
+import { currentSyncGeneration } from "./generation";
 import {
   applyReflectionPromptTombstone,
   applyReflectionResponseDelete,
@@ -49,23 +50,41 @@ async function setSince(value: string): Promise<void> {
 
 let pulling: Promise<void> | null = null;
 
+// Lets the local-store reset (db/owner.ts) await an in-flight pull before
+// wiping (see changes-pull.ts's whenPostPullIdle). Never rejects.
+export function whenReflectionPullIdle(): Promise<void> {
+  return pulling
+    ? pulling.then(
+        () => undefined,
+        () => undefined,
+      )
+    : Promise.resolve();
+}
+
 // Serialized: overlapping triggers (SSE nudge + foreground + network) share one
 // in-flight pull rather than racing the cursor.
 export function pullReflectionChanges(): Promise<void> {
   if (pulling) return pulling;
   pulling = (async () => {
+    // Abort as soon as the local store is reset (account switch) — see
+    // changes-pull.ts for the rationale. Checked before every write.
+    const gen = currentSyncGeneration();
+    const stale = () => gen !== currentSyncGeneration();
     for (;;) {
+      if (stale()) return;
       const since = await getSince();
       const qs = new URLSearchParams({ since, limit: "200" });
       const result = await apiGet<ReflectionChangesResult>(
         `/api/app/reflections/changes?${qs.toString()}`,
       );
+      if (stale()) return;
       // Prompts before responses so a brand-new prompt+answer pair arriving in
       // one page renders coherently (a response never waits on its prompt).
       // Per-row failures are isolated so one malformed change can't abort the
       // whole page (which would stall the cursor) — log + skip; reconcile is an
       // idempotent upsert-by-serverId and the cursor still advances.
       for (const change of result.promptChanges) {
+        if (stale()) return;
         try {
           if (change.op === "upsert") {
             await reconcileReflectionPromptUpsert(change.prompt);
@@ -78,6 +97,7 @@ export function pullReflectionChanges(): Promise<void> {
         }
       }
       for (const change of result.responseChanges) {
+        if (stale()) return;
         try {
           if (change.op === "upsert") {
             await reconcileReflectionResponseUpsert(change.response);
@@ -89,6 +109,8 @@ export function pullReflectionChanges(): Promise<void> {
           console.warn(`[sync] skipped reflection response change ${id}`, err);
         }
       }
+      // Never write the cursor into a store that was reset mid-page.
+      if (stale()) return;
       if (result.nextCursor) {
         await setSince(result.nextCursor);
       }

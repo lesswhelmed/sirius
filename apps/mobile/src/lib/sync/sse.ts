@@ -31,11 +31,56 @@ let active = false;
 let attempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pullTimer: ReturnType<typeof setTimeout> | null = null;
+let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 
 function clearReconnect(): void {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+}
+
+// Tear down the current source (if any) without touching `active`/timers.
+function dropSource(): void {
+  source?.removeAllEventListeners();
+  source?.close();
+  source = null;
+}
+
+// --- Silent-close watchdog -------------------------------------------------
+// react-native-sse with `pollingInterval: 0` dispatches NO event when the
+// server ends the stream cleanly: a 2xx response reaching readyState DONE takes
+// its success branch and calls the internal `_pollAgain(0, false)`, which is a
+// no-op — no "error", no "close", nothing. So every clean close (Next dev
+// recompile, proxy restart, LB idle timeout, server redeploy) silently killed
+// the nudge channel until the next app restart/foreground — captures then only
+// appeared after reopening the app. The underlying XHR's readyState is the only
+// observable signal (`source.status` also stays OPEN), so a watchdog polls it
+// and drives our own reconnect path when the stream has died.
+const WATCHDOG_MS = 10_000;
+const XHR_DONE = 4; // XMLHttpRequest.DONE
+
+function streamSilentlyClosed(): boolean {
+  if (!source) return false; // nothing connected — backoff owns recovery
+  const xhr = (source as unknown as { _xhr?: { readyState?: number } })._xhr;
+  return !!xhr && xhr.readyState === XHR_DONE;
+}
+
+function startWatchdog(): void {
+  if (watchdogTimer) return;
+  watchdogTimer = setInterval(() => {
+    if (!active) return;
+    if (streamSilentlyClosed()) {
+      dropSource();
+      scheduleReconnect();
+    }
+  }, WATCHDOG_MS);
+}
+
+function stopWatchdog(): void {
+  if (watchdogTimer) {
+    clearInterval(watchdogTimer);
+    watchdogTimer = null;
   }
 }
 
@@ -116,8 +161,7 @@ async function open(): Promise<void> {
     return;
   }
 
-  source?.removeAllEventListeners();
-  source?.close();
+  dropSource();
 
   source = new EventSource<StreamEvent>(`${authBaseURL}${STREAM_PATH}`, {
     headers: { Cookie: cookie },
@@ -153,9 +197,7 @@ async function open(): Promise<void> {
   });
 
   source.addEventListener("error", () => {
-    source?.removeAllEventListeners();
-    source?.close();
-    source = null;
+    dropSource();
     scheduleReconnect();
   });
 }
@@ -164,18 +206,18 @@ export function connectSse(): void {
   if (active) return; // already connected or mid-backoff
   active = true;
   attempts = 0;
+  startWatchdog();
   void open();
 }
 
 export function disconnectSse(): void {
   active = false;
   clearReconnect();
+  stopWatchdog();
   if (pullTimer) {
     clearTimeout(pullTimer);
     pullTimer = null;
   }
-  source?.removeAllEventListeners();
-  source?.close();
-  source = null;
+  dropSource();
   attempts = 0;
 }

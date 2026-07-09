@@ -17,6 +17,7 @@ import {
   linkCommentSubmission,
   markLocalCommentFailed,
 } from "@/lib/sync/comment-writes";
+import { currentSyncGeneration } from "@/lib/sync/generation";
 
 type CreateOk = { comment: { id: string } };
 
@@ -48,6 +49,17 @@ async function countCommentOutbox(): Promise<number> {
 
 let flushing: Promise<{ sent: number; remaining: number }> | null = null;
 
+// Lets the local-store reset (db/owner.ts) await an in-flight flush before
+// wiping (see outbox.ts's whenOutboxIdle). Never rejects.
+export function whenCommentOutboxIdle(): Promise<void> {
+  return flushing
+    ? flushing.then(
+        () => undefined,
+        () => undefined,
+      )
+    : Promise.resolve();
+}
+
 // Sends queued comments FIFO. A 4xx response means the item can never succeed
 // (validation / post deleted / not owner) — it's dropped and its optimistic row
 // marked failed. A network failure or 5xx stops the flush; the item stays queued
@@ -58,8 +70,14 @@ export function flushCommentOutbox(): Promise<{
 }> {
   if (flushing) return flushing;
   flushing = (async () => {
+    // Abort if the local store is reset mid-flush (account switch): replaying
+    // the previous owner's queued comments under the new session would post
+    // account A's comments as account B.
+    const gen = currentSyncGeneration();
+    const stale = () => gen !== currentSyncGeneration();
     let sent = 0;
     for (;;) {
+      if (stale()) break; // store reset mid-flush — stop replaying
       const [row] = await db
         .select()
         .from(pendingComments)

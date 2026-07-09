@@ -13,6 +13,7 @@ import {
   reconcileCommentUpsert,
 } from "./comment-reconcile";
 import type { CommentChangesResult } from "./events";
+import { currentSyncGeneration } from "./generation";
 
 const SINCE_KEY = "comments.changes.since";
 const EPOCH = new Date(0).toISOString();
@@ -45,18 +46,36 @@ async function setSince(value: string): Promise<void> {
 
 let pulling: Promise<void> | null = null;
 
+// Lets the local-store reset (db/owner.ts) await an in-flight pull before
+// wiping (see changes-pull.ts's whenPostPullIdle). Never rejects.
+export function whenCommentPullIdle(): Promise<void> {
+  return pulling
+    ? pulling.then(
+        () => undefined,
+        () => undefined,
+      )
+    : Promise.resolve();
+}
+
 // Serialized: overlapping triggers (SSE nudge + foreground + network) share one
 // in-flight pull rather than racing the cursor.
 export function pullCommentChanges(): Promise<void> {
   if (pulling) return pulling;
   pulling = (async () => {
+    // Abort as soon as the local store is reset (account switch) — see
+    // changes-pull.ts for the rationale. Checked before every write.
+    const gen = currentSyncGeneration();
+    const stale = () => gen !== currentSyncGeneration();
     for (;;) {
+      if (stale()) return;
       const since = await getSince();
       const qs = new URLSearchParams({ since, limit: "200" });
       const result = await apiGet<CommentChangesResult>(
         `/api/app/comments/changes?${qs.toString()}`,
       );
+      if (stale()) return;
       for (const change of result.changes) {
+        if (stale()) return;
         // Isolate per-row failures so one malformed change can't abort the whole
         // page (which would stall the cursor). Log + skip; reconcile is an
         // idempotent upsert-by-serverId and the cursor still advances.
@@ -71,6 +90,8 @@ export function pullCommentChanges(): Promise<void> {
           console.warn(`[sync] skipped comment change ${id}`, err);
         }
       }
+      // Never write the cursor into a store that was reset mid-page.
+      if (stale()) return;
       if (result.nextCursor) {
         await setSince(result.nextCursor);
       }

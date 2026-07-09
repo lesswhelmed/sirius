@@ -17,6 +17,17 @@ import { connectSse, disconnectSse } from "./sse";
 let started = false;
 let netSub: { remove: () => void } | null = null;
 let appSub: NativeEventSubscription | null = null;
+let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+// Foreground fallback pull. The SSE nudge channel is the fast path, but it can
+// die without a signal we can catch (see sse.ts's silent-close watchdog) and a
+// nudge can be lost server-side (notify is best-effort). Nothing else re-pulls
+// while the app stays foregrounded — the AppState trigger only fires on a
+// background→active transition — so without this, a worker-completed post
+// wouldn't reach the catalog until the user backgrounded or relaunched the
+// app. Modest interval; each pull is three cheap empty-page GETs when there's
+// nothing new, and every primitive is self-serialized.
+const FALLBACK_PULL_MS = 45_000;
 
 async function replayAndPull(reason: string): Promise<void> {
   // Replay first so a freshly-queued submission/comment becomes a server row
@@ -74,6 +85,14 @@ export function startSync(): void {
   void replayAndPull("cold-start");
   connectSse();
 
+  fallbackTimer = setInterval(() => {
+    // Only while foregrounded: the background task owns background catch-up,
+    // and we don't want a suspended-but-not-yet-killed JS runtime polling.
+    if (AppState.currentState !== "active") return;
+    connectSse(); // self-heal the nudge channel too (no-op when active)
+    void replayAndPull("interval-fallback");
+  }, FALLBACK_PULL_MS);
+
   netSub = Network.addNetworkStateListener((state) => {
     if (state.isInternetReachable) {
       kickSync("network");
@@ -94,6 +113,10 @@ export function startSync(): void {
 export function stopSync(): void {
   if (!started) return;
   started = false;
+  if (fallbackTimer) {
+    clearInterval(fallbackTimer);
+    fallbackTimer = null;
+  }
   netSub?.remove();
   netSub = null;
   appSub?.remove();

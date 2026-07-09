@@ -90,12 +90,18 @@ function SyncRunner() {
     }
     let cancelled = false;
     void (async () => {
+      let owned = false;
       try {
         await ensureLocalOwner(userId);
+        owned = true;
       } catch (err) {
         console.warn("[sync] ensureLocalOwner failed", err);
       }
-      if (!cancelled) startSync();
+      // Fail CLOSED: if the ownership guard couldn't run, do not start syncing
+      // — pulling this user's feed into a store that may still hold another
+      // account's rows is exactly the cross-account leak the guard prevents.
+      // The next trigger (relaunch/foreground re-mount of this effect) retries.
+      if (!cancelled && owned) startSync();
     })();
     // Mirror the freshly-signed-in cookie for hands-free Siri capture.
     syncCaptureCredentials();

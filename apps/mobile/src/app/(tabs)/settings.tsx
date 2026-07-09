@@ -33,6 +33,7 @@ import type { Theme } from "@/constants/theme";
 import { useTheme, useThemedStyles } from "@/constants/theme-context";
 import { deleteUser, signIn, signOut, useSession } from "@/lib/auth-client";
 import { clearAuthStorage } from "@/lib/auth-recovery";
+import { resetLocalStoreOnSignOut } from "@/lib/db/owner";
 import { pushOnce } from "@/lib/nav";
 import {
   type BiometricType,
@@ -209,8 +210,9 @@ export default function SettingsScreen() {
       );
       return;
     }
-    // Deleted server-side. Tear down all local auth/biometric state so nothing
-    // outlives the account on this device, then return to sign-in.
+    // Deleted server-side. Tear down all local auth/biometric state AND the
+    // offline mirror (posts, outbox, vectors, chats) so nothing outlives the
+    // account on this device, then return to sign-in.
     try {
       await disableBiometric();
       await clearAuthStorage("account-deleted");
@@ -218,6 +220,9 @@ export default function SettingsScreen() {
     } catch (err) {
       console.warn("[settings] post-delete cleanup failed", err);
     }
+    await resetLocalStoreOnSignOut("account-deleted").catch((err: unknown) => {
+      console.warn("[settings] local store reset failed", err);
+    });
     deletePasswordRef.current?.clear();
     setDeleteVisible(false);
     setDeleteBusy(false);
@@ -524,6 +529,15 @@ async function handleSignOut() {
   // the session on a shared device.
   await disableBiometric();
   await signOut();
+  // Explicit sign-out also clears the offline mirror (posts, outbox, vectors,
+  // chats, cursors) so the account's data doesn't sit readable in the SQLite
+  // file on a shared device. Best-effort — the sign-in owner guard
+  // (ensureLocalOwner) remains the backstop if this is skipped or fails. The
+  // FORCED sign-out path (stale session) deliberately does NOT wipe, so queued
+  // offline captures survive for the same user's re-login replay.
+  await resetLocalStoreOnSignOut("sign-out").catch((err: unknown) => {
+    console.warn("[settings] local store reset failed", err);
+  });
   router.replace("/(auth)/sign-in");
 }
 

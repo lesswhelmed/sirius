@@ -9,6 +9,7 @@ import { apiGet } from "@/lib/api";
 import { db } from "@/lib/db/client";
 import { syncMeta } from "@/lib/db/schema";
 import type { PostChangesResult } from "./events";
+import { currentSyncGeneration } from "./generation";
 import { applyTombstone, reconcileUpsert } from "./reconcile";
 
 // Bumped to v3 when "ask my posts" returned to SEMANTIC retrieval: reconcile now
@@ -52,18 +53,40 @@ async function setSince(value: string): Promise<void> {
 
 let pulling: Promise<void> | null = null;
 
+// Lets the local-store reset (db/owner.ts) await an in-flight pull before
+// wiping — a pull applies INSERTs, so one still running across an account
+// switch could re-insert the previous account's rows after the wipe. Never
+// rejects (a failed pull is as "idle" as a finished one).
+export function whenPostPullIdle(): Promise<void> {
+  return pulling
+    ? pulling.then(
+        () => undefined,
+        () => undefined,
+      )
+    : Promise.resolve();
+}
+
 // Serialized: overlapping triggers (SSE nudge + foreground + network) share one
 // in-flight pull rather than racing the cursor.
 export function pullChanges(): Promise<void> {
   if (pulling) return pulling;
   pulling = (async () => {
+    // Abort as soon as the local store is reset (account switch): applying this
+    // pull's rows after the wipe would leak the previous owner's posts into the
+    // new owner's mirror. Checked before every write, including the cursor.
+    const gen = currentSyncGeneration();
+    const stale = () => gen !== currentSyncGeneration();
     for (;;) {
+      if (stale()) return;
       const since = await getSince();
       const qs = new URLSearchParams({ since, limit: "200" });
       const result = await apiGet<PostChangesResult>(
         `/api/app/posts/changes?${qs.toString()}`,
       );
+      // The store may have been reset while the page was in flight.
+      if (stale()) return;
       for (const change of result.changes) {
+        if (stale()) return;
         // Isolate per-row failures: a single malformed change must not abort the
         // whole page (which would stall the cursor forever). Log + skip; the
         // cursor still advances, and reconcile is an idempotent upsert-by-id.
@@ -78,6 +101,9 @@ export function pullChanges(): Promise<void> {
           console.warn(`[sync] skipped post change ${id}`, err);
         }
       }
+      // Never write the cursor into a store that was reset mid-page — it would
+      // seed the NEW owner's empty mirror with the OLD owner's watermark.
+      if (stale()) return;
       if (result.nextCursor) {
         await setSince(result.nextCursor);
       }

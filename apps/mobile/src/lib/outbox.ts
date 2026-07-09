@@ -33,6 +33,7 @@ import type { SubmitOk, Visibility } from "@/lib/ingest-submit";
 import { shouldPersist } from "@/lib/progress-throttle";
 import { logShareEvent } from "@/lib/share-breadcrumbs";
 import { nextStatusFromResult } from "@/lib/submit-result";
+import { currentSyncGeneration } from "@/lib/sync/generation";
 import { linkSubmission, markPostFailedByLocalId } from "@/lib/sync/writes";
 import { clearProgress, emitProgress } from "@/lib/upload-progress";
 
@@ -438,6 +439,26 @@ async function importLegacyOutboxOnce(): Promise<void> {
 
 let flushing: Promise<{ sent: number; remaining: number }> | null = null;
 
+// Lets the local-store reset (db/owner.ts) await an in-flight flush before
+// wiping, so a replay started under the previous account stops (via the
+// generation check in the loop) instead of submitting that account's captures
+// under the new session. Never rejects.
+export function whenOutboxIdle(): Promise<void> {
+  return flushing
+    ? flushing.then(
+        () => undefined,
+        () => undefined,
+      )
+    : Promise.resolve();
+}
+
+// Account-switch cleanup: drop EVERY staged binary copy (the whole outbox/
+// dir). Only the local-store wipe may call this — the pending rows referencing
+// these files are deleted in the same reset, so nothing is left dangling.
+export async function discardAllStagedCopies(): Promise<void> {
+  await deleteAsync(OUTBOX_DIR, { idempotent: true });
+}
+
 // Sends all queued items FIFO (notes/URLs and binaries). A 4xx response — on
 // EITHER transport — surfaces as a terminal `failed` row (Queue tab
 // Requeue/Discard) instead of being silently dropped, EXCEPT 401: a dead
@@ -452,6 +473,11 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
     return flushing;
   }
   flushing = (async () => {
+    // Abort if the local store is reset mid-flush (account switch): replaying
+    // the previous owner's queued captures under the new session would post
+    // account A's content as account B. Checked before every send.
+    const gen = currentSyncGeneration();
+    const stale = () => gen !== currentSyncGeneration();
     // A row left `in_flight` can only be a previous flush that was killed
     // mid-upload (flushes are single-flight) — reset it so it re-sends.
     await db
@@ -468,6 +494,7 @@ export function flushOutbox(): Promise<{ sent: number; remaining: number }> {
     // Re-read the head each iteration so newly enqueued items are picked up and
     // deletions are reflected without juggling an in-memory copy.
     for (;;) {
+      if (stale()) break; // store reset mid-flush — stop replaying
       const [row] = await db
         .select()
         .from(pendingSubmissions)
