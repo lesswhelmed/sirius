@@ -147,6 +147,20 @@ export default function TabsLayout() {
     );
   }
 
+  // Handle gate — mirrors web's (app) layout AuthGate (terms first, then
+  // handle): a signed-in user with no handle may not enter the tabs. Redirect
+  // (replace) to the locked /setup-handle screen; it routes back through "/"
+  // once the session carries the saved handle. This catches every entry path
+  // into the tabs (sign-in success, the (auth) layout's session redirect, and
+  // deep links), the same way the signed-out redirect above does. `handle` is
+  // a custom better-auth additionalField, hence the tolerant cast (same as
+  // settings.tsx).
+  const handle = (session.user as { handle?: string | null } | undefined)
+    ?.handle;
+  if (!handle) {
+    return <Redirect href="/setup-handle" />;
+  }
+
   return (
     <NativeTabs
       backgroundColor={t.color.paper}

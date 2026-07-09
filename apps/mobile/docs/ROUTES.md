@@ -71,12 +71,16 @@ navigation).
 Legend: **TAB** = a `(tabs)` screen · **AUTH** = `(auth)` screen · **MODAL** =
 `presentation: "modal"` · **REDIRECT** = renders only a `<Redirect>` ·
 **PUSHED-CONTENT** = a stack page pushed on top of the tabs (needs a header) ·
-**ENTRY** = an OS/deep-link landing target.
+**ENTRY** = an OS/deep-link landing target · **GATE** = a locked full-screen
+step reached only by replace-redirect (no header, no back).
 
 ### Tabs — `src/app/(tabs)/` (label ≠ route)
 
 Labels are set in `(tabs)/_layout.tsx` via `NativeTabs.Trigger.Label`; the
-signed-out redirect to `/(auth)/sign-in` lives at `(tabs)/_layout.tsx:27`.
+signed-out redirect to `/(auth)/sign-in` lives at `(tabs)/_layout.tsx:130`, the
+terms gate renders in place of the navigator at `(tabs)/_layout.tsx:139`, and
+the no-handle redirect to `/setup-handle` at `(tabs)/_layout.tsx:161` (order
+mirrors web: session → terms → handle).
 
 | Tab label (UI) | Route / file | Deep link | Purpose | `_layout.tsx` label line |
 | --- | --- | --- | --- | --- |
@@ -94,7 +98,8 @@ via the root `app/queue.tsx` redirect (see below).
 
 | Route | File | Class | Purpose |
 | --- | --- | --- | --- |
-| `/` | `index.tsx` | ENTRY / REDIRECT | Boot router: `→ /(auth)/sign-in` if signed-out (`index.tsx:47`), `→ /help` on first run (`index.tsx:52`), else `→ /(tabs)/library` (`index.tsx:50`). |
+| `/` | `index.tsx` | ENTRY / REDIRECT | Boot router: `→ /(auth)/sign-in` if signed-out (`index.tsx:59`), `→ /setup-handle` if the signed-in user has no handle (`index.tsx:60`), `→ /help` on first run (`index.tsx:65`), else `→ /(tabs)/library` (`index.tsx:63`). |
+| `/setup-handle` | `setup-handle.tsx` | GATE | **Mandatory-handle gate** (mobile mirror of web's `/setup-handle`). A signed-in user with no handle is locked here — redirected from both `index.tsx:60` and `(tabs)/_layout.tsx:161` — and cannot enter the tabs until a handle saves via `POST /api/app/me/handle` (the SAME endpoint web uses; server validates shape/reserved/uniqueness). No skip, no header/back, `gestureEnabled:false`. On success it refetches the session and `<Redirect href="/">` resumes the boot chain (`setup-handle.tsx:143`); signed-out → `/(auth)/sign-in` (`setup-handle.tsx:138`). |
 | `/capture` | `capture.tsx` | MODAL / ENTRY | App Intents / Shortcuts / Siri capture pane. `siriusapp://capture?text=<encoded>` (host or first segment, see `+native-intent.ts`). Presented modal. |
 | `/shareintent` | `shareintent.tsx` | MODAL / ENTRY | Share-extension landing. NOT linked directly. iOS: `+native-intent.ts` rewrites the synthetic share URL here. Android: `ShareIntentNavigator` in `_layout.tsx:144` pushes here off `hasShareIntent`. Presented modal. |
 | `/help` | `help.tsx` | MODAL | "How Sirius works" hub + first-run onboarding. Presented modal. |
@@ -178,8 +183,11 @@ collides with the status bar)** — that is the bug class this table audits.
 | `/llm-test` | ✅ `_layout.tsx:385` | (default) | |
 
 **Result: every PUSHED-CONTENT route is header-registered. None missing.**
-Modal (`shareintent`, `capture`, `help`) and redirect (`index`, `queue`) routes
-intentionally have no header. Keep this table as the ongoing audit surface: when
+Modal (`shareintent`, `capture`, `help`), redirect (`index`, `queue`), and gate
+(`setup-handle` — a locked full-screen step reached only by `replace`; it sets
+its own inline `<Stack.Screen options={{ headerShown: false, gestureEnabled:
+false }}>` so there is deliberately no back affordance) routes intentionally
+have no header. Keep this table as the ongoing audit surface: when
 adding a pushed page, add its `<Stack.Screen headerShown:true …>` in the same
 change and add a row here.
 
@@ -201,8 +209,15 @@ The `from` label is what the destination header's back button shows (e.g.
 
 ### (a) Adjacency — reached-from / navigates-to
 
-**`/` (`index.tsx`)** → `/(auth)/sign-in` (`index.tsx:47`) · `/(tabs)/library`
-(`index.tsx:50`) · `/help` (`index.tsx:52`). Reached: OS launch.
+**`/` (`index.tsx`)** → `/(auth)/sign-in` (`index.tsx:59`) · `/setup-handle`
+(no handle, `index.tsx:60`) · `/(tabs)/library` (`index.tsx:63`) · `/help`
+(`index.tsx:65`). Reached: OS launch, and `/setup-handle` on success.
+
+**`/setup-handle` (`setup-handle.tsx`)** → `/(auth)/sign-in` (signed-out,
+`:138`) · `/` (handle present in the refreshed session, `:143` — resumes the
+boot chain: first-run `/help`, else the tabs). Reached: `index.tsx:60` and
+`(tabs)/_layout.tsx:161` (both `<Redirect>`/replace — no back stack). Signed-in
+users with a handle who land here bounce straight back to `/`.
 
 **Auth stack** (all `router.replace`/`push`):
 - `(auth)/_layout.tsx:17` → `/(tabs)/library` (session present).
@@ -288,6 +303,8 @@ only; iOS uses the `+native-intent.ts` rewrite instead).
 flowchart TD
   OS([OS launch / deep link]) --> IDX["/ index.tsx"]
   IDX -->|signed out| SIGNIN["/sign-in"]
+  IDX -->|no handle| SETUP["/setup-handle (locked gate)"]
+  SETUP -->|handle saved| IDX
   IDX -->|first run| HELP["/help (modal)"]
   IDX -->|else| LIB["Catalog tab /library"]
 
@@ -362,11 +379,14 @@ flowchart TD
 
 ## 4. Overview of user paths (main journeys)
 
-1. **Cold launch** — `index.tsx` decides: no session → `/sign-in`; first run
-   (per-device `sirius.onboarding.seen` unset) → `/help`; otherwise the Catalog
-   tab (`/library`).
+1. **Cold launch** — `index.tsx` decides: no session → `/sign-in`; **no handle
+   → `/setup-handle` (mandatory, locked — comes FIRST in the first-run flow)**;
+   first run (per-device `sirius.onboarding.seen` unset) → `/help`; otherwise
+   the Catalog tab (`/library`). The onboarding flag is deliberately not
+   touched until the handle exists, so setup-handle → `/` → `/help` still runs.
 2. **Auth** — `/sign-in` ⇄ `/sign-up` ⇄ `/forgot-password` → `/reset-password`;
-   unverified accounts land on `/verify-pending`; success → `/(tabs)/library`.
+   unverified accounts land on `/verify-pending`; success → `/(tabs)/library`
+   (whose layout re-routes handle-less users to `/setup-handle`).
 3. **Capture → archive** — Capture tab (`/composer`) submit → `/(tabs)/library`
    (the new post appears in the in-flight board, then as a completed card).
    Optional side trips: `/focus` (focus picker) and `/help`.
@@ -433,10 +453,10 @@ flowchart TD
    **in the same change** — then double-check the label↔route mapping, since that
    is the part that misleads people.
 
-<!-- Counts as of last regen: 28 routes (32 files on disk minus 4 non-route
+<!-- Counts as of last regen: 29 routes (33 files on disk minus 4 non-route
      files: _layout.tsx, (auth)/_layout.tsx, (tabs)/_layout.tsx, +native-intent.ts),
-     ~73 navigation edges cited (incl. component-hosted edges, guarded openPost*
-     helpers, and the 3 +native-intent rewrites). Re-derive with the greps in the
-     REVALIDATE block above. -->
+     ~78 navigation edges cited (incl. component-hosted edges, guarded openPost*
+     helpers, the 3 +native-intent rewrites, and the setup-handle gate edges).
+     Re-derive with the greps in the REVALIDATE block above. -->
 </content>
 </invoke>
