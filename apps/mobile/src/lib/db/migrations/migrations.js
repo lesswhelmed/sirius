@@ -11,6 +11,7 @@ import m0006 from './0006_optimistic_progress.sql';
 import m0007 from './0007_sent_server_id.sql';
 import m0008 from './0008_sent_at.sql';
 import m0009 from './0009_lame_hitman.sql';
+import m0010 from './0010_cloudy_mockingbird.sql';
 
   export default {
     journal,
@@ -24,7 +25,8 @@ m0005,
 m0006,
 m0007,
 m0008,
-m0009
+m0009,
+m0010
     }
   }
   

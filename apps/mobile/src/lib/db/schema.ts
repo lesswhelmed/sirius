@@ -96,6 +96,12 @@ export const posts = sqliteTable(
       unknown
     > | null>(),
 
+    // Mirrored server Post.aiTreatment: "full" | "stub" — whether the body got
+    // the AI pass (drives the degraded-bookmark badge / "Regenerate" CTA).
+    // Null on local drafts + rows synced before this column existed — render
+    // those as "full".
+    aiTreatment: text("ai_treatment"),
+
     // On-device draft to render BEFORE the server save exists. Dropped on reconcile.
     draftEnvelopeJson: text("draft_envelope_json"),
 
@@ -317,6 +323,86 @@ export const pendingComments = sqliteTable(
 
 export type PendingCommentRow = typeof pendingComments.$inferSelect;
 export type NewPendingCommentRow = typeof pendingComments.$inferInsert;
+
+/**
+ * Read-side mirror of the server's AI-generated reflection prompts (the
+ * questions inviting the owner to write their own take on a post). Unlike
+ * `comments` there is NO optimistic local lifecycle — prompts are only ever
+ * created by the worker — so the server id IS the primary key and there's no
+ * localId/syncState machinery. Deletes arrive as tombstones on the delta feed;
+ * we keep the row with status "tombstone" (mirroring the server's own
+ * lifecycle) so re-deliveries stay idempotent and readers filter it out.
+ */
+export const reflectionPrompts = sqliteTable(
+  "reflection_prompts",
+  {
+    serverId: text("server_id").primaryKey(), // ReflectionPrompt.id (cuid)
+
+    // Parent post link. postSlug is the render key (the detail screen queries
+    // by slug); postId is the server's canonical FK, mirrored for completeness.
+    postSlug: text("post_slug").notNull(),
+    postId: text("post_id"),
+
+    // Generation batch + display order within it.
+    batchId: text("batch_id").notNull(),
+    order: integer("order").notNull().default(0),
+
+    question: text("question").notNull(),
+    rationale: text("rationale"),
+
+    // "active" | "superseded" mirror the server; "tombstone" is the local
+    // record of a delete op (readers must filter it out).
+    status: text("status")
+      .$type<"active" | "superseded" | "tombstone">()
+      .notNull()
+      .default("active"),
+
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    index("reflection_prompts_post_slug_idx").on(t.postSlug),
+    index("reflection_prompts_status_idx").on(t.status),
+  ],
+);
+
+export type ReflectionPromptRow = typeof reflectionPrompts.$inferSelect;
+export type NewReflectionPromptRow = typeof reflectionPrompts.$inferInsert;
+
+/**
+ * Read-side mirror of the owner's reflection answers. One response per prompt
+ * (promptServerId is UNIQUE — the server upserts by promptId, so re-answering
+ * after a delete reuses the same server row). Response WRITES are online-only
+ * v1 (no outbox): the component POSTs directly, optimistically upserts this
+ * mirror row, and the delta pull converges it. Deletes hard-delete the row
+ * (nothing local-only to preserve).
+ */
+export const reflectionResponses = sqliteTable(
+  "reflection_responses",
+  {
+    serverId: text("server_id").primaryKey(), // ReflectionResponse.id (cuid)
+
+    // The answered prompt (server id). Unique: one live answer per prompt —
+    // also the optimistic-write reconciliation key (see reflection-writes.ts).
+    promptServerId: text("prompt_server_id").notNull().unique(),
+
+    postSlug: text("post_slug").notNull(),
+
+    body: text("body").notNull().default(""),
+    // True when the response carries a retained audio original (streamable via
+    // the owner-gated audio route).
+    hasAudio: integer("has_audio", { mode: "boolean" })
+      .notNull()
+      .default(false),
+
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("reflection_responses_post_slug_idx").on(t.postSlug)],
+);
+
+export type ReflectionResponseRow = typeof reflectionResponses.$inferSelect;
+export type NewReflectionResponseRow = typeof reflectionResponses.$inferInsert;
 
 /**
  * On-device LLM chat history — a saved conversation thread on the `/llm` screen.

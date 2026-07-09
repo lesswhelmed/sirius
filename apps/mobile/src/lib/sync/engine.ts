@@ -11,6 +11,7 @@ import { flushCommentOutbox } from "@/lib/comment-outbox";
 import { flushOutbox } from "@/lib/outbox";
 import { pullChanges } from "./changes-pull";
 import { pullCommentChanges } from "./comment-changes-pull";
+import { pullReflectionChanges } from "./reflection-changes-pull";
 import { connectSse, disconnectSse } from "./sse";
 
 let started = false;
@@ -40,6 +41,11 @@ async function replayAndPull(reason: string): Promise<void> {
     await pullCommentChanges();
   } catch (err) {
     console.warn(`[sync] comment pull (${reason}) failed`, err);
+  }
+  try {
+    await pullReflectionChanges();
+  } catch (err) {
+    console.warn(`[sync] reflection pull (${reason}) failed`, err);
   }
 }
 

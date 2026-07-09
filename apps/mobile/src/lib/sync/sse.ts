@@ -13,6 +13,7 @@ import { checkServerSession, recoverWedgedAuthCookie } from "@/lib/api";
 import { authBaseURL, authClient, signOut } from "@/lib/auth-client";
 import { pullChanges } from "./changes-pull";
 import { pullCommentChanges } from "./comment-changes-pull";
+import { pullReflectionChanges } from "./reflection-changes-pull";
 import { handleRejectedNudge } from "./rejected";
 
 const STREAM_PATH = "/api/app/posts/stream";
@@ -39,8 +40,10 @@ function clearReconnect(): void {
 }
 
 // Coalesce bursts of nudges (and the open-time catch-up) into one pull. A single
-// `change` event covers both channels (posts + comments), so pull both feeds; each
-// is self-serialized and independent.
+// `change` event covers every channel the stream route relays (posts, comments,
+// and — once its LISTEN channel lands server-side — reflections), so pull all
+// three feeds; each is self-serialized and independent, and an extra pull is a
+// cheap empty page.
 function schedulePull(): void {
   if (pullTimer) return;
   pullTimer = setTimeout(() => {
@@ -50,6 +53,9 @@ function schedulePull(): void {
     });
     void pullCommentChanges().catch((err) => {
       console.warn("[sync] comment pull after nudge failed", err);
+    });
+    void pullReflectionChanges().catch((err) => {
+      console.warn("[sync] reflection pull after nudge failed", err);
     });
   }, PULL_DEBOUNCE_MS);
 }
