@@ -51,6 +51,9 @@ mock.module("@repo/db", () => ({
       upsert: upsertMock,
       findFirst: mock(async () => null),
       findUnique: mock(async () => null),
+      // Backs the guarded regenerate promote (stub-DRAFT → PUBLISHED); no rows
+      // match in these unit scenarios.
+      updateMany: mock(async () => ({ count: 0 })),
     },
   },
 }));

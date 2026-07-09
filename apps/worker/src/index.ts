@@ -552,6 +552,7 @@ async function processBatch(rows: IngestSubmission[]): Promise<void> {
       await markCompleted(ids, {
         resultPostSlug: result.postSlug,
         resultPostId: result.postId,
+        aiTreatment: result.aiTreatment,
       });
       // Retention: keep the uploaded originals instead of deleting them, so the
       // owner can download them later. Done after markCompleted (the post is

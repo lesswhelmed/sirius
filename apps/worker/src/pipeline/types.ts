@@ -85,4 +85,8 @@ export type GeminiOutput = {
 export type PipelineResult = {
   postSlug: string;
   postId: string;
+  // How the body was produced this run: "full" = AI analysis; "stub" =
+  // over-quota degraded bookmark. Copied onto the Post row (the regeneration
+  // gate) and onto the completed submission (audit).
+  aiTreatment: "full" | "stub";
 };

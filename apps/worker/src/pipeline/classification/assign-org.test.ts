@@ -11,6 +11,7 @@ function result(overrides: Partial<AssignOrgResult>): AssignOrgResult {
     categoryMatchCount: 1,
     project: null,
     skipped: null,
+    contentEmbedding: null,
     ...overrides,
   };
 }

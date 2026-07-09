@@ -337,12 +337,16 @@ function originalDateFromFrontmatter(
 export async function writePost(
   parsed: GeminiOutput,
   input: PipelineInput,
-  opts?: { status?: PostStatus },
+  opts?: { status?: PostStatus; aiTreatment?: "full" | "stub" },
 ): Promise<WriteResult> {
   // Default PUBLISHED preserves the original behavior. The over-limit "manual
   // stub" path passes DRAFT so the post lands unpublished for the user to write.
   const status = opts?.status ?? PostStatus.PUBLISHED;
   const isDraft = status === PostStatus.DRAFT;
+  // Durable marker: "stub" = over-quota degraded bookmark (regeneration gate);
+  // "full" = AI pipeline output. Written on BOTH create and update so a Pro
+  // regeneration over a stub auto-flips the marker back to full.
+  const aiTreatment = opts?.aiTreatment ?? "full";
   const body = escapeMdxProse(parsed.body);
   let imagePaths: string[] = [];
   // SIGHT gallery: [{ url, alt }] in upload order. Empty for non-image posts.
@@ -450,7 +454,9 @@ export async function writePost(
   // bespoke editorial cover so the catalog grid is never empty. Strictly
   // non-fatal — generateCoverImage returns null on any failure and the post
   // still publishes with its type-label placeholder, like a failed download.
-  if (!imageUrl && getImageGenConfig().enabled) {
+  // Stubs skip it: no unmetered AI spend on the over-cap path (a later Pro
+  // regeneration takes the full path and restores the cover).
+  if (!imageUrl && aiTreatment !== "stub" && getImageGenConfig().enabled) {
     imageUrl = await generateCoverImage({
       slug,
       title: parsed.title,
@@ -490,9 +496,27 @@ export async function writePost(
     // (PUBLISHED) path leaves status/published untouched so a manual edit or
     // archival a user made after the first write is never clobbered.
     ...(isDraft ? { status, published: false } : {}),
+    aiTreatment,
     tags: { connectOrCreate: tagConnects },
     categories: { connectOrCreate: categoryConnects },
   };
+
+  // Regeneration promote (user-approved 2026-07-09): a FULL AI write landing on
+  // a post that is still an over-quota stub-draft publishes it — matching what
+  // a fresh capture would have done. Guarded on (DRAFT + stub) so a manually
+  // published/archived/edited-and-kept-draft-but-regenerated-full post is never
+  // clobbered; the composer's original visibility choice is untouched.
+  if (!isDraft && aiTreatment === "full" && sourceRecordId) {
+    await prisma.post.updateMany({
+      where: {
+        providerId,
+        sourceRecordId,
+        status: PostStatus.DRAFT,
+        aiTreatment: "stub",
+      },
+      data: { status: PostStatus.PUBLISHED, published: true },
+    });
+  }
 
   // Prisma's upsert is NOT atomic under concurrency: two runs of the same source
   // can both miss and both attempt the INSERT, and one loses on a unique index.
@@ -523,6 +547,7 @@ export async function writePost(
             : {}),
           ...(contentDigest !== null ? { contentDigest } : {}),
           published: !isDraft,
+          aiTreatment,
           // Composer visibility, create-only (like status): set it when the user
           // chose one, else fall back to the schema PRIVATE default. NOT applied on
           // update so a later manual visibility edit survives a reprocess.

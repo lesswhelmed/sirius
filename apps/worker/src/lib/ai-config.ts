@@ -115,6 +115,23 @@ export function getImageGenConfig(): ImageGenConfig {
   };
 }
 
+// Reflection prompts — the ancillary flash call after classification that
+// generates the "write your own take" questions. Free ridealong (never metered
+// against the weekly cap; product decision 2026-07-09), so it gets its own
+// kill switch for cost control. Default ON; REFLECTION_ENABLED=false disables.
+export type ReflectionConfig = {
+  enabled: boolean;
+  model: string;
+};
+
+export function getReflectionConfig(): ReflectionConfig {
+  return {
+    enabled: process.env.REFLECTION_ENABLED !== "false",
+    model:
+      process.env.REFLECTION_MODEL ?? process.env.AI_MODEL ?? DEFAULT_MODEL,
+  };
+}
+
 export type ClassifyConfig = {
   enabled: boolean;
   projectMatchMin: number;

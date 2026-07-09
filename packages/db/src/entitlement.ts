@@ -26,7 +26,10 @@ export function aiWeeklyLimit(): number {
   const raw = process.env.AI_WEEKLY_LIMIT;
   if (!raw) return DEFAULT_WEEKLY_LIMIT;
   const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_WEEKLY_LIMIT;
+  // n >= 0: an explicit 0 is a valid dev/test setting that forces every free
+  // capture down the degraded-bookmark (stub) path — used to verify the
+  // over-cap UX + Pro regeneration flow without burning real generations.
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_WEEKLY_LIMIT;
 }
 
 // Start of the current week: Monday 00:00:00 UTC. The single source of truth for

@@ -63,6 +63,10 @@ export interface AssignOrgResult {
   categoryMatchCount: number;
   project: { projectId: string; created: boolean } | null;
   skipped: AssignOrgSkipReason | null;
+  // The content vector computed for this ingest, passed through so the
+  // reflection stage can rank related posts without re-embedding. Null on the
+  // skip paths.
+  contentEmbedding: number[] | null;
 }
 
 const SKIPPED: (reason: AssignOrgSkipReason) => AssignOrgResult = (reason) => ({
@@ -70,6 +74,7 @@ const SKIPPED: (reason: AssignOrgSkipReason) => AssignOrgResult = (reason) => ({
   categoryMatchCount: 0,
   project: null,
   skipped: reason,
+  contentEmbedding: null,
 });
 
 // Pure observability decision: did an ELIGIBLE ingest (not a known disabled/
@@ -296,7 +301,7 @@ export async function assignOrg(args: AssignOrgArgs): Promise<AssignOrgResult> {
   // Embedding is always written above; category linkage may be empty if no topic
   // cleared its match floor. Carried out so the pipeline can flag an eligible
   // ingest that landed with no Tree linkage.
-  const sceneRows = { postEmbeddingWritten: true, categoryMatchCount };
+  const sceneRows = { postEmbeddingWritten: true, categoryMatchCount, contentEmbedding };
 
   // The owner's graph changed (new vector + category link, and possibly a
   // project assignment below) — debounce-enqueue a background scene recompute so

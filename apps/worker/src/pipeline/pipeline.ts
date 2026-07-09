@@ -17,6 +17,7 @@ import { tryClientDraft } from "./draft-runner";
 import { noObjectErrorDetail, runGemini } from "./gemini-runner";
 import { buildManualStub } from "./manual-stub";
 import { writePost } from "./post-writer";
+import { generateReflectionPrompts } from "./reflection/generate";
 import { runSafetyGate } from "./safety";
 import type { GeminiOutput, PipelineInput, PipelineResult } from "./types";
 
@@ -112,7 +113,10 @@ export async function processIngest(
           type: parsed.type,
         });
         written = await timed("post:write", logger, () =>
-          writePost(parsed, input, { status: PostStatus.DRAFT }),
+          writePost(parsed, input, {
+            status: PostStatus.DRAFT,
+            aiTreatment: "stub",
+          }),
         );
       } else {
         parsed = await timed("gemini", logger, () =>
@@ -197,7 +201,10 @@ export async function processIngest(
           type: parsed.type,
         });
         written = await timed("post:write", logger, () =>
-          writePost(parsed, input, { status: PostStatus.DRAFT }),
+          writePost(parsed, input, {
+            status: PostStatus.DRAFT,
+            aiTreatment: "stub",
+          }),
         );
       }
     }
@@ -214,6 +221,8 @@ export async function processIngest(
   // (after writePost, before the worker deletes staged files) so image batches
   // can be embedded multimodally. Non-fatal by contract — a classification error
   // must not fail an otherwise-successful ingest.
+  // The computed content vector is carried out for the reflection stage below.
+  let contentEmbedding: number[] | null = null;
   try {
     const classificationInput = buildClassificationInput(input, parsed);
     const org = await assignOrg({
@@ -221,6 +230,7 @@ export async function processIngest(
       postId: written.postId,
       classificationInput,
     });
+    contentEmbedding = org.contentEmbedding;
     // Surface the scene-row metrics so a prod worker that's silently writing no
     // PostEmbedding/PostCategoryMatch is visible. A throw is caught below; an
     // eligible ingest that wrote zero rows (embedding skipped, or no category
@@ -250,8 +260,47 @@ export async function processIngest(
     });
   }
 
+  // Reflection stage: generate the "write your own take" questions for the
+  // owner. NON-FATAL by contract (a reflection failure must never fail the
+  // ingest) and FREE (ridealong flash call — never metered). Skipped for stubs
+  // (no AI analysis to reflect on; the regenerate path re-runs this) and for
+  // unattributed bearer ingests (no reflecting user). Kill switch:
+  // REFLECTION_ENABLED=false (checked inside).
+  if (!stub && userId != null) {
+    try {
+      const reflection = await timed("reflection", logger, () =>
+        generateReflectionPrompts({
+          postId: written.postId,
+          ownerId: userId,
+          postTitle: parsed.title,
+          postExcerpt:
+            typeof parsed.frontmatter.excerpt === "string"
+              ? parsed.frontmatter.excerpt
+              : null,
+          postBody: parsed.body,
+          postSlug: written.slug,
+          contentEmbedding,
+          logger,
+        }),
+      );
+      logger("reflection:done", {
+        postId: written.postId,
+        ...("written" in reflection
+          ? { written: reflection.written, batchId: reflection.batchId }
+          : { skipped: reflection.skipped }),
+      });
+    } catch (error) {
+      logger("reflection:error", {
+        postId: written.postId,
+        error: error instanceof Error ? error.message : String(error),
+        ...(noObjectErrorDetail(error) ?? {}),
+      });
+    }
+  }
+
   return {
     postSlug: written.slug,
     postId: written.postId,
+    aiTreatment: stub ? "stub" : "full",
   };
 }
