@@ -292,6 +292,9 @@ export async function reclaimStaleImageBatches(
 export interface CompletionPatch {
   resultPostSlug?: string | null;
   resultPostId?: string | null;
+  // Audit copy of the produced post's aiTreatment ("full" | "stub") for this
+  // processing run. The Post column stays the live regeneration gate.
+  aiTreatment?: string | null;
 }
 
 export interface RetainedOriginalPatch {
@@ -363,6 +366,82 @@ export async function markCompleted(
       ...patch,
     },
   });
+}
+
+// Pro "Regenerate with AI": requeue the COMPLETED submission(s) that produced a
+// degraded (aiTreatment="stub") post so the worker re-runs the full pipeline and
+// updates the SAME Post in place (writePost upserts on providerId+sourceRecordId).
+// Distinct from the client "Process again" path, which salts the content hash
+// and creates a brand-new post.
+//
+// Security: callers (the regenerate route) must have already verified session,
+// post ownership, the stub marker, and Pro status server-side. This helper
+// re-encodes ownership + completed-status in every guard anyway so a forged
+// call matches zero rows. Entitlement is re-checked at worker claim time by
+// reserveAiGeneration — a lapse between request and claim degrades safely back
+// to a stub rewrite, never a free Gemini run.
+//
+// Mechanics per row:
+// - status → "pending", attempts reset, force=true (bypasses the worker's
+//   completed-post idempotency skip), error/timestamps cleared.
+// - stagedFilePath is restored from retainedFilePath for binary kinds (the
+//   worker MOVED the staged file there on completion; re-pointing staged at the
+//   retained path makes the pipeline re-run unmodified, and the post-completion
+//   retention rename becomes a same-path no-op).
+// - payload.draft is stripped so a stale on-device client draft can't hijack
+//   the regeneration into the free client-draft path.
+// For an image batch every row requeues together (claimReadyImageBatch needs
+// all totalCount rows pending). The per-row status:"completed" guard makes a
+// concurrent double-tap converge to a single logical requeue.
+export async function requeueForRegeneration(input: {
+  postId: string;
+  ownerId: string;
+}): Promise<{ requeued: number }> {
+  const rows = await prisma.ingestSubmission.findMany({
+    where: { resultPostId: input.postId },
+  });
+  if (rows.length === 0) return { requeued: 0 };
+  const allEligible = rows.every(
+    (r) => r.status === "completed" && r.submittedById === input.ownerId,
+  );
+  if (!allEligible) return { requeued: 0 };
+  let requeued = 0;
+  await prisma.$transaction(async (tx) => {
+    for (const row of rows) {
+      const payload = row.payload;
+      let cleanedPayload: Prisma.InputJsonValue | undefined;
+      if (
+        payload &&
+        typeof payload === "object" &&
+        !Array.isArray(payload) &&
+        "draft" in payload
+      ) {
+        const { draft: _draft, ...rest } = payload as Record<string, unknown>;
+        cleanedPayload = rest as Prisma.InputJsonValue;
+      }
+      const result = await tx.ingestSubmission.updateMany({
+        where: {
+          id: row.id,
+          status: "completed",
+          submittedById: input.ownerId,
+        },
+        data: {
+          status: "pending",
+          attempts: 0,
+          force: true,
+          errorMessage: null,
+          startedAt: null,
+          completedAt: null,
+          ...(row.retainedFilePath
+            ? { stagedFilePath: row.retainedFilePath }
+            : {}),
+          ...(cleanedPayload !== undefined ? { payload: cleanedPayload } : {}),
+        },
+      });
+      requeued += result.count;
+    }
+  });
+  return { requeued };
 }
 
 export async function markFailed(

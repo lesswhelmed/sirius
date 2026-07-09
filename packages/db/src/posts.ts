@@ -630,6 +630,9 @@ export type PostDelta = {
   // repo chip (and any future provider badge) without re-fetching the source.
   providerId: string;
   contentDigest: Prisma.JsonValue | null;
+  // "full" | "stub" — whether the body got the AI pass. Drives the degraded-
+  // bookmark badge + "Regenerate with AI" CTA on owner surfaces.
+  aiTreatment: string;
   // Server-computed (gemini-embedding-2) retrieval vector, mirrored down so the
   // device can run "ask my posts" semantic search WITHOUT embedding documents
   // on-device. Null until the worker has embedded the post. `embeddingModel` +
@@ -707,6 +710,7 @@ export async function listPostsChangedSince(opts: {
             sourceSubmissionIds: p.sourceSubmissions.map((s) => s.id),
             providerId: p.providerId,
             contentDigest: p.contentDigest,
+            aiTreatment: p.aiTreatment,
             embedding: p.embedding?.embedding ?? null,
             embeddingModel: p.embedding?.modelVersion ?? null,
             embeddingDim: p.embedding?.dimensionality ?? null,

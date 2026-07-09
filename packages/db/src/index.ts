@@ -58,6 +58,12 @@ export type ModerationEvent = Prisma.ModerationEventGetPayload<
   Record<string, never>
 >;
 export type Comment = Prisma.CommentGetPayload<Record<string, never>>;
+export type ReflectionPrompt = Prisma.ReflectionPromptGetPayload<
+  Record<string, never>
+>;
+export type ReflectionResponse = Prisma.ReflectionResponseGetPayload<
+  Record<string, never>
+>;
 export type Friendship = Prisma.FriendshipGetPayload<Record<string, never>>;
 export type ShareGroup = Prisma.ShareGroupGetPayload<Record<string, never>>;
 export type ShareGroupMember = Prisma.ShareGroupMemberGetPayload<
@@ -99,6 +105,7 @@ export * from "./notify";
 export * from "./post-delete";
 export * from "./post-update";
 export * from "./posts";
+export * from "./reflections";
 export * from "./scene-cache";
 export * from "./projects";
 export * from "./saved";

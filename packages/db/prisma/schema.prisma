@@ -36,6 +36,12 @@ model Post {
   lastEdited    DateTime       @updatedAt
   published     Boolean        @default(false)
 
+  // How the body was produced. "full" = the AI pipeline drafted/analyzed it;
+  // "stub" = over-quota degraded bookmark (the user's raw material, no AI pass)
+  // — the durable marker that gates the Pro "Regenerate with AI" flow and the
+  // upgrade CTA badges. A successful regeneration flips it back to "full".
+  aiTreatment String @default("full") // "full" | "stub"
+
   // Generated full-text search vector over title+excerpt+content. Managed by a
   // hand-authored migration (Postgres GENERATED STORED column) and queried only
   // via raw SQL (searchCorpus → websearch_to_tsquery). Typed Unsupported so
@@ -79,6 +85,12 @@ model Post {
   views           PostView[]      @relation("PostViews")
   comments        Comment[]       @relation("PostComments")
 
+  // Reflection layer: AI-generated questions inviting the OWNER to write their
+  // own take (the human-written counterpart to the AI analysis in `content`),
+  // plus the owner's answers. Both cascade with the post.
+  reflectionPrompts   ReflectionPrompt[]   @relation("PostReflectionPrompts")
+  reflectionResponses ReflectionResponse[] @relation("PostReflectionResponses")
+
   // The share groups this post is shared with (only meaningful when
   // visibility = GROUP). Cascades when the post or a group is deleted.
   shareGroups PostShareGroup[] @relation("PostShareGroups")
@@ -102,6 +114,8 @@ model Post {
   @@index([submittedById, status, createdAt])
   // friends-feed query: a viewer's friends' FRIENDS posts, newest first
   @@index([submittedById, visibility, createdAt])
+  // "my N regeneratable bookmarks" (settings CTA + filtered library view)
+  @@index([submittedById, aiTreatment])
   // PUBLIC catalog scan (when enabled) without a full table scan
   @@index([visibility, status, createdAt])
   @@index([projectId])
@@ -343,6 +357,10 @@ model IngestSubmission {
   force          Boolean   @default(false) // bypass idempotent reprocessing skip; regenerate
   errorMessage   String?
   resultPostSlug String?
+  // Audit copy of the produced post's aiTreatment at completion time ("full" |
+  // "stub"). Null for pre-marker rows and non-completed rows. The Post column is
+  // the live gate; this records what THIS processing run produced.
+  aiTreatment    String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   startedAt      DateTime?
@@ -575,6 +593,63 @@ enum CommentAuthorKind {
   AGENT
 }
 
+// ─── Reflection layer ────────────────────────────────────────────────────────
+// AI-generated questions that invite the post OWNER to write their own take on
+// the ingested material — the human-written counterpart to the AI raw analysis
+// stored in Post.content. Prompts are worker-generated after classification
+// (one batchId per generation run); responses are the owner's writing (text, or
+// a transcript when answered by voice). Neither carries any visibility of its
+// own: every read is gated through the parent post (canReadPost), so the
+// reflection thread inherits the post's audience exactly.
+
+model ReflectionPrompt {
+  id      String @id @default(cuid())
+  postId  String
+  post    Post   @relation("PostReflectionPrompts", fields: [postId], references: [id], onDelete: Cascade)
+  // One cuid per generation run. Regeneration hard-deletes UNANSWERED prompts
+  // of the prior batch, flips answered ones to "superseded" (the user's
+  // writing is never destroyed), then inserts the new batch as "active".
+  batchId String
+  order   Int // display order within the batch (0-based)
+  // The question itself, phrased for this user (voice profile + their corpus).
+  question  String
+  rationale String? // optional "why we're asking you this" subtext
+  status    String   @default("active") // "active" | "superseded" | "tombstone"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  response ReflectionResponse?
+
+  @@index([postId, status, order])
+  @@index([updatedAt]) // delta since-cursor scans (listReflectionChangedSince)
+}
+
+model ReflectionResponse {
+  id       String           @id @default(cuid())
+  // One response per prompt (v1). "Delete" tombstones the row; re-answering
+  // revives it (status back to "active", new body) so the unique FK holds.
+  promptId String           @unique
+  prompt   ReflectionPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  // Denormalized so the delta feed and post-page reads never need a join hop
+  // through the prompt. Always equals prompt.postId.
+  postId   String
+  post     Post             @relation("PostReflectionResponses", fields: [postId], references: [id], onDelete: Cascade)
+  // The writer — always the post owner at write time; SetNull keeps the words
+  // if the account is later deleted (mirrors Comment.authorId).
+  authorId String?
+  author   User?            @relation("UserReflectionResponses", fields: [authorId], references: [id], onDelete: SetNull)
+  // The written answer, or the transcript when the user answered by voice.
+  body      String
+  audioPath String? // retained audio original (relative pointer); null for text
+  status    String    @default("active") // "active" | "tombstone"
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([postId])
+  @@index([updatedAt]) // delta since-cursor scans (listReflectionChangedSince)
+}
+
 model TagEmbedding {
   id             String   @id @default(cuid())
   name           String   @unique
@@ -633,6 +708,9 @@ model User {
   sceneRecomputes SceneRecomputeRequest[] @relation("UserSceneRecomputes")
   comments        Comment[]               @relation("UserComments")
   apiKeys         ApiKey[]                @relation("UserApiKeys")
+
+  // Reflection answers this user wrote on their own posts.
+  reflectionResponses ReflectionResponse[] @relation("UserReflectionResponses")
 
   // Friendships are stored as ONE canonically-ordered row per pair (userAId <
   // userBId). A user therefore appears as either side, so two back-relations.
