@@ -758,10 +758,19 @@ Terms of Use: https://lesswhelmed.com/terms
 Privacy Policy: https://lesswhelmed.com/privacy
 ```
 
-**What's New** (≤4000) — for the rebrand version, *305 chars*:
+**What's New** (≤4000) — for the rebrand version, *719 chars*. Merged variant: 1.0.2/build 88
+was never submitted (owner-confirmed 2026-07-10), so users update from 1.0.1 — these notes carry the
+unreleased 1.0.2 features together with the rename (full rationale: `docs/releases/1.1.0.md` §1e):
 
 ```text
-Sirius is now Lesswhelmed! Same app, same account, same library — everything you've saved is right where you left it, under a new name. The built-in assistant is still called Sirius AI, and Sirius AI Pro subscriptions carry over unchanged. This update also includes performance improvements and bug fixes.
+Sirius is now Lesswhelmed! Same app, same account, same library — and the built-in assistant is still called Sirius AI, with Sirius AI Pro subscriptions carrying over unchanged.
+
+Also new in this update:
+• Reflect — after analyzing a capture, Lesswhelmed suggests a few personal questions so you can add your own take
+• Deeper, more detailed AI analysis of everything you save, so it's easier to search later
+• Over your free weekly limit? Captures are still saved as searchable bookmarks — Pro members can regenerate the full analysis anytime
+• Set your handle right when you sign up, and tap the verification email to jump straight into the app, already signed in
+• Reliability fixes for account switching and syncing
 ```
 
 **Unchanged fields** (verify, don't edit): Subtitle; Support URL
