@@ -34,6 +34,8 @@ unless "Depends on" says otherwise.
 | 014 | Integration tests for metering + RevenueCat entitlement | P1 | M | — | TODO |
 | 015 | Tests for MCP corpus tenant isolation | P1 | M | — | TODO |
 | 016 | "Connect the Dots" narrative — design/spike | P2 | M | — | TODO |
+| 017 | Close the SSRF-guard security test gaps | P2 | S | 012 (done) | TODO |
+| 018 | Widen SSRF block IPv6 ranges (fe80::/10 + NAT64 hex) | P3 | S | 012 (done) | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED (one-line rationale)
 
@@ -85,6 +87,25 @@ worktrees under `.claude/worktrees/` can be pruned (`git worktree prune`).
   the empty-state (this account has posts), and blocked-author exclusion (no blocked
   user seeded — the cached-helper swap left the block logic unchanged in the diff).
 - **006 e2e cache-bust** — still manual/integration (needs the worker + Gemini running).
+
+## Expert-swarm review of the session's changes (2026-07-09)
+
+After the changes above were merged, a 6-expert swarm (adversarial-SSRF, worker-pipeline,
+React/RSC, code-review, silent-failure, test-coverage) reviewed the session diff. Verdict:
+**no shippable bugs or functional regressions** — every change achieves its purpose. Three
+follow-ups came out of it:
+- **Failure logging** — DONE + merged (`df96a4b`): the SSRF `fetchGuarded` core now logs
+  `[safe-fetch] dropped <host> — <reason>` at each drop site (host only, no query-token
+  leak), so dropped images/PDFs are attributable in prod logs.
+- **017 (SSRF test gaps)** — TODO: the guard's redirect-refusal + streamed-byte-cap
+  defenses, the `fetchGuardedPdf` content-safety path, and the multi-address block policy
+  have no test that fails when broken. Verified real; the guard works, it's just under-tested.
+- **018 (IPv6 range hardening)** — TODO: link-local matched as `fe80` only (misses the rest
+  of `fe80::/10`), NAT64 matched dotted but Node renders hex. Low-severity defense-in-depth;
+  NOT a metadata-endpoint bypass (169.254.169.254 is IPv4, fully blocked).
+- Pre-existing, NOT from this session (recorded, not planned): the content-safety gate
+  silently skips a PDF that can't be fetched (`targets.ts`, unchanged by us); no wall-clock
+  deadline on worker fetches. Worth a separate look someday.
 
 **Worktrees are not merged.** Each approved change lives on its own branch in a
 disposable worktree under `.claude/worktrees/`; merging is the maintainer's decision
