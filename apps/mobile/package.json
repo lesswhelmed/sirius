@@ -1,7 +1,7 @@
 {
 	"name": "mobile",
 	"main": "expo-router/entry",
-	"version": "1.0.0",
+	"version": "1.0.2",
 	"scripts": {
 		"start": "expo start",
 		"dev": "node ./scripts/prebuild-if-native-changed.mjs && bun run verify:native-ai && EXPO_UNSTABLE_MCP_SERVER=1 bun expo run:ios",
