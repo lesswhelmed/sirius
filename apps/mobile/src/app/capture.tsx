@@ -161,7 +161,7 @@ export default function CaptureScreen() {
       <Screen style={styles.centeredPad}>
         <PageHeader title="Nothing to capture" titleAccent="." />
         <Text style={styles.muted}>
-          Run &ldquo;Capture in Sirius&rdquo; with a note or link to queue it.
+          Run &ldquo;Capture in Lesswhelmed&rdquo; with a note or link to queue it.
         </Text>
         <SecondaryButton label="Close" onPress={dismissModal} />
       </Screen>
@@ -180,7 +180,7 @@ export default function CaptureScreen() {
         >
           <PageHeader
             brandMark
-            eyebrow="Capture in Sirius"
+            eyebrow="Capture in Lesswhelmed"
             title="Queue this"
             titleAccent="."
             subtitle={`${submittable.length} item${

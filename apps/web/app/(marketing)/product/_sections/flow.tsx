@@ -8,14 +8,14 @@ const STEPS = [
   {
     folio: "I",
     title: "Capture",
-    body: "Paste a link, snap a photo, jot a note, or record a voice memo. The iOS share sheet means anything can land in Sirius in two taps.",
+    body: "Paste a link, snap a photo, jot a note, or record a voice memo. The iOS share sheet means anything can land in Lesswhelmed in two taps.",
     screen: SCREENS.capture,
-    alt: "The Sirius capture screen",
+    alt: "The Lesswhelmed capture screen",
   },
   {
     folio: "II",
     title: "Draft",
-    body: "Sirius reads what you submitted and writes a structured post — title, summary, tags, and details — that you review before keeping.",
+    body: "Lesswhelmed reads what you submitted and writes a structured post — title, summary, tags, and details — that you review before keeping.",
     screen: SCREENS.post,
     alt: "A finished post detail screen",
   },

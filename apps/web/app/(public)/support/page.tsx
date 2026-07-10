@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Support · Sirius",
+  title: "Support · Lesswhelmed",
   description:
-    "Get help with Sirius — contact, common questions, and account support for the web and iOS apps.",
+    "Get help with Lesswhelmed — contact, common questions, and account support for the web and iOS apps.",
 };
 
 const SUPPORT_EMAIL = "saleebmina@copt.dev";
@@ -46,9 +46,9 @@ export default function SupportPage() {
             Common questions
           </h2>
 
-          <Faq q="What is Sirius?">
-            Sirius helps you capture, organize, and publish your content. You
-            submit a link, photos, a note, or more, and Sirius drafts a post you
+          <Faq q="What is Lesswhelmed?">
+            Lesswhelmed helps you capture, organize, and publish your content. You
+            submit a link, photos, a note, or more, and Lesswhelmed drafts a post you
             can review and then keep private or publish to your catalog.
           </Faq>
 
@@ -65,7 +65,7 @@ export default function SupportPage() {
 
           <Faq q="How do I add an item to my catalog?">
             From the Capture tab, paste a URL, attach photos, or type a note,
-            then submit. Sirius queues it, drafts an entry, and it appears in
+            then submit. Lesswhelmed queues it, drafts an entry, and it appears in
             your Catalog when ready.
           </Faq>
 

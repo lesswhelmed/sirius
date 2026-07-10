@@ -41,7 +41,7 @@ export const SCREEN_SLIDES = [
     folio: "I",
     label: "Capture",
     src: SCREENS.capture,
-    alt: "The Sirius capture screen",
+    alt: "The Lesswhelmed capture screen",
   },
   {
     folio: "II",

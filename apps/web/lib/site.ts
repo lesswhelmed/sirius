@@ -7,4 +7,4 @@ export const SITE_URL = (
   "https://lesswhelmed.com"
 ).replace(/\/$/, "");
 
-export const SITE_NAME = "Sirius";
+export const SITE_NAME = "Lesswhelmed";

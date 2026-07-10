@@ -22,7 +22,7 @@ export async function GET(
 ) {
   const { handle } = await params;
   const user = await findUserByHandle(handle);
-  const name = user?.name ?? (user?.handle ? `@${user.handle}` : "Sirius");
+  const name = user?.name ?? (user?.handle ? `@${user.handle}` : "Lesswhelmed");
   const at = user?.handle ? `@${user.handle}` : "";
   const avatar = absolute(user?.image);
   const initial = (user?.name ?? user?.handle ?? "S").trim().charAt(0).toUpperCase();
@@ -53,7 +53,7 @@ export async function GET(
             color: INK_SUBTLE,
           }}
         >
-          <span>You&#39;re invited to Sirius</span>
+          <span>You&#39;re invited to Lesswhelmed</span>
           <span style={{ color: ACCENT }}>iOS · Web</span>
         </div>
 
@@ -95,7 +95,7 @@ export async function GET(
               </div>
             ) : null}
             <div style={{ display: "flex", marginTop: 22, fontFamily: SERIF, fontSize: 34, lineHeight: 1.25, color: INK_SUBTLE }}>
-              Add me on Sirius — my personal catalog of everything worth keeping.
+              Add me on Lesswhelmed — my personal catalog of everything worth keeping.
             </div>
           </div>
         </div>

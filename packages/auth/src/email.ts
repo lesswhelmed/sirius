@@ -88,7 +88,7 @@ export function renderEmail({
       <tr><td align="center">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:${c.paperRaised};border:1px solid ${c.rule};">
           <tr><td style="padding:36px 36px 32px;font-family:Georgia,'Times New Roman',serif;">
-            <div style="font-family:'SF Mono',ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:0.24em;text-transform:uppercase;color:${c.accent};margin-bottom:14px;">Sirius — ${eyebrow}</div>
+            <div style="font-family:'SF Mono',ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:0.24em;text-transform:uppercase;color:${c.accent};margin-bottom:14px;">Lesswhelmed — ${eyebrow}</div>
             <h1 style="margin:0 0 18px;font-size:30px;line-height:1.1;font-style:italic;color:${c.ink};">${heading}</h1>
             ${paragraphs}
             ${ctaBlock}

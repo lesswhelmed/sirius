@@ -1,7 +1,7 @@
 {
   "name": "sirius-research",
   "version": "0.1.0",
-  "description": "Research a Sirius user's own post corpus from Claude: semantic + keyword + structured search, full-post reading, and taxonomy/project navigation with structured input/output. Mirrors the apps/mcp corpus server.",
+  "description": "Research a Lesswhelmed user's own post corpus from Claude: semantic + keyword + structured search, full-post reading, and taxonomy/project navigation with structured input/output. Mirrors the apps/mcp corpus server.",
   "author": {
     "name": "Sirius",
     "email": "saleebmina@copt.dev"

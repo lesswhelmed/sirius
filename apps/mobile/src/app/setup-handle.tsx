@@ -156,7 +156,7 @@ export default function SetupHandleScreen() {
         <View style={styles.container}>
           <PageHeader
             brandMark
-            eyebrow="Sirius — A field journal"
+            eyebrow="Lesswhelmed — A field journal"
             title="Pick your handle"
             titleAccent="."
             subtitle="It’s how friends find you — one quick step before you continue."

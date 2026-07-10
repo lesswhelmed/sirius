@@ -1,6 +1,6 @@
 # sirius-research — Claude Code plugin
 
-Gives Claude the ability to **read and research a Sirius user's own post
+Gives Claude the ability to **read and research a Lesswhelmed user's own post
 corpus** on demand — semantic + keyword + structured search, full-post reading,
 and taxonomy/project navigation — with **structured input/output**. It is the
 Claude-Code-plugin face of the [`apps/mcp`](../../apps/mcp) corpus server: the
@@ -59,7 +59,7 @@ resources `sirius://post/{slug}` and `sirius://category/{path}`, and prompts
 
 | Var | Purpose |
 |-----|---------|
-| `SIRIUS_MCP_API_KEY` | **Required.** Plaintext Sirius API key (Bearer). Owner-scopes every call. |
+| `SIRIUS_MCP_API_KEY` | **Required.** Plaintext Lesswhelmed API key (Bearer). Owner-scopes every call. |
 | `SIRIUS_MCP_URL` | Optional. MCP endpoint (default `http://localhost:4269/mcp`). Used by the smoke script; the plugin's live endpoint is set in `.mcp.json`. |
 
 No secrets are committed — the key is read from the environment.

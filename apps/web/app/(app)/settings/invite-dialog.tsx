@@ -37,8 +37,8 @@ export function InviteDialog({ handle }: { handle: string }) {
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({
-          title: "Add me on Sirius",
-          text: "Add me on Sirius",
+          title: "Add me on Lesswhelmed",
+          text: "Add me on Lesswhelmed",
           url: link,
         });
         return;

@@ -1,6 +1,6 @@
 ---
 name: Summarize a corpus category
-description: This skill should be used when the user asks to "/sirius-research:summarize-category", "summarize my <category> posts", "what's in my <topic> category", or wants a structured summary of every post filed under a taxonomy node in their Sirius corpus. Mirrors the server's summarize_category prompt.
+description: This skill should be used when the user asks to "/sirius-research:summarize-category", "summarize my <category> posts", "what's in my <topic> category", or wants a structured summary of every post filed under a taxonomy node in their Lesswhelmed corpus. Mirrors the server's summarize_category prompt.
 argument-hint: <category path to summarize>
 allowed-tools: ["mcp__plugin_sirius-research_sirius-corpus__list_categories", "mcp__plugin_sirius-research_sirius-corpus__browse_category", "mcp__plugin_sirius-research_sirius-corpus__get_post", "mcp__plugin_sirius-research_sirius-corpus__*"]
 version: 0.1.0

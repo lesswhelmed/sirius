@@ -46,7 +46,7 @@ export function SiriusLogo({
         className={MARK_CLASS[variant]}
       />
       <span className={WORDMARK_CLASS[variant]}>
-        Sirius<span className="text-[var(--color-accent)]">.</span>
+        Lesswhelmed<span className="text-[var(--color-accent)]">.</span>
       </span>
     </Link>
   );

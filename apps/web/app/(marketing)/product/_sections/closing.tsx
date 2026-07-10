@@ -23,7 +23,7 @@ export function Closing() {
         </h2>
         <p className="-mt-2 max-w-md text-[15px] leading-relaxed text-pretty text-[var(--fg-muted)]">
           Stop losing the context of your life to a hundred open tabs. Capture
-          it, and let Sirius turn it into something you can actually use. Feel
+          it, and let Lesswhelmed turn it into something you can actually use. Feel
           lesswhelmed.
         </p>
         <CtaBlock align="center" />

@@ -52,16 +52,16 @@ export default function HelpScreen() {
         <PageHeader
           brandMark
           eyebrow="Welcome"
-          title="How Sirius works"
+          title="How Lesswhelmed works"
           titleAccent="."
-          subtitle="You barely have to open this app. Share things to Sirius from anywhere — we turn them into posts for you."
+          subtitle="You barely have to open this app. Share things to Lesswhelmed from anywhere — we turn them into posts for you."
         />
 
         {/* 1 — The Share Sheet move (hero) */}
         <View style={styles.section}>
           <Eyebrow accessibilityRole="header">The one move to learn</Eyebrow>
           <Text style={styles.sectionLead}>
-            See something worth keeping? Send it straight to Sirius without
+            See something worth keeping? Send it straight to Lesswhelmed without
             opening the app:
           </Text>
           <StepCard
@@ -89,12 +89,12 @@ export default function HelpScreen() {
                 accessible={false}
               />
             }
-            title="Pick Sirius"
-            body="Choose Sirius from the share row. That's it — we take it from there."
+            title="Pick Lesswhelmed"
+            body="Choose Lesswhelmed from the share row. That's it — we take it from there."
           />
           <Text style={styles.note}>
-            Don&apos;t see Sirius in the row? Scroll to the end, tap More (or
-            Edit), and switch Sirius on. You only do this once.
+            Don&apos;t see Lesswhelmed in the row? Scroll to the end, tap More (or
+            Edit), and switch Lesswhelmed on. You only do this once.
           </Text>
         </View>
 
@@ -119,7 +119,7 @@ export default function HelpScreen() {
           <StepCard
             n={1}
             icon={<Sym name="sparkles" glyph="✦" />}
-            title="Sirius drafts it"
+            title="Lesswhelmed drafts it"
             body="We read what you shared and write it up as a post — a finding, a sight, or a note."
           />
           <StepCard

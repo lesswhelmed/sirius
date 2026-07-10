@@ -844,7 +844,7 @@ export default function ComposerScreen() {
           >
             {/* Read-only orientation sits up top, out of the thumb zone. */}
             <Text style={styles.shareHint}>
-              Tip: share anything to Sirius from another app&apos;s share sheet.
+              Tip: share anything to Lesswhelmed from another app&apos;s share sheet.
             </Text>
             <TextLink
               label="How it works →"
@@ -1404,7 +1404,7 @@ export default function ComposerScreen() {
                       File it under
                     </Title>
                     <Text style={styles.wizHelper}>
-                      Pick a focus, or let Sirius file it automatically.
+                      Pick a focus, or let Lesswhelmed file it automatically.
                     </Text>
 
                     {/* Search box doubles as the new-focus title. */}
@@ -1456,7 +1456,7 @@ export default function ComposerScreen() {
                         onPress={() => setProjectId(null)}
                         accessibilityRole="radio"
                         accessibilityState={{ selected: projectId === null }}
-                        accessibilityLabel="Auto. Sirius picks the best focus for you. Recommended."
+                        accessibilityLabel="Auto. Lesswhelmed picks the best focus for you. Recommended."
                         style={({ pressed }) => [
                           styles.audRow,
                           pressed && styles.audiencePressed,
@@ -1468,7 +1468,7 @@ export default function ComposerScreen() {
                             <Text style={styles.focusRecTag}>RECOMMENDED</Text>
                           </View>
                           <Text style={styles.audSub}>
-                            Sirius picks the best focus for you
+                            Lesswhelmed picks the best focus for you
                           </Text>
                         </View>
                         <View

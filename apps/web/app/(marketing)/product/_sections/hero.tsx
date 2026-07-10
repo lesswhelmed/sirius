@@ -16,7 +16,7 @@ export function Hero() {
         </h1>
         <p className="mt-6 max-w-xl text-[16px] leading-relaxed text-pretty text-[var(--fg-muted)] sm:mt-7 sm:text-[17px]">
           Capture anything — links, photos, notes, repositories, videos,
-          documents, voice memos — and Sirius drafts a clean, organized post you
+          documents, voice memos — and Lesswhelmed drafts a clean, organized post you
           review and keep. Every capture becomes private context about your
           life, and the longer you use it, the more it understands.
         </p>

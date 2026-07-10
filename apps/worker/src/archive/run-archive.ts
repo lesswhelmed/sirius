@@ -220,7 +220,7 @@ export async function processArchiveRequest(
       const link = `${linkBaseUrl()}/api/app/archive/download?token=${token}`;
       await sendEmail({
         to: contact.email,
-        subject: "Your Sirius data archive is ready",
+        subject: "Your Lesswhelmed data archive is ready",
         html: [
           `<p>Hi ${contact.name},</p>`,
           `<p>Your data archive (${fileCount} item${fileCount === 1 ? "" : "s"}) is ready to download.</p>`,

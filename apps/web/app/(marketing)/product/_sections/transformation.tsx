@@ -12,7 +12,7 @@ export function Transformation() {
           From clutter to context.
         </h2>
         <p className="mx-auto mt-5 max-w-xl text-[16px] leading-relaxed text-pretty text-[var(--fg-muted)]">
-          Paste a link or jot a note. Sirius reads what you gave it, writes the
+          Paste a link or jot a note. Lesswhelmed reads what you gave it, writes the
           title, summary, tags, and details, and files it as context you can use
           later. On iPhone it can even draft on-device.
         </p>

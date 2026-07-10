@@ -176,8 +176,8 @@ for _ in $(seq 1 60); do xcrun simctl list devices booted 2>/dev/null | grep -q 
 
 # Install the dev client if it isn't already on this sim.
 if ! xcrun simctl get_app_container "$UDID" "$APP_ID" >/dev/null 2>&1; then
-  APP="$(ls -dt "$HOME"/Library/Developer/Xcode/DerivedData/Sirius-*/Build/Products/Debug-iphonesimulator/Sirius.app 2>/dev/null | head -1 || true)"
-  [[ -n "$APP" ]] || { echo "error: no Sirius.app in DerivedData. Build it: bun --cwd apps/mobile ios" >&2; exit 1; }
+  APP="$(ls -dt "$HOME"/Library/Developer/Xcode/DerivedData/{Sirius,Lesswhelmed}-*/Build/Products/Debug-iphonesimulator/{Sirius,Lesswhelmed}.app 2>/dev/null | head -1 || true)"
+  [[ -n "$APP" ]] || { echo "error: no Sirius.app/Lesswhelmed.app in DerivedData. Build it: bun --cwd apps/mobile ios" >&2; exit 1; }
   echo "==> Installing dev client: $APP"
   xcrun simctl install "$UDID" "$APP"
 fi

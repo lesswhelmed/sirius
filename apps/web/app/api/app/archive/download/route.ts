@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   return serveOriginal({
     baseDir: resolveArchivesDir(),
     absolutePath: archive.downloadPath,
-    downloadName: `sirius-archive-${stamp}.zip`,
+    downloadName: `lesswhelmed-archive-${stamp}.zip`,
     contentType: "application/zip",
   });
 }

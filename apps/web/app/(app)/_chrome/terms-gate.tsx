@@ -42,7 +42,7 @@ export function TermsGate() {
       </h1>
       <div className="mt-6 space-y-4 font-body text-[15px] leading-[1.7] text-[var(--fg-muted)]">
         <p>
-          Sirius has <strong>zero tolerance</strong> for objectionable content
+          Lesswhelmed has <strong>zero tolerance</strong> for objectionable content
           or abusive behavior. Content or accounts that violate our terms are
           removed and offending users ejected. Reports are reviewed and acted
           on within 24 hours.

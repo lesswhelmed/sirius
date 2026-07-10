@@ -1,6 +1,6 @@
 <div align="center">
 
-# Sirius
+# Lesswhelmed
 
 **Submit a URL, image, or note — a background worker drafts an AI post with Gemini and publishes it straight to Postgres, where the web app serves it.**
 

@@ -236,7 +236,7 @@ export default function ShareIntentScreen() {
       <Screen style={styles.centeredPad}>
         <PageHeader title="Nothing shared" titleAccent="." />
         <Text style={styles.muted}>
-          Share a link, note, or image to Sirius to queue it.
+          Share a link, note, or image to Lesswhelmed to queue it.
         </Text>
         <SecondaryButton label="Close" onPress={dismiss} />
       </Screen>
@@ -255,7 +255,7 @@ export default function ShareIntentScreen() {
         >
           <PageHeader
             brandMark
-            eyebrow="Shared with Sirius"
+            eyebrow="Shared with Lesswhelmed"
             title="Queue this"
             titleAccent="."
             subtitle={`${submittable.length} item${

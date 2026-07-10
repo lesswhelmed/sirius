@@ -130,7 +130,7 @@ export const auth = betterAuth({
           heading: "Reset your password.",
           body: [
             `Hi ${escapeHtml(user.name ?? "there")},`,
-            "We received a request to reset the password on your Sirius account. Use the button below to choose a new one.",
+            "We received a request to reset the password on your Lesswhelmed account. Use the button below to choose a new one.",
           ],
           cta: { label: "Set a new password", url },
           footnote:
@@ -154,11 +154,11 @@ export const auth = betterAuth({
           heading: "Verify your email.",
           body: [
             `Welcome, ${escapeHtml(user.name ?? "there")}!`,
-            "Confirm your email address to finish setting up your Sirius account.",
+            "Confirm your email address to finish setting up your Lesswhelmed account.",
           ],
           cta: { label: "Verify email", url },
           footnote:
-            "If you didn't create a Sirius account, you can ignore this email.",
+            "If you didn't create a Lesswhelmed account, you can ignore this email.",
         }),
       });
     },

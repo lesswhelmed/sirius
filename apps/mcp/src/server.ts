@@ -15,7 +15,7 @@ export function buildServerForUser(userId: string): McpServer {
     {
       capabilities: { tools: {}, resources: {}, prompts: {} },
       instructions:
-        "Read-only access to a single Sirius user's post corpus (an 'LLM " +
+        "Read-only access to a single Lesswhelmed user's post corpus (an 'LLM " +
         "wiki'). Search by structured filter (search_posts), keyword " +
         "(full_text_search), or meaning (semantic_search); navigate the topic " +
         "taxonomy (list_categories/browse_category) and projects " +

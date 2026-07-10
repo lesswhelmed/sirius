@@ -30,7 +30,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-end justify-between gap-6 pt-5 pb-5">
-            <SiriusLogo href="/ingest" ariaLabel="Sirius — return home" />
+            <SiriusLogo href="/ingest" ariaLabel="Lesswhelmed — return home" />
             <div className="hidden items-baseline gap-3 pb-1 lg:flex">
               <ThemeMenu />
               <span
@@ -83,7 +83,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               ⁂
             </span>
             <span className="nums-lining">
-              Sirius ·{" "}
+              Lesswhelmed ·{" "}
               <Suspense fallback={<span aria-hidden="true">&nbsp;</span>}>
                 <TodayStamp />
               </Suspense>

@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: `${SITE_NAME} — Your life, in context.`,
   description:
-    "Sirius is the life-context engine. Capture anything — links, photos, notes, repos, videos, documents, even voice memos — and AI drafts a clean, organized post you review and keep. Every capture becomes private context about your life. Private by default, yours to export.",
+    "Lesswhelmed is the life-context engine. Capture anything — links, photos, notes, repos, videos, documents, even voice memos — and AI drafts a clean, organized post you review and keep. Every capture becomes private context about your life. Private by default, yours to export.",
   applicationName: SITE_NAME,
 };
 

@@ -116,7 +116,7 @@ export default async function SettingsPage() {
           <p className="max-w-[60ch] font-body text-[15px] leading-[1.7] text-[var(--fg-muted)]">
             Ingesting is always free. The free plan includes a weekly allotment
             of AI-written drafts; Sirius AI Pro removes the cap. Manage your
-            subscription in the Sirius app.
+            subscription in the Lesswhelmed app.
           </p>
           <div className="max-w-[420px]">
             <AiUsageCard usage={usage} />

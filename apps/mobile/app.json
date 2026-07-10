@@ -1,6 +1,6 @@
 {
 	"expo": {
-		"name": "Sirius",
+		"name": "Lesswhelmed",
 		"slug": "sirius",
 		"version": "1.0.2",
 		"orientation": "portrait",
@@ -19,8 +19,8 @@
 			"associatedDomains": ["webcredentials:lesswhelmed.com"],
 			"infoPlist": {
 				"ITSAppUsesNonExemptEncryption": false,
-				"CFBundleSpokenName": "Sirius app",
-				"NSSpeechRecognitionUsageDescription": "Allow Sirius to turn what you dictate into a capture for your queue.",
+				"CFBundleSpokenName": "Lesswhelmed app",
+				"NSSpeechRecognitionUsageDescription": "Allow Lesswhelmed to turn what you dictate into a capture for your queue.",
 				"UISupportedInterfaceOrientations~ipad": [
 					"UIInterfaceOrientationPortrait",
 					"UIInterfaceOrientationPortraitUpsideDown",
@@ -102,7 +102,7 @@
 						"NSExtensionActivationSupportsWebPageWithMaxCount": 1,
 						"NSExtensionActivationSupportsImageWithMaxCount": 8
 					},
-					"iosShareExtensionName": "Share to Sirius",
+					"iosShareExtensionName": "Share to Lesswhelmed",
 					"androidIntentFilters": ["text/*", "image/*"],
 					"androidMultiIntentFilters": ["image/*"]
 				}
@@ -111,16 +111,16 @@
 			[
 				"expo-image-picker",
 				{
-					"photosPermission": "Sirius needs access to your photo library so you can attach existing photos or videos to a capture — for example, selecting a screenshot to turn into an organized entry in your library.",
-					"cameraPermission": "Sirius uses the camera so you can take a photo or record a video and save it as a capture — for example, snapping a receipt or whiteboard to draft and organize in your private library.",
-					"microphonePermission": "Sirius uses the microphone so you can record a voice memo to save as a capture — for example, dictating a quick idea that Sirius drafts into an organized entry."
+					"photosPermission": "Lesswhelmed needs access to your photo library so you can attach existing photos or videos to a capture — for example, selecting a screenshot to turn into an organized entry in your library.",
+					"cameraPermission": "Lesswhelmed uses the camera so you can take a photo or record a video and save it as a capture — for example, snapping a receipt or whiteboard to draft and organize in your private library.",
+					"microphonePermission": "Lesswhelmed uses the microphone so you can record a voice memo to save as a capture — for example, dictating a quick idea that Lesswhelmed drafts into an organized entry."
 				}
 			],
 			"expo-secure-store",
 			[
 				"expo-local-authentication",
 				{
-					"faceIDPermission": "Allow Sirius to use Face ID to sign you in securely."
+					"faceIDPermission": "Allow Lesswhelmed to use Face ID to sign you in securely."
 				}
 			],
 			"expo-web-browser",

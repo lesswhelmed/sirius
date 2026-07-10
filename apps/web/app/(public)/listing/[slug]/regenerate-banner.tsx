@@ -69,7 +69,7 @@ export function RegenerateBanner({ slug }: { slug: string }) {
           </button>
           {notice?.kind === "pro-required" ? (
             <span className="font-mono text-[11px] text-[var(--fg-muted)]">
-              Regeneration is part of Sirius Pro — upgrade in the mobile app.
+              Regeneration is part of Sirius AI Pro — upgrade in the mobile app.
             </span>
           ) : null}
           {notice?.kind === "error" ? (

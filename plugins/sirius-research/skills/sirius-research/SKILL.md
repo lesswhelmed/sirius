@@ -1,17 +1,17 @@
 ---
-name: Sirius corpus research
-description: This skill should be used when the user asks to "research my posts", "search my Sirius corpus", "what have I written about X", "find posts about X", "read my post <slug>", "cite from my corpus", "summarize my <category> posts", "what does my corpus say about X", or otherwise wants to read, search, or ground an answer in their own Sirius post corpus. Provides the structured-input/output contract for the sirius-corpus MCP tools (semantic/keyword/structured search, full-post reading, taxonomy + project navigation, classification) and the rules for using them.
+name: Lesswhelmed corpus research
+description: This skill should be used when the user asks to "research my posts", "search my Lesswhelmed corpus", "what have I written about X", "find posts about X", "read my post <slug>", "cite from my corpus", "summarize my <category> posts", "what does my corpus say about X", or otherwise wants to read, search, or ground an answer in their own Lesswhelmed post corpus. Provides the structured-input/output contract for the sirius-corpus MCP tools (semantic/keyword/structured search, full-post reading, taxonomy + project navigation, classification) and the rules for using them.
 version: 0.1.0
 ---
 
-# Sirius corpus research
+# Lesswhelmed corpus research
 
-Ground answers in the user's **own Sirius post corpus** via the `sirius-corpus`
+Ground answers in the user's **own Lesswhelmed post corpus** via the `sirius-corpus`
 MCP server (bundled with this plugin; mirrors `apps/mcp`). The server is
 **read-only** and **owner-scoped** — every call resolves to the owner of the
 configured API key, and content belonging to anyone else returns `not found`.
 
-Invoke this skill whenever the user directs Claude to leverage their Sirius
+Invoke this skill whenever the user directs Claude to leverage their Lesswhelmed
 material: searching, reading posts, navigating their taxonomy/projects, or
 answering a question strictly from what they have captured.
 
@@ -23,7 +23,7 @@ The tools only work once the MCP server is reachable and authenticated:
    on `http://localhost:<MCP_PORT>/mcp` — this repo's `.env` sets
    `MCP_PORT=4269` (the upstream default is 3005). Start it with
    `bun --cwd apps/mcp dev`; `.mcp.json` targets `:4269`.
-2. The env var **`SIRIUS_MCP_API_KEY`** must hold a Sirius API key (minted in
+2. The env var **`SIRIUS_MCP_API_KEY`** must hold a Lesswhelmed API key (minted in
    the web app at `/settings` → API Keys, or `POST /api/app/api-keys` while
    signed in). The key determines whose corpus is searched.
 3. Confirm the tools are live with `/mcp` — they appear under the

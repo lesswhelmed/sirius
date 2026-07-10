@@ -3,9 +3,9 @@ import UIKit
 
 @available(iOS 16.0, *)
 struct CaptureInSiriusIntent: AppIntent {
-    static var title: LocalizedStringResource = "Capture in Sirius"
+    static var title: LocalizedStringResource = "Capture in Lesswhelmed"
     static var description = IntentDescription(
-        "Send a note or link to your Sirius capture queue."
+        "Send a note or link to your Lesswhelmed capture queue."
     )
 
     // Open the app so the existing authenticated session performs the submit.

@@ -16,7 +16,7 @@ export default function MarketingLayout({
     <div className="min-h-screen w-full text-[var(--fg)]">
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 lg:px-12">
         <header className="flex items-center justify-between gap-4 pt-6 sm:pt-8">
-          <SiriusLogo href="/product" ariaLabel="Sirius" variant="compact" />
+          <SiriusLogo href="/product" ariaLabel="Lesswhelmed" variant="compact" />
           <div className="flex items-center gap-4 sm:gap-5">
             {/* The verbose theme segmented-control is a desktop nicety; on a
                 phone it crowds out the sign-up CTA, so it's hidden < sm (mobile
@@ -43,7 +43,7 @@ export default function MarketingLayout({
         <footer>
           <div className="hairline-t mt-8 flex flex-wrap items-center justify-between gap-3 pt-5 pb-10 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
             <span className="nums-lining">
-              Sirius · The life-context engine
+              Lesswhelmed · The life-context engine
             </span>
             <span aria-hidden="true" className="text-[var(--color-accent)]">
               ⁂

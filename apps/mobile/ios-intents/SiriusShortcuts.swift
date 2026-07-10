@@ -26,7 +26,7 @@ struct SiriusShortcuts: AppShortcutsProvider {
                 "Capture this in \(.applicationName)",
                 "New capture in \(.applicationName)"
             ],
-            shortTitle: "Capture in Sirius",
+            shortTitle: "Capture in Lesswhelmed",
             systemImageName: "tray.and.arrow.down"
         )
     }

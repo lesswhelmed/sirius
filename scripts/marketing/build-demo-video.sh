@@ -52,7 +52,7 @@ ffmpeg -y -i "$WORK/clip1.mp4" -i "$WORK/clip2.mp4" -i "$WORK/clip3.mp4" -i "$WO
 echo "==> 4. voiceover (macOS say)"
 lines=(
   "Capture anything — a link, a note, a photo."
-  "Sirius drafts it into a clean, titled post."
+  "Lesswhelmed drafts it into a clean, titled post."
   "Everything lands in your catalog."
   "And organizes itself by theme."
   "Nothing gets lost on the way in."

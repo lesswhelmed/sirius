@@ -63,7 +63,7 @@ function TermsGate({ onAccepted }: { onAccepted: () => void }) {
     <Screen style={styles.gate}>
       <PageHeader
         brandMark
-        eyebrow="Sirius — A field journal"
+        eyebrow="Lesswhelmed — A field journal"
         title="Terms of Use"
         titleAccent="."
         subtitle="One quick agreement before you continue."

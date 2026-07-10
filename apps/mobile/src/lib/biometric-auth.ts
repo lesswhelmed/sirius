@@ -34,7 +34,7 @@ const EMAIL_KEY = "siriusapp_biometric_email"; // non-sensitive, for the prompt 
 const GATED_OPTIONS: SecureStore.SecureStoreOptions = {
   requireAuthentication: true,
   keychainAccessible: SecureStore.WHEN_PASSCODE_SET_THIS_DEVICE_ONLY,
-  authenticationPrompt: "Sign in to Sirius",
+  authenticationPrompt: "Sign in to Lesswhelmed",
 };
 
 // Plain (non-gated) device-only options for the flag + email. Readable on a

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Terms of Use · Sirius",
+  title: "Terms of Use · Lesswhelmed",
   description:
-    "The rules for using Sirius on the web and iOS, including our content standards and zero-tolerance moderation policy.",
+    "The rules for using Lesswhelmed on the web and iOS, including our content standards and zero-tolerance moderation policy.",
 };
 
 const LAST_UPDATED = "July 3, 2026";
@@ -26,9 +26,9 @@ export default function TermsPage() {
 
       <div className="prose-legal space-y-6 pt-8 text-[15px] leading-relaxed text-[var(--fg-muted)]">
         <p>
-          These terms are an agreement between you and Sirius (&ldquo;Sirius,&rdquo;
-          &ldquo;we,&rdquo; &ldquo;us&rdquo;) covering your use of the Sirius
-          website and the Sirius iOS app. They sit alongside our{" "}
+          These terms are an agreement between you and Lesswhelmed (&ldquo;Lesswhelmed,&rdquo;
+          &ldquo;we,&rdquo; &ldquo;us&rdquo;) covering your use of the Lesswhelmed
+          website and the Lesswhelmed iOS app. They sit alongside our{" "}
           <Link
             className="text-[var(--color-accent)] underline underline-offset-2"
             href="/privacy"
@@ -40,10 +40,10 @@ export default function TermsPage() {
 
         <Section title="Acceptance of these terms">
           <p>
-            You agree to these terms when you create a Sirius account &mdash;
+            You agree to these terms when you create a Lesswhelmed account &mdash;
             agreement is required at sign-up &mdash; and you re-affirm that
             agreement each time you sign in or otherwise continue to use
-            Sirius. If you do not agree, do not use Sirius.
+            Lesswhelmed. If you do not agree, do not use Lesswhelmed.
           </p>
         </Section>
 
@@ -62,14 +62,14 @@ export default function TermsPage() {
             <li>
               <strong>Minimum age.</strong> You must be at least 13 years old
               (or the age of digital consent where you live, if higher) to use
-              Sirius.
+              Lesswhelmed.
             </li>
           </ul>
         </Section>
 
         <Section title="Your content &amp; sharing">
           <p>
-            You own the content you bring to Sirius &mdash; the links, photos,
+            You own the content you bring to Lesswhelmed &mdash; the links, photos,
             notes, and posts in your catalog stay yours. Everything you capture
             is <strong>private by default</strong>. You choose what to share
             and with whom: with individual friends, with named groups, or
@@ -84,7 +84,7 @@ export default function TermsPage() {
           <p>
             <strong>
               There is no tolerance for objectionable content or abusive
-              behavior on Sirius.
+              behavior on Lesswhelmed.
             </strong>{" "}
             Content or accounts that violate these terms will be removed and
             offending users ejected. Prohibited content includes:
@@ -114,7 +114,7 @@ export default function TermsPage() {
           <p>
             We review every report and act on it within 24 hours. Content that
             violates these terms is removed, and offending users are ejected
-            from Sirius (their accounts banned). The app gives you the tools
+            from Lesswhelmed (their accounts banned). The app gives you the tools
             directly:
           </p>
           <ul className="list-disc space-y-2 pl-5">
@@ -158,10 +158,10 @@ export default function TermsPage() {
 
         <Section title="Disclaimers &amp; limitation of liability">
           <p>
-            Sirius is provided &ldquo;as is,&rdquo; without warranties of any
+            Lesswhelmed is provided &ldquo;as is,&rdquo; without warranties of any
             kind, express or implied. To the maximum extent permitted by law,
             we are not liable for indirect, incidental, special, or
-            consequential damages arising from your use of Sirius, and our
+            consequential damages arising from your use of Lesswhelmed, and our
             total liability for any claim is limited to the amount you paid us
             in the twelve months before the claim arose. Some jurisdictions do
             not allow certain of these limitations, so parts of this section
@@ -173,7 +173,7 @@ export default function TermsPage() {
           <p>
             We may update these terms from time to time. Material changes will
             be reflected by the &ldquo;Last updated&rdquo; date above, and your
-            continued use of Sirius after a change means you accept the updated
+            continued use of Lesswhelmed after a change means you accept the updated
             terms.
           </p>
         </Section>

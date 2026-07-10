@@ -35,11 +35,11 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { handle } = await params;
   const user = await findUserByHandle(handle);
-  if (!user || !user.handle) return { title: "Sirius" };
+  if (!user || !user.handle) return { title: "Lesswhelmed" };
   const name = user.name ?? `@${user.handle}`;
   const url = `${SITE_URL}/u/${user.handle}`;
   const card = `${url}/card`;
-  const title = `Add ${name} on Sirius`;
+  const title = `Add ${name} on Lesswhelmed`;
   const description =
     user.bio ?? "My personal catalog of everything worth keeping.";
   return {
@@ -183,7 +183,7 @@ export default async function ProfilePage({
 
       <Image
         src={`/u/${target.handle}/card`}
-        alt={`Add ${target.name ?? target.handle} on Sirius`}
+        alt={`Add ${target.name ?? target.handle} on Lesswhelmed`}
         width={1200}
         height={630}
         className="mt-8 w-full rounded-lg border border-[var(--color-rule)]"
@@ -215,7 +215,7 @@ export default async function ProfilePage({
               href={APP_STORE_URL}
               className="inline-flex w-fit border border-[var(--color-ink)] bg-[var(--color-ink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-paper)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-accent)]"
             >
-              Get Sirius
+              Get Lesswhelmed
             </a>
             <Link
               href={`/sign-in?next=${encodeURIComponent(`/u/${target.handle}`)}`}

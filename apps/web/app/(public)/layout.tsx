@@ -33,7 +33,7 @@ export default function PublicLayout({
           </div>
 
           <div className="flex items-end justify-between gap-6 pt-5 pb-5">
-            <SiriusLogo href="/catalog" ariaLabel="Sirius — back to catalog" />
+            <SiriusLogo href="/catalog" ariaLabel="Lesswhelmed — back to catalog" />
             <div className="hidden items-baseline gap-3 pb-1 lg:flex">
               <ThemeMenu />
               <span
@@ -85,7 +85,7 @@ export default function PublicLayout({
               </Link>
             </span>
             <span className="nums-lining">
-              Sirius ·{" "}
+              Lesswhelmed ·{" "}
               <Suspense fallback={<span aria-hidden="true">&nbsp;</span>}>
                 <TodayStamp />
               </Suspense>

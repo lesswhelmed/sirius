@@ -31,7 +31,7 @@ export default function ForgotPasswordPage() {
   return (
     <div className={styles.card}>
       <span className={styles.mark} aria-hidden="true">
-        Sirius.
+        Lesswhelmed.
       </span>
       <p className={styles.eyebrow}>Members &middot; Lost key</p>
       <h1 className={styles.title}>

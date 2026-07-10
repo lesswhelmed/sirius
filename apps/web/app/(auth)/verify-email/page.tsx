@@ -45,7 +45,7 @@ function VerifyEmailContent() {
   return (
     <div className={styles.card}>
       <span className={styles.mark} aria-hidden="true">
-        Sirius.
+        Lesswhelmed.
       </span>
       <p className={styles.eyebrow}>Members &middot; In transit</p>
       <h1 className={styles.title}>

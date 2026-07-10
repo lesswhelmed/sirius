@@ -1,4 +1,4 @@
-# Sirius corpus — structured tool/resource/prompt catalog
+# Lesswhelmed corpus — structured tool/resource/prompt catalog
 
 The `sirius-corpus` MCP server (mirrors `apps/mcp`) is **read-only** and
 **owner-scoped**: every call resolves to the user who owns the API key, and a

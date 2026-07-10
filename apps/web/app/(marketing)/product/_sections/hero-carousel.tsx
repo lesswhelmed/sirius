@@ -130,7 +130,7 @@ export function HeroCarousel() {
         style={{ cursor: dragging ? "grabbing" : "grab" }}
         role="group"
         aria-roledescription="carousel"
-        aria-label="The Sirius app — drag to move between screens"
+        aria-label="The Lesswhelmed app — drag to move between screens"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

@@ -8,9 +8,9 @@ import { Reveal } from "./_sections/reveal";
 import { SellingPoints } from "./_sections/selling-points";
 import { Transformation } from "./_sections/transformation";
 
-const TITLE = "Sirius — Your life, in context.";
+const TITLE = "Lesswhelmed — Your life, in context.";
 const DESCRIPTION =
-  "Sirius is the life-context engine. Capture anything — links, photos, notes, repos, videos, documents, voice memos — and AI drafts a clean, structured post you review and keep. Every capture becomes private context about your life; the longer you use it, the more it understands. Private by default, yours to export. Feel lesswhelmed.";
+  "Lesswhelmed is the life-context engine. Capture anything — links, photos, notes, repos, videos, documents, voice memos — and AI drafts a clean, structured post you review and keep. Every capture becomes private context about your life; the longer you use it, the more it understands. Private by default, yours to export. Feel lesswhelmed.";
 
 export const metadata: Metadata = {
   title: TITLE,

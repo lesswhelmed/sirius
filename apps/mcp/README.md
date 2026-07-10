@@ -6,7 +6,7 @@ external AI agents over the [Model Context Protocol](https://modelcontextprotoco
 the taxonomy/projects, classify text, and read posts as wiki-like context.
 
 **Why it exists:** let users connect their *own* external LLM chats/agents
-(Claude, ChatGPT, etc.) to their Sirius corpus, so the content they've ingested
+(Claude, ChatGPT, etc.) to their Lesswhelmed corpus, so the content they've ingested
 becomes usable context wherever they work — closing the loop between capture and
 use. **Status: WIP / not fully fleshed out** — the read surface below is live and
 validated, but the product around it (key management UX, richer write/curation

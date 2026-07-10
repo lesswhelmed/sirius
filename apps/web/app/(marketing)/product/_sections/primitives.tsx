@@ -87,7 +87,7 @@ function AppStoreBadge({ className = "" }: { className?: string }) {
       href={APP_STORE_URL}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Download Sirius on the App Store"
+      aria-label="Download Lesswhelmed on the App Store"
       className={`inline-flex h-[44px] w-[132px] shrink-0 ${className}`}
     >
       <Image

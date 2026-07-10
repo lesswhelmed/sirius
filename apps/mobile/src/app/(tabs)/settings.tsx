@@ -340,7 +340,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Help</Text>
           <SecondaryButton
-            label="How Sirius works"
+            label="How Lesswhelmed works"
             symbol="questionmark.circle"
             onPress={() => pushOnce("/help")}
           />
@@ -506,7 +506,7 @@ function handleSetupSiriCapture() {
   // required. Saying it then runs the background intent hands-free.
   Alert.alert(
     "Hands-free capture with Siri",
-    'In Shortcuts, tap +, add "Quick Capture" from Sirius, then tap the action and record your own phrase — like "note to self". Say it anytime and Siri will ask what to capture, no tapping.',
+    'In Shortcuts, tap +, add "Quick Capture" from Lesswhelmed, then tap the action and record your own phrase — like "note to self". Say it anytime and Siri will ask what to capture, no tapping.',
     [
       { text: "Not now", style: "cancel" },
       {

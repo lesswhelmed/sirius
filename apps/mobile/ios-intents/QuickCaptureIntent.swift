@@ -15,7 +15,7 @@ import UIKit
 struct QuickCaptureIntent: AppIntent {
     static var title: LocalizedStringResource = "Quick Capture"
     static var description = IntentDescription(
-        "Dictate a quick note straight into your Sirius capture queue — hands-free."
+        "Dictate a quick note straight into your Lesswhelmed capture queue — hands-free."
     )
 
     // Run in the background; do NOT launch the app on the happy path.
@@ -39,16 +39,16 @@ struct QuickCaptureIntent: AppIntent {
         // bridge ran): hand off to the app so its session can submit.
         guard let creds = SiriusCredentialStore.read() else {
             await openAppFallback(text: text)
-            return .result(dialog: "Opening Sirius to finish your capture.")
+            return .result(dialog: "Opening Lesswhelmed to finish your capture.")
         }
 
         do {
             try await submit(text: text, creds: creds)
-            return .result(dialog: "Added to your Sirius queue.")
+            return .result(dialog: "Added to your Lesswhelmed queue.")
         } catch {
             // Expired/rotated cookie or a transport failure → graceful handoff.
             await openAppFallback(text: text)
-            return .result(dialog: "Opening Sirius to finish your capture.")
+            return .result(dialog: "Opening Lesswhelmed to finish your capture.")
         }
     }
 

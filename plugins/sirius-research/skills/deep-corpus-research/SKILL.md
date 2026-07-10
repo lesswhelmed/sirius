@@ -1,6 +1,6 @@
 ---
 name: Deep corpus research
-description: This skill should be used when the user asks to "deeply research my posts about X", "do a thorough corpus research on X", "/sirius-research:deep-corpus-research", "synthesize everything I've written about X", or wants an exhaustive, cited synthesis drawn from their Sirius corpus across multiple search modes. Runs a multi-pass research loop (semantic + keyword + taxonomy) and emits a structured, cited report.
+description: This skill should be used when the user asks to "deeply research my posts about X", "do a thorough corpus research on X", "/sirius-research:deep-corpus-research", "synthesize everything I've written about X", or wants an exhaustive, cited synthesis drawn from their Lesswhelmed corpus across multiple search modes. Runs a multi-pass research loop (semantic + keyword + taxonomy) and emits a structured, cited report.
 argument-hint: <topic or question to research across the corpus>
 allowed-tools: ["mcp__plugin_sirius-research_sirius-corpus__semantic_search", "mcp__plugin_sirius-research_sirius-corpus__full_text_search", "mcp__plugin_sirius-research_sirius-corpus__search_posts", "mcp__plugin_sirius-research_sirius-corpus__get_post", "mcp__plugin_sirius-research_sirius-corpus__list_categories", "mcp__plugin_sirius-research_sirius-corpus__browse_category", "mcp__plugin_sirius-research_sirius-corpus__list_projects", "mcp__plugin_sirius-research_sirius-corpus__browse_project", "mcp__plugin_sirius-research_sirius-corpus__classify_text", "mcp__plugin_sirius-research_sirius-corpus__*"]
 version: 0.1.0
@@ -8,7 +8,7 @@ version: 0.1.0
 
 # Deep corpus research
 
-Produce an exhaustive, **cited** synthesis of what the user's Sirius corpus says
+Produce an exhaustive, **cited** synthesis of what the user's Lesswhelmed corpus says
 about a topic or question, drawing from multiple search modes so coverage does
 not depend on a single query angle. The argument is the topic/question to
 research.

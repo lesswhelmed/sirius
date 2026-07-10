@@ -32,7 +32,7 @@ export function InviteSheet({
   }
 
   async function shareLink() {
-    await Share.share({ message: "Add me on Sirius", url: link });
+    await Share.share({ message: "Add me on Lesswhelmed", url: link });
   }
 
   async function shareCardImage() {
@@ -48,7 +48,7 @@ export function InviteSheet({
         await Sharing.shareAsync(file.uri, {
           mimeType: "image/png",
           UTI: "public.png",
-          dialogTitle: "Share your Sirius invite",
+          dialogTitle: "Share your Lesswhelmed invite",
         });
       } finally {
         try { file.delete(); } catch {}

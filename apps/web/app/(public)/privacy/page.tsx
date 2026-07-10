@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy · Sirius",
+  title: "Privacy Policy · Lesswhelmed",
   description:
-    "How Sirius collects, uses, and protects your information across the web and iOS apps.",
+    "How Lesswhelmed collects, uses, and protects your information across the web and iOS apps.",
 };
 
 const LAST_UPDATED = "June 15, 2026";
@@ -26,11 +26,11 @@ export default function PrivacyPage() {
 
       <div className="prose-legal space-y-6 pt-8 text-[15px] leading-relaxed text-[var(--fg-muted)]">
         <p>
-          Sirius (&ldquo;Sirius,&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;) is a
+          Lesswhelmed (&ldquo;Lesswhelmed,&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;) is a
           tool for capturing, cataloging, and publishing your content. You
           submit links, photos, notes, and more; we help you turn them into
           organized posts. This policy explains what we collect and why, and
-          applies to both the Sirius website and the Sirius iOS app.
+          applies to both the Lesswhelmed website and the Lesswhelmed iOS app.
         </p>
 
         <Section title="Information you provide">
@@ -107,7 +107,7 @@ export default function PrivacyPage() {
 
         <Section title="Service providers">
           <p>
-            We share data only with the providers that make Sirius work: our
+            We share data only with the providers that make Lesswhelmed work: our
             database and application hosting, Resend for transactional email,
             and the AI/extraction providers described above. We do not sell your
             personal information.
@@ -135,7 +135,7 @@ export default function PrivacyPage() {
 
         <Section title="Children">
           <p>
-            Sirius is not directed to children under 13, and we do not knowingly
+            Lesswhelmed is not directed to children under 13, and we do not knowingly
             collect personal information from them.
           </p>
         </Section>

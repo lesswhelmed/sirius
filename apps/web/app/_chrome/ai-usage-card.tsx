@@ -58,7 +58,7 @@ const FooterNote: FC = () => (
   <p className="font-body text-[12px] leading-[1.55] tracking-[0.01em] text-[var(--fg-faint)]">
     Ingesting is always free.{" "}
     <span className="text-[var(--fg-subtle)]">
-      Upgrade in the Sirius app for unlimited AI-written posts.
+      Upgrade in the Lesswhelmed app for unlimited AI-written posts.
     </span>
   </p>
 );
@@ -182,7 +182,7 @@ export function AiUsageCard({ usage }: { usage: AiUsage }) {
     >
       <header className="mb-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--fg-subtle)]">
-          Sirius&nbsp;·&nbsp;AI&nbsp;Usage
+          Lesswhelmed&nbsp;·&nbsp;AI&nbsp;Usage
         </p>
       </header>
       <Rule />

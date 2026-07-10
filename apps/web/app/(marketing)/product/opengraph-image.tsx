@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Sirius — Your life, in context.";
+export const alt = "Lesswhelmed — Your life, in context.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -56,7 +56,7 @@ export default function OgImage() {
             color: INK,
           }}
         >
-          Sirius<span style={{ color: ACCENT }}>.</span>
+          Lesswhelmed<span style={{ color: ACCENT }}>.</span>
         </div>
         <div
           style={{
