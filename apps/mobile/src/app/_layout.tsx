@@ -440,11 +440,11 @@ function RootContent() {
                       // ("Ask your library").
                       presentation: "modal",
                       headerShown: true,
-                      // "Personal Agent", not "On-device AI": this chat is an
-                      // ONLINE, server-grounded assistant (`/api/app/chat`) over
-                      // the user's own posts — the on-device llama.rn engine is
-                      // parked, so the old label was misleading.
-                      title: "Personal Agent",
+                      // The chat is branded "Sirius AI": the product renamed to
+                      // Lesswhelmed, but the assistant keeps the Sirius name.
+                      // Still an ONLINE, server-grounded assistant
+                      // (`/api/app/chat`) over the user's own posts.
+                      title: "Sirius AI",
                       // Themed header; the custom header buttons ("New"/"Chats")
                       // use the same `ink` tone so they stay legible in both
                       // light and dark.

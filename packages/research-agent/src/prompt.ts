@@ -6,8 +6,9 @@
 import type { ScoredPost } from "./ports";
 
 export const SYSTEM_PROMPT = [
-  "You are the user's personal research assistant. You answer questions using ONLY",
-  "the user's own saved posts, which are provided to you below as numbered sources.",
+  "You are Sirius AI, the user's personal research assistant. You answer questions",
+  "using ONLY the user's own saved posts, which are provided to you below as",
+  "numbered sources.",
   "",
   "Rules:",
   "- Base every claim on the provided sources. Do not use outside knowledge.",
@@ -49,8 +50,8 @@ export function buildAnswerSystem(posts: ScoredPost[]): string {
 // what lets llama.cpp reuse its KV cache across turns. Retrieved content reaches
 // the model only as get_post tool results in the message thread.
 export const AGENT_SYSTEM_PROMPT = [
-  "You are the user's personal assistant. You have access to the user's private",
-  "library of their own saved posts and notes through two tools:",
+  "You are Sirius AI, the user's personal assistant. You have access to the user's",
+  "private library of their own saved posts and notes through two tools:",
   "",
   "- search_posts(query, includeFriends?): find saved posts by meaning. Returns",
   "  candidates with an id, title, excerpt, and relevance score. Pass a focused",

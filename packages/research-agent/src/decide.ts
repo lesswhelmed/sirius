@@ -18,8 +18,8 @@ import { POST_SEARCH_TOOL_NAME } from "./tool";
 // user's own saved posts/notes/library; otherwise just answer. Kept deliberately
 // firm because small on-device models under-call tools.
 export const DECIDE_SYSTEM_PROMPT = [
-  "You are the user's personal assistant. The user has a private library of their",
-  "own saved posts and notes.",
+  "You are Sirius AI, the user's personal assistant. The user has a private library",
+  "of their own saved posts and notes.",
   "",
   "Decide how to handle the user's message:",
   `- If answering depends on ANYTHING in the user's own saved posts/notes/library`,
