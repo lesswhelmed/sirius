@@ -1,21 +1,26 @@
-# Sirius — App Store Submission Guide
+# Lesswhelmed — App Store Submission Guide
 
-Everything you need to ship **Sirius** (iOS) to the App Store, written for top-to-bottom
-execution. Versions are pinned to what's actually in this repo as of **2026-06-22**.
+Everything you need to ship **Lesswhelmed** (iOS, formerly listed as "Sirius AI") to the
+App Store, written for top-to-bottom execution. Last trued-up **2026-07-10**.
 
-> **Good news up front:** the technical pipeline is already done. The App Store Connect
-> app record exists (`ascAppId 6775729513`), credentials are valid, and at least one
-> **FINISHED production build (v1.0.0)** has shipped. Confirm the latest with
-> `cd apps/mobile && bunx eas-cli build:list --platform ios --limit 5`. What remains is
-> mostly content: privacy/support pages (drafted in this repo — deploy them), listing copy
-> (drafted below), screenshots (captured into `app-store-assets/`), a reviewer account,
-> and the App Store Connect form-filling + "Submit for Review".
+> **Current state (2026-07-10):** **1.0.1 is the live App Store version** (1.0.0 rejected;
+> 1.0.2/build 88 built but never submitted — abandoned). The active submission is the
+> **1.1.0 Lesswhelmed rebrand** — EAS **build 89** is FINISHED and awaiting `eas submit`;
+> the end-to-end runbook for it is **`docs/releases/1.1.0.md`** (deploy-first ordering, QA,
+> security delta, resolved decisions). This guide holds the durable reference material:
+> the listing copy (§7 — the Lesswhelmed field set is primary), screenshots (§8),
+> privacy/age-rating answers (§9–10), review notes + reply templates (§12), and the full
+> rejection history (§0/0b/0c, all resolved). ⚠️ The reviewer password was rotated
+> 2026-07-10 — update ASC App Review sign-in from `.env` `PROD_LOGIN_PASSWORD` before
+> submitting anything.
 
 ---
 
 ## 0. Resubmission — rejection 2c02b4c2 (2026-07-03) — UGC safety (1.2) + age rating (2.3.6)
 
-**Current blocker.** Submission `2c02b4c2-41ec-448f-9161-9aae12e12fbe`, v1.0 (**build 72**),
+**Resolved — the UGC resubmission was approved; 1.0.1 is live on the App Store.** Kept for
+the record (the Parts A–F work shipped and remains the moderation baseline).
+Submission `2c02b4c2-41ec-448f-9161-9aae12e12fbe`, v1.0 (**build 72**),
 reviewed 2026-07-03 on iPad Air 11" (M3), rejected for **two issues that share one root
 cause: the Friends feed shipped**, so Sirius now has user-generated content that other
 users can see. The subscription issues from §0b were **not raised again** — treat them as
@@ -417,24 +422,18 @@ deletion flow on **both iOS and web**, via better-auth's `deleteUser`:
 
 ---
 
-## ⚠️ Needs your input / decisions
+## ✅ Formerly "Needs your input" — all resolved (kept for the record)
 
-- [ ] **Deploy the new legal pages.** `apps/web/app/(public)/privacy/page.tsx` and
-  `…/support/page.tsx` must be live at `https://lesswhelmed.com/privacy` and `/support`
-  **before** you submit. Deploy with `bun run deploy`.
-- [ ] **Create a reviewer account on prod** (the app gates on login). The fastest path is
-  `DATABASE_URL=<prod-url> bun run reviewer:seed --password '…'` (seeds a verified
-  `reviewer@lesswhelmed.com` + safe-for-work demo content — see section 1). Put the
-  credentials in App Review notes (section 12). Do not use your personal account.
-- [ ] **Confirm the contact email.** The privacy + support pages and the guide use
-  `saleebmina@copt.dev`. Change it if you want a dedicated support inbox.
-- [ ] **Pick the primary category** (recommended **Productivity**, secondary **Lifestyle** —
-  see section 7). Confirm or change.
-- [ ] **Confirm the age rating answers** (see "Age rating questionnaire" below). Answer the
-  questionnaire honestly; with the recommended answers Sirius rates **4+**.
-- [ ] **Current ASC state:** confirm whether an earlier build is already "In Review", or
-  whether you want to submit the latest FINISHED build fresh
-  (`bunx eas-cli build:list --platform ios`).
+- [x] Legal pages live: `/privacy`, `/support`, `/terms` all 200 on lesswhelmed.com
+  (re-verified 2026-07-10, post-rename deploy — pages now say Lesswhelmed).
+- [x] Reviewer account exists on prod (`reviewer@lesswhelmed.com`). **Password rotated
+  2026-07-10** — the value in ASC App Review is stale until updated from `.env`
+  `PROD_LOGIN_PASSWORD`. Re-seed (terms gate armed) as the last pre-submit step.
+- [x] Contact email: `saleebmina@copt.dev` (kept).
+- [x] Category: Primary **Productivity**, secondary **Lifestyle**.
+- [x] Age rating: answered with **UGC = Yes** (see the questionnaire section — this was
+  the 2.3.6 fix; accept the computed rating).
+- For the CURRENT submission state, see the preamble + `docs/releases/1.1.0.md`.
 
 ---
 
@@ -484,12 +483,12 @@ and run the screenshot script with `--skip-seed` (section 8).
 
 | Field                                          | Value                                                                                  |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------- |
-| App name                                       | **Sirius AI**                                                                          |
-| Bundle ID                                      | `dev.copt.sirius` (+ `dev.copt.sirius.share-extension`)                                |
-| Scheme                                         | `siriusapp`                                                                            |
-| Marketing version (CFBundleShortVersionString) | `1.0.0` (`app.json` → `version`)                                                       |
-| Build number (CFBundleVersion)                 | **EAS-managed** (`appVersionSource: remote`, `autoIncrement: true`) — latest is **24** |
-| Runtime version                                | `fingerprint` policy (OTA updates only reach matching native builds)                   |
+| App name (store)                               | **Lesswhelmed** as of the 1.1.0 submission (was "Sirius AI" through 1.0.1 — the ASC App Information name change rides with 1.1.0) |
+| Bundle ID                                      | `dev.copt.sirius` (+ `dev.copt.sirius.share-extension`) — **unchanged by the rebrand** |
+| Scheme                                         | `siriusapp` — **unchanged by the rebrand**                                             |
+| Marketing version (CFBundleShortVersionString) | `1.1.0` (`app.json` → `version`)                                                       |
+| Build number (CFBundleVersion)                 | **EAS-managed** (`appVersionSource: remote`, `autoIncrement: true`) — latest is **89** (the rebrand build, from `a5487f2`) |
+| Runtime version                                | `fingerprint` policy (OTA updates only reach matching native builds; the rebrand changed the fingerprint — no OTA reaches ≤88) |
 
 
 **Version policy:** never edit `buildNumber` by hand — EAS owns it. To ship a feature
@@ -584,12 +583,12 @@ bunx eas-cli submit --profile production --platform ios --latest --non-interacti
 
 ---
 
-## 7. Store listing / metadata (drafted — edit to taste)
+## 7. Store listing / metadata — CURRENT (Lesswhelmed, 1.1.0+)
 
 All copy below respects Apple's character limits. Paste into App Store Connect →
 **[your app] → [version] → App Store** tab.
 
-> **Positioning:** Sirius is the **"no-app"** — the place anything you share from any app
+> **Positioning:** Lesswhelmed is the **"no-app"** — the place anything you share from any app
 > lands and gets handled for you. From wherever you already are (the iOS Share Sheet) you
 > send a link, photo, screenshot, note, repo, video, document, or voice memo; AI drafts a
 > clean entry; and you curate and keep what you choose in your own **private** library. The
@@ -603,103 +602,7 @@ All copy below respects Apple's character limits. Paste into App Store Connect �
 > **Tip:** each value below is in its own code block — hover it and click the copy icon to
 > grab the exact text, then paste it straight into App Store Connect.
 
-**App Name** (≤30):
-
-```text
-Sirius AI
-```
-
-**Subtitle** (≤30) — *27 chars; the share-from-anywhere hook*:
-
-```text
-Share anything from any app
-```
-
-**Promotional text** (≤170, editable without review) — *164 chars*:
-
-```text
-Found something worth keeping? Share it to Sirius from any app — a link, photo, note, or video — and AI drafts a clean, organized entry in your own private library.
-```
-
-**Keywords** (≤100, comma-separated, **no spaces**) — *98 chars; "AI" is dropped (it's in the
-name "Sirius AI") and "share"/"anything"/"app" are dropped (in the subtitle) since Apple
-combines name + subtitle words with the keyword field automatically*:
-
-```text
-bookmark,read,later,clipper,sharesheet,screenshot,notes,summary,organizer,catalog,links,save,memos
-```
-
-**Description** (≤4000):
-
-```text
-Sirius is the "no-app" — the place anything you share from any app lands and gets handled for you.
-
-See something worth keeping? Don't switch apps, don't copy-paste, don't lose it in a sea of tabs. Just tap Share and send it to Sirius — a link, a photo or screenshot, a note, a video, a document, a code repo, even a voice memo — and Sirius turns it into a clean, organized entry, drafted for you by AI.
-
-SHARE FROM ANYWHERE
-Sirius lives in the iOS Share Sheet, so you can capture from your browser, social apps, Photos, Files, or anywhere else — without breaking your flow. There's no new habit to learn: if it's worth keeping, share it.
-
-LET AI DO THE WRITE-UP
-Every capture is drafted into a structured post — title, summary, tags, and details — that you review, edit, and keep. On iPhone, Sirius can even draft entirely on-device.
-
-KEEP IT ALL, FIND IT LATER
-• Catalog — your private library of everything you've kept.
-• Queue — watch each capture move from pending to done.
-• Explore — map and browse everything by theme and topic.
-
-PRIVATE BY DEFAULT, SHARED BY CHOICE
-Your posts are private to you unless you decide otherwise — share individual posts with friends and see theirs in a Friends feed. Community standards apply to everything shared: you can report any post and block any user, and reports are reviewed within 24 hours. Sirius does not use third-party advertising or cross-app tracking.
-
-Stop hoarding tabs and screenshots you'll never find again. Share it to Sirius, and let it get handled.
-
-Terms of Use: https://lesswhelmed.com/terms
-Privacy Policy: https://lesswhelmed.com/privacy
-```
-
-**What's New** (≤4000) — for v1.0.0:
-
-```text
-First release of Sirius — the no-app. Share anything from any app — links, photos, screenshots, notes, videos, even voice memos — and let AI draft a clean, organized entry in your own private library. Capture, draft, and keep what matters.
-```
-
-**Support URL:**
-
-```text
-https://lesswhelmed.com/support
-```
-
-**Marketing URL** (optional):
-
-```text
-https://lesswhelmed.com
-```
-
-**Privacy Policy URL:**
-
-```text
-https://lesswhelmed.com/privacy
-```
-
-**Copyright:**
-
-```text
-2026 Mina Saleeb
-```
-
-- **Category:** Primary **Productivity**, Secondary **Lifestyle**
-*(alternatives: Shopping, or Reference — Productivity fits the catalog/inventory workflow best)*
-
-- [ ] All metadata fields filled, no placeholder text
-
-### Rebrand: Lesswhelmed listing changes (next version)
-
-The product is renamed **Lesswhelmed** (was "Sirius AI"). The binary already carries the
-display name "Lesswhelmed" (`app.json` → `expo.name`, commit `1bd7874`), but App Store
-Connect **app name changes require a new version submission** — so the fields below change
-together with that version, not before. Two names deliberately do NOT change: the in-app
-assistant/chat feature keeps the name **Sirius AI**, and the subscription remains
-**Sirius AI Pro** (the RevenueCat entitlement is immutable). The values below fully replace
-their §7 counterparts for the rebrand version.
+> **Rebrand note (2026-07-10):** the product is **Lesswhelmed** (store name changes with the 1.1.0 submission; see the checklist below). The in-app assistant keeps the name **Sirius AI** and the subscription stays **Sirius AI Pro** — do not "fix" those. The pre-rebrand Sirius listing is kept at the end of this section for history only.
 
 **App Name** (≤30) — *11 chars*:
 
@@ -773,6 +676,44 @@ Also new in this update:
 • Reliability fixes for account switching and syncing
 ```
 
+**Support URL:**
+
+```text
+https://lesswhelmed.com/support
+```
+
+**Marketing URL** (optional):
+
+```text
+https://lesswhelmed.com
+```
+
+**Privacy Policy URL:**
+
+```text
+https://lesswhelmed.com/privacy
+```
+
+**Copyright:**
+
+```text
+2026 Mina Saleeb
+```
+
+- **Category:** Primary **Productivity**, Secondary **Lifestyle**
+*(alternatives: Shopping, or Reference — Productivity fits the catalog/inventory workflow best)*
+
+- [ ] All metadata fields filled, no placeholder text
+
+### Rebrand submission mechanics (1.1.0)
+
+The product is renamed **Lesswhelmed** (was "Sirius AI"). The binary already carries the
+display name "Lesswhelmed" (`app.json` → `expo.name`, commit `1bd7874`), but App Store
+Connect **app name changes require a new version submission** — the name change and the
+field set above ship together with the 1.1.0 version. Two names deliberately do NOT
+change: the in-app assistant/chat feature keeps the name **Sirius AI**, and the
+subscription remains **Sirius AI Pro** (the RevenueCat entitlement is immutable).
+
 **Unchanged fields** (verify, don't edit): Subtitle; Support URL
 (`https://lesswhelmed.com/support`), Marketing URL (`https://lesswhelmed.com`), Privacy
 Policy URL (`https://lesswhelmed.com/privacy`) — all already on lesswhelmed.com; Copyright
@@ -785,18 +726,84 @@ internal tooling and stay as-is.
 
 **Rebrand submission checklist:**
 
-- [ ] Bump `app.json` → `expo.version` (closed train — Apple rejects a reused marketing
-  version at submit; see §2 version policy)
-- [ ] New EAS production build — the display-name change is **native**, OTA/EAS Update
-  cannot ship it
+- [x] Bump `app.json` → `expo.version` → **1.1.0** (`a5487f2`; closed-train rule, §2)
+- [x] New EAS production build — **build 89** FINISHED from `a5487f2`
+  (id `1762c108-0ecc-4031-817a-042eb51f92ee`); native change, OTA cannot ship it
+- [x] Production server deployed post-rename (2026-07-10) — lesswhelmed.com pages say
+  Lesswhelmed
+- [ ] `eas submit` build 89 (interactive Apple login; see §5 / `docs/releases/1.1.0.md` §7)
 - [ ] App Store Connect → **App Information** → change **Name** to `Lesswhelmed`
-  (only editable with a new version awaiting submission)
-- [ ] Paste the fields above into the new version's App Store tab (promo text, keywords,
-  description, What's New)
+  (only editable with a new version awaiting submission; check availability FIRST)
+- [ ] Paste the field set above into the 1.1.0 version's App Store tab (promo text,
+  keywords, description, What's New)
+- [ ] **Update ASC App Review sign-in to the rotated password** (`.env`
+  `PROD_LOGIN_PASSWORD`) — the old credential is dead as of 2026-07-10
 - [ ] Recapture any screenshots showing the old wordmark/app name
   (`bun run app-store:screenshots`, section 8)
-- [ ] Verify the sign-in demo account for App Review is still `reviewer@lesswhelmed.com`
-  and the seeded password works
+- [ ] Re-seed the reviewer on prod as the LAST pre-submit step (terms gate armed;
+  run on the server — remote Postgres refuses connections)
+
+
+### Superseded — pre-rebrand listing (Sirius AI, ≤1.0.x) — history only, do NOT paste
+
+**App Name** (≤30):
+
+```text
+Sirius AI
+```
+
+**Subtitle** (≤30) — *27 chars; the share-from-anywhere hook*:
+
+```text
+Share anything from any app
+```
+
+**Promotional text** (≤170, editable without review) — *164 chars*:
+
+```text
+Found something worth keeping? Share it to Sirius from any app — a link, photo, note, or video — and AI drafts a clean, organized entry in your own private library.
+```
+
+**Keywords** (≤100, comma-separated, **no spaces**) — *98 chars; "AI" is dropped (it's in the
+name "Sirius AI") and "share"/"anything"/"app" are dropped (in the subtitle) since Apple
+combines name + subtitle words with the keyword field automatically*:
+
+```text
+bookmark,read,later,clipper,sharesheet,screenshot,notes,summary,organizer,catalog,links,save,memos
+```
+
+**Description** (≤4000):
+
+```text
+Sirius is the "no-app" — the place anything you share from any app lands and gets handled for you.
+
+See something worth keeping? Don't switch apps, don't copy-paste, don't lose it in a sea of tabs. Just tap Share and send it to Sirius — a link, a photo or screenshot, a note, a video, a document, a code repo, even a voice memo — and Sirius turns it into a clean, organized entry, drafted for you by AI.
+
+SHARE FROM ANYWHERE
+Sirius lives in the iOS Share Sheet, so you can capture from your browser, social apps, Photos, Files, or anywhere else — without breaking your flow. There's no new habit to learn: if it's worth keeping, share it.
+
+LET AI DO THE WRITE-UP
+Every capture is drafted into a structured post — title, summary, tags, and details — that you review, edit, and keep. On iPhone, Sirius can even draft entirely on-device.
+
+KEEP IT ALL, FIND IT LATER
+• Catalog — your private library of everything you've kept.
+• Queue — watch each capture move from pending to done.
+• Explore — map and browse everything by theme and topic.
+
+PRIVATE BY DEFAULT, SHARED BY CHOICE
+Your posts are private to you unless you decide otherwise — share individual posts with friends and see theirs in a Friends feed. Community standards apply to everything shared: you can report any post and block any user, and reports are reviewed within 24 hours. Sirius does not use third-party advertising or cross-app tracking.
+
+Stop hoarding tabs and screenshots you'll never find again. Share it to Sirius, and let it get handled.
+
+Terms of Use: https://lesswhelmed.com/terms
+Privacy Policy: https://lesswhelmed.com/privacy
+```
+
+**What's New** (≤4000) — for v1.0.0:
+
+```text
+First release of Sirius — the no-app. Share anything from any app — links, photos, screenshots, notes, videos, even voice memos — and let AI draft a clean, organized entry in your own private library. Capture, draft, and keep what matters.
+```
 
 ---
 
@@ -969,7 +976,7 @@ In App Store Connect → your version:
   (fill in the username/password fields in ASC separately):
 
 ```text
-Sirius requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog. Posts are private by default; the Friends tab shows posts that mutual friends have chosen to share (the demo account has several friends with shared posts). User-generated content controls: users must agree to our Terms of Use (zero tolerance for objectionable content) before registering or signing in; every post in the Friends feed has a "…" menu with Report post and Block user (blocking removes their content instantly and notifies us); reports are acted on within 24 hours. Account deletion: Account tab → Danger zone → Delete account → confirm with the account password. Screen recordings of the terms/report/block flows and the deletion flow are attached.
+Lesswhelmed (formerly listed as "Sirius AI" — same app, renamed with this version) requires an account. Sign in with the demo credentials provided in the Username/Password fields. The app talks to https://lesswhelmed.com. Main flow: Capture tab → paste a URL or add a photo/note → it drafts a catalog entry → review in Catalog. Posts are private by default; the Friends tab shows posts that mutual friends have chosen to share (the demo account has several friends with shared posts). The built-in assistant feature is named "Sirius AI" and the subscription is "Sirius AI Pro" — these intentionally keep the previous brand name. User-generated content controls: users must agree to our Terms of Use (zero tolerance for objectionable content) before registering or signing in; every post in the Friends feed has a "…" menu with Report post and Block user (blocking removes their content instantly and notifies us); reports are acted on within 24 hours. Account deletion: Account tab → Danger zone → Delete account → confirm with the account password. Screen recordings of the terms/report/block flows and the deletion flow are attached.
 ```
 
 **Reply to App Review (UGC resubmission — rejection 2c02b4c2 — paste into Resolution
