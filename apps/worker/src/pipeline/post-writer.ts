@@ -26,6 +26,7 @@ import { revalidatePost } from "../lib/revalidate";
 import { randomSlugWord } from "../lib/slug-words";
 import { firstSentenceExcerpt } from "./excerpt";
 import { generateCoverImage } from "./image-generator";
+import { fetchGuardedImage } from "./safety/safe-fetch";
 import type { GeminiOutput, PipelineInput, StagedImage } from "./types";
 import { generateVideoThumbnail } from "./video-thumbnail";
 
@@ -69,6 +70,8 @@ function extFromUrl(url: string): string | null {
   }
 }
 
+const MAX_COVER_BYTES = 8 * 1024 * 1024;
+
 // Downloads a remote cover image to public/social and returns its served path.
 // Falls back to the original URL on any failure so a post still has *something*
 // rather than failing the whole write. Local paths and nulls pass through.
@@ -80,22 +83,23 @@ async function localizeCoverImage(
     return url;
   }
   try {
-    const res = await fetch(url);
-    if (!res.ok) {
+    // SSRF-guarded + size-capped fetch (the URL is derived from user-submitted
+    // page content via Gemini). On any rejection (blocked host, oversize,
+    // non-image, network) fall back to the remote URL so the post keeps a cover.
+    const image = await fetchGuardedImage(url, { maxBytes: MAX_COVER_BYTES });
+    if (!image) {
       console.warn(
-        `[post-writer] cover fetch ${res.status} for ${slug}; keeping remote URL`,
+        `[post-writer] cover fetch blocked/failed for ${slug}; keeping remote URL`,
       );
       return url;
     }
     const ext =
-      extFromContentType(res.headers.get("content-type")) ??
-      extFromUrl(url) ??
-      "jpg";
+      extFromContentType(image.mediaType) ?? extFromUrl(url) ?? "jpg";
     const dir = resolveSocialDir();
     ensureDir(dir);
     const filename = `${slug}.${ext}`;
     const dest = join(dir, filename);
-    writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+    writeFileSync(dest, Buffer.from(image.bytes));
     return `/social/${filename}`;
   } catch (err) {
     console.warn(`[post-writer] cover download failed for ${slug}:`, err);

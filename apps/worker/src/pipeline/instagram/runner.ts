@@ -12,6 +12,7 @@ import {
   parseInstagramUrl,
 } from "../../lib/instagram-url";
 import { type PostDraft, toGeminiOutput } from "../gemini-runner";
+import { fetchGuardedImage } from "../safety/safe-fetch";
 import type { GeminiOutput } from "../types";
 import { fetchInstagramEvidence } from "./apify";
 import {
@@ -23,6 +24,15 @@ import {
 import type { InstagramEvidence } from "./types";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+// SSRF-guarded + size-capped image fetch. The URL comes from Apify evidence
+// (attacker-influenceable), so it must not be able to point the worker at an
+// internal address. Returns null (skip the image) on any rejection.
+async function fetchImageBytes(
+  url: string,
+): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  return fetchGuardedImage(url, { maxBytes: MAX_IMAGE_BYTES });
+}
 
 export type InstagramRunOptions = {
   url: string;
@@ -36,32 +46,6 @@ export type InstagramRunResult = {
   parse: InstagramUrlParse;
   apify: { actorId: string; runId: string; datasetId: string };
 };
-
-async function fetchImageBytes(
-  url: string,
-): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
-    });
-    if (!response.ok) {
-      return null;
-    }
-    const buf = await response.arrayBuffer();
-    if (buf.byteLength === 0 || buf.byteLength > MAX_IMAGE_BYTES) {
-      return null;
-    }
-    const mediaType =
-      response.headers.get("content-type")?.split(";")[0]?.trim() ||
-      "image/jpeg";
-    return { bytes: new Uint8Array(buf), mediaType };
-  } catch {
-    return null;
-  }
-}
 
 function slugifyTaxonomy(input: string): string {
   return (

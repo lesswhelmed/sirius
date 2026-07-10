@@ -68,10 +68,22 @@ export function isBlockedIp(ip: string): boolean {
 
 // Resolve every address for a host and return them, or null if any is blocked
 // (an "any blocked → reject" policy also kills the public+private split trick).
-async function resolveSafe(hostname: string): Promise<string[] | null> {
+// `lookupFn` is injectable for tests (feed a synthetic DNS answer through the
+// REAL block check); production always uses node's resolver.
+// A narrow view of node's `lookup(host, { all: true })` — just enough to inject
+// a synthetic DNS answer in tests. Node's overloaded `lookup` is assignable to it.
+type LookupAllFn = (
+  hostname: string,
+  opts: { all: true },
+) => Promise<{ address: string }[]>;
+
+export async function resolveSafe(
+  hostname: string,
+  lookupFn: LookupAllFn = lookup,
+): Promise<string[] | null> {
   let answers: { address: string }[];
   try {
-    answers = await lookup(hostname, { all: true });
+    answers = await lookupFn(hostname, { all: true });
   } catch {
     return null;
   }
@@ -82,13 +94,29 @@ async function resolveSafe(hostname: string): Promise<string[] | null> {
   return answers.map((a) => a.address);
 }
 
-// Download a PDF from a user-supplied URL with all the SSRF defenses above.
-// Returns the bytes, or null on any rejection (bad scheme, blocked host, redirect,
-// non-PDF, over the size cap, network/timeout). Never throws.
-export async function fetchGuardedPdf(
+type GuardedFetchOptions = {
+  maxBytes: number;
+  accept: string;
+  userAgent: string;
+  // Returns true if the response Content-Type is acceptable. Receives the raw
+  // header value (possibly empty). Rejecting → the fetch resolves null.
+  isAllowedContentType: (contentType: string) => boolean;
+  // Injectable resolver — TEST ONLY. Production callers omit it so the real
+  // `resolveSafe` (with its DNS + IP-block) runs. A test may inject a resolver
+  // that returns a loopback address to reach a local server; production never
+  // does, so this is not an SSRF bypass in shipped code.
+  resolve?: (hostname: string) => Promise<string[] | null>;
+};
+
+// Shared SSRF-hardened fetch core for both the PDF (safety scan) and image
+// (cover/social localization) callers. Applies all defenses documented at the
+// top of this file. Returns the streamed bytes + the response Content-Type, or
+// null on any rejection (bad scheme, blocked host, redirect, disallowed type,
+// over the size cap, network/timeout). Never throws.
+async function fetchGuarded(
   rawUrl: string,
-  maxBytes: number,
-): Promise<Buffer | null> {
+  opts: GuardedFetchOptions,
+): Promise<{ buffer: Buffer; contentType: string } | null> {
   let u: URL;
   try {
     u = new URL(rawUrl);
@@ -97,7 +125,7 @@ export async function fetchGuardedPdf(
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return null;
 
-  const addresses = await resolveSafe(u.hostname);
+  const addresses = await (opts.resolve ?? resolveSafe)(u.hostname);
   if (!addresses) return null;
   const pinnedIp = addresses[0]!; // pin a validated address (defeats rebinding)
 
@@ -108,9 +136,9 @@ export async function fetchGuardedPdf(
   const hostHeader =
     (u.port && port !== (isHttps ? 443 : 80)) ? `${u.hostname}:${u.port}` : u.hostname;
 
-  return new Promise<Buffer | null>((resolve) => {
+  return new Promise<{ buffer: Buffer; contentType: string } | null>((resolve) => {
     let settled = false;
-    const done = (val: Buffer | null) => {
+    const done = (val: { buffer: Buffer; contentType: string } | null) => {
       if (settled) return;
       settled = true;
       resolve(val);
@@ -125,8 +153,8 @@ export async function fetchGuardedPdf(
         method: "GET",
         headers: {
           Host: hostHeader,
-          Accept: "application/pdf",
-          "User-Agent": "sirius-safety-scan",
+          Accept: opts.accept,
+          "User-Agent": opts.userAgent,
         },
         timeout: FETCH_TIMEOUT_MS,
       },
@@ -142,12 +170,12 @@ export async function fetchGuardedPdf(
           return done(null);
         }
         const ct = String(res.headers["content-type"] ?? "");
-        if (ct && !/application\/pdf|application\/octet-stream/i.test(ct)) {
+        if (!opts.isAllowedContentType(ct)) {
           res.destroy();
           return done(null);
         }
         const advertised = Number(res.headers["content-length"]);
-        if (Number.isFinite(advertised) && advertised > maxBytes) {
+        if (Number.isFinite(advertised) && advertised > opts.maxBytes) {
           res.destroy();
           return done(null);
         }
@@ -156,14 +184,16 @@ export async function fetchGuardedPdf(
         let total = 0;
         res.on("data", (chunk: Buffer) => {
           total += chunk.length;
-          if (total > maxBytes) {
+          if (total > opts.maxBytes) {
             res.destroy();
             req.destroy();
             return done(null);
           }
           chunks.push(chunk);
         });
-        res.on("end", () => done(total === 0 ? null : Buffer.concat(chunks)));
+        res.on("end", () =>
+          done(total === 0 ? null : { buffer: Buffer.concat(chunks), contentType: ct }),
+        );
         res.on("error", () => done(null));
       },
     );
@@ -175,4 +205,57 @@ export async function fetchGuardedPdf(
     req.on("error", () => done(null));
     req.end();
   });
+}
+
+// Download a PDF from a user-supplied URL with all the SSRF defenses above.
+// Returns the bytes, or null on any rejection (bad scheme, blocked host, redirect,
+// non-PDF, over the size cap, network/timeout). Never throws.
+export async function fetchGuardedPdf(
+  rawUrl: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  const result = await fetchGuarded(rawUrl, {
+    maxBytes,
+    accept: "application/pdf",
+    userAgent: "sirius-safety-scan",
+    // Preserve prior behavior: an empty Content-Type is allowed; a present one
+    // must be PDF or a generic octet-stream.
+    isAllowedContentType: (ct) =>
+      !ct || /application\/pdf|application\/octet-stream/i.test(ct),
+  });
+  return result ? result.buffer : null;
+}
+
+const DEFAULT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+// Allowlisted image Content-Types (matches extFromContentType in post-writer).
+const ALLOWED_IMAGE_CT = /^image\/(jpe?g|png|webp|gif|avif)\b/i;
+
+// Download a bitmap image from a user-supplied URL with all the SSRF defenses
+// above, plus an image Content-Type allowlist. Returns the bytes + normalized
+// media type (e.g. "image/jpeg"), or null on any rejection (bad scheme, blocked
+// host, redirect, non-image/unknown Content-Type, over the size cap,
+// network/timeout). Never throws.
+export async function fetchGuardedImage(
+  rawUrl: string,
+  opts?: {
+    maxBytes?: number;
+    // TEST ONLY — see GuardedFetchOptions.resolve. Production callers omit it.
+    resolve?: (hostname: string) => Promise<string[] | null>;
+  },
+): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  const result = await fetchGuarded(rawUrl, {
+    maxBytes: opts?.maxBytes ?? DEFAULT_IMAGE_MAX_BYTES,
+    accept: "image/*",
+    // A browser-ish UA — some image CDNs (incl. Instagram/X) 403 unknown agents.
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    // Require a recognized image type — reject empty/unknown (unlike the PDF path).
+    isAllowedContentType: (ct) => ALLOWED_IMAGE_CT.test(ct),
+    resolve: opts?.resolve,
+  });
+  if (!result) return null;
+  // Normalize to a bare, lowercased media type (strip params; jpg → jpeg).
+  const base = result.contentType.split(";")[0]!.trim().toLowerCase();
+  const mediaType = base === "image/jpg" ? "image/jpeg" : base;
+  return { bytes: new Uint8Array(result.buffer), mediaType };
 }

@@ -15,6 +15,7 @@ import { parseTwitterUrl, type TwitterUrlParse } from "../../lib/twitter-url";
 import { analysisContractLines } from "../analysis-contract";
 import { toGeminiOutput } from "../gemini-runner";
 import { notesLeadLines } from "../prompt-blocks";
+import { fetchGuardedImage } from "../safety/safe-fetch";
 import type { GeminiOutput } from "../types";
 import { fetchTwitterEvidence } from "./apify";
 import type { TwitterEvidence } from "./types";
@@ -33,30 +34,13 @@ export type TwitterRunResult = {
   apify: { provider: string; actorId: string; runId: string; datasetId: string };
 };
 
+// SSRF-guarded + size-capped image fetch. The URL comes from Apify evidence
+// (attacker-influenceable), so it must not be able to point the worker at an
+// internal address. Returns null (skip the image) on any rejection.
 async function fetchImageBytes(
   url: string,
 ): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
-    });
-    if (!response.ok) {
-      return null;
-    }
-    const buf = await response.arrayBuffer();
-    if (buf.byteLength === 0 || buf.byteLength > MAX_IMAGE_BYTES) {
-      return null;
-    }
-    const mediaType =
-      response.headers.get("content-type")?.split(";")[0]?.trim() ||
-      "image/jpeg";
-    return { bytes: new Uint8Array(buf), mediaType };
-  } catch {
-    return null;
-  }
+  return fetchGuardedImage(url, { maxBytes: MAX_IMAGE_BYTES });
 }
 
 function formatCount(n: number | null): string | null {
