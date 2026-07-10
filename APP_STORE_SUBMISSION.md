@@ -691,6 +691,104 @@ https://lesswhelmed.com/privacy
 
 - [ ] All metadata fields filled, no placeholder text
 
+### Rebrand: Lesswhelmed listing changes (next version)
+
+The product is renamed **Lesswhelmed** (was "Sirius AI"). The binary already carries the
+display name "Lesswhelmed" (`app.json` → `expo.name`, commit `1bd7874`), but App Store
+Connect **app name changes require a new version submission** — so the fields below change
+together with that version, not before. Two names deliberately do NOT change: the in-app
+assistant/chat feature keeps the name **Sirius AI**, and the subscription remains
+**Sirius AI Pro** (the RevenueCat entitlement is immutable). The values below fully replace
+their §7 counterparts for the rebrand version.
+
+**App Name** (≤30) — *11 chars*:
+
+```text
+Lesswhelmed
+```
+
+**Subtitle** (≤30) — **unchanged**, *27 chars*:
+
+```text
+Share anything from any app
+```
+
+**Promotional text** (≤170, editable without review) — *169 chars*:
+
+```text
+Found something worth keeping? Share it to Lesswhelmed from any app — a link, photo, note, or video — and AI drafts a clean, organized entry in your own private library.
+```
+
+**Keywords** (≤100, comma-separated, **no spaces**) — *95 chars*. The old string dropped
+"ai" because the app NAME contained it ("Sirius AI"); "Lesswhelmed" doesn't, so `ai` comes
+back as the lead keyword. To stay ≤100, `memos` is dropped — it's the weakest term (voice
+memos are a niche capture type already partly covered by `notes`), while `ai` is a
+top-volume search term the listing would otherwise lose entirely:
+
+```text
+ai,bookmark,read,later,clipper,sharesheet,screenshot,notes,summary,organizer,catalog,links,save
+```
+
+**Description** (≤4000) — *1804 chars*. Full replacement: every product-name "Sirius" →
+"Lesswhelmed", and the AI section now names the built-in assistant (**Sirius AI** — the
+real "Ask your library" chat that answers from your saved posts with citations):
+
+```text
+Lesswhelmed is the "no-app" — the place anything you share from any app lands and gets handled for you.
+
+See something worth keeping? Don't switch apps, don't copy-paste, don't lose it in a sea of tabs. Just tap Share and send it to Lesswhelmed — a link, a photo or screenshot, a note, a video, a document, a code repo, even a voice memo — and Lesswhelmed turns it into a clean, organized entry, drafted for you by AI.
+
+SHARE FROM ANYWHERE
+Lesswhelmed lives in the iOS Share Sheet, so you can capture from your browser, social apps, Photos, Files, or anywhere else — without breaking your flow. There's no new habit to learn: if it's worth keeping, share it.
+
+LET AI DO THE WRITE-UP
+Every capture is drafted into a structured post — title, summary, tags, and details — that you review, edit, and keep. On iPhone, Lesswhelmed can even draft entirely on-device. And when you need something back, ask Sirius AI — the built-in assistant — questions about everything you've saved and get grounded answers that cite your own posts.
+
+KEEP IT ALL, FIND IT LATER
+• Catalog — your private library of everything you've kept.
+• Queue — watch each capture move from pending to done.
+• Explore — map and browse everything by theme and topic.
+
+PRIVATE BY DEFAULT, SHARED BY CHOICE
+Your posts are private to you unless you decide otherwise — share individual posts with friends and see theirs in a Friends feed. Community standards apply to everything shared: you can report any post and block any user, and reports are reviewed within 24 hours. Lesswhelmed does not use third-party advertising or cross-app tracking.
+
+Stop hoarding tabs and screenshots you'll never find again. Share it to Lesswhelmed, and let it get handled.
+
+Terms of Use: https://lesswhelmed.com/terms
+Privacy Policy: https://lesswhelmed.com/privacy
+```
+
+**What's New** (≤4000) — for the rebrand version, *305 chars*:
+
+```text
+Sirius is now Lesswhelmed! Same app, same account, same library — everything you've saved is right where you left it, under a new name. The built-in assistant is still called Sirius AI, and Sirius AI Pro subscriptions carry over unchanged. This update also includes performance improvements and bug fixes.
+```
+
+**Unchanged fields** (verify, don't edit): Subtitle; Support URL
+(`https://lesswhelmed.com/support`), Marketing URL (`https://lesswhelmed.com`), Privacy
+Policy URL (`https://lesswhelmed.com/privacy`) — all already on lesswhelmed.com; Copyright
+(`2026 Mina Saleeb`); Category (Productivity / Lifestyle); the In-App Purchase display
+names ("Sirius AI Pro" stays as-is). Screenshots are dimensionally unchanged (same 6.9"
+slot, section 8), **but any shot showing the old wordmark or "Sirius" app name must be
+recaptured** before/with this submission — the rebranded binary renders "Lesswhelmed"
+chrome. The "Sirius 6.9 ProMax" simulator name and the `app-store-assets/` paths are
+internal tooling and stay as-is.
+
+**Rebrand submission checklist:**
+
+- [ ] Bump `app.json` → `expo.version` (closed train — Apple rejects a reused marketing
+  version at submit; see §2 version policy)
+- [ ] New EAS production build — the display-name change is **native**, OTA/EAS Update
+  cannot ship it
+- [ ] App Store Connect → **App Information** → change **Name** to `Lesswhelmed`
+  (only editable with a new version awaiting submission)
+- [ ] Paste the fields above into the new version's App Store tab (promo text, keywords,
+  description, What's New)
+- [ ] Recapture any screenshots showing the old wordmark/app name
+  (`bun run app-store:screenshots`, section 8)
+- [ ] Verify the sign-in demo account for App Review is still `reviewer@lesswhelmed.com`
+  and the seeded password works
+
 ---
 
 ## 8. Screenshots & previews
