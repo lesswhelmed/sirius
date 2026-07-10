@@ -121,12 +121,23 @@ async function fetchGuarded(
   try {
     u = new URL(rawUrl);
   } catch {
+    console.warn("[safe-fetch] dropped a fetch — invalid url");
     return null;
   }
-  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    console.warn(
+      `[safe-fetch] dropped ${u.hostname} — unsupported scheme ${u.protocol}`,
+    );
+    return null;
+  }
 
   const addresses = await (opts.resolve ?? resolveSafe)(u.hostname);
-  if (!addresses) return null;
+  if (!addresses) {
+    console.warn(
+      `[safe-fetch] dropped ${u.hostname} — blocked or unresolvable host`,
+    );
+    return null;
+  }
   const pinnedIp = addresses[0]!; // pin a validated address (defeats rebinding)
 
   const isHttps = u.protocol === "https:";
@@ -142,6 +153,15 @@ async function fetchGuarded(
       if (settled) return;
       settled = true;
       resolve(val);
+    };
+    // Log + drop: makes a silently-null fetch attributable (which host, why) so an
+    // operator can tell an SSRF block / oversize from a transient flake instead of a
+    // post quietly losing its image. Host only — never the full URL (image/PDF URLs
+    // can carry signed query tokens). Fires at most once (settled guard).
+    const drop = (reason: string) => {
+      if (settled) return;
+      console.warn(`[safe-fetch] dropped ${u.hostname} — ${reason}`);
+      done(null);
     };
 
     const req = lib.request(
@@ -163,21 +183,21 @@ async function fetchGuarded(
         // Refuse redirects outright — a Location could re-target an internal host.
         if (status >= 300 && status < 400) {
           res.destroy();
-          return done(null);
+          return drop(`refused redirect (${status})`);
         }
         if (status < 200 || status >= 300) {
           res.destroy();
-          return done(null);
+          return drop(`http ${status}`);
         }
         const ct = String(res.headers["content-type"] ?? "");
         if (!opts.isAllowedContentType(ct)) {
           res.destroy();
-          return done(null);
+          return drop(`disallowed content-type "${ct || "(none)"}"`);
         }
         const advertised = Number(res.headers["content-length"]);
         if (Number.isFinite(advertised) && advertised > opts.maxBytes) {
           res.destroy();
-          return done(null);
+          return drop(`content-length ${advertised} over ${opts.maxBytes}b cap`);
         }
         // Cap against the STREAMED bytes (Content-Length is attacker-controlled).
         const chunks: Buffer[] = [];
@@ -187,22 +207,23 @@ async function fetchGuarded(
           if (total > opts.maxBytes) {
             res.destroy();
             req.destroy();
-            return done(null);
+            return drop(`body exceeded ${opts.maxBytes}b cap`);
           }
           chunks.push(chunk);
         });
-        res.on("end", () =>
-          done(total === 0 ? null : { buffer: Buffer.concat(chunks), contentType: ct }),
-        );
-        res.on("error", () => done(null));
+        res.on("end", () => {
+          if (total === 0) return drop("empty body");
+          done({ buffer: Buffer.concat(chunks), contentType: ct });
+        });
+        res.on("error", () => drop("response stream error"));
       },
     );
 
     req.on("timeout", () => {
       req.destroy();
-      done(null);
+      drop("timeout");
     });
-    req.on("error", () => done(null));
+    req.on("error", () => drop("request error"));
     req.end();
   });
 }
