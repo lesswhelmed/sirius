@@ -20,6 +20,7 @@ import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { getAIConfig, modelForKind } from "../lib/ai-config";
 import { SafetyFlagError, type SafetyVerdict } from "./safety";
 import { analysisContractLines } from "./analysis-contract";
+import { repairCollapsedMarkdown } from "./markdown-repair";
 import { notesLeadLines } from "./prompt-blocks";
 import { parseInstagramUrl } from "../lib/instagram-url";
 import { parseTwitterUrl } from "../lib/twitter-url";
@@ -212,7 +213,14 @@ function loadImagePart(staged: StagedImage) {
 export function toGeminiOutput(
   draft: PostDraft,
   forcedType: PostType,
-  opts?: { originalUrl?: string; excerpt?: string; imageAlts?: string[] },
+  opts?: {
+    originalUrl?: string;
+    excerpt?: string;
+    imageAlts?: string[];
+    // Skip the collapsed-markdown repair: set by manual-stub, whose body is
+    // the USER'S verbatim material and must never be re-templated.
+    verbatimBody?: boolean;
+  },
 ): GeminiOutput {
   const title = draft.title.trim() || "Untitled Ingest";
   const slug = slugify(draft.slug?.trim() || title);
@@ -251,7 +259,13 @@ export function toGeminiOutput(
   if (opts?.imageAlts && opts.imageAlts.length > 0) {
     frontmatter.image_alts = opts.imageAlts;
   }
-  const drafted = draft.body.trim();
+  // Guardrail: Gemini's JSON mode sometimes strips every newline from the
+  // body (one giant line → renders as one giant h2). Deterministically
+  // re-insert the structural breaks around the known contract headings;
+  // words are never altered. See markdown-repair.ts.
+  const drafted = opts?.verbatimBody
+    ? draft.body.trim()
+    : repairCollapsedMarkdown(draft.body.trim());
   let sourceLine = "";
   if (trimmedUrl) {
     sourceLine = parseYouTubeUrl(trimmedUrl)

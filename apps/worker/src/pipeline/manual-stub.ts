@@ -108,8 +108,13 @@ export function buildManualStub(input: PipelineInput): GeminiOutput {
   const forcedType = FORCED_TYPE[input.kind] ?? "BLOG";
   // For url kind, preserve the source link in the body via toGeminiOutput's
   // Source:/YouTubeEmbed handling, exactly like the drafted path.
+  // verbatimBody: the stub body is the user's own words — exempt from the
+  // collapsed-markdown repair, which is for model output only.
   if (input.kind === "url" && input.urls[0]) {
-    return toGeminiOutput(draft, forcedType, { originalUrl: input.urls[0] });
+    return toGeminiOutput(draft, forcedType, {
+      originalUrl: input.urls[0],
+      verbatimBody: true,
+    });
   }
-  return toGeminiOutput(draft, forcedType);
+  return toGeminiOutput(draft, forcedType, { verbatimBody: true });
 }

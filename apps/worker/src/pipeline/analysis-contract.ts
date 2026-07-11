@@ -14,6 +14,21 @@
 // Streamdown/PostBody render them on both hosts (the Instagram digest proved
 // the structured-markdown path).
 
+// The canonical `##` section titles of the shared contract, in order. The
+// collapsed-markdown guardrail (markdown-repair.ts) keys on these to re-insert
+// structural newlines when Gemini's JSON mode strips them — a drift test in
+// markdown-repair.test.ts asserts every title appears in the prompt lines.
+export const ANALYSIS_SECTION_TITLES: readonly string[] = [
+  "Overview",
+  "Full breakdown",
+  "Key claims & facts",
+  "Notable quotes",
+  "Entities",
+  "Data & numbers",
+  "Context & metadata",
+  "Open questions",
+];
+
 export type AnalysisContractOpts = {
   // Human label for what's being analyzed, with article ("a web page",
   // "a set of photos", "a video"). Used in the framing line.
@@ -40,6 +55,7 @@ export function analysisContractLines(opts: AnalysisContractOpts): string[] {
     `Capture as much specific detail as the material warrants (${opts.lengthHint}). Depth beats brevity, but never pad, editorialize, or restate to fill space.`,
     "",
     "Structure the body with `##` markdown sections. ATTEMPT each section below; OMIT a section entirely when the material genuinely has nothing for it (no empty headings, no 'N/A'):",
+    "Formatting: the body MUST contain real newline characters — every `##` heading on its own line with a blank line before and after it. Never run a heading and its prose together on one line.",
     "## Overview — 2-4 sentences: what this is and why it's worth keeping.",
     `## Full breakdown — ${opts.breakdownHint}`,
     "## Key claims & facts — the concrete assertions, findings, and decisions, each grounded in the material.",

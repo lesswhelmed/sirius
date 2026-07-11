@@ -257,6 +257,23 @@ top. Keep it cheap — grep-level checks, not a full re-exploration.
 
 ## 6. Drift log (loop-maintained)
 
+- **2026-07-10 — COLLAPSED-MARKDOWN GUARDRAIL (new Gemini quirk + deterministic repair).**
+  Gemini's JSON-mode structured output can strip EVERY newline from the drafted
+  body — the whole analysis on one line, `##` headings inline — which renders as
+  one giant h2 (observed in prod: slug `black-cat-mala`; 1 of 268 posts). Same
+  quirk family as the ignored min/maxItems bounds: steer in the prompt, enforce
+  in code. (1) `analysis-contract.ts` now demands real newlines explicitly and
+  exports `ANALYSIS_SECTION_TITLES`; (2) new
+  `apps/worker/src/pipeline/markdown-repair.ts` (`repairCollapsedMarkdown`)
+  detects a known contract heading mid-line / run together with prose and
+  re-inserts the structural newlines deterministically — whitespace-only diff,
+  words never altered; gated so well-formed bodies pass byte-identical, `(?<!#)`
+  keeps legacy `### Overview` h3 appendices untouched. Wired centrally in
+  `toGeminiOutput` (every AI path incl. client drafts); `manual-stub` opts out
+  via `verbatimBody: true` (user's verbatim material is never re-templated).
+  Tests: `markdown-repair.test.ts` (incl. prompt↔repairer title-drift guard).
+  Prod row repaired in place (original in `post_content_backup_20260710`).
+
 - **2026-07-09 — RAW-ANALYSIS PIVOT + REFLECTION LAYER LANDED, EXPECTED not drift.**
   (1) Every drafting prompt now embeds the shared analysis contract
   (`apps/worker/src/pipeline/analysis-contract.ts`): neutral analyst voice, `##`
