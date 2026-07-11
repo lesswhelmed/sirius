@@ -37,7 +37,9 @@ const TITLE_ALT = [...KNOWN_TITLES]
 // end at a word-ish boundary so "Overview" never matches "Overviewing". The
 // `(?<!#)` keeps the marker strictly h2: legacy posts carry `### Overview`
 // (h3) appendix sections whose trailing `##` must never match.
-const HEADING = `(?<!#)##\\s(?:${TITLE_ALT})(?=[\\s.:,;!?)\\]—–-]|$)`;
+// (the trailing `\\` in the boundary class covers the literal-\n variant,
+// where the char straight after the title is a backslash.)
+const HEADING = `(?<!#)##\\s(?:${TITLE_ALT})(?=[\\s.:,;!?)\\]—–\\\\-]|$)`;
 
 // Collapse signature 1: a known heading marker mid-line (non-newline char
 // before it on the same line). `[ \t]*` — NOT `\s*` — so a preceding real
@@ -57,7 +59,22 @@ function proseLike(rest: string): boolean {
   return /[.!?]/.test(rest) || rest.length >= 80;
 }
 
+// Collapse signature 3 (2026-07-11, audio ingest): the model double-escapes
+// the JSON string, so the body carries LITERAL backslash-n sequences instead
+// of real newlines. Gated on the escape sequence sitting directly against a
+// known heading — prose that merely mentions "\n" never sits in that position.
+const LITERAL_ESCAPE = new RegExp(
+  `\\\\n(?:\\\\n)?\\s*${HEADING}|${HEADING}:?\\\\n`,
+  "i",
+);
+
 export function repairCollapsedMarkdown(body: string): string {
+  // Step 0: unescape the literal-\n variant, then fall through — the other
+  // collapse shapes can co-occur and the gates below re-check the result.
+  if (LITERAL_ESCAPE.test(body)) {
+    body = body.replace(/\\n/g, "\n");
+  }
+
   TRAILING_PROSE.lastIndex = 0;
   const trailing = [...body.matchAll(TRAILING_PROSE)].some((m) =>
     proseLike(m[1] ?? ""),
@@ -73,9 +90,15 @@ export function repairCollapsedMarkdown(body: string): string {
     "$1\n\n",
   );
   // 2. The heading line carries ONLY the title; run-on prose becomes the
-  //    section's first paragraph (title casing preserved as the model wrote it).
+  //    section's first paragraph (title casing preserved as the model wrote
+  //    it). An em-dash/colon straight after the title is the model echoing
+  //    the contract's own "## Title — guidance" formatting — template, not
+  //    content — so it's consumed along with the split.
   out = out.replace(
-    new RegExp(`^(##\\s(?:${TITLE_ALT})):?[ \\t]+(\\S[^\\n]*)$`, "gim"),
+    new RegExp(
+      `^(##\\s(?:${TITLE_ALT}))(?:[ \\t]*[—–:])?[ \\t]+(\\S[^\\n]*)$`,
+      "gim",
+    ),
     (match, title: string, rest: string) =>
       proseLike(rest) ? `${title}\n\n${rest}` : match,
   );

@@ -257,6 +257,20 @@ top. Keep it cheap — grep-level checks, not a full re-exploration.
 
 ## 6. Drift log (loop-maintained)
 
+- **2026-07-11 — COLLAPSED-MARKDOWN GUARDRAIL EXTENDED (two more prod variants).**
+  Audio ingest produced LITERAL `\n` escape sequences in the body (Gemini
+  double-escaped the JSON string); video ingest produced `## Overview — prose`
+  run-ons (the model copied the contract's own `## Title — guidance` line
+  format). `repairCollapsedMarkdown` now (a) unescapes literal `\n` when the
+  escape sits directly against a known heading (prose that merely mentions
+  `\n` is untouched), and (b) consumes an em-dash/colon separator straight
+  after a heading title as template junk; the contract lines now quote the
+  heading names so the model stops echoing the dash format. ALSO: manual SQL
+  content fixes MUST bump `Post."updatedAt"` — the mobile mirror's delta pull
+  (`listPostsChangedSince`) filters strictly on `updatedAt > since`, so a
+  content-only raw UPDATE never reaches devices (that's why the first repaired
+  row stayed stale on the phone).
+
 - **2026-07-10 — COLLAPSED-MARKDOWN GUARDRAIL (new Gemini quirk + deterministic repair).**
   Gemini's JSON-mode structured output can strip EVERY newline from the drafted
   body — the whole analysis on one line, `##` headings inline — which renders as

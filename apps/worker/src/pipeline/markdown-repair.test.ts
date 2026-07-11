@@ -135,6 +135,63 @@ test("h3 headings (### Overview, old-format appendix) are never mistaken for h2"
   expect(out).toContain("intro sentence.\n\n## Overview\n\nA collapsed section");
 });
 
+// The second prod variant (2026-07-11, audio ingest): Gemini double-escapes
+// the JSON string, so the body arrives with LITERAL backslash-n sequences
+// instead of real newlines.
+const ESCAPED = String.raw`## Overview\n\nThe recording captures a brief, informal conversation between two speakers.\n\n## Full breakdown\n\nThe audio begins with a brief, unrelated exchange about an object.\n\n## Entities\n\nA former server.`;
+
+test("literal \\n escape sequences around known headings become real newlines", () => {
+  const out = repairCollapsedMarkdown(ESCAPED);
+  expect(out).not.toContain("\\n");
+  const lines = out.split("\n");
+  expect(lines[0]).toBe("## Overview");
+  expect(lines).toContain("## Full breakdown");
+  expect(lines).toContain("## Entities");
+  expect(out).toContain(
+    "## Full breakdown\n\nThe audio begins with a brief, unrelated exchange about an object.",
+  );
+  // words identical once the escape sequences are accounted for
+  expect(ink(out)).toBe(ink(ESCAPED.replace(/\\n/g, "\n")));
+});
+
+test("prose that merely MENTIONS \\n in a well-formed body is untouched", () => {
+  const body = [
+    "## Overview",
+    "",
+    "In C, use \\n to end a line; printf(\"a\\n\\nb\") prints a blank line.",
+    "",
+    "## Entities",
+    "",
+    "The C language.",
+  ].join("\n");
+  expect(repairCollapsedMarkdown(body)).toBe(body);
+});
+
+test("escaped variant combined with run-on prose still repairs fully", () => {
+  const body = String.raw`intro sentence. ## Overview\n\nThe recording captures a conversation about service work.`;
+  const out = repairCollapsedMarkdown(body);
+  expect(out).not.toContain("\\n");
+  expect(out).toContain("intro sentence.\n\n## Overview\n\nThe recording captures");
+});
+
+// The third prod variant (2026-07-11, video ingest): collapsed one-liner where
+// the model copied the contract's own "## Title — guidance" formatting, so
+// headings carry an em-dash separator before the prose.
+test("em-dash separator after the title is treated as template, not content", () => {
+  const body =
+    "## Overview — The video features a cat resting near a large tree trunk, filmed from inside a vehicle. ## Full breakdown — 0:00 The video opens with a sideways view of a light-colored cat.";
+  const out = repairCollapsedMarkdown(body);
+  const lines = out.split("\n");
+  expect(lines[0]).toBe("## Overview");
+  expect(lines).toContain("## Full breakdown");
+  expect(out).toContain(
+    "## Overview\n\nThe video features a cat resting near a large tree trunk",
+  );
+  expect(out).toContain("## Full breakdown\n\n0:00 The video opens");
+  // only the structural em-dashes may differ
+  expect(ink(out)).toBe(ink(body.replace(/## (Overview|Full breakdown) — /g, "## $1 ")));
+});
+
 test("toGeminiOutput repairs a collapsed drafted body", () => {
   const out = toGeminiOutput(
     {
