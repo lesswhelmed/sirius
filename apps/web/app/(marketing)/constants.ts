@@ -27,7 +27,7 @@ export const DEMO_VIDEO = {
 export const SCREENS = {
   capture: "/product/screens/01-capture.png",
   catalog: "/product/screens/02-catalog.png",
-  queue: "/product/screens/03-queue.png",
+  friends: "/product/screens/03-friends.png",
   tree: "/product/screens/04-tree.png",
   post: "/product/screens/05-post-detail.png",
   explore: "/product/screens/06-explore.png",
@@ -35,7 +35,7 @@ export const SCREENS = {
 
 // The hero carousel sequence — a genuine capture→keep arc, so the roman folios
 // encode real order. Each slide is one real in-app screenshot with a terse mono
-// caption. Order mirrors the "How it works" flow plus the live queue.
+// caption. Order mirrors the "How it works" flow plus the shared Friends feed.
 export const SCREEN_SLIDES = [
   {
     folio: "I",
@@ -69,8 +69,8 @@ export const SCREEN_SLIDES = [
   },
   {
     folio: "VI",
-    label: "In flight",
-    src: SCREENS.queue,
-    alt: "The live queue as captures process",
+    label: "Share",
+    src: SCREENS.friends,
+    alt: "The Friends feed — posts your friends shared with you",
   },
 ] as const;

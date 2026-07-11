@@ -24,14 +24,14 @@ normalized to **1284 × 2778**.
 ## Per-screen criteria
 
 ### 01-onboarding (`siriusapp://help`)
-- O1. Header reads **"How Sirius works."** with the "Welcome" eyebrow.
+- O1. Header reads **"How Lesswhelmed works."** with the "Welcome" eyebrow.
 - O2. The subtitle about sharing to Sirius is visible.
 - O3. The "The one move to learn" section with numbered step cards
   (Open anything → Tap Share → Pick Sirius) is visible.
 - O4. Scrolled to the very top (header fully visible, not cut off).
 
 ### 02-capture (`siriusapp://composer`)
-- C1. Capture headline (e.g. **"What did you find?"**) visible.
+- C1. Capture headline (**"Capture."**) visible.
 - C2. The capture-source options (links, note, photos, video, document, etc.)
   are visible as tappable rows/buttons.
 - C3. Capture tab is the active tab in the tab bar.
@@ -46,11 +46,11 @@ normalized to **1284 × 2778**.
   Library).
 - L5. Catalog tab active in the tab bar.
 
-### 04-queue (`siriusapp://queue`)
-- Q1. Queue screen header visible.
-- Q2. Shows the capture→draft→filed pipeline state for items (completed entries),
+### 04-friends (`siriusapp://feed`)
+- Q1. Friends feed header visible ("Friends." / SHARED).
+- Q2. Shows shared posts in the feed (the seeded demo friends' FRIENDS posts),
   not an empty "nothing here yet" state.
-- Q3. Queue tab active in the tab bar.
+- Q3. Friends tab active in the tab bar.
 
 ### 05-post-detail (`siriusapp://post/ridge-trail-day-hike`)
 - D1. Shows the **Ridge Trail Day Hike** post.

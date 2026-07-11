@@ -823,7 +823,7 @@ iPhones — you do **not** need 6.5", and you do **not** need iPad (the app sets
 | ----- | -------------------- | ------------------------------------------------------------- |
 | 1     | `01-capture.png`     | Capture — the material picker (Link/Repo/Note/Photos/…)       |
 | 2     | `02-catalog.png`     | Catalog — your library (filtered to a clean category)         |
-| 3     | `03-queue.png`       | Queue — captures moving pending → processing → done           |
+| 3     | `03-friends.png`     | Friends — the shared feed (posts friends shared with you)     |
 | 4     | `04-tree.png`        | Explore → Categories — the taxonomy outline + Rediscover rail |
 | 5     | `05-post-detail.png` | A drafted post — hero image, title, tags, body                |
 | 6     | `06-explore.png`     | Explore → Map — the 3D constellation of topics & posts        |

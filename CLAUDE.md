@@ -74,14 +74,6 @@ has a suite). Notable suites: the deterministic search harness in `packages/db` 
 `scripts/testing/security/`, plus `bun run test:security:db`), and `bun --cwd apps/mobile
 test`. Coverage is NOT repo-wide — never claim "tests pass" beyond the suite you actually ran.
 
-Mobile (Expo, run from repo root):
-
-```sh
-bun --cwd apps/mobile start     # Metro / Expo dev server
-bun --cwd apps/mobile ios       # iOS Simulator
-bun --cwd apps/mobile android   # Android emulator
-```
-
 ### Mobile builds (EAS)
 
 Release builds go through **EAS Build** (cloud), config in `apps/mobile/eas.json`. The
@@ -95,27 +87,10 @@ bun --cwd apps/mobile build:prod      # eas build --profile production (store)
 bun --cwd apps/mobile update:prod     # eas update --branch production (OTA JS push)
 ```
 
-Root-level one-liners (delegate to the gated mobile scripts above; all use
-`bunx eas-cli`, no global install needed). EAS `requireCommit: true` → run on a
-clean, committed tree. Convention: a bare-platform name is **production**;
-preview/dev are profile-qualified.
-
-```sh
-# production (store)
-bun run mobile:build:ios          # eas build --profile production --platform ios
-bun run mobile:build:android      # eas build --profile production --platform android
-bun run mobile:build:all          # eas build --profile production --platform all (both)
-bun run mobile:submit:ios         # eas submit  --profile production --platform ios (App Store Connect)
-bun run mobile:submit:android     # eas submit  --profile production --platform android (Play)
-# preview (internal)
-bun run mobile:build:preview          # --profile preview  --platform all
-bun run mobile:build:preview:ios      # --profile preview  --platform ios
-bun run mobile:build:preview:android  # --profile preview  --platform android
-# development (dev client)
-bun run mobile:build:dev              # --profile development --platform all
-bun run mobile:build:dev:ios          # --profile development --platform ios
-bun run mobile:build:dev:android      # --profile development --platform android
-```
+Root-level `mobile:build:*` / `mobile:submit:*` one-liners (see root `package.json`
+scripts) delegate to the gated mobile scripts above; all use `bunx eas-cli`, no
+global install needed. EAS `requireCommit: true` → run on a clean, committed tree.
+Convention: a bare-platform name is **production**; preview/dev are profile-qualified.
 
 For a dev client on a **physical** device use the `development-device` profile
 directly (`bun --cwd=apps/mobile run build:dev:ios` builds the simulator dev
@@ -162,7 +137,6 @@ no root alias yet, ask if you want one). A `production-device` profile also exis
 
 Lint note: **ESLint** does the real linting per app (flat config from `@repo/eslint-config`).
 `biome.json` only configures the CSS-modules/Tailwind parser — it is not the linter.
-Stack pins: TypeScript `~6.0.3`, React 19, Next.js 16, Tailwind v4, Prisma 7, Zod 4.
 
 ## Architecture
 
@@ -442,94 +416,5 @@ invalidate the build cache — add new ones there.
 
 ## Beads Workflow Integration
 
-This project uses [beads_rust](https://github.com/Dicklesworthstone/beads_rust) (`br`) for issue tracking and [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) (`bv`) for graph-aware triage. Issues are stored in `.beads/` and tracked in git.
-
-### Using bv as an AI sidecar
-
-bv is a graph-aware triage engine for Beads projects (.beads/beads.jsonl). Instead of parsing JSONL or hallucinating graph traversal, use robot flags for deterministic, dependency-aware outputs with precomputed metrics (PageRank, betweenness, critical path, cycles, HITS, eigenvector, k-core).
-
-**Scope boundary:** bv handles _what to work on_ (triage, priority, planning). `br` handles creating, modifying, and closing beads.
-
-**CRITICAL: Use ONLY --robot-\* flags. Bare bv launches an interactive TUI that blocks your session.**
-
-#### The Workflow: Start With Triage
-
-**`bv --robot-triage` is your single entry point.** It returns everything you need in one call:
-
-- `quick_ref`: at-a-glance counts + top 3 picks
-- `recommendations`: ranked actionable items with scores, reasons, unblock info
-- `quick_wins`: low-effort high-impact items
-- `blockers_to_clear`: items that unblock the most downstream work
-- `project_health`: status/type/priority distributions, graph metrics
-- `commands`: copy-paste shell commands for next steps
-
-```bash
-bv --robot-triage        # THE MEGA-COMMAND: start here
-bv --robot-next          # Minimal: just the single top pick + claim command
-
-# Token-optimized output (TOON) for lower LLM context usage:
-bv --robot-triage --format toon
-```
-
-Before claiming, verify current state with `br show <id> --json` or `br ready --json`. `recommendations` can include graph-important blocked or assigned work; only `quick_ref.top_picks` and non-empty `claim_command` fields represent claimable work.
-
-#### Other bv Commands
-
-| Command                                             | Returns                                                                               |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `--robot-plan`                                      | Parallel execution tracks with unblocks lists                                         |
-| `--robot-priority`                                  | Priority misalignment detection with confidence                                       |
-| `--robot-insights`                                  | Full metrics: PageRank, betweenness, HITS, eigenvector, critical path, cycles, k-core |
-| `--robot-alerts`                                    | Stale issues, blocking cascades, priority mismatches                                  |
-| `--robot-suggest`                                   | Hygiene: duplicates, missing deps, label suggestions, cycle breaks                    |
-| `--robot-diff --diff-since <ref>`                   | Changes since ref: new/closed/modified issues                                         |
-| `--robot-graph [--graph-format=json\|dot\|mermaid]` | Dependency graph export                                                               |
-
-#### Scoping & Filtering
-
-```bash
-bv --robot-plan --label backend              # Scope to label's subgraph
-bv --robot-insights --as-of HEAD~30          # Historical point-in-time
-bv --recipe actionable --robot-plan          # Pre-filter: ready to work (no blockers)
-bv --recipe high-impact --robot-triage       # Pre-filter: top PageRank scores
-```
-
-### br Commands for Issue Management
-
-```bash
-br ready              # Show issues ready to work (no blockers)
-br list --status=open # All open issues
-br show <id>          # Full issue details with dependencies
-br create --title="..." --type=task --priority=2
-br update <id> --status=in_progress
-br close <id> --reason="Completed"
-br close <id1> <id2>  # Close multiple issues at once
-br sync --flush-only  # Export DB to JSONL
-```
-
-### Workflow Pattern
-
-1. **Triage**: Run `bv --robot-triage` to find the highest-impact actionable work
-2. **Claim**: Use `br update <id> --status=in_progress`
-3. **Work**: Implement the task
-4. **Complete**: Use `br close <id>`
-5. **Sync**: Always run `br sync --flush-only` at session end
-
-### Key Concepts
-
-- **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
-- **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers 0-4, not words)
-- **Types**: task, bug, feature, epic, chore, docs, question
-- **Blocking**: `br dep add <issue> <depends-on>` to add dependencies
-
-### Session Protocol
-
-```bash
-git status              # Check what changed
-git add <files>         # Stage code changes
-br sync --flush-only    # Export beads changes to JSONL
-git commit -m "..."     # Commit everything
-git push                # Push to remote
-```
-
-<!-- end-bv-agent-instructions -->
+Issue tracking uses beads (`br`) + beads_viewer (`bv`), stored in `.beads/` and tracked in git.
+Full workflow (bv robot flags, triage → claim → close, session protocol): invoke the `beads` skill (`.claude/skills/beads/SKILL.md`).

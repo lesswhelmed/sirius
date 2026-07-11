@@ -12,7 +12,7 @@ For the App Store Connect **6.5-inch iPhone** slot, which accepts `1242 × 2688`
 |     1 | `01-onboarding.png`         | "How Sirius works" — the first-run onboarding / share-sheet pitch       |
 |     2 | `02-capture.png`            | Capture — pick what to add (Link, Repo, Note, Photos, Video, Doc, Audio)|
 |     3 | `03-catalog.png`            | Catalog — your library, every post with a generated editorial cover     |
-|     4 | `04-queue.png`              | Queue — captures moving pending → processing → done                     |
+|     4 | `04-friends.png`            | Friends — the shared feed (posts friends shared with you)               |
 |     5 | `05-post-detail.png`        | A drafted post — hero image, title, tags, body                          |
 |     6 | `06-explore-categories.png` | Explore — the Categories/Connections taxonomy outline                   |
 |     7 | `07-explore-map.png`        | Explore — the Observatory idea-map (supplied via `MAP_IMAGE`, see below) |

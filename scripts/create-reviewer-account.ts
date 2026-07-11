@@ -112,6 +112,7 @@ type ParsedArgs = {
   scene: boolean;
   friends: boolean;
   resetTerms: boolean;
+  armTermsOnly: boolean;
   webUrl: string;
 };
 
@@ -131,6 +132,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   // acceptance gate on sign-in, so re-seeding nulls termsAcceptedAt by default
   // (the sign-up databaseHook in packages/auth stamps it at creation).
   let resetTerms = true;
+  let armTermsOnly = false;
   let webUrl = DEFAULT_WEB_URL;
 
   const takeValue = (
@@ -152,6 +154,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       friends = false;
     } else if (arg === "--keep-terms") {
       resetTerms = false;
+    } else if (arg === "--arm-terms-only") {
+      armTermsOnly = true;
     } else if (arg === "--web-url" || arg.startsWith("--web-url=")) {
       webUrl = takeValue(arg, "--web-url", () => argv[++i]) ?? webUrl;
     } else if (arg === "--password" || arg.startsWith("--password=")) {
@@ -182,6 +186,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     scene,
     friends,
     resetTerms,
+    armTermsOnly,
     webUrl: webUrl.replace(/\/+$/, ""),
   };
 }
@@ -199,6 +204,9 @@ function usage(): never {
   --no-friends         skip seeding the reviewer's demo friends
   --keep-terms         don't null the reviewer's termsAcceptedAt (default: reset so
                        App Review sees the one-time Terms acceptance gate)
+  --arm-terms-only     ONLY re-arm the terms gate for the existing reviewer (null
+                       termsAcceptedAt) and exit — no seeding. Used by the App Store
+                       screenshot script after captures consume the gate.
   --web-url <url>      web origin for the friends step (default ${DEFAULT_WEB_URL})
   --teardown           remove demo posts + submissions + focus areas
   --purge-user         with --teardown, also delete the reviewer user + demo friends
@@ -714,14 +722,14 @@ async function seedFriends(
   reviewer: { userId: string; email: string; password: string | null },
   webUrl: string,
   scene: boolean,
-): Promise<void> {
+): Promise<"seeded" | "skipped"> {
   if (!reviewer.password) {
     console.warn(
       "\nFriends step skipped: the reviewer's password is unknown on this run\n" +
         "(existing account, no --password). Re-run with --password to set a known\n" +
         "password so the script can sign in as the reviewer, or pass --no-friends.",
     );
-    return;
+    return "skipped";
   }
 
   // Fail fast with a clear message if the web app isn't reachable.
@@ -738,7 +746,24 @@ async function seedFriends(
         `(${err instanceof Error ? err.message : String(err)}).\n` +
         "Make sure the web app is running and reachable, then re-run, or pass --no-friends.",
     );
-    return;
+    return "skipped";
+  }
+
+  // A prior seed run re-armed the terms gate (termsAcceptedAt = null), and every
+  // /api/app/* write the reviewer makes below sits behind it (403 terms-required).
+  // Accept through the real endpoint first — idempotent, and the flag-gated reset
+  // at the END of the seed re-arms the gate afterward (it runs last for exactly
+  // this reason). Demo friends are stamped at sign-up by the auth hook.
+  const termsRes = await fetch(`${webUrl}/api/app/account/accept-terms`, {
+    method: "POST",
+    headers: { origin: webUrl, cookie: reviewerCookie },
+  });
+  if (!termsRes.ok) {
+    console.warn(
+      `\nFriends step skipped: could not accept terms as the reviewer ` +
+        `(${termsRes.status} ${await termsRes.text().catch(() => "")}).`,
+    );
+    return "skipped";
   }
 
   let accepted = 0;
@@ -772,6 +797,7 @@ async function seedFriends(
       `(${accepted} accepted/confirmed, ${posts} friend post(s)` +
       `${scene ? " + scene" : ""}).`,
   );
+  return "seeded";
 }
 
 // One seeded post + the submission that "produced" it, kept so the scene step
@@ -1421,6 +1447,31 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args.armTermsOnly) {
+    // Re-arm the one-time Terms acceptance gate for the EXISTING reviewer and
+    // exit — the App Store screenshot run signs in and accepts the gate, so the
+    // capture script calls this afterward to restore the submission-ready state.
+    const existing = await prisma.user.findUnique({
+      where: { email: args.email },
+      select: { id: true },
+    });
+    if (!existing) {
+      console.error(
+        `--arm-terms-only: no user with email ${args.email} — run the full seed first.`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { termsAcceptedAt: null },
+    });
+    console.log(
+      `Terms gate re-armed for ${args.email} — first sign-in shows the acceptance screen.`,
+    );
+    return;
+  }
+
   const reviewer = await ensureReviewerUser(args);
 
   // One Gemini-key gate for the whole run — the reviewer's scene AND each demo
@@ -1450,6 +1501,7 @@ async function main(): Promise<void> {
     postLimit: args.posts,
   });
 
+  let friendsOutcome: "seeded" | "skipped" | "disabled" = "disabled";
   if (args.friends) {
     console.log(
       `\nSeeding reviewer friends + their content via the live endpoints at ${args.webUrl}…`,
@@ -1458,7 +1510,7 @@ async function main(): Promise<void> {
     // supplied), but the account was set to args.password either way — so the
     // effective sign-in password is whichever is non-null.
     const signInPassword = reviewer.password ?? args.password ?? null;
-    await seedFriends(
+    friendsOutcome = await seedFriends(
       { ...reviewer, password: signInPassword },
       args.webUrl,
       args.scene,
@@ -1487,7 +1539,13 @@ async function main(): Promise<void> {
     `  Categories + focus areas: ${args.scene ? "yes (via worker pipeline)" : "skipped (--no-scene)"}`,
   );
   console.log(
-    `  Demo friends: ${args.friends ? `${DEMO_FRIENDS.length} seeded via ${args.webUrl} (real friend-request flow), each with their own FRIENDS posts in the feed` : "skipped (--no-friends)"}`,
+    `  Demo friends: ${
+      friendsOutcome === "seeded"
+        ? `${DEMO_FRIENDS.length} seeded via ${args.webUrl} (real friend-request flow), each with their own FRIENDS posts in the feed`
+        : friendsOutcome === "skipped"
+          ? "SKIPPED this run (see the warning above — existing friendships in the DB are untouched)"
+          : "skipped (--no-friends)"
+    }`,
   );
   console.log(
     `  Terms gate: ${args.resetTerms ? "armed — first sign-in shows the acceptance screen" : "kept (--keep-terms)"}`,

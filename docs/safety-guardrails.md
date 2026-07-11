@@ -113,7 +113,7 @@ bun --cwd apps/worker test src/pipeline/safety/
 
 # live classifier suite (real Gemini; benign→allow, synthetic-harmful→flag)
 bun --cwd apps/worker run safety:try
-bun --cwd apps/worker run safety:try --note "some text to classify"
+bun run --cwd apps/worker safety:try --note "some text to classify"  # --cwd after `run`, or bun swallows --note
 ```
 
 Code: `apps/worker/src/pipeline/safety/` (gate), `apps/worker/src/index.ts`
