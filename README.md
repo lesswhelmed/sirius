@@ -23,6 +23,12 @@ opening pull requests.
 > For day-to-day agent/dev guidance, see [`CLAUDE.md`](./CLAUDE.md) — it's the authoritative
 > architecture doc. This README is the onboarding overview.
 
+### Sirius Research
+
+Sirius Research is a gentle, read-only research companion for making sense of a personal writing corpus. It searches by exact words, meaning, categories, projects, and structured filters; retrieves complete posts for context; and turns the evidence into grounded, human-readable summaries with citations and clear boundaries around what the corpus does not establish.
+
+It is designed to feel less like a black-box answer engine and more like a thoughtful librarian: it helps reveal recurring ideas, points of agreement or tension, and practical takeaways without flattening nuanced writing into a slogan. See the full plain-English guide in [`plugins/sirius-research/RESEARCH_GUIDE.md`](./plugins/sirius-research/RESEARCH_GUIDE.md).
+
 ### Highlights
 
 |                            |                                                                                |
