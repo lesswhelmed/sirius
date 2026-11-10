@@ -8,6 +8,10 @@ plugin connects to that server over MCP (so it inherits the server's
 owner-scoped, read-only, multi-tenant-safe tools) and adds skills that direct
 Claude *when and how* to use them.
 
+## A plain-English introduction
+
+Read [Sirius Research, in Plain English](./RESEARCH_GUIDE.md) for a welcoming overview of what this module provides, how its tools work, how to install it, and how to turn a corpus into a careful, cited summary.
+
 ## What's inside
 
 | Component | What it is |
